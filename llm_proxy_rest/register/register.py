@@ -14,7 +14,8 @@ import logging
 from flask import Flask, Blueprint, request, jsonify
 from typing import Callable, Iterable, Any, Dict, Set, Tuple, Optional
 
-from llm_proxy_lib.utils.logger import prepare_logger
+from rdl_ml_utils.utils.logger import prepare_logger
+
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
 
 

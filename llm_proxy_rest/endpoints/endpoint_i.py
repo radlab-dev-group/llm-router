@@ -21,7 +21,7 @@ import requests
 
 from typing import Dict, Any, Optional
 
-from llm_proxy_lib.utils.logger import prepare_logger
+from rdl_ml_utils.utils.logger import prepare_logger
 
 
 class EndpointI(abc.ABC):
@@ -45,7 +45,12 @@ class EndpointI(abc.ABC):
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
 
-    def __init__(self, ep_name: str, method: str = "POST"):
+    def __init__(
+        self,
+        ep_name: str,
+        method: str = "POST",
+        logger_file_name: Optional[str] = None,
+    ):
         """
         Create a new endpoint instance.
 
@@ -59,7 +64,10 @@ class EndpointI(abc.ABC):
         """
         self._ep_name = ep_name
         self._ep_method = method
-        self.logger = prepare_logger(__name__)
+        self.logger = prepare_logger(
+            logger_name=__name__,
+            logger_file_name=logger_file_name or "llm-proxy-rest.log",
+        )
 
         self._check_method_is_allowed(method=method)
         self.prepare_ep()
