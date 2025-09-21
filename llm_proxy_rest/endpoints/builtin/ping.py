@@ -20,14 +20,20 @@ class Ping(EndpointI):
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
 
-    def __init__(self):
+    def __init__(self, logger_file_name: Optional[str] = None):
         """
         Create a ``Ping`` endpoint instance.
+
+        Args:
+            logger_file_name: Optional logger file name.
+                If not given, then a default logger file name will be used.
 
         Calls the base ``EndpointI`` initializer with
         the appropriate HTTP method and endpoint name.
         """
-        super().__init__(method="GET", ep_name="ping")
+        super().__init__(
+            method="GET", ep_name="ping", logger_file_name=logger_file_name
+        )
 
     def call(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Execute the endpoint logic.
