@@ -5,7 +5,6 @@ from llm_proxy_rest.base.constants import (
     PROMPTS_DIR,
     REST_API_LOG_FILE_NAME,
     DEFAULT_API_PREFIX,
-    RUN_IN_DEBUG_MODE,
 )
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
 from llm_proxy_rest.register.auto_loader import EndpointAutoLoader
@@ -103,7 +102,3 @@ def run_flask_server(host: str = "0.0.0.0", port: int = 8080, debug: bool = Fals
     and starts it with the supplied configuration.
     """
     _prepare_flask_app().run(host=host, port=port, debug=debug)
-
-
-if __name__ == "__main__":
-    run_flask_server(debug=RUN_IN_DEBUG_MODE)
