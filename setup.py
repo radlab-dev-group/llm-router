@@ -1,0 +1,11 @@
+from setuptools import setup, find_packages
+
+
+setup(
+    name="llms-proxy-api",
+    version="0.0.1",
+    packages=find_packages(exclude=("tests", "docs")),
+    python_requires=">=3.10",
+    entry_points={},
+    install_requires=open("requirements.txt").read().splitlines(),
+)
