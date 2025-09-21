@@ -1,4 +1,4 @@
-from llm_proxy_rest.engine.server import run_flask_server
+from llm_proxy_rest.core.server import run_flask_server
 from llm_proxy_rest.base.constants import RUN_IN_DEBUG_MODE
 
 
