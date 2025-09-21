@@ -17,6 +17,7 @@ from typing import Callable, Iterable, Any, Dict, Set, Tuple, Optional
 from rdl_ml_utils.utils.logger import prepare_logger
 
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
+from llm_proxy_rest.base.constants import DEFAULT_API_PREFIX
 
 
 class FlaskEndpointRegistrar:
@@ -41,7 +42,7 @@ class FlaskEndpointRegistrar:
         self,
         app: Optional[Flask] = None,
         blueprint: Optional[Blueprint] = None,
-        url_prefix: str = "/api",
+        url_prefix: str = DEFAULT_API_PREFIX,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         if app is None and blueprint is None:
@@ -175,3 +176,19 @@ class FlaskEndpointRegistrar:
         if request.is_json:
             return request.get_json(silent=True) or {}
         return dict(request.form)
+
+    def __enter__(self) -> "FlaskEndpointRegistrar":
+        """
+        Enter the runtime context and return the registrar instance.
+        This makes ``FlaskEndpointRegistrar`` usable with the ``with`` statement.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """
+        Exit the runtime context.
+
+        No special cleanup is required for the registrar, so we simply return
+        ``False`` to propagate any exception that occurred inside the `with` block.
+        """
+        return False
