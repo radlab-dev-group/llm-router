@@ -22,6 +22,7 @@ import requests
 from typing import Dict, Any, Optional
 
 from rdl_ml_utils.utils.logger import prepare_logger
+from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 
 class EndpointI(abc.ABC):
@@ -44,12 +45,15 @@ class EndpointI(abc.ABC):
 
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
+    SYSTEM_PROMPT_NAME = {"pl": None, "en": None}
 
     def __init__(
         self,
         ep_name: str,
         method: str = "POST",
+        logger_level: Optional[str] = "DEBUG",
         logger_file_name: Optional[str] = None,
+        prompt_handler: Optional[PromptHandler] = None,
     ):
         """
         Create a new endpoint instance.
@@ -67,7 +71,10 @@ class EndpointI(abc.ABC):
         self.logger = prepare_logger(
             logger_name=__name__,
             logger_file_name=logger_file_name or "llm-proxy-rest.log",
+            log_level=logger_level,
+            use_default_config=True,
         )
+        self._prompt_handler = prompt_handler
 
         self._check_method_is_allowed(method=method)
         self.prepare_ep()

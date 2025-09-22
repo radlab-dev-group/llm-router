@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Type, Optional
 from flask import Flask
 
 from llm_proxy_rest.base.constants import (
@@ -12,7 +12,19 @@ from llm_proxy_rest.register.register import FlaskEndpointRegistrar
 
 
 class FlaskEngine:
-    def prepare_flask_app(self):
+    def __init__(
+        self,
+        prompts_dir: str,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = "DEBUG",
+    ) -> None:
+        self.prompts_dir = prompts_dir
+        self.logger_level = logger_level
+        self.logger_file_name = logger_file_name
+
+    def prepare_flask_app(
+        self,
+    ):
         """
         Create and configure the Flask application.
 
@@ -30,14 +42,14 @@ class FlaskEngine:
         flask_app = Flask(__name__)
         try:
             self.__register_instances(
-                application=flask_app, instances=self.__auto_load_endpoints()
+                application=flask_app,
+                instances=self.__auto_load_endpoints(base_class=EndpointI),
             )
         except RuntimeError as e:
             raise RuntimeError(f"Failed to register endpoints: {e}")
         return flask_app
 
-    @staticmethod
-    def __auto_load_endpoints():
+    def __auto_load_endpoints(self, base_class: Type[EndpointI]):
         """
         Discover and instantiate all concrete ``EndpointI`` subclasses
         found in the ``llm_proxy_rest.endpoints`` package.
@@ -53,15 +65,17 @@ class FlaskEngine:
             If no endpoint classes are discovered or instantiated.
         """
         _auto_loader = EndpointAutoLoader(
-            base_class=EndpointI,
-            prompts_dir=PROMPTS_DIR,
-            logger_file_name=REST_API_LOG_FILE_NAME,
+            base_class=base_class,
+            prompts_dir=self.prompts_dir,
+            logger_file_name=self.logger_file_name,
+            logger_level=self.logger_level,
         )
-        instances = _auto_loader.instantiate_without_args(
-            classes=_auto_loader.discover_classes_in_package(
-                "llm_proxy_rest.endpoints"
-            )
+
+        classes = _auto_loader.discover_classes_in_package(
+            "llm_proxy_rest.endpoints"
         )
+
+        instances = _auto_loader.instantiate_with_defaults(classes=classes)
         if instances is None or not len(instances):
             raise RuntimeError("No endpoints found!")
 

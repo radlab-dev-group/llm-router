@@ -1,5 +1,7 @@
 from typing import Optional, Dict, Any
 
+from rdl_ml_utils.handlers.prompt_handler import PromptHandler
+
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
 
 
@@ -20,19 +22,27 @@ class Ping(EndpointI):
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
 
-    def __init__(self, logger_file_name: Optional[str] = None):
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = "DEBUG",
+        prompt_handler: Optional[PromptHandler] = None,
+    ):
         """
         Create a ``Ping`` endpoint instance.
 
         Args:
             logger_file_name: Optional logger file name.
                 If not given, then a default logger file name will be used.
-
-        Calls the base ``EndpointI`` initializer with
-        the appropriate HTTP method and endpoint name.
+            logger_level: Optional logger level. Defaults to ``"DEBUG"``.
+            prompt_handler: Optional prompt handler instance. Defaults to ``None``.
         """
         super().__init__(
-            method="GET", ep_name="ping", logger_file_name=logger_file_name
+            method="GET",
+            ep_name="ping",
+            logger_file_name=logger_file_name,
+            logger_level=logger_level,
+            prompt_handler=prompt_handler,
         )
 
     def call(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:

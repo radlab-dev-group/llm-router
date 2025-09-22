@@ -1,4 +1,9 @@
 from llm_proxy_rest.core._engine import FlaskEngine
+from llm_proxy_rest.base.constants import (
+    PROMPTS_DIR,
+    REST_API_LOG_FILE_NAME,
+    REST_API_LOG_LEVEL,
+)
 
 
 def run_flask_server(host: str = "0.0.0.0", port: int = 8080, debug: bool = False):
@@ -17,7 +22,13 @@ def run_flask_server(host: str = "0.0.0.0", port: int = 8080, debug: bool = Fals
     The function creates the Flask application via `_prepare_flask_app`
     and starts it with the supplied configuration.
     """
+    logger_level = "DEBUG" if debug else REST_API_LOG_LEVEL
+
     try:
-        FlaskEngine().prepare_flask_app().run(host=host, port=port, debug=debug)
+        FlaskEngine(
+            prompts_dir=PROMPTS_DIR,
+            logger_file_name=REST_API_LOG_FILE_NAME,
+            logger_level=logger_level,
+        ).prepare_flask_app().run(host=host, port=port, debug=debug)
     except RuntimeError as e:
         raise RuntimeError(f"Failed to run flask server: {e}")

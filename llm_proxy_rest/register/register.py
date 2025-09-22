@@ -57,7 +57,7 @@ class FlaskEndpointRegistrar:
                 url_prefix = "/" + url_prefix
             self._prefix = url_prefix
 
-        self._logger = logger or prepare_logger(__name__)
+        self._logger = logger or prepare_logger(__name__, use_default_config=True)
         self._registered_rules: Set[Tuple[str, str]] = set()
 
     def register_endpoints(self, endpoints: Iterable[EndpointI]) -> None:

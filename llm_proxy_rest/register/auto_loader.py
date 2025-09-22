@@ -44,11 +44,14 @@ class EndpointAutoLoader:
         self.prompts_dir = prompts_dir
 
         self._prompt_handler = PromptHandler(base_dir=prompts_dir)
+        self._logger_level = logger_level
+        self._logger_file_name = logger_file_name
 
         self._logger = prepare_logger(
             logger_name=__name__,
             logger_file_name=logger_file_name,
             log_level=logger_level,
+            use_default_config=True,
         )
 
     def discover_classes_in_package(
@@ -94,7 +97,7 @@ class EndpointAutoLoader:
 
         return discovered
 
-    def instantiate_without_args(
+    def instantiate_with_defaults(
         self, classes: Iterable[Type[EndpointI]]
     ) -> List[EndpointI]:
         """
@@ -115,8 +118,14 @@ class EndpointAutoLoader:
         instances: List[EndpointI] = []
         for cls in classes:
             try:
-                self._logger.warning(f"Instantiating {cls.__name__}")
-                instances.append(cls())
+                self._logger.debug(f"Instantiating {cls.__name__}")
+                instances.append(
+                    cls(
+                        prompt_handler=self._prompt_handler,
+                        logger_file_name=self._logger_file_name,
+                        logger_level=self._logger_level,
+                    )
+                )
             except TypeError as e:
                 self._logger.warning(
                     f"Cannot instantiate {cls.__name__} without arguments: {str(e)}"

@@ -17,6 +17,11 @@ REST_API_LOG_FILE_NAME = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_FILENAME", "llm-proxy-rest.log"
 )
 
+# Default logging level
+REST_API_LOG_LEVEL = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_LEVEL", "INFO"
+)
+
 # Default prefix for each endpoint
 DEFAULT_API_PREFIX = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}EP_PREFIX", "/api"
