@@ -144,62 +144,7 @@ class EndpointI(abc.ABC):
             return {"status": False}
         return {"status": False, "body": body}
 
-    # Private functions
-    def _check_method_is_allowed(self, method: str) -> None:
-        """
-        Validate that *method* is permitted for this endpoint.
-
-        Raises
-        ------
-        ValueError
-            If *method* is not present in `METHODS`.
-        """
-        if method not in self.METHODS:
-            _m_str = ", ".join(self.METHODS)
-            raise ValueError(
-                f"Unknown method {method}. Method must be one of {_m_str}"
-            )
-
-
-class EndpointRequestCallI(EndpointI, abc.ABC):
-    """
-    Abstract endpoint that performs HTTP requests to an external service.
-
-    Extends `EndpointI` with logic for:
-    * Validating required and optional parameters.
-    * Filtering out unknown parameters.
-    * Dispatching ``GET`` or ``POST`` requests via `requests`.
-    """
-
-    def __init__(self, ep_name: str, method: str = "GET", timeout: int = 30):
-        super().__init__(ep_name=ep_name, method=method)
-
-        self._timeout = timeout
-
-    def _call(self, params: Dict[str, Any]) -> Optional[Dict]:
-        """
-        Internal helper that validates parameters and executes the request.
-
-        Parameters
-        ----------
-        params: dict
-            Dictionary of request parameters supplied by the caller.
-
-        Returns
-        -------
-        dict or None
-            Parsed JSON response from the external service, or a dictionary
-            containing the raw text if JSON decoding fails.
-        """
-
-        self._check_required_params(params=params)
-        params = self._filter_allowed_params(params=params)
-
-        if self._ep_method == "POST":
-            return self._call_post_with_payload(params)
-        return self._call_get_with_payload(params)
-
-    def _check_required_params(self, params: Dict[str, Any]) -> None:
+    def check_required_params(self, params: Optional[Dict[str, Any]]) -> None:
         """
         Ensure all required arguments are present in *params*.
 
@@ -208,7 +153,11 @@ class EndpointRequestCallI(EndpointI, abc.ABC):
         ValueError
             If any argument listed in `REQUIRED_ARGS` is missing.
         """
-        if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
+        if (
+            params is None
+            or self.REQUIRED_ARGS is None
+            or not len(self.REQUIRED_ARGS)
+        ):
             return
 
         missing = [arg for arg in self.REQUIRED_ARGS if arg not in params]
@@ -217,7 +166,7 @@ class EndpointRequestCallI(EndpointI, abc.ABC):
                 f"Missing required argument(s) {missing} for endpoint {self._ep_name}"
             )
 
-    def _filter_allowed_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def filter_allowed_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Remove keys that are not declared as required or optional.
 
@@ -234,11 +183,62 @@ class EndpointRequestCallI(EndpointI, abc.ABC):
             self.logger.warning(
                 f"Ignoring unknown argument(s) {unknown} for endpoint {self._ep_name}",
             )
-            # Build a new dict without the unknown keys
             filtered_params = {k: v for k, v in params.items() if k in allowed}
         else:
             filtered_params = params
         return filtered_params
+
+    def _check_method_is_allowed(self, method: str) -> None:
+        """
+        Validate that *method* is permitted for this endpoint.
+
+        Raises
+        ------
+        ValueError
+            If *method* is not present in `METHODS`.
+        """
+        if method not in self.METHODS:
+            _m_str = ", ".join(self.METHODS)
+            raise ValueError(
+                f"Unknown method {method}. Method must be one of {_m_str}"
+            )
+
+
+class EndpointWithHttpRequestI(EndpointI, abc.ABC):
+    """
+    Abstract endpoint that performs HTTP requests to an external service.
+
+    Extends `EndpointI` with logic for:
+    * Validating required and optional parameters.
+    * Filtering out unknown parameters.
+    * Dispatching ``GET`` or ``POST`` requests via `requests`.
+    """
+
+    def __init__(self, ep_name: str, method: str = "GET", timeout: int = 30):
+        super().__init__(ep_name=ep_name, method=method)
+
+        self._timeout = timeout
+
+    def _call_http_request(self, params: Dict[str, Any]) -> Optional[Dict]:
+        """
+        Internal helper that validates parameters and executes the request.
+
+        Parameters
+        ----------
+        params: dict
+            Dictionary of request parameters supplied by the caller.
+
+        Returns
+        -------
+        dict or None
+            Parsed JSON response from the external service, or a dictionary
+            containing the raw text if JSON decoding fails.
+        """
+        params = self.filter_allowed_params(params=params)
+
+        if self._ep_method == "POST":
+            return self._call_post_with_payload(params)
+        return self._call_get_with_payload(params)
 
     def _call_post_with_payload(self, params: Dict[str, Any]) -> Optional[Dict]:
         """
