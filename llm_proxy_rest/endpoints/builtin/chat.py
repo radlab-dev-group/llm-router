@@ -11,7 +11,7 @@ from llm_proxy_rest.endpoints.data_models.genai import (
 )
 
 
-class GenerativeOptionsEndpoint(EndpointI):
+class ConversationWithModel(EndpointI):
     REQUIRED_ARGS = GENAI_CONV_REQ_ARGS
     OPTIONAL_ARGS = GENAI_CONV_OPT_ARGS
 
