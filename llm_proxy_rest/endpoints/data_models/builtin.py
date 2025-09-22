@@ -10,15 +10,6 @@ class GenerativeQAModel(_GenerativeOptionsModel):
     system_prompt: Optional[str] = None
 
 
-class GenerativeConversationModel(_GenerativeOptionsModel):
-    user_last_statement: str
-    historical_messages: List[Dict[str, str]]
-
-
-class ExtendedGenerativeConversationModel(GenerativeConversationModel):
-    system_prompt: str
-
-
 class GenerativeQuestionGeneratorModel(_GenerativeOptionsModel):
     number_of_questions: int = 1
     texts: List[str] = None
