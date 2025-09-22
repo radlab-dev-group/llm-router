@@ -115,8 +115,8 @@ class EndpointAutoLoader:
         instances: List[EndpointI] = []
         for cls in classes:
             try:
-                instances.append(cls())  # type: ignore[misc]
                 self._logger.warning(f"Instantiating {cls.__name__}")
+                instances.append(cls())
             except TypeError as e:
                 self._logger.warning(
                     f"Cannot instantiate {cls.__name__} without arguments: {str(e)}"
