@@ -21,6 +21,10 @@ class GenerativeConversationModel(_GenerativeOptionsModel):
     historical_messages: List[Dict[str, str]] = []
 
 
+class ExtendedGenerativeConversationModel(GenerativeConversationModel):
+    system_prompt: str
+
+
 GENAI_REQ_ARGS_BASE = ["model_name"]
 GENAI_OPT_ARGS_BASE = [
     "max_new_tokens",
@@ -33,3 +37,6 @@ GENAI_OPT_ARGS_BASE = [
 
 GENAI_CONV_REQ_ARGS = GENAI_REQ_ARGS_BASE + ["user_last_statement"]
 GENAI_CONV_OPT_ARGS = GENAI_OPT_ARGS_BASE
+
+EXT_GENAI_CONV_REQ_ARGS = GENAI_CONV_REQ_ARGS + ["system_prompt"]
+EXT_GENAI_CONV_OPT_ARGS = GENAI_CONV_OPT_ARGS
