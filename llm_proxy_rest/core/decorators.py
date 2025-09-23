@@ -32,3 +32,24 @@ class EP:
             return func(self, params)
 
         return wrapper
+
+    @staticmethod
+    def response_time(
+        func: Callable[[Any, Optional[Dict[str, Any]]], Any],
+    ) -> Callable:
+        """
+        Decorator that measures execution time of an endpoint method and adds a
+        ``generation_time`` field (in seconds) to the returned payload.
+        """
+        import time
+
+        def wrapper(self, params: Optional[Dict[str, Any]] = None):
+            start = time.time()
+            result = func(self, params)
+            end = time.time()
+            if isinstance(result, dict):
+                result = result.copy()
+                result["response_time"] = end - start
+            return result
+
+        return wrapper
