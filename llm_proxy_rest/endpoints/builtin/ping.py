@@ -28,6 +28,7 @@ class Ping(EndpointI):
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = "DEBUG",
         prompt_handler: Optional[PromptHandler] = None,
+        ep_name: str = "ping",
     ):
         """
         Create a ``Ping`` endpoint instance.
@@ -40,7 +41,7 @@ class Ping(EndpointI):
         """
         super().__init__(
             method="GET",
-            ep_name="ping",
+            ep_name=ep_name,
             logger_file_name=logger_file_name,
             logger_level=logger_level,
             prompt_handler=prompt_handler,
