@@ -28,9 +28,10 @@ class ConversationWithModel(EndpointI):
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = "DEBUG",
         prompt_handler: Optional[PromptHandler] = None,
+        ep_name: str = "conversation_with_model",
     ):
         super().__init__(
-            ep_name="conversation_with_model",
+            ep_name=ep_name,
             method="POST",
             logger_level=logger_level,
             logger_file_name=logger_file_name,
@@ -58,9 +59,10 @@ class ExtendedConversationWithModel(EndpointI):
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = "DEBUG",
         prompt_handler: Optional[PromptHandler] = None,
+        ep_name: str = "extended_conversation_with_model",
     ):
         super().__init__(
-            ep_name="extended_conversation_with_model",
+            ep_name=ep_name,
             method="POST",
             logger_level=logger_level,
             logger_file_name=logger_file_name,
@@ -76,3 +78,35 @@ class ExtendedConversationWithModel(EndpointI):
             raise ValueError(str(exc)) from exc
 
         return self.return_response_ok(options.model_dump())
+
+
+class OpenAPIChat(ExtendedConversationWithModel):
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = "DEBUG",
+        prompt_handler: Optional[PromptHandler] = None,
+        ep_name="chat",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+        )
+
+
+class OpenAPICompletion(ExtendedConversationWithModel):
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = "DEBUG",
+        prompt_handler: Optional[PromptHandler] = None,
+        ep_name="completion",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+        )
