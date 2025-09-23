@@ -37,6 +37,7 @@ class ConversationWithModel(EndpointI):
             prompt_handler=prompt_handler,
         )
 
+    @EP.response_time
     @EP.require_params
     def call(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         try:
@@ -66,6 +67,7 @@ class ExtendedConversationWithModel(EndpointI):
             prompt_handler=prompt_handler,
         )
 
+    @EP.response_time
     @EP.require_params
     def call(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         try:
