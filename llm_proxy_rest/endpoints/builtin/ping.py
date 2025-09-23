@@ -2,6 +2,7 @@ from typing import Optional, Dict, Any
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_proxy_rest.core.decorators import EP
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
 
 
@@ -45,6 +46,7 @@ class Ping(EndpointI):
             prompt_handler=prompt_handler,
         )
 
+    @EP.response_time
     def call(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Execute the endpoint logic.
 
