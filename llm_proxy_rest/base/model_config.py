@@ -4,6 +4,9 @@ from typing import Dict
 
 class ApiModelConfig:
     def __init__(self, models_config_path: str):
+        """
+        :param models_config_path: - path to json
+        """
         self.models_config_path = models_config_path
 
         self.active_models = self._read_active_models()
