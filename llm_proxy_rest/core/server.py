@@ -1,6 +1,7 @@
 from llm_proxy_rest.core._engine import FlaskEngine
 from llm_proxy_rest.base.constants import (
     PROMPTS_DIR,
+    MODELS_CONFIG_FILE,
     REST_API_LOG_FILE_NAME,
     REST_API_LOG_LEVEL,
 )
@@ -27,6 +28,7 @@ def run_flask_server(host: str = "0.0.0.0", port: int = 8080, debug: bool = Fals
     try:
         FlaskEngine(
             prompts_dir=PROMPTS_DIR,
+            models_config_path=MODELS_CONFIG_FILE,
             logger_file_name=REST_API_LOG_FILE_NAME,
             logger_level=logger_level,
         ).prepare_flask_app().run(host=host, port=port, debug=debug)

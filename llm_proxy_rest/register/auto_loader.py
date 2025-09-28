@@ -9,6 +9,7 @@ from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
+from llm_proxy_rest.base.model_handler import ModelHandler
 
 
 class EndpointAutoLoader:
@@ -25,6 +26,7 @@ class EndpointAutoLoader:
         self,
         base_class: Type[EndpointI],
         prompts_dir: str,
+        models_config_path: str,
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = "DEBUG",
     ):
@@ -44,6 +46,8 @@ class EndpointAutoLoader:
         self.prompts_dir = prompts_dir
 
         self._prompt_handler = PromptHandler(base_dir=prompts_dir)
+        self._model_handler = ModelHandler(models_config_path=models_config_path)
+
         self._logger_level = logger_level
         self._logger_file_name = logger_file_name
 

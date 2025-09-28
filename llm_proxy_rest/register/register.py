@@ -77,7 +77,7 @@ class FlaskEndpointRegistrar:
         Register a single endpoint as a Flask view.
 
         The view simply extracts request parameters (query string for GET,
-        JSON / form data for POST) and forwards them to ``endpoint.call``.
+        JSON / form data for POST) and forwards them to ``endpoint.run_ep``.
         The result (or an empty dict) is returned as JSON with HTTP 200.
 
         Parameters
@@ -134,7 +134,7 @@ class FlaskEndpointRegistrar:
         Actual view function generator.
 
         It is deliberately tiny – no argument validation, just parameter
-        extraction and a call to ``endpoint.call``.
+        extraction and a call to ``endpoint.run_ep``.
         """
 
         def handler():
@@ -147,7 +147,7 @@ class FlaskEndpointRegistrar:
             # 2 Call the endpoint implementation
             try:
                 # endpoint may return ``None``
-                result = endpoint.call(params or {})
+                result = endpoint.run_ep(params or {})
                 return jsonify(result or {}), 200
             except ValueError as ve:
                 # user‑raised validation error

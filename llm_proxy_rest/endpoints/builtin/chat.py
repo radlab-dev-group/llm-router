@@ -3,8 +3,9 @@ from typing import Optional, Dict, Any
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_proxy_rest.base.model_handler import ModelHandler
 from llm_proxy_rest.core.decorators import EP
-from llm_proxy_rest.endpoints.endpoint_i import EndpointI
+from llm_proxy_rest.endpoints.endpoint_i import BaseEndpointInterface
 from llm_proxy_rest.endpoints.data_models.genai import (
     GenerativeConversationModel,
     ExtendedGenerativeConversationModel,
@@ -15,7 +16,7 @@ from llm_proxy_rest.endpoints.data_models.genai import (
 )
 
 
-class ConversationWithModel(EndpointI):
+class ConversationWithModel(BaseEndpointInterface):
     REQUIRED_ARGS = GENAI_CONV_REQ_ARGS
     OPTIONAL_ARGS = GENAI_CONV_OPT_ARGS
     SYSTEM_PROMPT_NAME = {
@@ -28,6 +29,7 @@ class ConversationWithModel(EndpointI):
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = "DEBUG",
         prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
         ep_name: str = "conversation_with_model",
     ):
         super().__init__(
@@ -36,6 +38,7 @@ class ConversationWithModel(EndpointI):
             logger_level=logger_level,
             logger_file_name=logger_file_name,
             prompt_handler=prompt_handler,
+            model_handler=model_handler,
         )
 
     @EP.response_time
@@ -49,7 +52,7 @@ class ConversationWithModel(EndpointI):
         return self.return_response_ok(options.model_dump())
 
 
-class ExtendedConversationWithModel(EndpointI):
+class ExtendedConversationWithModel(BaseEndpointInterface):
     REQUIRED_ARGS = EXT_GENAI_CONV_REQ_ARGS
     OPTIONAL_ARGS = EXT_GENAI_CONV_OPT_ARGS
     SYSTEM_PROMPT_NAME = None
@@ -58,6 +61,7 @@ class ExtendedConversationWithModel(EndpointI):
         self,
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = "DEBUG",
+        model_handler: Optional[ModelHandler] = None,
         prompt_handler: Optional[PromptHandler] = None,
         ep_name: str = "extended_conversation_with_model",
     ):
@@ -67,6 +71,7 @@ class ExtendedConversationWithModel(EndpointI):
             logger_level=logger_level,
             logger_file_name=logger_file_name,
             prompt_handler=prompt_handler,
+            model_handler=model_handler,
         )
 
     @EP.response_time
@@ -77,36 +82,41 @@ class ExtendedConversationWithModel(EndpointI):
         except ValidationError as exc:
             raise ValueError(str(exc)) from exc
 
+        self.logger.warning(self._model_handler)
+        self.logger.warning(self._prompt_handler)
+
         return self.return_response_ok(options.model_dump())
 
 
-class OpenAPIChat(ExtendedConversationWithModel):
-    def __init__(
-        self,
-        logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = "DEBUG",
-        prompt_handler: Optional[PromptHandler] = None,
-        ep_name="chat",
-    ):
-        super().__init__(
-            ep_name=ep_name,
-            logger_level=logger_level,
-            logger_file_name=logger_file_name,
-            prompt_handler=prompt_handler,
-        )
-
-
-class OpenAPICompletion(ExtendedConversationWithModel):
-    def __init__(
-        self,
-        logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = "DEBUG",
-        prompt_handler: Optional[PromptHandler] = None,
-        ep_name="completion",
-    ):
-        super().__init__(
-            ep_name=ep_name,
-            logger_level=logger_level,
-            logger_file_name=logger_file_name,
-            prompt_handler=prompt_handler,
-        )
+#
+#
+# class OpenAPIChat(ExtendedConversationWithModel):
+#     def __init__(
+#         self,
+#         logger_file_name: Optional[str] = None,
+#         logger_level: Optional[str] = "DEBUG",
+#         prompt_handler: Optional[PromptHandler] = None,
+#         ep_name="chat",
+#     ):
+#         super().__init__(
+#             ep_name=ep_name,
+#             logger_level=logger_level,
+#             logger_file_name=logger_file_name,
+#             prompt_handler=prompt_handler,
+#         )
+#
+#
+# class OpenAPICompletion(ExtendedConversationWithModel):
+#     def __init__(
+#         self,
+#         logger_file_name: Optional[str] = None,
+#         logger_level: Optional[str] = "DEBUG",
+#         prompt_handler: Optional[PromptHandler] = None,
+#         ep_name="completion",
+#     ):
+#         super().__init__(
+#             ep_name=ep_name,
+#             logger_level=logger_level,
+#             logger_file_name=logger_file_name,
+#             prompt_handler=prompt_handler,
+#         )

@@ -19,7 +19,7 @@ class EP:
         def wrapper(self, params: Optional[Dict[str, Any]] = None):
             try:
                 # ``params`` may be ``None`` – treat it as an empty dict
-                self.check_required_params(params or {})
+                self._check_required_params(params or {})
             except ValueError as exc:
                 # Build the error payload and return it directly
                 return self.return_response_not_ok(
