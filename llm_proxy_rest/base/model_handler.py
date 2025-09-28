@@ -8,7 +8,7 @@ This module defines:
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 from llm_proxy_rest.base.model_config import ApiModelConfig
 
@@ -78,6 +78,16 @@ class ApiModel:
             input_size=input_size,
             model_path=str(cfg.get("api_token", "")),
         )
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "api_host": self.api_host,
+            "api_type": self.api_type,
+            "api_token": self.api_token,
+            "input_size": self.input_size,
+            "model_path": self.model_path,
+        }
 
 
 class ModelHandler:
