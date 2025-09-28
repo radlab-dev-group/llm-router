@@ -7,7 +7,8 @@ from typing import Dict
 
 
 class ApiModelConfig:
-    """Configuration loader for API models defined in a JSON file.
+    """
+    Configuration loader for API models defined in a JSON file.
 
     Attributes
         ----------
