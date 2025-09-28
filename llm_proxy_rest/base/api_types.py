@@ -15,7 +15,7 @@ This module defines:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Dict, Type
+from typing import Dict, Type, List
 
 
 class _ApiTypes:
@@ -101,6 +101,24 @@ class _ApiTypes:
             """
             raise NotImplementedError
 
+        @abstractmethod
+        def params(self) -> List[str]:
+            """
+            Return the list of accepted parameter names for this API type.
+
+            Notes
+            -----
+            This list represents the union of commonly supported parameters
+            across endpoints for the given API type. Concrete implementations
+            may tailor this to project needs.
+
+            Returns
+            -------
+            List[str]
+                A list of parameter keys accepted by this API type.
+            """
+            raise NotImplementedError
+
     class OllamaType(ApiTypesI):
         """
         Ollama API implementation.
@@ -125,6 +143,29 @@ class _ApiTypes:
 
         def completions_method(self) -> str:
             return "POST"
+
+        def params(self) -> List[str]:
+            return [
+                "model",
+                "messages",  # chat
+                "prompt",  # generate
+                "stream",
+                "options",  # temperature, top_p, etc.
+                "format",  # json, etc.
+                "keep_alive",
+                "context",  # kv cache context
+                "template",
+                "tools",
+                "tool_choice",
+                "system",
+                "max_tokens",
+                "temperature",
+                "top_p",
+                "stop",
+                "repeat_penalty",
+                "presence_penalty",
+                "frequency_penalty",
+            ]
 
     class VllmType(ApiTypesI):
         """
@@ -151,6 +192,36 @@ class _ApiTypes:
         def completions_method(self) -> str:
             return "POST"
 
+        def params(self) -> List[str]:
+            return [
+                # shared
+                "model",
+                "stream",
+                "temperature",
+                "top_p",
+                "top_k",
+                "max_tokens",
+                "presence_penalty",
+                "frequency_penalty",
+                "stop",
+                "stop_sequences",
+                # chat-specific
+                "messages",
+                "tools",
+                "tool_choice",
+                "response_format",
+                "logprobs",
+                "top_logprobs",
+                "seed",
+                # completions-specific
+                "prompt",
+                "suffix",
+                "logit_bias",
+                "n",
+                "best_of",
+                "echo",
+            ]
+
     class OpenAIApiType(ApiTypesI):
         """
         OpenAI API implementation.
@@ -175,6 +246,35 @@ class _ApiTypes:
 
         def completions_method(self) -> str:
             return "POST"
+
+        def params(self) -> List[str]:
+            return [
+                # shared
+                "model",
+                "stream",
+                "temperature",
+                "top_p",
+                "max_tokens",
+                "presence_penalty",
+                "frequency_penalty",
+                "stop",
+                "logprobs",
+                "top_logprobs",
+                "logit_bias",
+                "n",
+                "user",
+                "response_format",
+                # chat-specific
+                "messages",
+                "tools",
+                "tool_choice",
+                "seed",
+                # completions-specific
+                "prompt",
+                "suffix",
+                "echo",
+                "best_of",
+            ]
 
 
 class ApiTypesDispatcher:
@@ -268,3 +368,10 @@ class ApiTypesDispatcher:
         Delegate to the proper implementation to get completion HTTP method.
         """
         return cls._get_impl(api_type).completions_method()
+
+    @classmethod
+    def params(cls, api_type: str) -> List[str]:
+        """
+        Delegate to the proper implementation to get an accepted params list.
+        """
+        return cls._get_impl(api_type).params()
