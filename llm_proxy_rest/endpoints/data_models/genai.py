@@ -25,7 +25,8 @@ class ExtendedGenerativeConversationModel(GenerativeConversationModel):
     system_prompt: str
 
 
-GENAI_REQ_ARGS_BASE = ["model_name"]
+MODEL_NAME_PARAM = "model_name"
+GENAI_REQ_ARGS_BASE = [MODEL_NAME_PARAM]
 GENAI_OPT_ARGS_BASE = [
     "max_new_tokens",
     "top_k",

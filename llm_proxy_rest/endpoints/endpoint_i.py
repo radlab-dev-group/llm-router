@@ -24,6 +24,11 @@ from typing import Dict, Any, Optional
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_proxy_rest.base.model_handler import ModelHandler
+from llm_proxy_rest.base.constants import SERVICE_AS_PROXY
+from llm_proxy_rest.base.api_types import ApiTypesDispatcher
+from llm_proxy_rest.endpoints.data_models.genai import MODEL_NAME_PARAM
+
 
 class EndpointI(abc.ABC):
     """
@@ -53,6 +58,7 @@ class EndpointI(abc.ABC):
         method: str = "POST",
         logger_level: Optional[str] = "DEBUG",
         logger_file_name: Optional[str] = None,
+        model_handler: Optional[ModelHandler] = None,
         prompt_handler: Optional[PromptHandler] = None,
     ):
         """
@@ -74,10 +80,14 @@ class EndpointI(abc.ABC):
             log_level=logger_level,
             use_default_config=True,
         )
+        self._model_handler = model_handler
         self._prompt_handler = prompt_handler
+        self._api_type_dispatcher = ApiTypesDispatcher()
 
         self._check_method_is_allowed(method=method)
         self.prepare_ep()
+
+        self._api_model = None
 
     @property
     def name(self):
@@ -86,6 +96,16 @@ class EndpointI(abc.ABC):
     @property
     def method(self):
         return self._ep_method
+
+    def run_ep(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Template method: always delegates to subclass implementation.
+        """
+        try:
+            self.__set_model(params=params)
+            return self.call(params=params)
+        except Exception:
+            raise
 
     @abc.abstractmethod
     def call(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -151,7 +171,7 @@ class EndpointI(abc.ABC):
             return {"status": False}
         return {"status": False, "body": body}
 
-    def check_required_params(self, params: Optional[Dict[str, Any]]) -> None:
+    def _check_required_params(self, params: Optional[Dict[str, Any]]) -> None:
         """
         Ensure all required arguments are present in *params*.
 
@@ -173,7 +193,7 @@ class EndpointI(abc.ABC):
                 f"Missing required argument(s) {missing} for endpoint {self._ep_name}"
             )
 
-    def filter_allowed_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    def _filter_allowed_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Remove keys that are not declared as required or optional.
 
@@ -210,6 +230,16 @@ class EndpointI(abc.ABC):
                 f"Unknown method {method}. Method must be one of {_m_str}"
             )
 
+    def __set_model(self, params: Dict[str, Any]) -> None:
+        model_name = params.get(MODEL_NAME_PARAM)
+        if model_name is None:
+            raise ValueError(f"{MODEL_NAME_PARAM} is required!")
+
+        api_model = self._model_handler.get_model(model_name=model_name)
+        if api_model is None:
+            raise ValueError("Model not found in configuration")
+        self._api_model = api_model
+
 
 class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     """
@@ -221,10 +251,47 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     * Dispatching ``GET`` or ``POST`` requests via `requests`.
     """
 
-    def __init__(self, ep_name: str, method: str = "GET", timeout: int = 30):
-        super().__init__(ep_name=ep_name, method=method)
+    def __init__(
+        self,
+        ep_name: str,
+        method: str = "POST",
+        logger_level: Optional[str] = "DEBUG",
+        logger_file_name: Optional[str] = None,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        timeout: int = 30,
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            method=method,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            model_handler=model_handler,
+            prompt_handler=prompt_handler,
+        )
+
+        # Chat
+        self._d_chat_ep = None
+        self._d_chat_method = None
+
+        # Completions
+        self._d_comp_ep = None
+        self._d_comp_method = None
 
         self._timeout = timeout
+
+    def run_ep(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """
+        Template method: always triggers xyz with the same params,
+        then delegates to subclass implementation.
+        """
+        try:
+            self.__set_model(params=params)
+            self.__dispatch_external_api()
+            return self.call(params)
+        except Exception as e:
+            self.logger.exception(e)
+            raise
 
     def _call_http_request(self, params: Dict[str, Any]) -> Optional[Dict]:
         """
@@ -241,8 +308,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Parsed JSON response from the external service, or a dictionary
             containing the raw text if JSON decoding fails.
         """
-        params = self.filter_allowed_params(params=params)
-
+        params = self._filter_allowed_params(params=params)
         if self._ep_method == "POST":
             return self._call_post_with_payload(params)
         return self._call_get_with_payload(params)
@@ -272,6 +338,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 self._ep_name, json=params, timeout=self._timeout
             )
         except requests.RequestException as exc:
+            self.logger.exception(exc)
             raise RuntimeError(
                 f"POST request to {self._ep_name} failed: {exc}"
             ) from exc
@@ -315,5 +382,27 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
         try:
             return response.json()
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            self.logger.exception(e)
             return {"raw_response": response.text}
+
+    def __dispatch_external_api(self) -> None:
+        try:
+            self._d_chat_ep = self._api_type_dispatcher.chat_ep(
+                api_type=self._api_model.api_type
+            )
+            self._d_chat_method = self._api_type_dispatcher.chat_method(
+                api_type=self._api_model.api_type
+            )
+            self._d_comp_ep = self._api_type_dispatcher.completions_ep(
+                api_type=self._api_model.api_type
+            )
+            self._d_comp_method = self._api_type_dispatcher.completions_method(
+                api_type=self._api_model.api_type
+            )
+        except (ValueError, Exception) as e:
+            self.logger.exception(e)
+            raise
+
+
+BaseEndpointInterface = EndpointWithHttpRequestI if SERVICE_AS_PROXY else EndpointI
