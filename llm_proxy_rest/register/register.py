@@ -96,7 +96,8 @@ class FlaskEndpointRegistrar:
         # Normalize the rule – ensure it starts with a slash and prepend prefix
         if not url.startswith("/"):
             url = "/" + url
-        full_rule = f"{self._prefix}{url}"
+
+        full_rule = f"{self._prefix}{url}" if endpoint.add_api_prefix else url
 
         # Detect duplicates
         key = (full_rule, method)

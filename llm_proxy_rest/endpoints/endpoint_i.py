@@ -69,6 +69,7 @@ class EndpointI(abc.ABC):
         logger_file_name: Optional[str] = None,
         model_handler: Optional[ModelHandler] = None,
         prompt_handler: Optional[PromptHandler] = None,
+        dont_add_api_prefix: bool = False,
     ):
         """
         Create a new endpoint instance.
@@ -93,9 +94,9 @@ class EndpointI(abc.ABC):
 
         self._prompt_name = None
         self._prompt_handler = prompt_handler
+        self._dont_add_api_prefix = dont_add_api_prefix
 
         self._api_type_dispatcher = ApiTypesDispatcher()
-
         self._check_method_is_allowed(method=method)
         self.prepare_ep()
 
@@ -113,6 +114,10 @@ class EndpointI(abc.ABC):
     @property
     def prompt_name(self):
         return self._prompt_name
+
+    @property
+    def add_api_prefix(self):
+        return not self._dont_add_api_prefix
 
     def run_ep(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
@@ -297,6 +302,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         logger_file_name: Optional[str] = None,
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
+        dont_add_api_prefix: bool = False,
         timeout: int = REST_API_TIMEOUT,
     ):
         super().__init__(
@@ -306,6 +312,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             logger_file_name=logger_file_name,
             model_handler=model_handler,
             prompt_handler=prompt_handler,
+            dont_add_api_prefix=dont_add_api_prefix,
         )
 
         # Chat
@@ -317,6 +324,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         self._d_comp_method = None
 
         self._timeout = timeout
+        self.direct_return = False
 
     def run_ep(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
@@ -325,6 +333,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         try:
             params = self.parametrize(params)
+            if self.direct_return:
+                return params
 
             self._set_model(params=params)
             if self._api_model is not None:
@@ -348,6 +358,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
                 return self._call_http_request(ep_url=self._d_chat_ep, params=params)
+
             return params
         except Exception as e:
             self.logger.exception(e)
