@@ -25,9 +25,16 @@ from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.base.model_handler import ModelHandler
-from llm_proxy_rest.base.constants import SERVICE_AS_PROXY
 from llm_proxy_rest.base.api_types import ApiTypesDispatcher
-from llm_proxy_rest.endpoints.data_models.genai import MODEL_NAME_PARAM
+from llm_proxy_rest.base.constants import (
+    SERVICE_AS_PROXY,
+    DEFAULT_EP_LANGUAGE,
+    REST_API_LOG_LEVEL,
+)
+from llm_proxy_rest.endpoints.data_models.genai import (
+    MODEL_NAME_PARAM,
+    LANGUAGE_PARAM,
+)
 
 
 class EndpointI(abc.ABC):
@@ -56,7 +63,7 @@ class EndpointI(abc.ABC):
         self,
         ep_name: str,
         method: str = "POST",
-        logger_level: Optional[str] = "DEBUG",
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
         logger_file_name: Optional[str] = None,
         model_handler: Optional[ModelHandler] = None,
         prompt_handler: Optional[PromptHandler] = None,
@@ -81,7 +88,10 @@ class EndpointI(abc.ABC):
             use_default_config=True,
         )
         self._model_handler = model_handler
+
+        self._prompt_name = None
         self._prompt_handler = prompt_handler
+
         self._api_type_dispatcher = ApiTypesDispatcher()
 
         self._check_method_is_allowed(method=method)
@@ -97,12 +107,17 @@ class EndpointI(abc.ABC):
     def method(self):
         return self._ep_method
 
+    @property
+    def prompt_name(self):
+        return self._prompt_name
+
     def run_ep(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """
         Template method: always delegates to subclass implementation.
         """
         try:
-            self.__set_model(params=params)
+            self._set_model(params=params)
+            self._resolve_prompt_name(params=params)
             return self.call(params=params)
         except Exception:
             raise
@@ -230,15 +245,29 @@ class EndpointI(abc.ABC):
                 f"Unknown method {method}. Method must be one of {_m_str}"
             )
 
-    def __set_model(self, params: Dict[str, Any]) -> None:
+    def _set_model(self, params: Dict[str, Any]) -> None:
+        if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
+            return
+
         model_name = params.get(MODEL_NAME_PARAM)
         if model_name is None:
             raise ValueError(f"{MODEL_NAME_PARAM} is required!")
 
         api_model = self._model_handler.get_model(model_name=model_name)
         if api_model is None:
-            raise ValueError("Model not found in configuration")
+            raise ValueError(f"Model '{model_name}' not found in configuration")
         self._api_model = api_model
+
+    def _resolve_prompt_name(self, params: Dict[str, Any]) -> None:
+        if self.SYSTEM_PROMPT_NAME is None:
+            return
+        lang_str = self.__get_language(params=params)
+
+        self._prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
+
+    @staticmethod
+    def __get_language(params: Dict[str, Any]) -> str:
+        return params.get(LANGUAGE_PARAM, DEFAULT_EP_LANGUAGE)
 
 
 class EndpointWithHttpRequestI(EndpointI, abc.ABC):
@@ -255,7 +284,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         self,
         ep_name: str,
         method: str = "POST",
-        logger_level: Optional[str] = "DEBUG",
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
         logger_file_name: Optional[str] = None,
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
@@ -286,7 +315,12 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         then delegates to subclass implementation.
         """
         try:
-            self.__set_model(params=params)
+            self._set_model(params=params)
+            self.logger.error(self._api_model)
+
+            self._resolve_prompt_name(params=params)
+            self.logger.debug(self._prompt_name)
+
             self.__dispatch_external_api()
             return self.call(params)
         except Exception as e:

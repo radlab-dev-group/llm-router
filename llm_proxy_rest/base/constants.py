@@ -18,6 +18,11 @@ MODELS_CONFIG_FILE = os.environ.get(
     "resources/configs/models-config.json",
 )
 
+# Default ep language - e.g. for getting proper prompt
+DEFAULT_EP_LANGUAGE = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}DEFAULT_EP_LANGUAGE", "pl"
+)
+
 # Default name of a logging file
 REST_API_LOG_FILE_NAME = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_FILENAME", "llm-proxy-rest.log"
@@ -38,6 +43,8 @@ SERVICE_AS_PROXY = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM")
 
 # Run server in debug mode
 RUN_IN_DEBUG_MODE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}IN_DEBUG")
+if RUN_IN_DEBUG_MODE:
+    REST_API_LOG_LEVEL = "DEBUG"
 
 
 def __verify_is_able_to_init():

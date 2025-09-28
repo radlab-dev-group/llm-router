@@ -1,10 +1,10 @@
 from typing import List, Type, Optional
 from flask import Flask
 
-from llm_proxy_rest.base.constants import DEFAULT_API_PREFIX
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
 from llm_proxy_rest.register.auto_loader import EndpointAutoLoader
 from llm_proxy_rest.register.register import FlaskEndpointRegistrar
+from llm_proxy_rest.base.constants import DEFAULT_API_PREFIX, REST_API_LOG_LEVEL
 
 
 class FlaskEngine:
@@ -13,7 +13,7 @@ class FlaskEngine:
         prompts_dir: str,
         models_config_path: str,
         logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = "DEBUG",
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
     ) -> None:
         self.prompts_dir = prompts_dir
         self.models_config_path = models_config_path
