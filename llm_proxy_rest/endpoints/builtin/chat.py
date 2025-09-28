@@ -119,33 +119,3 @@ class OpenAPIChat(ExtendedConversationWithModel):
 #             logger_file_name=logger_file_name,
 #             prompt_handler=prompt_handler,
 #         )
-
-
-class Tags(BaseEndpointInterface):
-    REQUIRED_ARGS = []
-    OPTIONAL_ARGS = []
-    SYSTEM_PROMPT_NAME = None
-
-    def __init__(
-        self,
-        logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = REST_API_LOG_LEVEL,
-        model_handler: Optional[ModelHandler] = None,
-        prompt_handler: Optional[PromptHandler] = None,
-        ep_name: str = "tags",
-    ):
-        super().__init__(
-            ep_name=ep_name,
-            method="GET",
-            logger_level=logger_level,
-            logger_file_name=logger_file_name,
-            prompt_handler=prompt_handler,
-            model_handler=model_handler,
-        )
-
-    @EP.response_time
-    @EP.require_params
-    def parametrize(
-        self, params: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        return params
