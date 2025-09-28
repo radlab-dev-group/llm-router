@@ -12,6 +12,12 @@ PROMPTS_DIR = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}PROMPTS_DIR", "resources/prompts"
 )
 
+# Models config file
+MODELS_CONFIG_FILE = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}PROMPTS_DIR",
+    "resources/configs/models-config.json",
+)
+
 # Default name of a logging file
 REST_API_LOG_FILE_NAME = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_FILENAME", "llm-proxy-rest.log"
