@@ -3,10 +3,12 @@ from typing import Optional, Dict, Any
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.core.decorators import EP
-from llm_proxy_rest.endpoints.endpoint_i import EndpointI
+from llm_proxy_rest.base.model_handler import ModelHandler
+from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
+from llm_proxy_rest.endpoints.endpoint_i import BaseEndpointInterface
 
 
-class Ping(EndpointI):
+class Ping(BaseEndpointInterface):
     """
     Health‑check endpoint that returns a simple *pong* response.
 
@@ -26,7 +28,8 @@ class Ping(EndpointI):
     def __init__(
         self,
         logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = "DEBUG",
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        model_handler: Optional[ModelHandler] = None,
         prompt_handler: Optional[PromptHandler] = None,
         ep_name: str = "ping",
     ):
@@ -36,7 +39,7 @@ class Ping(EndpointI):
         Args:
             logger_file_name: Optional logger file name.
                 If not given, then a default logger file name will be used.
-            logger_level: Optional logger level. Defaults to ``"DEBUG"``.
+            logger_level: Optional logger level. Defaults to ``REST_API_LOG_LEVEL``.
             prompt_handler: Optional prompt handler instance. Defaults to ``None``.
         """
         super().__init__(
@@ -45,10 +48,13 @@ class Ping(EndpointI):
             logger_file_name=logger_file_name,
             logger_level=logger_level,
             prompt_handler=prompt_handler,
+            model_handler=model_handler,
         )
 
     @EP.response_time
-    def call(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def parametrize(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
         """Execute the endpoint logic.
 
         Args:

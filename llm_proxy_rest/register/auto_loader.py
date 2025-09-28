@@ -10,6 +10,7 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
 from llm_proxy_rest.base.model_handler import ModelHandler
+from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
 
 
 class EndpointAutoLoader:
@@ -28,7 +29,7 @@ class EndpointAutoLoader:
         prompts_dir: str,
         models_config_path: str,
         logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = "DEBUG",
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
     ):
         """
         Parameters
@@ -39,8 +40,8 @@ class EndpointAutoLoader:
             The directory to look for prompts.
         logger_file_name: str, optional
             Logger file name, if not given, then will be used default from ml-utils.
-        logger_level: str, optional (default="DEBUG")
-            Logger level. Defaults to "DEBUG".
+        logger_level: str, optional (default=REST_API_LOG_LEVEL)
+            Logger level. Defaults to REST_API_LOG_LEVEL.
         """
         self.base_class = base_class
         self.prompts_dir = prompts_dir
@@ -125,9 +126,10 @@ class EndpointAutoLoader:
                 self._logger.debug(f"Instantiating {cls.__name__}")
                 instances.append(
                     cls(
-                        prompt_handler=self._prompt_handler,
-                        logger_file_name=self._logger_file_name,
                         logger_level=self._logger_level,
+                        logger_file_name=self._logger_file_name,
+                        model_handler=self._model_handler,
+                        prompt_handler=self._prompt_handler,
                     )
                 )
             except TypeError as e:
