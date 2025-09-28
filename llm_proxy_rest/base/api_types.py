@@ -78,6 +78,17 @@ class _ApiTypes:
             """
 
             def to_entry(m: Dict[str, Any]) -> Dict[str, Any]:
+                # return {
+                #   "id": "qwen2-vl-7b-instruct",
+                #   "object": "model",
+                #   "type": "vlm",
+                #   "publisher": "mlx-community",
+                #   "arch": "qwen2_vl",
+                #   "compatibility_type": "mlx",
+                #   "quantization": "4bit",
+                #   "state": "not-loaded",
+                #   "max_context_length": 32768
+                # }
                 return {
                     "id": str(m.get("name", "")),
                     "name": str(m.get("name", "")),
@@ -85,9 +96,16 @@ class _ApiTypes:
                     "object": "model",
                     "owned_by": str(m.get("api_type", "") or ""),
                     "input_size": int(m.get("input_size") or 0),
+                    "max_context_length": int(m.get("input_size") or 0),
                     "root": str(m.get("name", "")),
                     "host": str(m.get("api_host", "")),
                     "path": str(m.get("model_path", "")),
+                    "type": "vlm",
+                    "publisher": str(m.get("api_type", "") or ""),
+                    "state": "not-loaded",
+                    "arch": str(m.get("name", "")),
+                    "compatibility_type": "mlx",
+                    "quantization": "4bit",
                 }
 
             out: Dict[str, Any] = {}

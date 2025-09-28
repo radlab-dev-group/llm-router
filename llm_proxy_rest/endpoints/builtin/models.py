@@ -46,41 +46,54 @@ class Tags(BaseEndpointInterface):
         }
 
 
-#
-#
-# class OpenApiModels(Tags):
-#     def __init__(
-#         self,
-#         logger_file_name: Optional[str] = None,
-#         logger_level: Optional[str] = REST_API_LOG_LEVEL,
-#         model_handler: Optional[ModelHandler] = None,
-#         prompt_handler: Optional[PromptHandler] = None,
-#         ep_name: str = "models",
-#     ):
-#         super().__init__(
-#             ep_name=ep_name,
-#             logger_level=logger_level,
-#             logger_file_name=logger_file_name,
-#             prompt_handler=prompt_handler,
-#             model_handler=model_handler,
-#             dont_add_api_prefix=True,
-#         )
-#
-#
-# class LmStudioModels(Tags):
-#     def __init__(
-#         self,
-#         logger_file_name: Optional[str] = None,
-#         logger_level: Optional[str] = REST_API_LOG_LEVEL,
-#         model_handler: Optional[ModelHandler] = None,
-#         prompt_handler: Optional[PromptHandler] = None,
-#         ep_name: str = "v0/models",
-#     ):
-#         super().__init__(
-#             ep_name=ep_name,
-#             logger_level=logger_level,
-#             logger_file_name=logger_file_name,
-#             prompt_handler=prompt_handler,
-#             model_handler=model_handler,
-#             dont_add_api_prefix=False,
-#         )
+class OpenApiModels(Tags):
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        model_handler: Optional[ModelHandler] = None,
+        prompt_handler: Optional[PromptHandler] = None,
+        ep_name: str = "models",
+        dont_add_api_prefix=True,
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=dont_add_api_prefix,
+        )
+
+    @EP.response_time
+    @EP.require_params
+    def parametrize(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        self.direct_return = True
+        return {
+            "object": "list",
+            "data": self._api_type_dispatcher.tags(
+                models_config=self._model_handler.list_active_models(),
+                merge_to_list=True,
+            ),
+        }
+
+
+class LmStudioModels(OpenApiModels):
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        model_handler: Optional[ModelHandler] = None,
+        prompt_handler: Optional[PromptHandler] = None,
+        ep_name: str = "v0/models",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+        )
