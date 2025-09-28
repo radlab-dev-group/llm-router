@@ -1,5 +1,7 @@
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Optional
+
+from llm_proxy_rest.base.constants import DEFAULT_EP_LANGUAGE
 
 
 class _GenerativeOptions(BaseModel):
@@ -10,6 +12,7 @@ class _GenerativeOptions(BaseModel):
     top_p: float = 0.99
     typical_p: float = 1.0
     repetition_penalty: float = 1.2
+    language: Optional[str] = DEFAULT_EP_LANGUAGE
 
 
 class _GenerativeOptionsModel(_GenerativeOptions):
@@ -25,7 +28,9 @@ class ExtendedGenerativeConversationModel(GenerativeConversationModel):
     system_prompt: str
 
 
+LANGUAGE_PARAM = "language"
 MODEL_NAME_PARAM = "model_name"
+
 GENAI_REQ_ARGS_BASE = [MODEL_NAME_PARAM]
 GENAI_OPT_ARGS_BASE = [
     "max_new_tokens",
@@ -34,6 +39,7 @@ GENAI_OPT_ARGS_BASE = [
     "temperature",
     "typical_p",
     "repetition_penalty",
+    LANGUAGE_PARAM,
 ]
 
 GENAI_CONV_REQ_ARGS = GENAI_REQ_ARGS_BASE + ["user_last_statement"]

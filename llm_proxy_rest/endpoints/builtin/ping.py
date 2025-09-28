@@ -4,6 +4,7 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.core.decorators import EP
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
+from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
 
 
 class Ping(EndpointI):
@@ -26,7 +27,7 @@ class Ping(EndpointI):
     def __init__(
         self,
         logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = "DEBUG",
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
         prompt_handler: Optional[PromptHandler] = None,
         ep_name: str = "ping",
     ):
@@ -36,7 +37,7 @@ class Ping(EndpointI):
         Args:
             logger_file_name: Optional logger file name.
                 If not given, then a default logger file name will be used.
-            logger_level: Optional logger level. Defaults to ``"DEBUG"``.
+            logger_level: Optional logger level. Defaults to ``REST_API_LOG_LEVEL``.
             prompt_handler: Optional prompt handler instance. Defaults to ``None``.
         """
         super().__init__(
