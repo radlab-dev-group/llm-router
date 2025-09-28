@@ -23,6 +23,11 @@ DEFAULT_EP_LANGUAGE = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}DEFAULT_EP_LANGUAGE", "pl"
 )
 
+# Timeout to external models api
+REST_API_TIMEOUT = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}TIMEOUT", 300)
+)
+
 # Default name of a logging file
 REST_API_LOG_FILE_NAME = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_FILENAME", "llm-proxy-rest.log"
