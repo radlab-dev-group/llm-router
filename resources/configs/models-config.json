@@ -1,21 +1,43 @@
 {
   "google_models": {
     "google/gemma-3-12b-it": {
-      "api_host": "http://0.0.0.0:7000/v1",
-      "api_token": "asdf",
-      "input_size": 4096
+      "api_host": "http://192.168.100.79:7000/v1",
+      "api_token": "",
+      "api_type": "vllm",
+      "input_size": 4096,
+      "model_path": ""
     },
     "google/gemini-2.0-flash": {
       "api_host": "https://generativelanguage.googleapis.com/v1beta/openai/",
       "api_token": "",
-      "input_size": 512000
-
+      "api_type": "openai",
+      "input_size": 512000,
+      "model_path": ""
+    }
+  },
+  "openai_models": {
+    "gpt-oss:20b": {
+      "api_host": "192.168.100.70:1143/",
+      "api_token": "",
+      "api_type": "ollama",
+      "input_size": "256000",
+      "model_path": ""
+    },
+    "gpt-oss:120b": {
+      "api_host": "192.168.100.70:1143/",
+      "api_token": "",
+      "api_type": "ollama",
+      "input_size": "256000",
+      "model_path": ""
     }
   },
   "active_models": {
     "google_models": [
       "google/gemma-3-12b-it",
       "google/gemini-2.0-flash"
+    ],
+    "openai_models": [
+      "gpt-oss:20b"
     ]
   }
 }
