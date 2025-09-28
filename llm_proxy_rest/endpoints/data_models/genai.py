@@ -29,6 +29,7 @@ class ExtendedGenerativeConversationModel(GenerativeConversationModel):
 
 
 LANGUAGE_PARAM = "language"
+SYSTEM_PROMPT = "system_prompt"
 MODEL_NAME_PARAM = "model_name"
 
 GENAI_REQ_ARGS_BASE = [MODEL_NAME_PARAM]
@@ -43,7 +44,7 @@ GENAI_OPT_ARGS_BASE = [
 ]
 
 GENAI_CONV_REQ_ARGS = GENAI_REQ_ARGS_BASE + ["user_last_statement"]
-GENAI_CONV_OPT_ARGS = GENAI_OPT_ARGS_BASE
+GENAI_CONV_OPT_ARGS = GENAI_OPT_ARGS_BASE + ["historical_messages"]
 
-EXT_GENAI_CONV_REQ_ARGS = GENAI_CONV_REQ_ARGS + ["system_prompt"]
+EXT_GENAI_CONV_REQ_ARGS = GENAI_CONV_REQ_ARGS + [SYSTEM_PROMPT]
 EXT_GENAI_CONV_OPT_ARGS = GENAI_CONV_OPT_ARGS

@@ -30,10 +30,12 @@ from llm_proxy_rest.base.constants import (
     SERVICE_AS_PROXY,
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
+    REST_API_TIMEOUT,
 )
 from llm_proxy_rest.endpoints.data_models.genai import (
     MODEL_NAME_PARAM,
     LANGUAGE_PARAM,
+    SYSTEM_PROMPT,
 )
 
 
@@ -98,6 +100,7 @@ class EndpointI(abc.ABC):
         self.prepare_ep()
 
         self._api_model = None
+        # self._redirect_ep = False
 
     @property
     def name(self):
@@ -115,15 +118,20 @@ class EndpointI(abc.ABC):
         """
         Template method: always delegates to subclass implementation.
         """
-        try:
-            self._set_model(params=params)
-            self._resolve_prompt_name(params=params)
-            return self.call(params=params)
-        except Exception:
-            raise
+        # try:
+        #     params = self.parametrize(params=params)
+        #     self._set_model(params=params)
+        #     self._resolve_prompt_name(params=params)
+        # except Exception:
+        #     raise
+        raise NotImplementedError(
+            "Method `run_ep` is not implemented for local models!"
+        )
 
     @abc.abstractmethod
-    def call(self, params: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    def parametrize(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
         """
         Execute the endpoint logic.
 
@@ -260,9 +268,10 @@ class EndpointI(abc.ABC):
 
     def _resolve_prompt_name(self, params: Dict[str, Any]) -> None:
         if self.SYSTEM_PROMPT_NAME is None:
+            self._prompt_name = params.get(SYSTEM_PROMPT)
             return
-        lang_str = self.__get_language(params=params)
 
+        lang_str = self.__get_language(params=params)
         self._prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
 
     @staticmethod
@@ -288,7 +297,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         logger_file_name: Optional[str] = None,
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
-        timeout: int = 30,
+        timeout: int = REST_API_TIMEOUT,
     ):
         super().__init__(
             ep_name=ep_name,
@@ -315,24 +324,45 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         then delegates to subclass implementation.
         """
         try:
+            params = self.parametrize(params)
+
             self._set_model(params=params)
-            self.logger.error(self._api_model)
+            if self._api_model is not None:
+                self.logger.debug(self._api_model.as_dict())
 
             self._resolve_prompt_name(params=params)
-            self.logger.debug(self._prompt_name)
+            if self._prompt_name is not None:
+                self.logger.debug(f" -> prompt_name: {self._prompt_name}")
+            #
+            # if self._redirect_ep:
+            #     return self._call_http_request(ep_url=self._ep_name, params=params)
 
-            self.__dispatch_external_api()
-            return self.call(params)
+            if self._api_model and self._prompt_name:
+                self.__dispatch_external_api()
+
+                self.logger.debug(
+                    f" -> dispatched [{self._d_chat_method}] {self._d_chat_ep}"
+                )
+                self.logger.debug(
+                    f" -> dispatched [{self._d_comp_method}] {self._d_comp_ep}"
+                )
+
+                return self._call_http_request(ep_url=self._d_chat_ep, params=params)
+            return params
         except Exception as e:
             self.logger.exception(e)
             raise
 
-    def _call_http_request(self, params: Dict[str, Any]) -> Optional[Dict]:
+    def _call_http_request(
+        self, ep_url: str, params: Dict[str, Any]
+    ) -> Optional[Dict]:
         """
         Internal helper that validates parameters and executes the request.
 
         Parameters
         ----------
+        ep_url: str
+            Full URL-like path to an external EP service.
         params: dict
             Dictionary of request parameters supplied by the caller.
 
@@ -342,17 +372,26 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Parsed JSON response from the external service, or a dictionary
             containing the raw text if JSON decoding fails.
         """
-        params = self._filter_allowed_params(params=params)
-        if self._ep_method == "POST":
-            return self._call_post_with_payload(params)
-        return self._call_get_with_payload(params)
+        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
 
-    def _call_post_with_payload(self, params: Dict[str, Any]) -> Optional[Dict]:
+        params = self._filter_allowed_params(params=params)
+
+        params["model"] = self._api_model.name
+
+        if self._ep_method == "POST":
+            return self._call_post_with_payload(ep_url=ep_url, params=params)
+        return self._call_get_with_payload(ep_url=ep_url, params=params)
+
+    def _call_post_with_payload(
+        self, ep_url: str, params: Dict[str, Any]
+    ) -> Optional[Dict]:
         """
         Perform a POST request to ``self.ep_url`` with a JSON body.
 
         Parameters
         ----------
+        ep_url: str
+            Full URL-like path to an external EP service.
         params: dict
             Payload to be JSON‑encoded and sent in the request body.
 
@@ -368,17 +407,15 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             If the request fails or the response status indicates an error.
         """
         try:
-            response = requests.post(
-                self._ep_name, json=params, timeout=self._timeout
-            )
+            response = requests.post(ep_url, json=params, timeout=self._timeout)
         except requests.RequestException as exc:
             self.logger.exception(exc)
-            raise RuntimeError(
-                f"POST request to {self._ep_name} failed: {exc}"
-            ) from exc
+            raise RuntimeError(f"POST request to {ep_url} failed: {exc}") from exc
         return self.__return_http_response(response=response)
 
-    def _call_get_with_payload(self, params: Dict[str, Any]) -> Optional[Dict]:
+    def _call_get_with_payload(
+        self, ep_url: str, params: Dict[str, Any]
+    ) -> Optional[Dict]:
         """
         Perform a GET request to ``self.ep_url`` using *params* as a query string.
 
@@ -399,13 +436,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             If the request fails or the response status indicates an error.
         """
         try:
-            response = requests.get(
-                self._ep_name, params=params, timeout=self._timeout
-            )
+            response = requests.get(ep_url, params=params, timeout=self._timeout)
         except requests.RequestException as exc:
-            raise RuntimeError(
-                f"GET request to {self._ep_name} failed: {exc}"
-            ) from exc
+            raise RuntimeError(f"GET request to {ep_url} failed: {exc}") from exc
         return self.__return_http_response(response=response)
 
     def __return_http_response(self, response):
