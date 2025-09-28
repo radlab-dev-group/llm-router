@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-import logging
 import pkgutil
 import importlib
 
 from typing import Iterable, Dict, Any, Optional, Callable, Type, List, Set
 
+from rdl_ml_utils.utils.logger import prepare_logger
+from rdl_ml_utils.handlers.prompt_handler import PromptHandler
+
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
+from llm_proxy_rest.base.model_handler import ModelHandler
 
 
 class EndpointAutoLoader:
@@ -19,15 +22,41 @@ class EndpointAutoLoader:
     - from configuration (class path + args/kwargs).
     """
 
-    def __init__(self, base_class: Type[EndpointI]):
+    def __init__(
+        self,
+        base_class: Type[EndpointI],
+        prompts_dir: str,
+        models_config_path: str,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = "DEBUG",
+    ):
         """
         Parameters
         ----------
         base_class : Type[EndpointI]
             The common base class used to discover and type-check endpoints.
+        prompts_dir : str
+            The directory to look for prompts.
+        logger_file_name: str, optional
+            Logger file name, if not given, then will be used default from ml-utils.
+        logger_level: str, optional (default="DEBUG")
+            Logger level. Defaults to "DEBUG".
         """
         self.base_class = base_class
-        self._logger = logging.getLogger(__name__)
+        self.prompts_dir = prompts_dir
+
+        self._prompt_handler = PromptHandler(base_dir=prompts_dir)
+        self._model_handler = ModelHandler(models_config_path=models_config_path)
+
+        self._logger_level = logger_level
+        self._logger_file_name = logger_file_name
+
+        self._logger = prepare_logger(
+            logger_name=__name__,
+            logger_file_name=logger_file_name,
+            log_level=logger_level,
+            use_default_config=True,
+        )
 
     def discover_classes_in_package(
         self, package_name: str
@@ -43,7 +72,8 @@ class EndpointAutoLoader:
         Parameters
         ----------
         package_name : str
-            Fully qualified package name to search in (e.g., "my_app.endpoints").
+            Fully qualified package name to search in
+            (e.g., "llm_proxy_rest.endpoints").
 
         Returns
         -------
@@ -71,7 +101,7 @@ class EndpointAutoLoader:
 
         return discovered
 
-    def instantiate_without_args(
+    def instantiate_with_defaults(
         self, classes: Iterable[Type[EndpointI]]
     ) -> List[EndpointI]:
         """
@@ -92,7 +122,14 @@ class EndpointAutoLoader:
         instances: List[EndpointI] = []
         for cls in classes:
             try:
-                instances.append(cls())  # type: ignore[misc]
+                self._logger.debug(f"Instantiating {cls.__name__}")
+                instances.append(
+                    cls(
+                        prompt_handler=self._prompt_handler,
+                        logger_file_name=self._logger_file_name,
+                        logger_level=self._logger_level,
+                    )
+                )
             except TypeError as e:
                 self._logger.warning(
                     f"Cannot instantiate {cls.__name__} without arguments: {str(e)}"

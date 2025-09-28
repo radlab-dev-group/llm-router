@@ -17,6 +17,7 @@ from typing import Callable, Iterable, Any, Dict, Set, Tuple, Optional
 from rdl_ml_utils.utils.logger import prepare_logger
 
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
+from llm_proxy_rest.base.constants import DEFAULT_API_PREFIX
 
 
 class FlaskEndpointRegistrar:
@@ -41,7 +42,7 @@ class FlaskEndpointRegistrar:
         self,
         app: Optional[Flask] = None,
         blueprint: Optional[Blueprint] = None,
-        url_prefix: str = "/api",
+        url_prefix: str = DEFAULT_API_PREFIX,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         if app is None and blueprint is None:
@@ -56,7 +57,7 @@ class FlaskEndpointRegistrar:
                 url_prefix = "/" + url_prefix
             self._prefix = url_prefix
 
-        self._logger = logger or prepare_logger(__name__)
+        self._logger = logger or prepare_logger(__name__, use_default_config=True)
         self._registered_rules: Set[Tuple[str, str]] = set()
 
     def register_endpoints(self, endpoints: Iterable[EndpointI]) -> None:
@@ -76,7 +77,7 @@ class FlaskEndpointRegistrar:
         Register a single endpoint as a Flask view.
 
         The view simply extracts request parameters (query string for GET,
-        JSON / form data for POST) and forwards them to ``endpoint.call``.
+        JSON / form data for POST) and forwards them to ``endpoint.run_ep``.
         The result (or an empty dict) is returned as JSON with HTTP 200.
 
         Parameters
@@ -133,7 +134,7 @@ class FlaskEndpointRegistrar:
         Actual view function generator.
 
         It is deliberately tiny – no argument validation, just parameter
-        extraction and a call to ``endpoint.call``.
+        extraction and a call to ``endpoint.run_ep``.
         """
 
         def handler():
@@ -146,7 +147,7 @@ class FlaskEndpointRegistrar:
             # 2 Call the endpoint implementation
             try:
                 # endpoint may return ``None``
-                result = endpoint.call(params or {})
+                result = endpoint.run_ep(params or {})
                 return jsonify(result or {}), 200
             except ValueError as ve:
                 # user‑raised validation error
@@ -175,3 +176,19 @@ class FlaskEndpointRegistrar:
         if request.is_json:
             return request.get_json(silent=True) or {}
         return dict(request.form)
+
+    def __enter__(self) -> "FlaskEndpointRegistrar":
+        """
+        Enter the runtime context and return the registrar instance.
+        This makes ``FlaskEndpointRegistrar`` usable with the ``with`` statement.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """
+        Exit the runtime context.
+
+        No special cleanup is required for the registrar, so we simply return
+        ``False`` to propagate any exception that occurred inside the `with` block.
+        """
+        return False
