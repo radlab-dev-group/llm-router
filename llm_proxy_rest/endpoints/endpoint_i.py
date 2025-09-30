@@ -25,15 +25,15 @@ from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.base.model_handler import ModelHandler
-from llm_proxy_rest.base.api_types import ApiTypesDispatcher
+from llm_proxy_rest.core.api_types.dispatcher import ApiTypesDispatcher
 from llm_proxy_rest.base.constants import (
     SERVICE_AS_PROXY,
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     REST_API_TIMEOUT,
 )
-from llm_proxy_rest.endpoints.data_models.genai import (
-    MODEL_NAME_PARAM,
+from llm_proxy_rest.core.data_models.constants import (
+    MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
     SYSTEM_PROMPT,
 )
@@ -262,9 +262,20 @@ class EndpointI(abc.ABC):
         if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
             return
 
-        model_name = params.get(MODEL_NAME_PARAM)
+        model_name = None
+        for m_name in MODEL_NAME_PARAMS:
+            self.logger.debug(f"  -> Sprawdzam {m_name}")
+            model_name = params.get(m_name)
+            if model_name is not None:
+                break
+
+        self.logger.error(f"model_name ===== {model_name}")
+        self.logger.error(list(params.keys()))
+
         if model_name is None:
-            raise ValueError(f"{MODEL_NAME_PARAM} is required!")
+            raise ValueError(
+                f"Model name [{', '.join(MODEL_NAME_PARAMS)}] is required!"
+            )
 
         api_model = self._model_handler.get_model(model_name=model_name)
         if api_model is None:
@@ -331,6 +342,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Template method: always triggers xyz with the same params,
         then delegates to subclass implementation.
         """
+        self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
         try:
             params = self.parametrize(params)
             if self.direct_return:
