@@ -17,14 +17,14 @@
   },
   "openai_models": {
     "gpt-oss:20b": {
-      "api_host": "http://192.168.100.70:11434",
+      "api_host": "http://192.168.100.66:11434",
       "api_token": "",
       "api_type": "ollama",
       "input_size": "256000",
       "model_path": ""
     },
     "gpt-oss:120b": {
-      "api_host": "http://192.168.100.70:11434",
+      "api_host": "http://192.168.100.66:11434",
       "api_token": "",
       "api_type": "ollama",
       "input_size": "256000",
@@ -37,7 +37,8 @@
       "google/gemini-2.0-flash"
     ],
     "openai_models": [
-      "gpt-oss:20b"
+      "gpt-oss:20b",
+      "gpt-oss:120b"
     ]
   }
 }
