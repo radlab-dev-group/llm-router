@@ -11,8 +11,18 @@ from __future__ import annotations
 
 import logging
 
-from flask import Flask, Blueprint, request, jsonify
-from typing import Callable, Iterable, Any, Dict, Set, Tuple, Optional
+from typing import (
+    Callable,
+    Iterable,
+    Any,
+    Dict,
+    Set,
+    Tuple,
+    Optional,
+    Generator,
+    Iterator,
+)
+from flask import Flask, Blueprint, request, jsonify, Response, stream_with_context
 
 from rdl_ml_utils.utils.logger import prepare_logger
 
@@ -131,30 +141,41 @@ class FlaskEndpointRegistrar:
         )
 
     def _make_view(self, endpoint: EndpointI) -> Callable[[], Any]:
-        """
-        Actual view function generator.
-
-        It is deliberately tiny – no argument validation, just parameter
-        extraction and a call to ``endpoint.run_ep``.
-        """
-
         def handler():
-            # 1 Extract parameters according to the HTTP method
             try:
                 params = self._extract_params(endpoint.method)
             except Exception as exc:
                 return jsonify({"error": "bad_request", "details": str(exc)}), 400
 
-            # 2 Call the endpoint implementation
             try:
-                # endpoint may return ``None``
                 result = endpoint.run_ep(params or {})
+                if isinstance(result, (Generator, Iterator)):
+
+                    def log_stream():
+                        count = 0
+                        for chunk in result:
+                            count += 1
+                            yield chunk
+
+                    response = Response(
+                        stream_with_context(log_stream()),
+                        mimetype="application/x-ndjson",
+                        headers={
+                            "Transfer-Encoding": "chunked",
+                            "X-Accel-Buffering": "no",
+                        },
+                    )
+                    response.implicit_sequence_conversion = False
+                    response.direct_passthrough = True
+                    return response
+
+                if isinstance(result, str):
+                    return result, 200
+
                 return jsonify(result or {}), 200
             except ValueError as ve:
-                # user‑raised validation error
                 return jsonify({"error": "bad_request", "details": str(ve)}), 400
             except Exception as exc:
-                # any unexpected error -> 500
                 self._logger.exception(
                     f"Unhandled exception in endpoint: "
                     f"{endpoint.__class__.__name__}",
