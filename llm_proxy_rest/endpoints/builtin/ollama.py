@@ -1,4 +1,19 @@
-from typing import Optional, Dict, Any
+"""
+llm_proxy_rest.endpoints.builtin.ollama
+========================================
+
+Implementation of the Ollama provider endpoints and API type.  The module
+contains three public classes:
+
+* :class:`OllamaTags` – endpoint that returns the list of model tags.
+* :class:`OllamaHome` – simple health‑check endpoint (``/``) used by
+  monitoring tools.
+* :class:`OllamaType` – concrete implementation of the :class:`ApiTypesI`
+  interface that defines Ollama‑specific URL paths and request payload
+  conversion logic.
+"""
+
+from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -10,16 +25,21 @@ from llm_proxy_rest.endpoints.endpoint_i import BaseEndpointInterface
 
 class OllamaHome(BaseEndpointInterface):
     """
-    Health‑check endpoint that returns a simple *pong* response.
+    Endpoint that returns a list of available model tags from the Ollama
+    service.
 
-    This endpoint is registered under the name ``ping`` and only supports
-    the HTTP ``GET`` method.  It does not require any request parameters
-    and is typically used by monitoring tools to verify that the service
-    is up and responding.
+    The endpoint is registered under the name ``tags`` and supports the HTTP
+    ``GET`` method.  No request parameters are required; the response
+    contains a ``models`` key with a list of model identifiers.
 
-    Attributes:
-        REQUIRED_ARGS (list): Empty list – no required arguments.
-        OPTIONAL_ARGS (list): Empty list – no optional arguments.
+    Attributes
+    ----------
+    REQUIRED_ARGS : list
+        Empty – the endpoint does not require positional arguments.
+    OPTIONAL_ARGS : list
+        Empty – the endpoint does not accept optional arguments.
+    SYSTEM_PROMPT_NAME : None
+        No system prompt is used for this endpoint.
     """
 
     REQUIRED_ARGS = []
@@ -53,25 +73,43 @@ class OllamaHome(BaseEndpointInterface):
             dont_add_api_prefix=True,
         )
 
+    def endpoint_api_types(self) -> List[str]:
+        """
+        Declare that this endpoint belongs to the ``ollama`` API family.
+        """
+        return ["ollama"]
+
     @EP.response_time
     def parametrize(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any] | str]:
-        """Execute the endpoint logic.
+        """
+        Execute the health‑check logic.
 
-        Args:
-            params: Optional dictionary of query parameters.
-                The ping endpoint ignores any supplied parameters.
+        Parameters
+        ----------
+        params : Optional[Dict[str, Any]]
+            Ignored – the endpoint does not process query parameters.
 
-        Returns:
-            dict: A response dictionary containing the string ``"pong"``,
-            generated via ``return_response_ok``.
+        Returns
+        -------
+        str
+            The string ``\"Ollama is running\"`` indicating
+            the successful health check.
         """
         self.direct_return = True
         return "Ollama is running"
 
 
 class OllamaTags(BaseEndpointInterface):
+    """
+    Health‑check endpoint that returns a plain text confirmation that the
+    Ollama service is running.
+
+    The endpoint is registered under the root path ``/`` and only supports
+    the HTTP ``GET`` method.  It does not require any request parameters.
+    """
+
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
     SYSTEM_PROMPT_NAME = None
@@ -94,6 +132,9 @@ class OllamaTags(BaseEndpointInterface):
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
         )
+
+    def endpoint_api_types(self) -> List[str]:
+        return ["ollama"]
 
     @EP.response_time
     @EP.require_params
