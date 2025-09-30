@@ -1,5 +1,24 @@
-from typing import List, Type, Optional
+"""llm_proxy_rest.core._engine
+================================
+
+This module provides the :class:`FlaskEngine` class, which builds and
+configures a Flask application for the LLM‑proxy REST API.  The engine
+automatically discovers concrete implementations of
+:class:`~llm_proxy_rest.endpoints.endpoint_i.EndpointI`, loads them with
+default configuration (including prompt files and model settings), and
+registers the resulting endpoint instances under the API prefix defined
+by :data:`~llm_proxy_rest.base.constants.DEFAULT_API_PREFIX`.
+
+Typical usage
+-------------
+>>> engine = FlaskEngine(prompts_dir='resources/prompts',
+...                     models_config_path='resources/configs/models-config.json')
+>>> app = engine.prepare_flask_app()
+>>> app.run()
+"""
+
 from flask import Flask
+from typing import List, Type, Optional
 
 from llm_proxy_rest.endpoints.endpoint_i import EndpointI
 from llm_proxy_rest.register.auto_loader import EndpointAutoLoader
@@ -8,6 +27,31 @@ from llm_proxy_rest.base.constants import DEFAULT_API_PREFIX, REST_API_LOG_LEVEL
 
 
 class FlaskEngine:
+    """
+    Engine responsible for creating a Flask application that automatically
+    discovers, loads, and registers LLM‑proxy REST endpoints.
+
+    Parameters
+    ----------
+    prompts_dir : str
+        Path to the directory containing prompt files used by endpoints.
+    models_config_path : str
+        Path to the model configuration file (JSON/YAML) that describes
+        the available LLM models.
+    logger_file_name : Optional[str], optional
+        File name for the engine's logger output. If ``None`` the logger
+        uses the default configuration.
+    logger_level : Optional[str], optional
+        Logging level for the engine; defaults to
+        :data:`~llm_proxy_rest.base.constants.REST_API_LOG_LEVEL`.
+
+    Notes
+    -----
+    The engine does not start the Flask server; it only prepares the
+    application instance.  The caller is responsible for running the app
+    (e.g., via ``app.run()`` or a WSGI server such as Gunicorn).
+    """
+
     def __init__(
         self,
         prompts_dir: str,
@@ -15,6 +59,27 @@ class FlaskEngine:
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
     ) -> None:
+        """
+        Initialise the FlaskEngine.
+
+        Parameters
+        ----------
+        prompts_dir : str
+            Directory containing prompt files.
+        models_config_path : str
+            Path to the model configuration file.
+        logger_file_name : Optional[str], optional
+            Name of the log file; if omitted,
+            the default logging configuration is used.
+        logger_level : Optional[str], optional
+            Logging level; defaults to
+            :data:`~llm_proxy_rest.base.constants.REST_API_LOG_LEVEL`.
+
+        Notes
+        -----
+        The constructor stores the supplied configuration for
+        later use by the auto‑loader and endpoint registrar.
+        """
         self.prompts_dir = prompts_dir
         self.models_config_path = models_config_path
 
@@ -37,7 +102,6 @@ class FlaskEngine:
         RuntimeError
             If endpoint registration fails for any reason.
         """
-
         flask_app = Flask(__name__)
         try:
             self.__register_instances(
