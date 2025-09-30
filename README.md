@@ -1,93 +1,125 @@
-# llm-proxy-api
+## llm‑proxy‑api
 
-A lightweight, extensible gateway that exposes a clean REST API 
-to interact with various Large Language Models (LLMs).
+A lightweight, extensible gateway that exposes a clean **REST** API for interacting with
+multiple Large Language Model (LLM) providers (OpenAI, Ollama, vLLM, etc.).  
+It centralises request validation, prompt management, model configuration and logging,
+allowing your application to talk to any supported LLM through a single, consistent interface.
 
-## Features
-- Unified REST interface for multiple LLM providers
-- Built-in request validation
-- Pluggable prompts and models configuration
-- Structured logging with configurable level and file
-- Simple deployment via a single run script
+---
 
-## Quick start
+### ✨ Key Features
 
-1) Create and activate virtualenv
+| Feature                             | Description                                                                                                                                             |
+|-------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Unified REST interface**          | One endpoint schema works for OpenAI‑compatible, Ollama, vLLM and any future provider.                                                                  |
+| **Provider‑agnostic streaming**     | The `stream` flag (default `true`) controls whether the proxy forwards **chunked** responses as they arrive or returns a **single** aggregated payload. |
+| **Built‑in prompt library**         | Language‑aware system prompts stored under `resources/prompts` can be referenced automatically.                                                         |
+| **Dynamic model configuration**     | JSON file (`models-config.json`) defines provider, model name, default options and per‑model overrides.                                                 |
+| **Pluggable providers**             | New providers are added by implementing the `BaseProvider` interface in `llm_proxy_rest/core/api_types`.                                                |
+| **Request validation**              | Pydantic models guarantee correct payloads; errors are returned with clear messages.                                                                    |
+| **Structured logging**              | Configurable log level, filename, and optional JSON formatting.                                                                                         |
+| **Health & metadata endpoints**     | `/ping` (simple 200 OK) and `/tags` (available model tags/metadata).                                                                                    |
+| **Simple deployment**               | One‑liner run script or `python -m llm_proxy_rest.rest_api`.                                                                                            |
+| **Extensible conversation formats** | Basic chat, conversation with system prompt, and extended conversation with richer options (e.g., temperature, top‑k, custom system prompt).            |
 
-```bash
+---
+
+## 📦 Quick Start
+
+### 1️⃣ Create & activate a virtual environment
+
+```shell script
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-2) Minimum required environment
+### 2️⃣ Minimum required environment variable
 
-```bash
+```shell script
 export LLM_PROXY_API_MINIMUM=1
 ```
 
-3) Optional configuration
+### 3️⃣ Optional configuration (via environment)
 
-```bash
-# Logging
-export LLM_PROXY_API_LOG_FILENAME="llm-proxy-rest.log"
+| Variable                            | Purpose                                                    | Example                                |
+|-------------------------------------|------------------------------------------------------------|----------------------------------------|
+| `LLM_PROXY_API_LOG_FILENAME`        | Log file location                                          | `llm-proxy-rest.log`                   |
+| `LLM_PROXY_API_LOG_LEVEL`           | Logging verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`)       | `INFO`                                 |
+| `LLM_PROXY_API_TIMEOUT`             | Global request timeout (seconds)                           | `300`                                  |
+| `LLM_PROXY_API_EP_PREFIX`           | URL prefix for all endpoints                               | `/api`                                 |
+| `LLM_PROXY_API_DEFAULT_EP_LANGUAGE` | Default language for built‑in prompts                      | `pl`                                   |
+| `LLM_PROXY_API_PROMPTS_DIR`         | Directory with prompt files                                | `resources/prompts`                    |
+| `LLM_PROXY_API_MODELS_CONFIG`       | Path to model configuration JSON                           | `resources/configs/models-config.json` |
+| `LLM_PROXY_API_IN_DEBUG`            | Enable DEBUG‑level logging when set to any non‑empty value | `true`                                 |
 
-# DEBUG/INFO/WARN/ERROR
-export LLM_PROXY_API_LOG_LEVEL="INFO"   
+### 4️⃣ Run the REST API
 
-# API behavior
-export LLM_PROXY_API_TIMEOUT=300        # seconds
-export LLM_PROXY_API_EP_PREFIX="/api"   # default prefix
-
-# Language for built-in prompts (when applicable)
-export LLM_PROXY_API_DEFAULT_EP_LANGUAGE="pl"
-
-# Paths
-export LLM_PROXY_API_PROMPTS_DIR="resources/prompts"
-# Models configuration file
-# (JSON with model/provider configuration expected by the service)
-# If not set, defaults to resources/configs/models-config.json
-```
-
-4) Run the REST API
-```bash
+```shell script
 ./run-rest-api.sh
 # or
 LLM_PROXY_API_MINIMUM=1 python3 -m llm_proxy_rest.rest_api
 ```
 
-## Endpoints (high level)
+---
 
-- `POST /api/chat`  
-  Chat-style conversation with a model. Accepts validated payload and returns model response.
+## 🛣️ Endpoints Overview
 
-- `POST /api/conversation_with_model`  
-  Conversation with built-in system prompt (language-aware).
+All URLs are prefixed by the value of `LLM_PROXY_API_EP_PREFIX` (default **/api**).
 
-- `POST /api/extended_conversation_with_model`  
-  Extended request format with richer options.
+| Method | Path                                | Description                                                                                                   | Typical Payload                                                                                                               |
+|--------|-------------------------------------|---------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| `POST` | `/chat`                             | Simple chat with a model (OpenAI‑compatible). Returns either streamed chunks or a full response.              | `{ "model": "gpt-4o", "messages": [{ "role": "user", "content": "Hello" }], "stream": true }`                                 |
+| `POST` | `/conversation_with_model`          | Chat that automatically injects a language‑aware system prompt from the built‑in prompt library.              | `{ "model_name": "gemini-1.5-pro", "user_last_statement": "Explain recursion.", "language": "en" }`                           |
+| `POST` | `/extended_conversation_with_model` | Same as above but with extra generation options (temperature, top‑k, etc.) and optional custom system prompt. | `{ "model_name": "llama3", "user_last_statement": "...", "system_prompt": "...", "temperature": 0.7, "max_new_tokens": 256 }` |
+| `GET`  | `/tags`                             | Returns a list of tags/metadata for available models (e.g., provider, supported languages).                   |                                                                                                                               |
+| `GET`  | `/ping`                             | Health‑check endpoint – returns `200 OK` if the service is running.                                           |                                                                                                                               |
+| `POST` | `/passthrough`                      | Directly forwards a raw request to the underlying provider (useful for custom endpoints).                     |                                                                                                                               |
 
-- `GET /api/tags`  
-  Returns available tags/metadata.
+### Streaming vs. Non‑Streaming Responses
 
-Note: Exact request/response schemas are validated and errors are returned when parameters are invalid.
+- **Streaming (`stream: true` – default)**  
+  The proxy opens an HTTP **chunked** connection and forwards each token/segment from the upstream LLM as soon as it
+  arrives. Clients can process partial output in real time (e.g., live UI updates).
 
-## Configuration overview
+- **Non‑Streaming (`stream: false`)**  
+  The proxy collects the full response from the provider, then returns a single JSON object containing the complete
+  text. Use this mode when you need the whole answer before proceeding.
 
-- Prompts directory: `resources/prompts` (override with `LLM_PROXY_API_PROMPTS_DIR`)
-- Models config: `resources/configs/models-config.json` (override with env)
-- API prefix: `/api` (`LLM_PROXY_API_EP_PREFIX`)
-- Timeout: `300s` (`LLM_PROXY_API_TIMEOUT`)
-- Logs: file name and level configurable via env; `DEBUG` when `LLM_PROXY_API_IN_DEBUG` is true
+Both modes are supported for every provider that implements the streaming interface (OpenAI, Ollama, vLLM). The `stream`
+flag lives in the request schema (`OpenAIChatModel` and analogous models) and is honoured automatically by the proxy.
 
-## Development
+---
 
-- Python 3.10+
-- Install deps from requirements.txt inside a virtualenv
+## ⚙️ Configuration Details
 
-## License
-See [LICENSE](LICENSE)
+| Config File / Variable                                   | Meaning                                                                                               |
+|----------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| `resources/configs/models-config.json`                   | JSON map of provider → model → default options (e.g., `keep_alive`, `options.num_ctx`).               |
+| `LLM_PROXY_API_PROMPTS_DIR`                              | Directory containing prompt templates (`*.prompt`). Sub‑folders are language‑specific (`en/`, `pl/`). |
+| `LLM_PROXY_API_DEFAULT_EP_LANGUAGE`                      | Language code used when a prompt does not explicitly specify one.                                     |
+| `LLM_PROXY_API_TIMEOUT`                                  | Upper bound for any request to an upstream LLM (seconds).                                             |
+| `LLM_PROXY_API_LOG_FILENAME` / `LLM_PROXY_API_LOG_LEVEL` | Logging destinations and verbosity.                                                                   |
+| `LLM_PROXY_API_IN_DEBUG`                                 | When set, enables DEBUG‑level logs and more verbose error payloads.                                   |
 
-## Changelog
-See [CHANGELOG](CHANGELOG.md).
+---
 
+## 🛠️ Development
+
+- **Python**3.10+ (project is tested on 3.10.6)
+- All dependencies are listed in `requirements.txt`. Install them inside the virtualenv.
+- Run tests with `pytest` (already in the environment).
+- To add a new provider, create a class in `llm_proxy_rest/core/api_types` that implements the `BaseProvider` interface
+  and register it in `llm_proxy_rest/register/__init__.py`.
+
+---
+
+## 📜 License
+
+See the [LICENSE](LICENSE) file.
+
+---
+
+## 📚 Changelog
+
+See the [CHANGELOG](CHANGELOG.md) for a complete history of changes.
