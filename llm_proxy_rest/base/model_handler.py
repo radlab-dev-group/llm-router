@@ -137,3 +137,27 @@ class ModelHandler:
         if cfg is None:
             return None
         return ApiModel.from_config(model_name, cfg)
+
+    def list_active_models(self) -> Dict[str, Any]:
+        """
+        List active models grouped by type.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Mapping of a model type to a list of model dicts. Example:
+            {
+                "openapi": [{"name": "...", ...}, ...],
+                "llama": [...]
+            }
+        """
+        result: Dict[str, Any] = {}
+        for m_type, names in self.api_model_config.active_models.items():
+            models = []
+            for name in names:
+                model = self.get_model(name)
+                if not model:
+                    continue
+                models.append(model.as_dict())
+            result[m_type] = models
+        return result
