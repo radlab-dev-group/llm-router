@@ -14,7 +14,7 @@ These helpers are used by ``rest_api.py`` to select the appropriate server
 based on command‑line flags or the ``SERVER_TYPE`` configuration constant.
 """
 
-from llm_proxy_rest.core._engine import FlaskEngine
+from llm_proxy_rest.core.engine import FlaskEngine
 from llm_proxy_rest.base.constants import (
     PROMPTS_DIR,
     MODELS_CONFIG_FILE,
