@@ -41,13 +41,13 @@ ollama_payload = {
 # ----------------------------------------------------------------------
 # Endpoint tests
 # ----------------------------------------------------------------------
-def test_ollama_home(_) -> None:
+def test_ollama_home_ep(_) -> None:
     """Health‑check endpoint ``/`` (GET)."""
     resp = _get("/")
     print("Ollama home:", resp.text)
 
 
-def test_ollama_tags(_) -> None:
+def test_ollama_tags_ep(_) -> None:
     """Tags endpoint ``/api/tags`` (GET)."""
     resp = _get("/api/tags")
     print("Ollama tags:", resp.json())
@@ -59,7 +59,7 @@ def test_lmstudio_models(_) -> None:
     print("LM Studio models:", resp.json())
 
 
-def test_chat_ollama_no_stream(model_name: str) -> None:
+def test_ollama_chat_no_stream(model_name: str) -> None:
     """Chat completion endpoint ``/api/chat`` (POST)."""
     payload = ollama_payload.copy()
     payload["stream"] = False
@@ -137,25 +137,20 @@ def test_chat_vllm_stream(model_name: str) -> None:
 
 def run_all_tests() -> None:
     """Execute all endpoint tests sequentially."""
+    ollama_model_name = "gpt-oss:120b"
+    external_model_name = "google/gemini-2.0-flash"
+    vllm_model_name = "google/gemma-3-12b-it"
+
     test_functions = [
-        # test_ollama_home,
-        # test_ollama_tags,
-        # test_lmstudio_models,
-        # test_chat_ollama_no_stream,
-        # test_chat_ollama_stream,
-        test_chat_vllm_no_stream,
-        # test_chat_vllm_stream,
+        # test_lmstudio_models <- not fully integrated,
+        # [test_ollama_home_ep, ollama_model_name],
+        # [test_ollama_tags_ep, ollama_model_name],
+        # [test_ollama_chat_no_stream, ollama_model_name],
+        [test_chat_ollama_stream, ollama_model_name],
+        [test_chat_vllm_no_stream, vllm_model_name],
+        # [test_chat_vllm_stream, vllm_model_name],
     ]
-    # Ollama model:
-    # model_name = "gpt-oss:120b"
-
-    # Gemini external api
-    # model_name = "google/gemini-2.0-flash"
-
-    # VLLM available via local API
-    model_name = "google/gemma-3-12b-it"
-
-    for fn in test_functions:
+    for fn, model_name in test_functions:
         try:
             print(f"Running {fn.__name__} ...")
             fn(model_name)
