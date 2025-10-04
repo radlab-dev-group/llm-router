@@ -919,6 +919,3 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     #     except (ValueError, Exception) as e:
     #         self.logger.exception(e)
     #         raise
-
-
-BaseEndpointInterface = EndpointWithHttpRequestI if SERVICE_AS_PROXY else EndpointI
