@@ -30,12 +30,10 @@ from llm_proxy_rest.core.api_types.vllm import VllmType
 from llm_proxy_rest.core.api_types.ollama import OllamaType
 from llm_proxy_rest.core.api_types.openai import OpenAIApiType
 
-# ---------------------------------------------------------------------------
-# Public constant – the full list of API‑type identifiers recognised by the
-# library.  It is used by the endpoint base class to validate the
-# ``endpoint_api_types`` declared by a concrete endpoint.
-# ---------------------------------------------------------------------------
-API_TYPES = ["builtin", "openai", "ollama", "lmstudio", "vllm", "anthropic"]
+# ----------------------------------------------------------------------------------
+# Public constant – the full list of API‑type identifiers recognised by the library.
+# ----------------------------------------------------------------------------------
+API_TYPES = ["builtin", "openai", "ollama", "lmstudio", "vllm"]
 
 
 class ApiTypesDispatcher:
@@ -109,12 +107,12 @@ class ApiTypesDispatcher:
     # -----------------------------------------------------------------------
     # Endpoint‑path helpers – each forwards to the concrete implementation.
     # -----------------------------------------------------------------------
-    @classmethod
-    def models_list_ep(cls, api_type: str) -> str:
-        """
-        Delegate to the proper implementation to get a model list endpoint path.
-        """
-        return cls._get_impl(api_type).models_list_ep()
+    # @classmethod
+    # def models_list_ep(cls, api_type: str) -> str:
+    #     """
+    #     Delegate to the proper implementation to get a model list endpoint path.
+    #     """
+    #     return cls._get_impl(api_type).models_list_ep()
 
     @classmethod
     def chat_ep(cls, api_type: str) -> str:
@@ -133,12 +131,12 @@ class ApiTypesDispatcher:
     # -----------------------------------------------------------------------
     # HTTP‑method helpers – expose which HTTP verb each operation expects.
     # -----------------------------------------------------------------------
-    @classmethod
-    def models_list_method(cls, api_type: str) -> str:
-        """
-        Delegate to the proper implementation to get models list HTTP method.
-        """
-        return cls._get_impl(api_type).models_list_method()
+    # @classmethod
+    # def models_list_method(cls, api_type: str) -> str:
+    #     """
+    #     Delegate to the proper implementation to get models list HTTP method.
+    #     """
+    #     return cls._get_impl(api_type).models_list_method()
 
     @classmethod
     def chat_method(cls, api_type: str) -> str:
@@ -154,25 +152,25 @@ class ApiTypesDispatcher:
         """
         return cls._get_impl(api_type).completions_method()
 
-    # -----------------------------------------------------------------------
-    # Parameter‑related helpers.
-    # -----------------------------------------------------------------------
-    @classmethod
-    def params(cls, api_type: str) -> List[str]:
-        """
-        Delegate to the proper implementation to get an accepted params list.
-        """
-        return cls._get_impl(api_type).params()
-
-    @classmethod
-    def convert_params(
-        cls, api_type: str, model: BaseModel | Dict
-    ) -> Dict[str, object]:
-        """
-        Delegate to the proper implementation
-        to convert a high-level model to params.
-        """
-        return cls._get_impl(api_type).convert_params(model)
+    # # -----------------------------------------------------------------------
+    # # Parameter‑related helpers.
+    # # -----------------------------------------------------------------------
+    # @classmethod
+    # def params(cls, api_type: str) -> List[str]:
+    #     """
+    #     Delegate to the proper implementation to get an accepted params list.
+    #     """
+    #     return cls._get_impl(api_type).params()
+    #
+    # @classmethod
+    # def convert_params(
+    #     cls, api_type: str, model: BaseModel | Dict
+    # ) -> Dict[str, object]:
+    #     """
+    #     Delegate to the proper implementation
+    #     to convert a high-level model to params.
+    #     """
+    #     return cls._get_impl(api_type).convert_params(model)
 
     # -----------------------------------------------------------------------
     # Tag aggregation helper – static because it does not depend on a concrete

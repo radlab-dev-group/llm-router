@@ -89,7 +89,7 @@ class ApiTypesI(ABC):
             "root": str(m.get("name", "")),
             "host": str(m.get("api_host", "")),
             "path": str(m.get("model_path", "")),
-            "type": "vlm",
+            "type": "vllm",
             "publisher": str(m.get("api_type", "") or ""),
             "state": "not-loaded",
             "arch": str(m.get("name", "")),
@@ -97,29 +97,30 @@ class ApiTypesI(ABC):
             "quantization": "4bit",
         }
 
-    @abstractmethod
-    def models_list_ep(self) -> str:
-        """
-        Return the relative URL path for the models listing endpoint.
-
-        Returns
-        -------
-        str
-            Endpoint path (e.g., "/v1/models").
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def models_list_method(self) -> str:
-        """
-        Return the HTTP method used by the models listing endpoint.
-
-        Returns
-        -------
-        str
-            HTTP method name (e.g., "GET").
-        """
-        raise NotImplementedError
+    #
+    # @abstractmethod
+    # def models_list_ep(self) -> str:
+    #     """
+    #     Return the relative URL path for the models listing endpoint.
+    #
+    #     Returns
+    #     -------
+    #     str
+    #         Endpoint path (e.g., "/v1/models").
+    #     """
+    #     raise NotImplementedError
+    #
+    # @abstractmethod
+    # def models_list_method(self) -> str:
+    #     """
+    #     Return the HTTP method used by the models listing endpoint.
+    #
+    #     Returns
+    #     -------
+    #     str
+    #         HTTP method name (e.g., "GET").
+    #     """
+    #     raise NotImplementedError
 
     @abstractmethod
     def chat_ep(self) -> str:
@@ -169,42 +170,43 @@ class ApiTypesI(ABC):
         """
         raise NotImplementedError
 
-    @abstractmethod
-    def params(self) -> List[str]:
-        """
-        Return the list of accepted parameter names for this API type.
-
-        Notes
-        -----
-        This list represents the union of commonly supported parameters
-        across endpoints for the given API type. Concrete implementations
-        may tailor this to project needs.
-
-        Returns
-        -------
-        List[str]
-            A list of parameter keys accepted by this API type.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def convert_params(self, model: BaseModel | Dict) -> Dict[str, object]:
-        """
-        Convert a high-level model configuration into API-specific params.
-
-        The input `model` can be one of:
-        - ExtendedGenerativeConversationModel
-        - GenerativeConversationModel
-        - GenerativeQAModel
-        - GenerativeQuestionGeneratorModel
-        - GenerativeArticleFromText
-        - CreateArticleFromNewsList
-        - TranslateTextModel
-        - GenerativeSimplification
-
-        Returns
-        -------
-        Dict[str, object]
-            Mapping ready to be sent as 'params' for the target API type.
-        """
-        raise NotImplementedError
+    #
+    # @abstractmethod
+    # def params(self) -> List[str]:
+    #     """
+    #     Return the list of accepted parameter names for this API type.
+    #
+    #     Notes
+    #     -----
+    #     This list represents the union of commonly supported parameters
+    #     across endpoints for the given API type. Concrete implementations
+    #     may tailor this to project needs.
+    #
+    #     Returns
+    #     -------
+    #     List[str]
+    #         A list of parameter keys accepted by this API type.
+    #     """
+    #     raise NotImplementedError
+    #
+    # @abstractmethod
+    # def convert_params(self, model: BaseModel | Dict) -> Dict[str, object]:
+    #     """
+    #     Convert a high-level model configuration into API-specific params.
+    #
+    #     The input `model` can be one of:
+    #     - ExtendedGenerativeConversationModel
+    #     - GenerativeConversationModel
+    #     - GenerativeQAModel
+    #     - GenerativeQuestionGeneratorModel
+    #     - GenerativeArticleFromText
+    #     - CreateArticleFromNewsList
+    #     - TranslateTextModel
+    #     - GenerativeSimplification
+    #
+    #     Returns
+    #     -------
+    #     Dict[str, object]
+    #         Mapping ready to be sent as 'params' for the target API type.
+    #     """
+    #     raise NotImplementedError

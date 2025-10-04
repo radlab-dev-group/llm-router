@@ -51,5 +51,5 @@ class VllmChatCompletion(PassthroughI):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
-            redirect_ep=True,
+            direct_return=False,
         )

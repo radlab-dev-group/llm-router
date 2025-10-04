@@ -2,6 +2,11 @@ from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
 
 from llm_proxy_rest.base.constants import DEFAULT_EP_LANGUAGE
+from llm_proxy_rest.core.data_models.constants import (
+    LANGUAGE_PARAM,
+    MODEL_NAME_PARAM,
+    SYSTEM_PROMPT,
+)
 
 
 class _GenerativeOptions(BaseModel):
@@ -27,11 +32,6 @@ class GenerativeConversationModel(_GenerativeOptionsModel):
 class ExtendedGenerativeConversationModel(GenerativeConversationModel):
     system_prompt: str
 
-
-#
-# LANGUAGE_PARAM = "language"
-# SYSTEM_PROMPT = "system_prompt"
-# MODEL_NAME_PARAM = "model_name"
 
 GENAI_REQ_ARGS_BASE = [MODEL_NAME_PARAM]
 GENAI_OPT_ARGS_BASE = [

@@ -4,7 +4,7 @@ Passthrough endpoint interface.
 This module defines :class:`PassthroughI`, an abstract base class that
 provides a simple pass‑through implementation for LLM proxy REST
 endpoints. It inherits from :class:`BaseEndpointInterface` and
-implements a ``parametrize`` method that returns the provided parameters
+implements a ``prepare_payload`` method that returns the provided parameters
 unchanged. Subclasses can extend this class to add custom behavior
 while retaining the basic request handling infrastructure.
 """
@@ -16,11 +16,10 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.core.decorators import EP
 from llm_proxy_rest.base.model_handler import ModelHandler
-from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
-from llm_proxy_rest.endpoints.endpoint_i import BaseEndpointInterface
+from llm_proxy_rest.endpoints.endpoint_i import EndpointWithHttpRequestI
 
 
-class PassthroughI(BaseEndpointInterface, ABC):
+class PassthroughI(EndpointWithHttpRequestI, ABC):
     """
     Abstract base class for a pass‑through REST endpoint.
 
@@ -47,7 +46,7 @@ class PassthroughI(BaseEndpointInterface, ABC):
         method: str,
         api_types: List[str],
         dont_add_api_prefix: bool,
-        redirect_ep: bool,
+        direct_return: bool,
     ):
         """
         Initialize the pass‑through endpoint.
@@ -61,7 +60,7 @@ class PassthroughI(BaseEndpointInterface, ABC):
             method: HTTP method for the endpoint, default ``"POST"``.
             dont_add_api_prefix: If ``True``, the endpoint will not be
                 prefixed with the API base path.
-            redirect_ep: If ``True``, the endpoint will redirected to api host.
+            direct_return: If ``True``, the endpoint will redirected to api host.
         """
         super().__init__(
             ep_name=ep_name,
@@ -72,11 +71,11 @@ class PassthroughI(BaseEndpointInterface, ABC):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
-            redirect_ep=redirect_ep,
+            direct_return=direct_return,
         )
 
     @EP.response_time
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
