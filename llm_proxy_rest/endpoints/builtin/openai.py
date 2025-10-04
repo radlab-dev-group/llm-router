@@ -72,17 +72,6 @@ class OpenAIChat(PassthroughI):
             redirect_ep=False,
         )
 
-    def endpoint_api_types(self) -> List[str]:
-        """
-        Declare the API families supported by this endpoint.
-
-        Returns
-        -------
-        List[str]
-            The endpoint works with both ``"openai"`` and ``"ollama"`` back‑ends.
-        """
-        return ["openai", "ollama"]
-
 
 class OpenAICompletion(OpenAIChat):
     """
@@ -164,7 +153,7 @@ class OpenAIModels(OpenAIChat):
 
     @EP.response_time
     @EP.require_params
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """

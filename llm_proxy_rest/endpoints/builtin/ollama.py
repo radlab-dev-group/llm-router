@@ -75,7 +75,7 @@ class OllamaHome(BaseEndpointInterface):
         )
 
     @EP.response_time
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any] | str]:
         """
@@ -131,7 +131,7 @@ class OllamaTags(BaseEndpointInterface):
 
     @EP.response_time
     @EP.require_params
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         self.direct_return = True

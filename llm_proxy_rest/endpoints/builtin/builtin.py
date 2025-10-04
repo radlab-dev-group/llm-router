@@ -76,7 +76,7 @@ class Ping(BaseEndpointInterface):
         )
 
     @EP.response_time
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """

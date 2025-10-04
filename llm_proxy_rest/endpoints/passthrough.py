@@ -4,7 +4,7 @@ Passthrough endpoint interface.
 This module defines :class:`PassthroughI`, an abstract base class that
 provides a simple pass‑through implementation for LLM proxy REST
 endpoints. It inherits from :class:`BaseEndpointInterface` and
-implements a ``parametrize`` method that returns the provided parameters
+implements a ``prepare_payload`` method that returns the provided parameters
 unchanged. Subclasses can extend this class to add custom behavior
 while retaining the basic request handling infrastructure.
 """
@@ -76,7 +76,7 @@ class PassthroughI(BaseEndpointInterface, ABC):
         )
 
     @EP.response_time
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """

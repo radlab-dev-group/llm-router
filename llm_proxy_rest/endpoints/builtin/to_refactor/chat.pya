@@ -44,7 +44,7 @@ class ConversationWithModel(BaseEndpointInterface):
 
     @EP.response_time
     @EP.require_params
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         try:
@@ -80,7 +80,7 @@ class ExtendedConversationWithModel(BaseEndpointInterface):
 
     @EP.response_time
     @EP.require_params
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         try:
