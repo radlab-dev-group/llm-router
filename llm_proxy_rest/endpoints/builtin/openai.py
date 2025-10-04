@@ -39,6 +39,7 @@ class OpenAIChatHandler(PassthroughI):
         method="POST",
         dont_add_api_prefix: bool = False,
         api_types: Optional[List[str]] = None,
+        direct_return: bool = False,
     ):
         """
         Initialize the OpenAI chat endpoint.
@@ -62,14 +63,14 @@ class OpenAIChatHandler(PassthroughI):
         """
         super().__init__(
             ep_name=ep_name,
-            api_types=["openai", "lmstudio", "ollama"],
+            api_types=api_types or ["openai", "lmstudio", "ollama"],
             method=method,
             logger_level=logger_level,
             logger_file_name=logger_file_name,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
-            redirect_ep=False,
+            direct_return=direct_return,
         )
 
 
@@ -86,6 +87,7 @@ class OpenAICompletionHandler(OpenAIChatHandler):
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
         ep_name="chat/completions",
+        direct_return=False,
     ):
         """
         Initialize the completion endpoint.
@@ -101,6 +103,7 @@ class OpenAICompletionHandler(OpenAIChatHandler):
             model_handler=model_handler,
             dont_add_api_prefix=False,
             api_types=["openai", "lmstudio", "ollama"],
+            direct_return=direct_return,
         )
 
 
@@ -149,6 +152,7 @@ class OpenAIModelsHandler(OpenAIChatHandler):
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
             api_types=api_types or ["openai", "lmstudio"],
+            direct_return=True,
         )
 
     @EP.response_time

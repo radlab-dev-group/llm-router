@@ -46,7 +46,7 @@ class PassthroughI(EndpointWithHttpRequestI, ABC):
         method: str,
         api_types: List[str],
         dont_add_api_prefix: bool,
-        redirect_ep: bool,
+        direct_return: bool,
     ):
         """
         Initialize the pass‑through endpoint.
@@ -60,7 +60,7 @@ class PassthroughI(EndpointWithHttpRequestI, ABC):
             method: HTTP method for the endpoint, default ``"POST"``.
             dont_add_api_prefix: If ``True``, the endpoint will not be
                 prefixed with the API base path.
-            redirect_ep: If ``True``, the endpoint will redirected to api host.
+            direct_return: If ``True``, the endpoint will redirected to api host.
         """
         super().__init__(
             ep_name=ep_name,
@@ -71,7 +71,7 @@ class PassthroughI(EndpointWithHttpRequestI, ABC):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
-            redirect_ep=redirect_ep,
+            direct_return=direct_return,
         )
 
     @EP.response_time

@@ -105,7 +105,7 @@ class EndpointI(abc.ABC):
         model_handler: Optional[ModelHandler] = None,
         prompt_handler: Optional[PromptHandler] = None,
         dont_add_api_prefix: bool = False,
-        redirect_ep: bool = False,
+        direct_return: bool = False,
     ):
         """
         Initialise an endpoint definition.
@@ -133,8 +133,8 @@ class EndpointI(abc.ABC):
         dont_add_api_prefix :
             If ``True`` the endpoint URL will be registered without the
             global ``DEFAULT_API_PREFIX`` prefix.
-        redirect_ep:
-            If ``True`` the endpoint URL will be registered to api host.
+        direct_return:
+            If ``True`` the payload is returned
 
         Raises
         ------
@@ -150,7 +150,7 @@ class EndpointI(abc.ABC):
         self._model_handler = model_handler
 
         self._prompt_name = None
-        self._redirect_ep = redirect_ep
+        self.direct_return = direct_return
         self._prompt_handler = prompt_handler
         self._dont_add_api_prefix = dont_add_api_prefix
 
@@ -531,7 +531,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
         dont_add_api_prefix: bool = False,
-        redirect_ep: bool = False,
+        direct_return: bool = False,
         timeout: int = REST_API_TIMEOUT,
     ):
         """
@@ -558,8 +558,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         dont_add_api_prefix :
             When ``True`` the global API prefix is omitted for this
             endpoint.
-        redirect_ep:
-            When ``True`` the endpoint is redirected to an external LLM
+        direct_return:
+            When ``True`` the payload is returned
         timeout :
             Number of seconds after which outbound HTTP calls will be
             aborted.
@@ -573,7 +573,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             model_handler=model_handler,
             prompt_handler=prompt_handler,
             dont_add_api_prefix=dont_add_api_prefix,
-            redirect_ep=redirect_ep,
+            direct_return=direct_return,
         )
 
         # End‑point specific URLs for chat and completions – populated later.
@@ -585,7 +585,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         self._d_comp_method = None
 
         self._timeout = timeout
-        self.direct_return = False
 
     # ------------------------------------------------------------------
     # Core execution flow
@@ -621,9 +620,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Propagates any unexpected error; the Flask registrar will
             translate it into a 500 response.
         """
-        self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+        # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
         try:
+
             params = self.prepare_payload(params)
+            self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+
+            if type(params) is dict:
+                if not params.get("status", True):
+                    return params
+
             if self.direct_return:
                 return params
 
@@ -684,7 +690,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             return params
         except Exception as e:
             self.logger.exception(e)
-            raise
+            return self.return_response_not_ok(str(e))
 
     # ------------------------------------------------------------------
     # HTTP helpers
