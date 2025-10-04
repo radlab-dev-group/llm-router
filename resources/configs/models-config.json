@@ -48,6 +48,9 @@
     "openai_models": [
       "gpt-oss:20b",
       "gpt-oss:120b"
+    ],
+    "qwen_models": [
+      "qwen3:235b"
     ]
   }
 }

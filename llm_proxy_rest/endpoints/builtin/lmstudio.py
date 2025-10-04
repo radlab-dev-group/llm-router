@@ -7,21 +7,20 @@ separate endpoint classes for model listing, chat, and text generation, as
 well as a concrete :class:`LmStudioType` that implements the
 :class:`~llm_proxy_rest.core.api_types.ApiTypesI` interface for LM Studio.
 
-All endpoint classes inherit from :class:`BaseEndpointInterface` and expose
-the required ``endpoint_api_types`` method, a ``parametrize`` implementation,
-and the appropriate HTTP method configuration.
+All endpoint classes inherit from :class:`EndpointWithHttpRequestI`,
+a ``prepare_payload`` implementation, and the appropriate HTTP method configuration.
 """
 
-from typing import Optional, List
+from typing import Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.base.model_handler import ModelHandler
 from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
-from llm_proxy_rest.endpoints.builtin.openai import OpenAIModels
+from llm_proxy_rest.endpoints.builtin.openai import OpenAIModelsHandler
 
 
-class LmStudioModels(OpenAIModels):
+class LmStudioModelsHandler(OpenAIModelsHandler):
     """
     Endpoint that returns the list of model identifiers available in the
     LM Studio service.
@@ -48,6 +47,3 @@ class LmStudioModels(OpenAIModels):
             dont_add_api_prefix=False,
             api_types=["lmstudio"],
         )
-
-    def endpoint_api_types(self) -> List[str]:
-        return ["lmstudio"]

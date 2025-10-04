@@ -17,7 +17,7 @@ on two cross‑cutting concerns:
   returns.
 
 Both concerns are expressed as decorators that wrap the endpoint’s public
-``call``‑style methods (normally ``run_ep`` or ``parametrize``).  The decorators
+``call``‑style methods (normally ``run_ep`` or ``prepare_payload``).  The decorators
 are defined as static methods of the ``EP`` namespace class so they can be used
 with the ``@EP.require_params`` / ``@EP.response_time`` syntax without having to
 instantiate anything.
@@ -75,7 +75,8 @@ class EP:
         Parameters
         ----------
         func : Callable[[Any, Optional[Dict[str, Any]]], Any]
-            The endpoint method to be wrapped (e.g. ``run_ep`` or ``parametrize``).
+            The endpoint method to be wrapped
+            (e.g. ``run_ep`` or ``prepare_payload``).
 
         Returns
         -------

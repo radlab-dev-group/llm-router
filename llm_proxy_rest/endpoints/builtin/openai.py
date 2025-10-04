@@ -17,7 +17,7 @@ from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
 from llm_proxy_rest.endpoints.passthrough import PassthroughI
 
 
-class OpenAIChat(PassthroughI):
+class OpenAIChatHandler(PassthroughI):
     """
     Base endpoint for forwarding chat‑style requests to an OpenAI‑compatible API.
 
@@ -39,6 +39,7 @@ class OpenAIChat(PassthroughI):
         method="POST",
         dont_add_api_prefix: bool = False,
         api_types: Optional[List[str]] = None,
+        direct_return: bool = False,
     ):
         """
         Initialize the OpenAI chat endpoint.
@@ -62,29 +63,18 @@ class OpenAIChat(PassthroughI):
         """
         super().__init__(
             ep_name=ep_name,
-            api_types=api_types or ["openai", "ollama"],
+            api_types=api_types or ["openai", "lmstudio", "ollama"],
             method=method,
             logger_level=logger_level,
             logger_file_name=logger_file_name,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
-            redirect_ep=False,
+            direct_return=direct_return,
         )
 
-    def endpoint_api_types(self) -> List[str]:
-        """
-        Declare the API families supported by this endpoint.
 
-        Returns
-        -------
-        List[str]
-            The endpoint works with both ``"openai"`` and ``"ollama"`` back‑ends.
-        """
-        return ["openai", "ollama"]
-
-
-class OpenAICompletion(OpenAIChat):
+class OpenAICompletionHandler(OpenAIChatHandler):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/chat/completions`` route of an OpenAI‑compatible service.
@@ -97,6 +87,7 @@ class OpenAICompletion(OpenAIChat):
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
         ep_name="chat/completions",
+        direct_return=False,
     ):
         """
         Initialize the completion endpoint.
@@ -111,11 +102,12 @@ class OpenAICompletion(OpenAIChat):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
-            api_types=["openai", "lmstudio"],
+            api_types=["openai", "lmstudio", "ollama"],
+            direct_return=direct_return,
         )
 
 
-class OpenAIModels(OpenAIChat):
+class OpenAIModelsHandler(OpenAIChatHandler):
     """
     Endpoint that lists available models from an OpenAI‑compatible service.
 
@@ -160,11 +152,12 @@ class OpenAIModels(OpenAIChat):
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
             api_types=api_types or ["openai", "lmstudio"],
+            direct_return=True,
         )
 
     @EP.response_time
     @EP.require_params
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
