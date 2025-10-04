@@ -8,7 +8,8 @@ from typing import Iterable, Dict, Any, Optional, Callable, Type, List, Set
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
-from llm_proxy_rest.endpoints.endpoint_i import EndpointI
+from llm_proxy_rest.endpoints.passthrough import PassthroughI
+from llm_proxy_rest.endpoints.endpoint_i import EndpointI, EndpointWithHttpRequestI
 from llm_proxy_rest.base.model_handler import ModelHandler
 from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
 
@@ -122,6 +123,9 @@ class EndpointAutoLoader:
         """
         instances: List[EndpointI] = []
         for cls in classes:
+            if cls in [PassthroughI, EndpointWithHttpRequestI]:
+                continue
+
             try:
                 self._logger.debug(f"Instantiating {cls.__name__}")
                 instances.append(

@@ -71,13 +71,8 @@ class OllamaHome(BaseEndpointInterface):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=True,
+            api_types=["ollama"],
         )
-
-    def endpoint_api_types(self) -> List[str]:
-        """
-        Declare that this endpoint belongs to the ``ollama`` API family.
-        """
-        return ["ollama"]
 
     @EP.response_time
     def parametrize(
@@ -131,10 +126,8 @@ class OllamaTags(BaseEndpointInterface):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
+            api_types=["ollama"],
         )
-
-    def endpoint_api_types(self) -> List[str]:
-        return ["ollama"]
 
     @EP.response_time
     @EP.require_params
