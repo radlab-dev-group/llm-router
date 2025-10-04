@@ -40,110 +40,159 @@ ollama_payload = {
     ],
 }
 
+conv_with_model_payload = {
+    "model_name": "",
+    "user_last_statement": "Jak się masz?",
+}
 
 # ----------------------------------------------------------------------
 # Endpoint tests
 # ----------------------------------------------------------------------
-def test_ollama_home_ep(_) -> None:
-    """Health‑check endpoint ``/`` (GET)."""
-    resp = _get("/")
-    print("Ollama home:", resp.text)
 
 
-def test_ollama_tags_ep(_) -> None:
-    """Tags endpoint ``/api/tags`` (GET)."""
-    resp = _get("/api/tags")
-    print("Ollama tags:", resp.json())
+class Ollama:
+    @staticmethod
+    def test_ollama_home_ep(_, debug: bool = False) -> None:
+        """Health‑check endpoint ``/`` (GET)."""
+        resp = _get("/")
+        if debug:
+            print("Ollama home:", resp.text)
 
+    @staticmethod
+    def test_ollama_tags_ep(_, debug: bool = False) -> None:
+        """Tags endpoint ``/api/tags`` (GET)."""
+        resp = _get("/api/tags")
+        if debug:
+            print("Ollama tags:", resp.json())
 
-def test_lmstudio_models(_) -> None:
-    """LM‑Studio models list endpoint ``/v0/models`` (GET)."""
-    resp = _get("/api/v0/models")
-    print("LM Studio models:", resp.json())
+    @staticmethod
+    def test_lmstudio_models(_, debug: bool = False) -> None:
+        """LM‑Studio models list endpoint ``/v0/models`` (GET)."""
+        resp = _get("/api/v0/models")
+        if debug:
+            print("LM Studio models:", resp.json())
 
+    @staticmethod
+    def test_ollama_chat_no_stream(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/chat`` (POST)."""
+        payload = ollama_payload.copy()
+        payload["stream"] = False
+        payload["model"] = model_name
+        resp = _post("/api/chat", payload)
+        if debug:
+            print("Api chat:", resp.json())
 
-def test_ollama_chat_no_stream(model_name: str) -> None:
-    """Chat completion endpoint ``/api/chat`` (POST)."""
-    payload = ollama_payload.copy()
-    payload["stream"] = False
-    payload["model"] = model_name
-    resp = _post("/api/chat", payload)
-    print("Api chat:", resp.json())
-
-
-def test_chat_ollama_stream(model_name: str) -> None:
-    """Chat completion endpoint ``/api/chat`` with streaming (POST, stream=True)."""
-    payload = ollama_payload.copy()
-    payload["stream"] = True
-    payload["model"] = model_name
-    url = f"{BASE_URL.rstrip('/')}/api/chat"
-    with requests.post(url, json=payload, timeout=30, stream=True) as resp:
-        resp.raise_for_status()
-        print("Streaming chat response:")
-        for line in resp.iter_lines(decode_unicode=True):
-            if line:
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError:
-                    cleaned = line.lstrip("data: ").strip()
+    @staticmethod
+    def test_ollama_chat_stream(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/chat`` with streaming (POST, stream=True)."""
+        payload = ollama_payload.copy()
+        payload["stream"] = True
+        payload["model"] = model_name
+        url = f"{BASE_URL.rstrip('/')}/api/chat"
+        with requests.post(url, json=payload, timeout=30, stream=True) as resp:
+            resp.raise_for_status()
+            if debug:
+                print("Streaming chat response:")
+            for line in resp.iter_lines(decode_unicode=True):
+                if line:
                     try:
-                        data = json.loads(cleaned)
+                        data = json.loads(line)
                     except json.JSONDecodeError:
-                        data = line  # Fallback to raw line
+                        cleaned = line.lstrip("data: ").strip()
+                        try:
+                            data = json.loads(cleaned)
+                        except json.JSONDecodeError:
+                            data = line  # Fallback to raw line
 
-                if "message" in data:
-                    content_str = data["message"]["content"]
-                    print(content_str, end="", flush=True)
-                else:
-                    print(data)
-    print("")
-
-
-def test_chat_vllm_no_stream(model_name: str) -> None:
-    """Chat completion endpoint ``/api/chat`` (POST)."""
-    payload = ollama_payload.copy()
-    payload["stream"] = False
-    payload["model"] = model_name
-    resp = _post("/v1/chat/completions", payload)
-    print("Api chat:", resp.json())
+                    if "message" in data:
+                        content_str = data["message"]["content"]
+                        if debug:
+                            print(content_str, end="", flush=True)
+                    elif debug:
+                        print(data)
+        if debug:
+            print("")
 
 
-def test_chat_vllm_stream(model_name: str) -> None:
-    """Chat completion endpoint with streaming from an external VLLM server."""
-    payload = ollama_payload.copy()
-    payload["stream"] = True
-    payload["model"] = model_name
-    url = f"{BASE_URL.rstrip('/')}/v1/chat/completions"
+class VLLM:
+    @staticmethod
+    def test_chat_vllm_no_stream(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/chat`` (POST)."""
+        payload = ollama_payload.copy()
+        payload["stream"] = False
+        payload["model"] = model_name
+        resp = _post("/v1/chat/completions", payload)
+        if debug:
+            print("VLLM chat:", resp.json())
 
-    with requests.post(url, json=payload, timeout=30, stream=True) as resp:
-        resp.raise_for_status()
-        print("Streaming chat response:")
-        for line in resp.iter_lines():
-            if not line:
-                continue
+    @staticmethod
+    def test_chat_vllm_stream(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint with streaming from an external VLLM server."""
+        payload = ollama_payload.copy()
+        payload["stream"] = True
+        payload["model"] = model_name
+        url = f"{BASE_URL.rstrip('/')}/v1/chat/completions"
 
-            if isinstance(line, bytes):
-                line = line.decode("utf-8", errors="replace")
-
-            cleaned = line.lstrip("data: ").strip()
-            try:
-                data = json.loads(cleaned)
-            except json.JSONDecodeError:
-                if "[DONE]" in line.strip().upper():
+        with requests.post(url, json=payload, timeout=30, stream=True) as resp:
+            resp.raise_for_status()
+            if debug:
+                print("Streaming chat response:")
+            for line in resp.iter_lines():
+                if not line:
                     continue
-                print(f"Unparsable line: {line}")
-                continue
 
-            if "choices" in data and data["choices"]:
-                delta = data["choices"][0].get("delta", {})
-                content = delta.get("content")
-                if content:
-                    print(content, end="", flush=True)
-                if delta.get("finish_reason"):
-                    break
-            else:
-                print(data)
-    print("\n")
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8", errors="replace")
+
+                cleaned = line.lstrip("data: ").strip()
+                try:
+                    data = json.loads(cleaned)
+                except json.JSONDecodeError:
+                    if "[DONE]" in line.strip().upper():
+                        continue
+                    print(f"Unparsable line: {line}")
+                    continue
+
+                if "choices" in data and data["choices"]:
+                    delta = data["choices"][0].get("delta", {})
+                    content = delta.get("content")
+                    if content and debug:
+                        print(content, end="", flush=True)
+                    if delta.get("finish_reason"):
+                        break
+                elif debug:
+                    print(data)
+        if debug:
+            print("\n")
+
+
+class Builtin:
+    @staticmethod
+    def parse_response(response):
+        j_resp = response.json()
+        if not j_resp.get("status", True):
+            if "body" in j_resp:
+                j_resp = j_resp["body"]
+            raise Exception(json.dumps(j_resp))
+
+    @staticmethod
+    def test_builtin_ping(_, debug: bool = False) -> None:
+        """Tags endpoint ``/api/ping`` (GET)."""
+        resp = _get("/api/ping")
+        if debug:
+            print("Builtin ping:", resp.json())
+
+    @staticmethod
+    def test_builtin_con_with_model_no_stream(
+        model_name: str, debug: bool = False
+    ) -> None:
+        """Chat completion endpoint ``/api/conversation_with_model`` (POST)."""
+        payload = conv_with_model_payload.copy()
+        payload["model_name"] = model_name
+        resp = _post("/api/conversation_with_model", payload)
+        if debug:
+            print("Builtin conversation_with_model:", resp.json())
+        Builtin.parse_response(resp)
 
 
 def run_all_tests() -> None:
@@ -156,17 +205,19 @@ def run_all_tests() -> None:
 
     test_functions = [
         # test_lmstudio_models <- not fully integrated,
-        [test_ollama_home_ep, "ollama120"],
-        [test_ollama_tags_ep, "ollama120"],
-        [test_ollama_chat_no_stream, "ollama120"],
-        [test_chat_ollama_stream, "ollama120"],
-        [test_chat_vllm_no_stream, "vllm_model"],
-        [test_chat_vllm_stream, "vllm_model"],
+        [Ollama.test_ollama_home_ep, "ollama120", False],
+        [Ollama.test_ollama_tags_ep, "ollama120", False],
+        [Ollama.test_ollama_chat_no_stream, "ollama120", False],
+        [Ollama.test_ollama_chat_stream, "ollama120", False],
+        [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
+        [VLLM.test_chat_vllm_stream, "vllm_model", False],
+        [Builtin.test_builtin_ping, "vllm_model", False],
+        [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
     ]
-    for fn, model_name in test_functions:
+    for fn, model_name, debug in test_functions:
         try:
             print(f"Running {fn.__name__} ...")
-            fn(models[model_name])
+            fn(models[model_name], debug)
         except Exception as e:
             print(f"❌ {fn.__name__} failed: {e}")
         else:
