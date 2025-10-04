@@ -13,8 +13,6 @@ The classes expose a small public API:
 * ``run_ep`` – the entry point called by the Flask registrar.
 * ``parametrize`` – conversion of raw request parameters into the
   payload that will be sent to the downstream model or external API.
-* ``endpoint_api_types`` – list of API‑type identifiers that this
-  endpoint supports (e.g. ``["openai", "ollama"]``).
 
 When ``SERVICE_AS_PROXY`` is ``True`` the endpoint also contains helper
 methods for performing outbound HTTP requests to an external service.
@@ -52,10 +50,8 @@ class EndpointI(abc.ABC):
     """
     Abstract representation of a single REST endpoint.
 
-    Concrete subclasses must implement :meth:`parametrize` (the core
-    business logic) and :meth:`endpoint_api_types` (the list of API types
-    the endpoint can handle).  The class supplies a rich set of utilities
-    for validation, logging, and standardised response formatting.
+    The class supplies a rich set of utilities for validation, logging,
+    and standardized response formatting.
 
     Attributes
     ----------
@@ -77,7 +73,7 @@ class EndpointI(abc.ABC):
         When ``True`` the endpoint URL is registered without the global
         API prefix (``/api/v1`` by default).
     _ep_types_str: List[str]
-        List of API types returned by :meth:`endpoint_api_types`.
+        List of API types.
     _api_type_dispatcher: ApiTypesDispatcher
         Helper used to map a model's API type to concrete endpoint URLs.
     _api_model: ApiModel | None
@@ -102,12 +98,14 @@ class EndpointI(abc.ABC):
     def __init__(
         self,
         ep_name: str,
+        api_types: List[str],
         method: str = "POST",
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
         logger_file_name: Optional[str] = None,
         model_handler: Optional[ModelHandler] = None,
         prompt_handler: Optional[PromptHandler] = None,
         dont_add_api_prefix: bool = False,
+        redirect_ep: bool = False,
     ):
         """
         Initialise an endpoint definition.
@@ -135,6 +133,8 @@ class EndpointI(abc.ABC):
         dont_add_api_prefix :
             If ``True`` the endpoint URL will be registered without the
             global ``DEFAULT_API_PREFIX`` prefix.
+        redirect_ep:
+            If ``True`` the endpoint URL will be registered to api host.
 
         Raises
         ------
@@ -147,19 +147,21 @@ class EndpointI(abc.ABC):
         """
         self._ep_name = ep_name
         self._ep_method = method
+        self._model_handler = model_handler
+
+        self._prompt_name = None
+        self._redirect_ep = redirect_ep
+        self._prompt_handler = prompt_handler
+        self._dont_add_api_prefix = dont_add_api_prefix
+
         self.logger = prepare_logger(
             logger_name=__name__,
             logger_file_name=logger_file_name or "llm-proxy-rest.log",
             log_level=logger_level,
             use_default_config=True,
         )
-        self._model_handler = model_handler
 
-        self._prompt_name = None
-        self._prompt_handler = prompt_handler
-        self._dont_add_api_prefix = dont_add_api_prefix
-
-        self._ep_types_str = self.endpoint_api_types()
+        self._ep_types_str = api_types
         if self._ep_types_str is None or not len(self._ep_types_str):
             raise RuntimeError("Endpoint api type is required!")
 
@@ -287,21 +289,6 @@ class EndpointI(abc.ABC):
             transformed into an appropriate HTTP error response.
         """
         raise NotImplementedError()
-
-    @abc.abstractmethod
-    def endpoint_api_types(self) -> List[str]:
-        """
-        Return the list of external API identifiers this endpoint can proxy.
-
-        The list is used by :class:`ApiTypesDispatcher` to locate concrete
-        endpoint URLs and HTTP methods for the selected model type.
-
-        Returns
-        -------
-        list[str]
-            Collection of API type strings (e.g. ``["openai", "ollama"]``).
-        """
-        pass
 
     def prepare_ep(self):
         """
@@ -541,10 +528,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
       prefix), and
     * issuing the appropriate ``GET`` or ``POST`` request via the
       :mod:`requests` library.
-
-    Sub‑classes typically only need to implement :meth:`parametrize` and
-    :meth:`endpoint_api_types`; the rest of the request lifecycle is
-    handled here.
     """
 
     # ------------------------------------------------------------------
@@ -553,12 +536,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     def __init__(
         self,
         ep_name: str,
+        api_types: List[str],
         method: str = "POST",
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
         logger_file_name: Optional[str] = None,
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
         dont_add_api_prefix: bool = False,
+        redirect_ep: bool = False,
         timeout: int = REST_API_TIMEOUT,
     ):
         """
@@ -585,18 +570,22 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         dont_add_api_prefix :
             When ``True`` the global API prefix is omitted for this
             endpoint.
+        redirect_ep:
+            When ``True`` the endpoint is redirected to an external LLM
         timeout :
             Number of seconds after which outbound HTTP calls will be
             aborted.
         """
         super().__init__(
             ep_name=ep_name,
+            api_types=api_types,
             method=method,
             logger_level=logger_level,
             logger_file_name=logger_file_name,
             model_handler=model_handler,
             prompt_handler=prompt_handler,
             dont_add_api_prefix=dont_add_api_prefix,
+            redirect_ep=redirect_ep,
         )
 
         # End‑point specific URLs for chat and completions – populated later.
@@ -687,15 +676,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 self.logger.debug("=" * 100)
                 return response
 
-            raise Exception("Only simple proxy is available!")
+            self._resolve_prompt_name(params=params)
+            if self._prompt_name is not None:
+                self.logger.debug(f" -> prompt_name: {self._prompt_name}")
 
-            # self._resolve_prompt_name(params=params)
-            # if self._prompt_name is not None:
-            #     self.logger.debug(f" -> prompt_name: {self._prompt_name}")
-            # #
-            # # if self._redirect_ep:
-            # #     return self._call_http_request(ep_url=self._ep_name, params=params)
-
+            raise Exception("Only simple proxy or redirect is available!")
             # if self._api_model and self._prompt_name:
             #     self.__dispatch_external_api()
             #

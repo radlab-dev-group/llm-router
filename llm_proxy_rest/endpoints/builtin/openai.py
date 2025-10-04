@@ -38,6 +38,7 @@ class OpenAIChat(PassthroughI):
         ep_name="chat",
         method="POST",
         dont_add_api_prefix: bool = False,
+        api_types: Optional[List[str]] = None,
     ):
         """
         Initialize the OpenAI chat endpoint.
@@ -61,12 +62,14 @@ class OpenAIChat(PassthroughI):
         """
         super().__init__(
             ep_name=ep_name,
+            api_types=api_types or ["openai", "ollama"],
             method=method,
             logger_level=logger_level,
             logger_file_name=logger_file_name,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
+            redirect_ep=False,
         )
 
     def endpoint_api_types(self) -> List[str]:
@@ -108,6 +111,7 @@ class OpenAICompletion(OpenAIChat):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
+            api_types=["openai", "lmstudio"],
         )
 
 
@@ -127,6 +131,7 @@ class OpenAIModels(OpenAIChat):
         prompt_handler: Optional[PromptHandler] = None,
         ep_name: str = "models",
         dont_add_api_prefix=True,
+        api_types: Optional[List[str]] = None,
     ):
         """
         Initialise the models‑listing endpoint.
@@ -154,18 +159,8 @@ class OpenAIModels(OpenAIChat):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
+            api_types=api_types or ["openai", "lmstudio"],
         )
-
-    def endpoint_api_types(self) -> List[str]:
-        """
-        Declare the API families for the model‑listing endpoint.
-
-        Returns
-        -------
-        List[str]
-            Supports ``"openai"`` and ``"lmstudio"`` back‑ends.
-        """
-        return ["openai", "lmstudio"]
 
     @EP.response_time
     @EP.require_params

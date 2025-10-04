@@ -46,6 +46,7 @@ class LmStudioModels(OpenAIModels):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
+            api_types=["lmstudio"],
         )
 
     def endpoint_api_types(self) -> List[str]:
