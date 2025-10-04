@@ -10,7 +10,7 @@ while retaining the basic request handling infrastructure.
 """
 
 from abc import ABC
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -39,13 +39,15 @@ class PassthroughI(BaseEndpointInterface, ABC):
 
     def __init__(
         self,
-        logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = REST_API_LOG_LEVEL,
-        model_handler: Optional[ModelHandler] = None,
-        prompt_handler: Optional[PromptHandler] = None,
-        ep_name: str = "<UNKNOWN>",
-        method: str = "POST",
-        dont_add_api_prefix: bool = False,
+        logger_file_name: Optional[str],
+        logger_level: Optional[str],
+        model_handler: Optional[ModelHandler],
+        prompt_handler: Optional[PromptHandler],
+        ep_name: str,
+        method: str,
+        api_types: List[str],
+        dont_add_api_prefix: bool,
+        redirect_ep: bool,
     ):
         """
         Initialize the pass‑through endpoint.
@@ -59,15 +61,18 @@ class PassthroughI(BaseEndpointInterface, ABC):
             method: HTTP method for the endpoint, default ``"POST"``.
             dont_add_api_prefix: If ``True``, the endpoint will not be
                 prefixed with the API base path.
+            redirect_ep: If ``True``, the endpoint will redirected to api host.
         """
         super().__init__(
             ep_name=ep_name,
+            api_types=api_types,
             method=method,
             logger_level=logger_level,
             logger_file_name=logger_file_name,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
+            redirect_ep=redirect_ep,
         )
 
     @EP.response_time
