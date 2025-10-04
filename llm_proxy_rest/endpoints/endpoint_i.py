@@ -149,6 +149,7 @@ class EndpointI(abc.ABC):
         self._ep_method = method
         self._model_handler = model_handler
 
+        self._prompt_str = None
         self._prompt_name = None
         self.direct_return = direct_return
         self._prompt_handler = prompt_handler
@@ -368,34 +369,34 @@ class EndpointI(abc.ABC):
                 f"for endpoint {self._ep_name}"
             )
 
-    def _filter_allowed_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Strip out any keys that are not declared as required or optional.
-
-        Unknown keys generate a warning via the instance logger but are
-        otherwise ignored.
-
-        Parameters
-        ----------
-        params :
-            Raw request payload.
-
-        Returns
-        -------
-        dict
-            New dictionary containing only the parameters that appear in
-            :attr:`REQUIRED_ARGS` or :attr:`OPTIONAL_ARGS`.
-        """
-        allowed = set(self.REQUIRED_ARGS or []) | set(self.OPTIONAL_ARGS or [])
-        unknown = [k for k in params if k not in allowed]
-        if unknown:
-            self.logger.warning(
-                f"Ignoring unknown argument(s) {unknown} for endpoint {self._ep_name}",
-            )
-            filtered_params = {k: v for k, v in params.items() if k in allowed}
-        else:
-            filtered_params = params
-        return filtered_params
+    # def _filter_allowed_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    #     """
+    #     Strip out any keys that are not declared as required or optional.
+    #
+    #     Unknown keys generate a warning via the instance logger but are
+    #     otherwise ignored.
+    #
+    #     Parameters
+    #     ----------
+    #     params :
+    #         Raw request payload.
+    #
+    #     Returns
+    #     -------
+    #     dict
+    #         New dictionary containing only the parameters that appear in
+    #         :attr:`REQUIRED_ARGS` or :attr:`OPTIONAL_ARGS`.
+    #     """
+    #     allowed = set(self.REQUIRED_ARGS or []) | set(self.OPTIONAL_ARGS or [])
+    #     unknown = [k for k in params if k not in allowed]
+    #     if unknown:
+    #         self.logger.warning(
+    #             f"Ignoring unknown argument(s) {unknown} for endpoint {self._ep_name}",
+    #         )
+    #         filtered_params = {k: v for k, v in params.items() if k in allowed}
+    #     else:
+    #         filtered_params = params
+    #     return filtered_params
 
     def _check_method_is_allowed(self, method: str) -> None:
         """
@@ -460,26 +461,13 @@ class EndpointI(abc.ABC):
         self._api_model = api_model
 
     def _resolve_prompt_name(self, params: Dict[str, Any]) -> None:
-        """
-        Determine which system‑prompt identifier should be used for the request.
+        if self.SYSTEM_PROMPT_NAME is not None:
+            lang_str = self.__get_language(params=params)
+            self._prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
 
-        If :attr:`SYSTEM_PROMPT_NAME` is ``None`` the method falls back to the
-        ``SYSTEM_PROMPT`` key supplied directly in *params*.  Otherwise the
-        language code (``"en"``, ``"pl"``, …) is extracted and the corresponding
-        entry from :attr:`SYSTEM_PROMPT_NAME` is stored in ``self._prompt_name``.
-
-        Parameters
-        ----------
-        params :
-            Request payload containing possible ``system_prompt`` and
-            language information.
-        """
-        if self.SYSTEM_PROMPT_NAME is None:
-            self._prompt_name = params.get(SYSTEM_PROMPT)
-            return
-
-        lang_str = self.__get_language(params=params)
-        self._prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
+        self._prompt_str = None
+        if self._prompt_name:
+            self._prompt_str = self._prompt_handler.get_prompt(self._prompt_name)
 
     @staticmethod
     def __get_language(params: Dict[str, Any]) -> str:
@@ -576,14 +564,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             direct_return=direct_return,
         )
 
-        # End‑point specific URLs for chat and completions – populated later.
-        # Chat
-        self._d_chat_ep = None
-        self._d_chat_method = None
-        # Completions
-        self._d_comp_ep = None
-        self._d_comp_method = None
-
         self._timeout = timeout
 
     # ------------------------------------------------------------------
@@ -638,6 +618,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # and response from external api
             simple_proxy = False
             self._api_model = None
+            self._prompt_name = None
+            self._prompt_str = None
 
             # When the endpoint does not declare required arguments, we treat
             # it as a proxy that forwards the request to the model's own
@@ -673,21 +655,21 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             self._resolve_prompt_name(params=params)
             if self._prompt_name is not None:
                 self.logger.debug(f" -> prompt_name: {self._prompt_name}")
+                self.logger.debug(self._prompt_str)
 
-            raise Exception("Only simple proxy or redirect is available!")
-            # if self._api_model and self._prompt_name:
-            #     self.__dispatch_external_api()
-            #
-            #     self.logger.debug(
-            #         f" -> dispatched [{self._d_chat_method}] {self._d_chat_ep}"
-            #     )
-            #     self.logger.debug(
-            #         f" -> dispatched [{self._d_comp_method}] {self._d_comp_ep}"
-            #     )
-            #
-            #     return self._call_http_request(ep_url=self._d_chat_ep, params=params)
+            self.__dispatch_external_api_model(params)
+            ep_url = self._api_type_dispatcher.chat_ep(
+                api_type=self._api_model.api_type
+            )
 
-            return params
+            # if bool((params or {}).get("stream", False)):
+            #     return self._call_http_request_stream(
+            #         ep_url=ep_url, params=params, leave_only_allowed=False
+            #     )
+
+            return self._call_http_request(
+                ep_url=ep_url, params=params, leave_only_allowed=False
+            )
         except Exception as e:
             self.logger.exception(e)
             return self.return_response_not_ok(str(e))
@@ -724,11 +706,17 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Parsed JSON response from the downstream service.
         """
         ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-
-        if leave_only_allowed:
-            params = self._filter_allowed_params(params=params)
+        #
+        # if leave_only_allowed:
+        #     params = self._filter_allowed_params(params=params)
 
         params["model"] = self._api_model.name
+
+        if self._prompt_str:
+            s_msg = {"role": "system", "content": self._prompt_str}
+            params["messages"] = [s_msg] + params.get("messages", [])
+
+        self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
         if self._ep_method == "POST":
             return self._call_post_with_payload(ep_url=ep_url, params=params)
@@ -758,9 +746,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Individual NDJSON lines terminated by a newline.
         """
         ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-
-        if leave_only_allowed:
-            params = self._filter_allowed_params(params=params)
+        #
+        # if leave_only_allowed:
+        #     params = self._filter_allowed_params(params=params)
 
         params["model"] = self._api_model.name
         params["stream"] = True
@@ -895,33 +883,21 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             self.logger.exception(e)
             return {"raw_response": response.text}
 
-    #
-    # def __dispatch_external_api(self) -> None:
-    #     """
-    #     Resolve concrete chat/completions endpoint URLs and HTTP methods.
-    #
-    #     The dispatcher examines the model's ``_api_types_str`` attribute
-    #     and fills the internal ``_d_*`` attributes with the appropriate
-    #     endpoint URLs and HTTP methods.  Any failure is logged and re‑raised.
-    #
-    #     Raises
-    #     ------
-    #     Exception
-    #         Propagates any error raised by the dispatcher.
-    #     """
-    #     try:
-    #         self._d_chat_ep = self._api_type_dispatcher.chat_ep(
-    #             api_type=self._api_model.endpoint_api_types
-    #         )
-    #         self._d_chat_method = self._api_type_dispatcher.chat_method(
-    #             api_type=self._api_model.endpoint_api_types
-    #         )
-    #         self._d_comp_ep = self._api_type_dispatcher.completions_ep(
-    #             api_type=self._api_model.endpoint_api_types
-    #         )
-    #         self._d_comp_method = self._api_type_dispatcher.completions_method(
-    #             api_type=self._api_model.endpoint_api_types
-    #         )
-    #     except (ValueError, Exception) as e:
-    #         self.logger.exception(e)
-    #         raise
+    def __dispatch_external_api_model(self, params: Dict[str, Any]) -> None:
+        model_name = None
+        for _m_name in MODEL_NAME_PARAMS:
+            model_name = params.get(_m_name)
+            if model_name is not None and len(model_name.strip()):
+                break
+            model_name = None
+
+        if model_name is None:
+            raise Exception(
+                f"Model name must be provided by one of "
+                f"the param: [{', '.join(MODEL_NAME_PARAMS)}]"
+            )
+        try:
+            self._api_model = self._model_handler.get_model(model_name)
+        except (ValueError, Exception) as e:
+            self.logger.exception(e)
+            raise
