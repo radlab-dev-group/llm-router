@@ -73,6 +73,7 @@ class Ping(EndpointWithHttpRequestI):
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
             api_types=["builtin"],
+            direct_return=True,
         )
 
     @EP.response_time
@@ -93,5 +94,4 @@ class Ping(EndpointWithHttpRequestI):
             A response dictionary with the key ``"pong"`` produced via
             :meth:`EndpointWithHttpRequestI.return_response_ok`.
         """
-        self.direct_return = True
         return self.return_response_ok("pong")
