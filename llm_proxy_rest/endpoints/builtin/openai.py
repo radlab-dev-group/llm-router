@@ -62,7 +62,7 @@ class OpenAIChatHandler(PassthroughI):
         """
         super().__init__(
             ep_name=ep_name,
-            api_types=api_types or ["openai", "ollama"],
+            api_types=["openai", "lmstudio", "ollama"],
             method=method,
             logger_level=logger_level,
             logger_file_name=logger_file_name,
@@ -100,7 +100,7 @@ class OpenAICompletionHandler(OpenAIChatHandler):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
-            api_types=["openai", "lmstudio"],
+            api_types=["openai", "lmstudio", "ollama"],
         )
 
 
