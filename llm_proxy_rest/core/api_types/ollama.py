@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 #
 # from typing import Dict, List
 # from pydantic import BaseModel
@@ -12,6 +13,7 @@ class OllamaType(ApiTypesI):
 
     Endpoints are based on the Ollama HTTP API specification.
     """
+
     #
     # def models_list_ep(self) -> str:
     #     return "/api/tags"
@@ -30,6 +32,7 @@ class OllamaType(ApiTypesI):
 
     def completions_method(self) -> str:
         return "POST"
+
     #
     # def params(self) -> List[str]:
     #     return [

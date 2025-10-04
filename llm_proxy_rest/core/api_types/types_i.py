@@ -96,6 +96,7 @@ class ApiTypesI(ABC):
             "compatibility_type": "mlx",
             "quantization": "4bit",
         }
+
     #
     # @abstractmethod
     # def models_list_ep(self) -> str:
@@ -168,6 +169,7 @@ class ApiTypesI(ABC):
             HTTP method name (e.g., "POST").
         """
         raise NotImplementedError
+
     #
     # @abstractmethod
     # def params(self) -> List[str]:
