@@ -1,7 +1,7 @@
 {
   "google_models": {
     "google/gemma-3-12b-it": {
-      "api_host": "http://192.168.100.79:7000/v1",
+      "api_host": "http://192.168.100.71:7000/",
       "api_token": "",
       "api_type": "vllm",
       "input_size": 4096,
@@ -24,6 +24,15 @@
       "model_path": ""
     },
     "gpt-oss:120b": {
+      "api_host": "http://192.168.100.66:11434",
+      "api_token": "",
+      "api_type": "ollama",
+      "input_size": "256000",
+      "model_path": ""
+    }
+  },
+  "qwen_models": {
+    "qwen3:235b": {
       "api_host": "http://192.168.100.66:11434",
       "api_token": "",
       "api_type": "ollama",

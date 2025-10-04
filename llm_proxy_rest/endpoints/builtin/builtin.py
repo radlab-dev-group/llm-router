@@ -72,18 +72,8 @@ class Ping(BaseEndpointInterface):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
+            api_types=["builtin"],
         )
-
-    def endpoint_api_types(self) -> List[str]:
-        """
-        Declare the API family for this endpoint.
-
-        Returns
-        -------
-        List[str]
-            A list containing the single string ``"builtin"``.
-        """
-        return ["builtin"]
 
     @EP.response_time
     def parametrize(
