@@ -11,7 +11,7 @@ The classes expose a small public API:
 * ``name`` – the URL path of the endpoint.
 * ``method`` – the HTTP verb (GET or POST) the endpoint expects.
 * ``run_ep`` – the entry point called by the Flask registrar.
-* ``parametrize`` – conversion of raw request parameters into the
+* ``prepare_payload`` – conversion of raw request parameters into the
   payload that will be sent to the downstream model or external API.
 
 When ``SERVICE_AS_PROXY`` is ``True`` the endpoint also contains helper
@@ -170,7 +170,6 @@ class EndpointI(abc.ABC):
 
         self._api_type_dispatcher = ApiTypesDispatcher()
         self._check_method_is_allowed(method=method)
-        self.prepare_ep()
 
         self._api_model: Optional[ApiModel] = None
 
@@ -248,7 +247,7 @@ class EndpointI(abc.ABC):
             provide an implementation.
         """
         # try:
-        #     params = self.parametrize(params=params)
+        #     params = self.prepare_payload(params=params)
         #     self._set_model(params=params)
         #     self._resolve_prompt_name(params=params)
         # except Exception:
@@ -258,7 +257,7 @@ class EndpointI(abc.ABC):
         )
 
     @abc.abstractmethod
-    def parametrize(
+    def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
@@ -289,17 +288,6 @@ class EndpointI(abc.ABC):
             transformed into an appropriate HTTP error response.
         """
         raise NotImplementedError()
-
-    def prepare_ep(self):
-        """
-        Hook called during construction to perform endpoint‑specific setup.
-
-        The default implementation does nothing; concrete subclasses may
-        override the method to preload resources, validate configuration
-        files, or perform any other one‑time initialisation required
-        before the first request is handled.
-        """
-        ...
 
     # ------------------------------------------------------------------
     # Helper utilities for standardised JSON responses
@@ -609,7 +597,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Execute the endpoint logic for a request.
 
         The method first normalises the incoming parameters via
-        :meth:`parametrize`.  When ``self.direct_return`` is set the
+        :meth:`prepare_payload`.  When ``self.direct_return`` is set the
         normalised payload is returned verbatim.  Otherwise the method
         attempts to act as a *simple proxy*: if the endpoint's API type
         matches the model's API type, the request is forwarded to the
@@ -635,7 +623,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
         try:
-            params = self.parametrize(params)
+            params = self.prepare_payload(params)
             if self.direct_return:
                 return params
 
@@ -906,7 +894,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     #     """
     #     Resolve concrete chat/completions endpoint URLs and HTTP methods.
     #
-    #     The dispatcher examines the model's ``endpoint_api_types`` attribute
+    #     The dispatcher examines the model's ``_api_types_str`` attribute
     #     and fills the internal ``_d_*`` attributes with the appropriate
     #     endpoint URLs and HTTP methods.  Any failure is logged and re‑raised.
     #

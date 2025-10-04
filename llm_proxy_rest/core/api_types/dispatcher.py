@@ -30,12 +30,10 @@ from llm_proxy_rest.core.api_types.vllm import VllmType
 from llm_proxy_rest.core.api_types.ollama import OllamaType
 from llm_proxy_rest.core.api_types.openai import OpenAIApiType
 
-# ---------------------------------------------------------------------------
-# Public constant – the full list of API‑type identifiers recognised by the
-# library.  It is used by the endpoint base class to validate the
-# ``endpoint_api_types`` declared by a concrete endpoint.
-# ---------------------------------------------------------------------------
-API_TYPES = ["builtin", "openai", "ollama", "lmstudio", "vllm", "anthropic"]
+# ----------------------------------------------------------------------------------
+# Public constant – the full list of API‑type identifiers recognised by the library.
+# ----------------------------------------------------------------------------------
+API_TYPES = ["builtin", "openai", "ollama", "lmstudio", "vllm"]
 
 
 class ApiTypesDispatcher:
