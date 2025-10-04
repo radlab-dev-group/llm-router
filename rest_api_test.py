@@ -42,7 +42,7 @@ ollama_payload = {
 
 conv_with_model_payload = {
     "model_name": "",
-    "user_last_statement": "Jak się masz?",
+    "user_last_statement": "Jaka jest kategoria tekstu: Ala ma kota i psa.",
 }
 
 # ----------------------------------------------------------------------
@@ -194,6 +194,18 @@ class Builtin:
             print("Builtin conversation_with_model:", resp.json())
         Builtin.parse_response(resp)
 
+    @staticmethod
+    def test_builtin_ext_con_with_model_no_stream(
+        model_name: str, debug: bool = False
+    ) -> None:
+        payload = conv_with_model_payload.copy()
+        payload["model_name"] = model_name
+        payload["system_prompt"] = "Odpowiadaj jak mistrz Yoda."
+        resp = _post("/api/extended_conversation_with_model", payload)
+        if debug:
+            print("Builtin extended_conversation_with_model:", resp.json())
+        Builtin.parse_response(resp)
+
 
 def run_all_tests() -> None:
     """Execute all endpoint tests sequentially."""
@@ -213,6 +225,7 @@ def run_all_tests() -> None:
         [VLLM.test_chat_vllm_stream, "vllm_model", False],
         [Builtin.test_builtin_ping, "vllm_model", False],
         [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
+        [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
     ]
     for fn, model_name, debug in test_functions:
         try:
