@@ -31,9 +31,12 @@ ollama_payload = {
     "messages": [
         {
             "role": "system",
-            "content": "Jesteś pomocnym agentem na czacie, odpowiadasz jak Yoda. Odpowiadaj długo.",
+            "content": "Jesteś pomocnym agentem na czacie.",
         },
-        {"role": "user", "content": "Jak się masz?"},
+        {
+            "role": "user",
+            "content": "Jak się masz?",
+        },
     ],
 }
 
@@ -106,54 +109,64 @@ def test_chat_vllm_no_stream(model_name: str) -> None:
 
 
 def test_chat_vllm_stream(model_name: str) -> None:
-    """Chat completion endpoint ``/api/chat`` (POST)."""
+    """Chat completion endpoint with streaming from an external VLLM server."""
     payload = ollama_payload.copy()
     payload["stream"] = True
     payload["model"] = model_name
     url = f"{BASE_URL.rstrip('/')}/v1/chat/completions"
+
     with requests.post(url, json=payload, timeout=30, stream=True) as resp:
         resp.raise_for_status()
         print("Streaming chat response:")
-        for line in resp.iter_lines(decode_unicode=True):
-            if line:
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError:
-                    cleaned = line.lstrip("data: ").strip()
-                    try:
-                        data = json.loads(cleaned)
-                    except json.JSONDecodeError:
-                        data = line  # Fallback to raw line
+        for line in resp.iter_lines():
+            if not line:
+                continue
 
-                if "message" in data:
-                    content_str = data["message"]["content"]
-                    print(content_str, end="", flush=True)
-                else:
-                    print(data)
-    print("")
+            if isinstance(line, bytes):
+                line = line.decode("utf-8", errors="replace")
 
-    print("Api chat:", resp.json())
+            cleaned = line.lstrip("data: ").strip()
+            try:
+                data = json.loads(cleaned)
+            except json.JSONDecodeError:
+                if "[DONE]" in line.strip().upper():
+                    continue
+                print(f"Unparsable line: {line}")
+                continue
+
+            if "choices" in data and data["choices"]:
+                delta = data["choices"][0].get("delta", {})
+                content = delta.get("content")
+                if content:
+                    print(content, end="", flush=True)
+                if delta.get("finish_reason"):
+                    break
+            else:
+                print(data)
+    print("\n")
 
 
 def run_all_tests() -> None:
     """Execute all endpoint tests sequentially."""
-    ollama_model_name = "gpt-oss:120b"
-    external_model_name = "google/gemini-2.0-flash"
-    vllm_model_name = "google/gemma-3-12b-it"
+    models = {
+        "ollama120": "gpt-oss:120b",
+        "external_model_name": "google/gemini-2.0-flash",
+        "vllm_model": "google/gemma-3-12b-it",
+    }
 
     test_functions = [
         # test_lmstudio_models <- not fully integrated,
-        # [test_ollama_home_ep, ollama_model_name],
-        # [test_ollama_tags_ep, ollama_model_name],
-        # [test_ollama_chat_no_stream, ollama_model_name],
-        [test_chat_ollama_stream, ollama_model_name],
-        [test_chat_vllm_no_stream, vllm_model_name],
-        # [test_chat_vllm_stream, vllm_model_name],
+        [test_ollama_home_ep, "ollama120"],
+        [test_ollama_tags_ep, "ollama120"],
+        [test_ollama_chat_no_stream, "ollama120"],
+        [test_chat_ollama_stream, "ollama120"],
+        [test_chat_vllm_no_stream, "vllm_model"],
+        [test_chat_vllm_stream, "vllm_model"],
     ]
     for fn, model_name in test_functions:
         try:
             print(f"Running {fn.__name__} ...")
-            fn(model_name)
+            fn(models[model_name])
         except Exception as e:
             print(f"❌ {fn.__name__} failed: {e}")
         else:
