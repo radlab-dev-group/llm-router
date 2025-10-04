@@ -17,7 +17,7 @@ from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
 from llm_proxy_rest.endpoints.passthrough import PassthroughI
 
 
-class OpenAIChat(PassthroughI):
+class OpenAIChatHandler(PassthroughI):
     """
     Base endpoint for forwarding chat‑style requests to an OpenAI‑compatible API.
 
@@ -73,7 +73,7 @@ class OpenAIChat(PassthroughI):
         )
 
 
-class OpenAICompletion(OpenAIChat):
+class OpenAICompletionHandler(OpenAIChatHandler):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/chat/completions`` route of an OpenAI‑compatible service.
@@ -104,7 +104,7 @@ class OpenAICompletion(OpenAIChat):
         )
 
 
-class OpenAIModels(OpenAIChat):
+class OpenAIModelsHandler(OpenAIChatHandler):
     """
     Endpoint that lists available models from an OpenAI‑compatible service.
 

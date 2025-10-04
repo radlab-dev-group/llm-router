@@ -20,10 +20,10 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 from llm_proxy_rest.core.decorators import EP
 from llm_proxy_rest.base.model_handler import ModelHandler
 from llm_proxy_rest.base.constants import REST_API_LOG_LEVEL
-from llm_proxy_rest.endpoints.endpoint_i import BaseEndpointInterface
+from llm_proxy_rest.endpoints.endpoint_i import EndpointWithHttpRequestI
 
 
-class OllamaHome(BaseEndpointInterface):
+class OllamaHomeHandler(EndpointWithHttpRequestI):
     """
     Endpoint that returns a list of available model tags from the Ollama
     service.
@@ -96,7 +96,7 @@ class OllamaHome(BaseEndpointInterface):
         return "Ollama is running"
 
 
-class OllamaTags(BaseEndpointInterface):
+class OllamaTagsHandler(EndpointWithHttpRequestI):
     """
     Health‑check endpoint that returns a plain text confirmation that the
     Ollama service is running.
