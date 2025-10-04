@@ -1,7 +1,7 @@
 {
   "google_models": {
     "google/gemma-3-12b-it": {
-      "api_host": "http://192.168.100.79:7000/v1",
+      "api_host": "http://192.168.100.71:7000/",
       "api_token": "",
       "api_type": "vllm",
       "input_size": 4096,
