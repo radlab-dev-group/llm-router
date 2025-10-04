@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 #
 # from typing import Dict, List, Any
 # from pydantic import BaseModel
@@ -30,6 +31,7 @@ class VllmType(ApiTypesI):
 
     def completions_method(self) -> str:
         return "POST"
+
     #
     # def params(self) -> List[str]:
     #     return [
