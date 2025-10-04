@@ -17,6 +17,9 @@ from llm_proxy_rest.core.data_models.builtin_chat import (
     GENAI_CONV_REQ_ARGS,
     GENAI_CONV_OPT_ARGS,
     GenerativeConversationModel,
+    EXT_GENAI_CONV_REQ_ARGS,
+    EXT_GENAI_CONV_OPT_ARGS,
+    ExtendedGenerativeConversationModel,
 )
 from llm_proxy_rest.core.decorators import EP
 from llm_proxy_rest.base.model_handler import ModelHandler
@@ -57,26 +60,59 @@ class ConversationWithModel(EndpointWithHttpRequestI):
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
-        self.direct_return = True
-        self.logger.info("??????????????????????????????????????????")
-        self.logger.info("??????????????????????????????????????????")
-        self.logger.info("??????????????????????????????????????????")
-        self.logger.info("??????????????????????????????????????????")
-        self.logger.info("??????????????????????????????????????????")
-        self.logger.error("??????????????????????????????????????????")
-        self.logger.error("??????????????????????????????????????????")
-        self.logger.error("??????????????????????????????????????????")
-        # try:
-        #
-        #     self.logger.error(params)
-        #     self.logger.error(params)
-        #     options = GenerativeConversationModel(**params)
-        #     print(options)
-        #     print(options)
-        #     print(options)
-        # except ValidationError as exc:
-        #     self.logger.error(exc)
-        #     return self.return_response_not_ok(str(exc))
+        options = GenerativeConversationModel(**params)
+        _payload = options.model_dump()
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {
+                "role": "user",
+                "content": _payload["user_last_statement"],
+            },
+        ] + _payload["historical_messages"]
+        return _payload
 
-        # return options.model_dump()
-        return params
+
+class ExtendedConversationWithModel(EndpointWithHttpRequestI):
+    REQUIRED_ARGS = EXT_GENAI_CONV_REQ_ARGS
+    OPTIONAL_ARGS = EXT_GENAI_CONV_OPT_ARGS
+    SYSTEM_PROMPT_NAME = None
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        model_handler: Optional[ModelHandler] = None,
+        prompt_handler: Optional[PromptHandler] = None,
+        ep_name: str = "extended_conversation_with_model",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            api_types=["builtin"],
+            method="POST",
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            direct_return=False,
+        )
+
+    @EP.response_time
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        options = ExtendedGenerativeConversationModel(**params)
+        _payload = options.model_dump()
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {
+                "role": "system",
+                "content": _payload["system_prompt"],
+            },
+            {
+                "role": "user",
+                "content": _payload["user_last_statement"],
+            },
+        ] + _payload["historical_messages"]
+        return _payload
