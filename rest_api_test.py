@@ -359,22 +359,22 @@ def run_all_tests() -> None:
     }
 
     test_functions = [
-        # # test_lmstudio_models <- not fully integrated,
-        # [Ollama.test_ollama_home_ep, "ollama120", False],
-        # [Ollama.test_ollama_tags_ep, "ollama120", False],
-        # [Ollama.test_ollama_chat_no_stream, "ollama120", False],
-        # [Ollama.test_ollama_chat_stream, "ollama120", False],
-        # [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
-        # [VLLM.test_chat_vllm_stream, "vllm_model", False],
-        # [Builtin.test_builtin_ping, "vllm_model", False],
-        # [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
-        # [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
-        # [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
-        # [Builtin.test_builtin_generate_questions, "vllm_model", False],
-        # [Builtin.test_builtin_translate, "vllm_model", False],
-        # [Builtin.test_builtin_simplification, "vllm_model", False],
-        # [Builtin.test_builtin_create_full_article_from_text, "vllm_model", False],
-        [Builtin.test_builtin_generative_answer, "vllm_model", True],
+        # test_lmstudio_models <- not fully integrated,
+        [Ollama.test_ollama_home_ep, "ollama120", False],
+        [Ollama.test_ollama_tags_ep, "ollama120", False],
+        [Ollama.test_ollama_chat_no_stream, "ollama120", False],
+        [Ollama.test_ollama_chat_stream, "ollama120", False],
+        [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
+        [VLLM.test_chat_vllm_stream, "vllm_model", False],
+        [Builtin.test_builtin_ping, "vllm_model", False],
+        [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
+        [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
+        [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
+        [Builtin.test_builtin_generate_questions, "vllm_model", False],
+        [Builtin.test_builtin_translate, "vllm_model", False],
+        [Builtin.test_builtin_simplification, "vllm_model", False],
+        [Builtin.test_builtin_create_full_article_from_text, "vllm_model", False],
+        [Builtin.test_builtin_generative_answer, "vllm_model", False],
     ]
     for fn, model_name, debug in test_functions:
         try:
