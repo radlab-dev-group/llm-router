@@ -55,7 +55,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
         options = GenerativeConversationModel(**params)
         _payload = options.model_dump()
         _payload["model"] = _payload["model_name"]
-        _payload["messages"] = [
+        _payload["history"] = [
             {
                 "role": "user",
                 "content": _payload["user_last_statement"],
@@ -70,7 +70,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
             if "user" in m:
                 history.append({"role": "user", "content": m["user"]})
             if "assistant" in m:
-                history.append({"role": "assistant", "content": m["user"]})
+                history.append({"role": "assistant", "content": m["assistant"]})
         return history
 
     def __prepare_response_function(self, response):
