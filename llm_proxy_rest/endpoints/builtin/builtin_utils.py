@@ -58,7 +58,6 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
 
         self._prepare_response_function = self.__prepare_response_function
 
-    @EP.response_time
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
@@ -72,6 +71,7 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
         }
 
         _payload["model"] = _payload["model_name"]
+        _payload["stream"] = _payload.get("stream", False)
         _payload["messages"] = [
             {
                 "role": "user",
@@ -190,7 +190,6 @@ class TranslateTexts(EndpointWithHttpRequestI):
 
         self._prepare_response_function = self.__prepare_response_function
 
-    @EP.response_time
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
@@ -198,6 +197,7 @@ class TranslateTexts(EndpointWithHttpRequestI):
 
         options = TranslateTextModel(**params)
         _payload = options.model_dump()
+        _payload["stream"] = _payload.get("stream", False)
         _payload["model"] = _payload["model_name"]
         _payload["messages"] = [
             {
@@ -262,7 +262,6 @@ class SimplifyTexts(EndpointWithHttpRequestI):
 
         self._prepare_response_function = self.__prepare_response_function
 
-    @EP.response_time
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
@@ -271,6 +270,7 @@ class SimplifyTexts(EndpointWithHttpRequestI):
         options = SimplifyTextModel(**params)
         _payload = options.model_dump()
         _payload["model"] = _payload["model_name"]
+        _payload["stream"] = _payload.get("stream", False)
         _payload["messages"] = [
             {
                 "role": "user",
@@ -380,7 +380,6 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
             model_handler=model_handler,
         )
 
-    @EP.response_time
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
@@ -398,6 +397,7 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
             t.strip() for t in _payload["texts"] if len(t.strip())
         )
 
+        _payload["stream"] = _payload.get("stream", False)
         _payload["model"] = _payload["model_name"]
         _payload["messages"] = [
             {
