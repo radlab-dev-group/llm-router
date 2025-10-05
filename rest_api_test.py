@@ -290,6 +290,19 @@ class Builtin:
             print("Builtin translate:", print_json(resp))
         Builtin.parse_response(resp)
 
+    @staticmethod
+    def test_builtin_simplification(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/simplify_text`` (POST)."""
+        payload = generate_questions_payload.copy()
+        payload["language"] = "pl"
+        payload["model_name"] = model_name
+        payload.pop("number_of_questions")
+
+        resp = _post("/api/simplify_text", payload)
+        if debug:
+            print("Builtin translate:", print_json(resp))
+        Builtin.parse_response(resp)
+
 
 def run_all_tests() -> None:
     """Execute all endpoint tests sequentially."""
@@ -314,6 +327,7 @@ def run_all_tests() -> None:
         [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
         [Builtin.test_builtin_generate_questions, "vllm_model", False],
         [Builtin.test_builtin_translate, "vllm_model", False],
+        [Builtin.test_builtin_simplification, "vllm_model", False],
     ]
     for fn, model_name, debug in test_functions:
         try:
