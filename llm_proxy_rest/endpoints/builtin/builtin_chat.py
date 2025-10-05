@@ -1,3 +1,4 @@
+import time
 from typing import Optional, Dict, Any
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -44,6 +45,8 @@ class ConversationWithModel(EndpointWithHttpRequestI):
             direct_return=False,
         )
 
+        self._prepare_response_function = self.__prepare_response_function
+
     @EP.response_time
     @EP.require_params
     def prepare_payload(
@@ -58,10 +61,21 @@ class ConversationWithModel(EndpointWithHttpRequestI):
                 "content": _payload["user_last_statement"],
             },
         ] + _payload["historical_messages"]
+
         return _payload
 
+    def __prepare_response_function(self, response):
+        j_response, choices, assistant_response = self._get_choices_from_response(
+            response=response
+        )
 
-class ExtendedConversationWithModel(EndpointWithHttpRequestI):
+        return {
+            "response": assistant_response,
+            "generation_time": time.time() - self._start_time,
+        }
+
+
+class ExtendedConversationWithModel(ConversationWithModel):
     REQUIRED_ARGS = EXT_GENAI_CONV_REQ_ARGS
     OPTIONAL_ARGS = EXT_GENAI_CONV_OPT_ARGS
     SYSTEM_PROMPT_NAME = None
@@ -76,14 +90,10 @@ class ExtendedConversationWithModel(EndpointWithHttpRequestI):
     ):
         super().__init__(
             ep_name=ep_name,
-            api_types=["builtin"],
-            method="POST",
             logger_level=logger_level,
             logger_file_name=logger_file_name,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
-            dont_add_api_prefix=False,
-            direct_return=False,
         )
 
     @EP.response_time
