@@ -70,8 +70,11 @@ FULL_ARTICLE_OPT = ["article_type"] + GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 class AnswerBasedOnTheContextModel(_GenerativeOptionsModel):
     question_str: str
-    texts: Dict[str, List[str]]
 
+    # Doc name to texts or list of texts
+    texts: Dict[str, List[str]] | List[str]
+
+    doc_name_in_answer: bool = False
     question_prompt: Optional[str] = None
     system_prompt: Optional[str] = None
 
