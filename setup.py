@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="llm-proxy-api",
-    version="0.0.3",
+    version="0.0.4",
     author="RadLab team",
     packages=find_packages(exclude=("tests", "docs")),
     python_requires=">=3.10",
