@@ -42,10 +42,14 @@ TRANSLATE_TEXT_OPT = GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
-#
-# class GenerativeSimplification(_GenerativeOptionsModel):
-#     texts: List[str]
+# Simplify text model
+# -------------------------------------------------------------------
+class SimplifyTextModel(_GenerativeOptionsModel):
+    texts: List[str]
 
+
+SIMPLIFY_TEXT_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+SIMPLIFY_TEXT_OPT = GENAI_OPT_ARGS_BASE
 
 # -------------------------------------------------------------------
 # class CreateArticleFromNewsList(_GenerativeOptionsModel):
