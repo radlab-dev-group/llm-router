@@ -10,7 +10,7 @@ from llm_proxy_rest.core.data_models.builtin_chat import (
 # -------------------------------------------------------------------
 # Generate question from texts
 # -------------------------------------------------------------------
-class GenerateQuestionFromTexts(_GenerativeOptionsModel):
+class GenerateQuestionFromTextsModel(_GenerativeOptionsModel):
     texts: List[str]
     number_of_questions: int = 1
 
@@ -22,7 +22,7 @@ GENERATE_Q_OPT = ["number_of_questions"] + GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 # Generate article from text
 # -------------------------------------------------------------------
-class GenerateArticleFromText(_GenerativeOptionsModel):
+class GenerateArticleFromTextModel(_GenerativeOptionsModel):
     text: str
 
 

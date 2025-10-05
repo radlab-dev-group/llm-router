@@ -5,10 +5,10 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 
 from llm_proxy_rest.core.data_models.builtin_utils import (
-    GenerateQuestionFromTexts,
+    GenerateQuestionFromTextsModel,
     GENERATE_Q_REQ,
     GENERATE_Q_OPT,
-    GenerateArticleFromText,
+    GenerateArticleFromTextModel,
     GENERATE_ART_REQ,
     GENERATE_ART_OPT,
     TRANSLATE_TEXT_REQ,
@@ -58,7 +58,7 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
 
-        options = GenerateQuestionFromTexts(**params)
+        options = GenerateQuestionFromTextsModel(**params)
         _payload = options.model_dump()
 
         self._map_prompt = {
@@ -188,7 +188,7 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
-        options = GenerateArticleFromText(**params)
+        options = GenerateArticleFromTextModel(**params)
         _payload = options.model_dump()
         _payload["stream"] = _payload.get("stream", False)
         _payload["model"] = _payload["model_name"]
