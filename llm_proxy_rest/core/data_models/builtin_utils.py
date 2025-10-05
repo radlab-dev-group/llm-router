@@ -17,12 +17,12 @@ from llm_proxy_rest.core.data_models.builtin_chat import (
 
 
 class GenerateQuestionFromTexts(_GenerativeOptionsModel):
+    texts: List[str]
     number_of_questions: int = 1
-    texts: List[str] = None
 
 
-GENERATE_Q_REQ = ["number_of_questions"] + GENAI_REQ_ARGS_BASE
-GENERATE_Q_OPT = ["texts"] + GENAI_OPT_ARGS_BASE
+GENERATE_Q_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+GENERATE_Q_OPT = ["number_of_questions"] + GENAI_OPT_ARGS_BASE
 
 
 class GenerateArticleFromText(_GenerativeOptionsModel):
