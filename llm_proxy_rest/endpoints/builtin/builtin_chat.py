@@ -47,7 +47,6 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
         self._prepare_response_function = self.__prepare_response_function
 
-    @EP.response_time
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
@@ -64,7 +63,10 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
         _history = self.__prepare_history(payload=_payload)
         if len(_history):
-            _payload["messages"] += _history
+            _payload["messages"] = _history + _payload["messages"]
+
+        if "historical_messages" in _payload:
+            _payload.pop("historical_messages")
 
         return _payload
 
@@ -110,7 +112,6 @@ class ExtendedConversationWithModel(ConversationWithModel):
             model_handler=model_handler,
         )
 
-    @EP.response_time
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
