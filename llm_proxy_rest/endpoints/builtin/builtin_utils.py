@@ -453,16 +453,30 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
             "##QUESTION_STR##": _payload["question_str"],
         }
         self._prompt_str_postfix = _payload.get("question_prompt")
+        self._prompt_str_force = _payload.get("system_prompt")
 
-        context = "\n\n".join(t.strip() for t in _payload["texts"] if len(t.strip()))
+        context = ""
+        if type(_payload["texts"]) is dict:
+            doc_name_in_answer = _payload.get("doc_name_in_answer", False)
+            for doc_name, tests in _payload["texts"].items():
+                for t in tests:
+                    if doc_name_in_answer:
+                        t = f"Document name: {doc_name}\nDocument context: {t}"
+
+                    context += t + "\n\n"
+        elif type(_payload["texts"]) is list:
+            for t in _payload["texts"]:
+                context += t + "\n\n"
+
         _payload["messages"] = [
             {
                 "role": "user",
-                "content": context,
+                "content": context.strip(),
             }
         ]
         _payload.pop("texts")
-        _payload.pop("user_query")
-        _payload.pop("article_type")
+        _payload.pop("question_str")
+        _payload.pop("system_prompt")
+        _payload.pop("question_prompt")
 
         return _payload

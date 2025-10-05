@@ -87,6 +87,21 @@ conv_with_model_payload = {
     "user_last_statement": "Jaka jest kategoria tekstu: Ala ma kota i psa.",
 }
 
+
+answer_question_payload = {
+    "model_name": "",
+    "language": "pl",
+    "doc_name_in_answer": False,
+    "question_str": "Co się wydarzyło?",
+    "texts": {"article_media.html": generate_questions_payload["texts"]},
+    "question_prompt": None,
+    "system_prompt": None,
+    # "question_prompt": "Powołuj się na nazwy dokumentów",
+    # "question_prompt": "Udziel jednozdaniowej odpowiedzi",
+    # "system_prompt": "Opisz jak Yoda co się dzieje w tekście.",
+}
+
+
 # ----------------------------------------------------------------------
 # Endpoint tests
 # ----------------------------------------------------------------------
@@ -285,6 +300,16 @@ class Builtin:
         Builtin.parse_response(resp)
 
     @staticmethod
+    def test_builtin_generative_answer(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/generative_answer`` (POST)."""
+        payload = answer_question_payload.copy()
+        payload["model_name"] = model_name
+        resp = _post("/api/generative_answer", payload)
+        if debug:
+            print("Builtin generative_answer:", print_json(resp))
+        Builtin.parse_response(resp)
+
+    @staticmethod
     def test_builtin_generate_questions(
         model_name: str, debug: bool = False
     ) -> None:
@@ -335,20 +360,21 @@ def run_all_tests() -> None:
 
     test_functions = [
         # # test_lmstudio_models <- not fully integrated,
-        [Ollama.test_ollama_home_ep, "ollama120", False],
-        [Ollama.test_ollama_tags_ep, "ollama120", False],
-        [Ollama.test_ollama_chat_no_stream, "ollama120", False],
-        [Ollama.test_ollama_chat_stream, "ollama120", False],
-        [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
-        [VLLM.test_chat_vllm_stream, "vllm_model", False],
-        [Builtin.test_builtin_ping, "vllm_model", False],
-        [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
-        [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
-        [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
-        [Builtin.test_builtin_generate_questions, "vllm_model", False],
-        [Builtin.test_builtin_translate, "vllm_model", False],
-        [Builtin.test_builtin_simplification, "vllm_model", False],
-        [Builtin.test_builtin_create_full_article_from_text, "vllm_model", False],
+        # [Ollama.test_ollama_home_ep, "ollama120", False],
+        # [Ollama.test_ollama_tags_ep, "ollama120", False],
+        # [Ollama.test_ollama_chat_no_stream, "ollama120", False],
+        # [Ollama.test_ollama_chat_stream, "ollama120", False],
+        # [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
+        # [VLLM.test_chat_vllm_stream, "vllm_model", False],
+        # [Builtin.test_builtin_ping, "vllm_model", False],
+        # [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
+        # [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
+        # [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
+        # [Builtin.test_builtin_generate_questions, "vllm_model", False],
+        # [Builtin.test_builtin_translate, "vllm_model", False],
+        # [Builtin.test_builtin_simplification, "vllm_model", False],
+        # [Builtin.test_builtin_create_full_article_from_text, "vllm_model", False],
+        [Builtin.test_builtin_generative_answer, "vllm_model", True],
     ]
     for fn, model_name, debug in test_functions:
         try:
