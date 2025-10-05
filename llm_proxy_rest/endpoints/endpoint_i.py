@@ -154,6 +154,7 @@ class EndpointI(abc.ABC):
         self._model_handler = model_handler
 
         self._prompt_str = None
+        self._prompt_str_force = None
         self._prompt_name = None
         self._map_prompt = None
         self._prompt_str_postfix = None
@@ -468,7 +469,9 @@ class EndpointI(abc.ABC):
             self._prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
 
         self._prompt_str = None
-        if self._prompt_name:
+        if self._prompt_str_force:
+            self._prompt_str = self._prompt_str_force
+        elif self._prompt_name:
             self._prompt_str = self._prompt_handler.get_prompt(self._prompt_name)
 
         if self._prompt_str and map_prompt:
@@ -619,6 +622,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         try:
             self._map_prompt = None
+            self._prompt_str_force = None
             self._prompt_str_postfix = None
 
             params = self.prepare_payload(params)
