@@ -9,9 +9,6 @@ source bash/llms.sh
 
 # =============================================================================
 
-#LLMS_SCRIPT_TO_RUN="run-pLLama-3.1-8B-chat.sh"
-#LLMS_CONFIG_TO_USE="pLLama-3.1-8B-chat-vllm.json"
-#VLLM_SCRIPT_TO_RUN="run-pLLama-3.1-8B-chat-vllm.sh"
 LLMS_SCRIPT_TO_RUN="run-fastapi.sh"
 LLMS_CONFIG_TO_USE="gemma-3-12b-it-vllm.json"
 VLLM_SCRIPT_TO_RUN="run-gemma-3-12b-it-vllm.sh"
