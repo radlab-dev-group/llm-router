@@ -69,14 +69,46 @@ Zuvor hatte Amy bereits über den britischen Inseln gewütet. In Irland starb in
 """,
 }
 
+
+generate_questions_payload = {
+    "model_name": "",
+    "language": "",
+    "number_of_questions": 2,
+    "texts": [
+        generate_news_payload["text"][: int(len(generate_news_payload["text"]) / 2)],
+        generate_news_payload["text"][
+            int(len(generate_news_payload["text"]) / 2) - 1 :
+        ],
+    ],
+}
+
 conv_with_model_payload = {
     "model_name": "",
     "user_last_statement": "Jaka jest kategoria tekstu: Ala ma kota i psa.",
 }
 
+
+answer_question_payload = {
+    "model_name": "",
+    "language": "pl",
+    "doc_name_in_answer": False,
+    "question_str": "Co się wydarzyło?",
+    "texts": {"article_media.html": generate_questions_payload["texts"]},
+    "question_prompt": None,
+    "system_prompt": None,
+    # "question_prompt": "Powołuj się na nazwy dokumentów",
+    # "question_prompt": "Udziel jednozdaniowej odpowiedzi",
+    # "system_prompt": "Opisz jak Yoda co się dzieje w tekście.",
+}
+
+
 # ----------------------------------------------------------------------
 # Endpoint tests
 # ----------------------------------------------------------------------
+
+
+def print_json(data) -> str:
+    return json.dumps(data.json(), indent=2, ensure_ascii=False)
 
 
 class Ollama:
@@ -92,14 +124,14 @@ class Ollama:
         """Tags endpoint ``/api/tags`` (GET)."""
         resp = _get("/api/tags")
         if debug:
-            print("Ollama tags:", resp.json())
+            print("Ollama tags:", print_json(resp))
 
     @staticmethod
     def test_lmstudio_models(_, debug: bool = False) -> None:
         """LM‑Studio models list endpoint ``/v0/models`` (GET)."""
         resp = _get("/api/v0/models")
         if debug:
-            print("LM Studio models:", resp.json())
+            print("LM Studio models:", print_json(resp))
 
     @staticmethod
     def test_ollama_chat_no_stream(model_name: str, debug: bool = False) -> None:
@@ -109,7 +141,7 @@ class Ollama:
         payload["model"] = model_name
         resp = _post("/api/chat", payload)
         if debug:
-            print("Api chat:", resp.json())
+            print("Api chat:", print_json(resp))
 
     @staticmethod
     def test_ollama_chat_stream(model_name: str, debug: bool = False) -> None:
@@ -152,7 +184,7 @@ class VLLM:
         payload["model"] = model_name
         resp = _post("/v1/chat/completions", payload)
         if debug:
-            print("VLLM chat:", resp.json())
+            print("VLLM chat:", print_json(resp))
 
     @staticmethod
     def test_chat_vllm_stream(model_name: str, debug: bool = False) -> None:
@@ -209,7 +241,7 @@ class Builtin:
         """Tags endpoint ``/api/ping`` (GET)."""
         resp = _get("/api/ping")
         if debug:
-            print("Builtin ping:", resp.json())
+            print("Builtin ping:", print_json(resp))
 
     @staticmethod
     def test_builtin_con_with_model_no_stream(
@@ -220,7 +252,7 @@ class Builtin:
         payload["model_name"] = model_name
         resp = _post("/api/conversation_with_model", payload)
         if debug:
-            print("Builtin conversation_with_model:", resp.json())
+            print("Builtin conversation_with_model:", print_json(resp))
         Builtin.parse_response(resp)
 
     @staticmethod
@@ -232,7 +264,7 @@ class Builtin:
         payload["system_prompt"] = "Odpowiadaj jak mistrz Yoda."
         resp = _post("/api/extended_conversation_with_model", payload)
         if debug:
-            print("Builtin extended_conversation_with_model:", resp.json())
+            print("Builtin extended_conversation_with_model:", print_json(resp))
         Builtin.parse_response(resp)
 
     @staticmethod
@@ -244,7 +276,76 @@ class Builtin:
         payload["model_name"] = model_name
         resp = _post("/api/generate_article_from_text", payload)
         if debug:
-            print("Builtin generate_article_from_text:", resp.json())
+            print("Builtin generate_article_from_text:", print_json(resp))
+        Builtin.parse_response(resp)
+
+    @staticmethod
+    def test_builtin_create_full_article_from_text(
+        model_name: str, debug: bool = False
+    ) -> None:
+        """Chat completion endpoint ``/api/create_full_article_from_texts`` (POST)."""
+        payload = generate_questions_payload.copy()
+        payload.pop("number_of_questions")
+
+        payload["language"] = "pl"
+        payload["user_query"] = "Co się wydarzyło?"
+        payload["article_type"] = (
+            "Na koniec wpisu dodaj informację, że generowane przez AI"
+        )
+
+        payload["model_name"] = model_name
+        resp = _post("/api/create_full_article_from_texts", payload)
+        if debug:
+            print("Builtin create_full_article_from_texts:", print_json(resp))
+        Builtin.parse_response(resp)
+
+    @staticmethod
+    def test_builtin_generative_answer(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/generative_answer`` (POST)."""
+        payload = answer_question_payload.copy()
+        payload["model_name"] = model_name
+        resp = _post("/api/generative_answer", payload)
+        if debug:
+            print("Builtin generative_answer:", print_json(resp))
+        Builtin.parse_response(resp)
+
+    @staticmethod
+    def test_builtin_generate_questions(
+        model_name: str, debug: bool = False
+    ) -> None:
+        """Chat completion endpoint ``/api/generate_questions`` (POST)."""
+        payload = generate_questions_payload.copy()
+        payload["model_name"] = model_name
+        payload["language"] = "en"
+        resp = _post("/api/generate_questions", payload)
+        if debug:
+            print("Builtin generate_questions:", print_json(resp))
+        Builtin.parse_response(resp)
+
+    @staticmethod
+    def test_builtin_translate(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/translate`` (POST)."""
+        payload = generate_questions_payload.copy()
+        payload["language"] = "pl"
+        payload["model_name"] = model_name
+        payload.pop("number_of_questions")
+
+        resp = _post("/api/translate", payload)
+        if debug:
+            print("Builtin translate:", print_json(resp))
+        Builtin.parse_response(resp)
+
+    @staticmethod
+    def test_builtin_simplification(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/simplify_text`` (POST)."""
+        payload = generate_questions_payload.copy()
+        payload["language"] = "pl"
+        payload["model_name"] = model_name
+        payload.pop("number_of_questions")
+
+        resp = _post("/api/simplify_text", payload)
+        if debug:
+            print("Builtin translate:", print_json(resp))
         Builtin.parse_response(resp)
 
 
@@ -269,6 +370,11 @@ def run_all_tests() -> None:
         [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
         [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
         [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
+        [Builtin.test_builtin_generate_questions, "vllm_model", False],
+        [Builtin.test_builtin_translate, "vllm_model", False],
+        [Builtin.test_builtin_simplification, "vllm_model", False],
+        [Builtin.test_builtin_create_full_article_from_text, "vllm_model", False],
+        [Builtin.test_builtin_generative_answer, "vllm_model", False],
     ]
     for fn, model_name, debug in test_functions:
         try:
