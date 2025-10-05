@@ -28,6 +28,22 @@ allowing your application to talk to any supported LLM through a single, consist
 
 ### 1️⃣ Create & activate a virtual environment
 
+
+> **Prerequisite**: `radlab-ml-utils`
+>
+> This project uses the 
+> [radlab-ml-utils](https://github.com/radlab-dev-group/ml-utils) 
+> library for machine learning utilities 
+> (e.g., experiment/result logging with Weights & Biases/wandb).
+> Install it before working with ML-related parts:
+>
+> ```bash
+> pip install git+https://github.com/radlab-dev-group/ml-utils.git
+> ```
+>
+> For more options and details, see the library README: 
+> https://github.com/radlab-dev-group/ml-utils
+
 ```shell script
 python3 -m venv .venv
 source .venv/bin/activate
