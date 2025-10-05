@@ -17,6 +17,9 @@ from llm_proxy_rest.core.data_models.builtin_utils import (
     SIMPLIFY_TEXT_REQ,
     SIMPLIFY_TEXT_OPT,
     SimplifyTextModel,
+    CreateArticleFromNewsList,
+    FULL_ARTICLE_REQ,
+    FULL_ARTICLE_OPT,
 )
 from llm_proxy_rest.core.decorators import EP
 from llm_proxy_rest.base.model_handler import ModelHandler
@@ -156,66 +159,6 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
         return response
 
 
-class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
-    REQUIRED_ARGS = GENERATE_ART_REQ
-    OPTIONAL_ARGS = GENERATE_ART_OPT
-    SYSTEM_PROMPT_NAME = {
-        "pl": "builtin/system/pl/news-on-sm",
-        "en": "builtin/system/en/news-on-sm",
-    }
-
-    def __init__(
-        self,
-        logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = REST_API_LOG_LEVEL,
-        prompt_handler: Optional[PromptHandler] = None,
-        model_handler: Optional[ModelHandler] = None,
-        ep_name: str = "generate_article_from_text",
-    ):
-        super().__init__(
-            ep_name=ep_name,
-            api_types=["builtin"],
-            method="POST",
-            logger_level=logger_level,
-            logger_file_name=logger_file_name,
-            prompt_handler=prompt_handler,
-            model_handler=model_handler,
-            dont_add_api_prefix=False,
-            direct_return=False,
-            call_for_each_user_msg=False,
-        )
-
-        self._prepare_response_function = self.__prepare_response_function
-
-    @EP.require_params
-    def prepare_payload(
-        self, params: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        options = GenerateArticleFromTextModel(**params)
-        _payload = options.model_dump()
-        _payload["stream"] = _payload.get("stream", False)
-        _payload["model"] = _payload["model_name"]
-        _payload["messages"] = [
-            {
-                "role": "user",
-                "content": _payload["text"],
-            },
-        ]
-        return _payload
-
-    def __prepare_response_function(self, response):
-        j_response, choices, assistant_response = self._get_choices_from_response(
-            response=response
-        )
-
-        return {
-            "response": {
-                "article_text": choices[0].get("message", {}).get("content")
-            },
-            "generation_time": time.time() - self._start_time,
-        }
-
-
 class TranslateTexts(EndpointWithHttpRequestI):
     REQUIRED_ARGS = TRANSLATE_TEXT_REQ
     OPTIONAL_ARGS = TRANSLATE_TEXT_OPT
@@ -351,3 +294,119 @@ class SimplifyTexts(EndpointWithHttpRequestI):
             "response": simplifications,
             "generation_time": time.time() - self._start_time,
         }
+
+
+class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
+    REQUIRED_ARGS = GENERATE_ART_REQ
+    OPTIONAL_ARGS = GENERATE_ART_OPT
+    SYSTEM_PROMPT_NAME = {
+        "pl": "builtin/system/pl/news-on-sm",
+        "en": "builtin/system/en/news-on-sm",
+    }
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "generate_article_from_text",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            api_types=["builtin"],
+            method="POST",
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            direct_return=False,
+            call_for_each_user_msg=False,
+        )
+
+        self._prepare_response_function = self.__prepare_response_function
+
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        options = GenerateArticleFromTextModel(**params)
+        _payload = options.model_dump()
+        _payload["stream"] = _payload.get("stream", False)
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {
+                "role": "user",
+                "content": _payload["text"],
+            },
+        ]
+        return _payload
+
+    def __prepare_response_function(self, response):
+        j_response, choices, assistant_response = self._get_choices_from_response(
+            response=response
+        )
+
+        return {
+            "response": {
+                "article_text": choices[0].get("message", {}).get("content")
+            },
+            "generation_time": time.time() - self._start_time,
+        }
+
+
+class FullArticleFromTexts(GenerateNewsFromTextHandler):
+    REQUIRED_ARGS = FULL_ARTICLE_REQ
+    OPTIONAL_ARGS = FULL_ARTICLE_OPT
+    SYSTEM_PROMPT_NAME = {
+        "pl": "builtin/system/pl/full-article",
+        "en": "builtin/system/en/full-article",
+    }
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "create_full_article_from_texts",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+        )
+
+    @EP.response_time
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+
+        options = CreateArticleFromNewsList(**params)
+        _payload = options.model_dump()
+
+        self._map_prompt = {
+            "##USER_Q_STR##": _payload["user_query"],
+        }
+        self._prompt_str_postfix = _payload["article_type"]
+
+        user_texts_str = "\n\n".join(
+            t.strip() for t in _payload["texts"] if len(t.strip())
+        )
+
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {
+                "role": "user",
+                "content": user_texts_str,
+            }
+        ]
+        _payload.pop("texts")
+        _payload.pop("user_query")
+        _payload.pop("article_type")
+
+        return _payload
