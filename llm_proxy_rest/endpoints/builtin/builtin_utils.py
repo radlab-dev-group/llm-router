@@ -20,6 +20,9 @@ from llm_proxy_rest.core.data_models.builtin_utils import (
     CreateArticleFromNewsList,
     FULL_ARTICLE_REQ,
     FULL_ARTICLE_OPT,
+    CONTEXT_ANSWER_REQ,
+    CONTEXT_ANSWER_OPT,
+    AnswerBasedOnTheContextModel,
 )
 from llm_proxy_rest.core.decorators import EP
 from llm_proxy_rest.base.model_handler import ModelHandler
@@ -391,7 +394,7 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
         self._map_prompt = {
             "##USER_Q_STR##": _payload["user_query"],
         }
-        self._prompt_str_postfix = _payload["article_type"]
+        self._prompt_str_postfix = _payload.get("article_type")
 
         user_texts_str = "\n\n".join(
             t.strip() for t in _payload["texts"] if len(t.strip())
@@ -403,6 +406,59 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
             {
                 "role": "user",
                 "content": user_texts_str,
+            }
+        ]
+        _payload.pop("texts")
+        _payload.pop("user_query")
+        _payload.pop("article_type")
+
+        return _payload
+
+
+class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
+    REQUIRED_ARGS = CONTEXT_ANSWER_REQ
+    OPTIONAL_ARGS = CONTEXT_ANSWER_OPT
+    SYSTEM_PROMPT_NAME = {
+        "pl": "builtin/system/pl/answer-from-context-simple",
+        "en": "builtin/system/en/answer-from-context-simple",
+    }
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "generative_answer",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+        )
+
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+
+        options = AnswerBasedOnTheContextModel(**params)
+        _payload = options.model_dump()
+        _payload["stream"] = _payload.get("stream", False)
+        _payload["model"] = _payload["model_name"]
+
+        self._map_prompt = {
+            "##QUESTION_STR##": _payload["question_str"],
+        }
+        self._prompt_str_postfix = _payload.get("question_prompt")
+
+        context = "\n\n".join(t.strip() for t in _payload["texts"] if len(t.strip()))
+        _payload["messages"] = [
+            {
+                "role": "user",
+                "content": context,
             }
         ]
         _payload.pop("texts")

@@ -20,7 +20,7 @@ GENERATE_Q_OPT = ["number_of_questions"] + GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
-# Generate article from text
+# Generate article from text (like plg news stream)
 # -------------------------------------------------------------------
 class GenerateArticleFromTextModel(_GenerativeOptionsModel):
     text: str
@@ -53,6 +53,8 @@ SIMPLIFY_TEXT_OPT = GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
+# Create article from a mews list (like plg creator)
+# -------------------------------------------------------------------
 class CreateArticleFromNewsList(_GenerativeOptionsModel):
     user_query: str
     texts: List[str] = None
@@ -62,11 +64,17 @@ class CreateArticleFromNewsList(_GenerativeOptionsModel):
 FULL_ARTICLE_REQ = ["user_query", "texts"] + GENAI_REQ_ARGS_BASE
 FULL_ARTICLE_OPT = ["article_type"] + GENAI_OPT_ARGS_BASE
 
-#
-# class GenerativeQAModel(_GenerativeOptionsModel):
-#     question_str: str
-#     question_prompt: str
-#     texts: Optional[Dict[str, List[str]]] = None
-#     system_prompt: Optional[str] = None
-#
-#
+
+# -------------------------------------------------------------------
+# Answer based on the context (RAG based)
+# -------------------------------------------------------------------
+class AnswerBasedOnTheContextModel(_GenerativeOptionsModel):
+    question_str: str
+    texts: Dict[str, List[str]]
+
+    question_prompt: Optional[str] = None
+    system_prompt: Optional[str] = None
+
+
+CONTEXT_ANSWER_REQ = ["question_str", "texts"] + GENAI_REQ_ARGS_BASE
+CONTEXT_ANSWER_OPT = ["question_prompt", "system_prompt"] + GENAI_OPT_ARGS_BASE
