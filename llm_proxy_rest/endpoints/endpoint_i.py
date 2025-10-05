@@ -626,7 +626,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             self._prompt_str_postfix = None
 
             params = self.prepare_payload(params)
-            self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
             if type(params) is dict:
                 if not params.get("status", True):
