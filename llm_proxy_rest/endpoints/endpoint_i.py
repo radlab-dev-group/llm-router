@@ -106,6 +106,7 @@ class EndpointI(abc.ABC):
         prompt_handler: Optional[PromptHandler] = None,
         dont_add_api_prefix: bool = False,
         direct_return: bool = False,
+        call_for_each_user_msg: bool = False,
     ):
         """
         Initialise an endpoint definition.
@@ -151,9 +152,12 @@ class EndpointI(abc.ABC):
 
         self._prompt_str = None
         self._prompt_name = None
+        self._map_prompt = None
         self.direct_return = direct_return
         self._prompt_handler = prompt_handler
         self._dont_add_api_prefix = dont_add_api_prefix
+
+        self._call_for_each_user_msg = call_for_each_user_msg
 
         self.logger = prepare_logger(
             logger_name=__name__,
@@ -173,6 +177,9 @@ class EndpointI(abc.ABC):
         self._check_method_is_allowed(method=method)
 
         self._api_model: Optional[ApiModel] = None
+
+        # Hook function to prepare response
+        self._prepare_response_function = None
 
     # ------------------------------------------------------------------
     # Public read‑only properties
@@ -460,7 +467,9 @@ class EndpointI(abc.ABC):
             raise ValueError(f"Model '{model_name}' not found in configuration")
         self._api_model = api_model
 
-    def _resolve_prompt_name(self, params: Dict[str, Any]) -> None:
+    def _resolve_prompt_name(
+        self, params: Dict[str, Any], map_prompt: Dict[str, str]
+    ) -> None:
         if self.SYSTEM_PROMPT_NAME is not None:
             lang_str = self.__get_language(params=params)
             self._prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
@@ -468,6 +477,10 @@ class EndpointI(abc.ABC):
         self._prompt_str = None
         if self._prompt_name:
             self._prompt_str = self._prompt_handler.get_prompt(self._prompt_name)
+
+        if self._prompt_str and map_prompt:
+            for _c, _t in map_prompt.items():
+                self._prompt_name = self._prompt_name.replace(_c, _t)
 
     @staticmethod
     def __get_language(params: Dict[str, Any]) -> str:
@@ -521,6 +534,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         dont_add_api_prefix: bool = False,
         direct_return: bool = False,
         timeout: int = REST_API_TIMEOUT,
+        call_for_each_user_msg: bool = False,
     ):
         """
         Initialize the HTTP‑request‑enabled endpoint.
@@ -562,6 +576,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             prompt_handler=prompt_handler,
             dont_add_api_prefix=dont_add_api_prefix,
             direct_return=direct_return,
+            call_for_each_user_msg=call_for_each_user_msg,
         )
 
         self._timeout = timeout
@@ -602,9 +617,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
         try:
+            self._map_prompt = None
 
             params = self.prepare_payload(params)
             self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+
+            map_prompt = {}
+            if "__map_prompt__" in params:
+                map_prompt = params.pop("__map_prompt__")
 
             if type(params) is dict:
                 if not params.get("status", True):
@@ -652,7 +672,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 self.logger.debug("=" * 100)
                 return response
 
-            self._resolve_prompt_name(params=params)
+            self._resolve_prompt_name(params=params, map_prompt=map_prompt)
             if self._prompt_name is not None:
                 self.logger.debug(f" -> prompt_name: {self._prompt_name}")
                 self.logger.debug(self._prompt_str)
@@ -666,6 +686,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             #     return self._call_http_request_stream(
             #         ep_url=ep_url, params=params, leave_only_allowed=False
             #     )
+            if self._call_for_each_user_msg:
+                raise Exception("NOT IMPLEMENTED")
 
             return self._call_http_request(
                 ep_url=ep_url, params=params, leave_only_allowed=False
@@ -878,6 +900,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 f"{response.status_code}: {response.text}"
             )
         try:
+            if self._prepare_response_function:
+                return self._prepare_response_function(response=response)
             return response.json()
         except json.JSONDecodeError as e:
             self.logger.exception(e)
