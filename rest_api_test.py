@@ -72,7 +72,7 @@ Zuvor hatte Amy bereits über den britischen Inseln gewütet. In Irland starb in
 
 generate_questions_payload = {
     "model_name": "",
-    "language": "en",
+    "language": "",
     "number_of_questions": 2,
     "texts": [
         generate_news_payload["text"][: int(len(generate_news_payload["text"]) / 2)],
@@ -92,6 +92,10 @@ conv_with_model_payload = {
 # ----------------------------------------------------------------------
 
 
+def print_json(data) -> str:
+    return json.dumps(data.json(), indent=2, ensure_ascii=False)
+
+
 class Ollama:
     @staticmethod
     def test_ollama_home_ep(_, debug: bool = False) -> None:
@@ -105,14 +109,14 @@ class Ollama:
         """Tags endpoint ``/api/tags`` (GET)."""
         resp = _get("/api/tags")
         if debug:
-            print("Ollama tags:", resp.json())
+            print("Ollama tags:", print_json(resp))
 
     @staticmethod
     def test_lmstudio_models(_, debug: bool = False) -> None:
         """LM‑Studio models list endpoint ``/v0/models`` (GET)."""
         resp = _get("/api/v0/models")
         if debug:
-            print("LM Studio models:", resp.json())
+            print("LM Studio models:", print_json(resp))
 
     @staticmethod
     def test_ollama_chat_no_stream(model_name: str, debug: bool = False) -> None:
@@ -122,7 +126,7 @@ class Ollama:
         payload["model"] = model_name
         resp = _post("/api/chat", payload)
         if debug:
-            print("Api chat:", resp.json())
+            print("Api chat:", print_json(resp))
 
     @staticmethod
     def test_ollama_chat_stream(model_name: str, debug: bool = False) -> None:
@@ -165,7 +169,7 @@ class VLLM:
         payload["model"] = model_name
         resp = _post("/v1/chat/completions", payload)
         if debug:
-            print("VLLM chat:", resp.json())
+            print("VLLM chat:", print_json(resp))
 
     @staticmethod
     def test_chat_vllm_stream(model_name: str, debug: bool = False) -> None:
@@ -222,7 +226,7 @@ class Builtin:
         """Tags endpoint ``/api/ping`` (GET)."""
         resp = _get("/api/ping")
         if debug:
-            print("Builtin ping:", resp.json())
+            print("Builtin ping:", print_json(resp))
 
     @staticmethod
     def test_builtin_con_with_model_no_stream(
@@ -233,7 +237,7 @@ class Builtin:
         payload["model_name"] = model_name
         resp = _post("/api/conversation_with_model", payload)
         if debug:
-            print("Builtin conversation_with_model:", resp.json())
+            print("Builtin conversation_with_model:", print_json(resp))
         Builtin.parse_response(resp)
 
     @staticmethod
@@ -245,7 +249,7 @@ class Builtin:
         payload["system_prompt"] = "Odpowiadaj jak mistrz Yoda."
         resp = _post("/api/extended_conversation_with_model", payload)
         if debug:
-            print("Builtin extended_conversation_with_model:", resp.json())
+            print("Builtin extended_conversation_with_model:", print_json(resp))
         Builtin.parse_response(resp)
 
     @staticmethod
@@ -257,7 +261,7 @@ class Builtin:
         payload["model_name"] = model_name
         resp = _post("/api/generate_article_from_text", payload)
         if debug:
-            print("Builtin generate_article_from_text:", resp.json())
+            print("Builtin generate_article_from_text:", print_json(resp))
         Builtin.parse_response(resp)
 
     @staticmethod
@@ -267,9 +271,23 @@ class Builtin:
         """Chat completion endpoint ``/api/generate_questions`` (POST)."""
         payload = generate_questions_payload.copy()
         payload["model_name"] = model_name
+        payload["language"] = "en"
         resp = _post("/api/generate_questions", payload)
         if debug:
-            print("Builtin generate_questions:", resp.json())
+            print("Builtin generate_questions:", print_json(resp))
+        Builtin.parse_response(resp)
+
+    @staticmethod
+    def test_builtin_translate(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/translate`` (POST)."""
+        payload = generate_questions_payload.copy()
+        payload["language"] = "pl"
+        payload["model_name"] = model_name
+        payload.pop("number_of_questions")
+
+        resp = _post("/api/translate", payload)
+        if debug:
+            print("Builtin translate:", print_json(resp))
         Builtin.parse_response(resp)
 
 
@@ -284,17 +302,18 @@ def run_all_tests() -> None:
 
     test_functions = [
         # test_lmstudio_models <- not fully integrated,
-        # [Ollama.test_ollama_home_ep, "ollama120", False],
-        # [Ollama.test_ollama_tags_ep, "ollama120", False],
-        # [Ollama.test_ollama_chat_no_stream, "ollama120", False],
-        # [Ollama.test_ollama_chat_stream, "ollama120", False],
-        # [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
-        # [VLLM.test_chat_vllm_stream, "vllm_model", False],
-        # [Builtin.test_builtin_ping, "vllm_model", False],
-        # [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
-        # [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
-        # [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
-        [Builtin.test_builtin_generate_questions, "vllm_model", True],
+        [Ollama.test_ollama_home_ep, "ollama120", False],
+        [Ollama.test_ollama_tags_ep, "ollama120", False],
+        [Ollama.test_ollama_chat_no_stream, "ollama120", False],
+        [Ollama.test_ollama_chat_stream, "ollama120", False],
+        [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
+        [VLLM.test_chat_vllm_stream, "vllm_model", False],
+        [Builtin.test_builtin_ping, "vllm_model", False],
+        [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
+        [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
+        [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
+        [Builtin.test_builtin_generate_questions, "vllm_model", False],
+        [Builtin.test_builtin_translate, "vllm_model", False],
     ]
     for fn, model_name, debug in test_functions:
         try:
