@@ -101,14 +101,12 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
             call_for_each_user_msg=False,
         )
 
-        self._start = time.time()
         self._prepare_response_function = self.__prepare_response_function
 
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
-        self._start = time.time()
         options = GenerateArticleFromText(**params)
         _payload = options.model_dump()
         _payload["stream"] = _payload.get("stream", False)
@@ -122,18 +120,13 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
         return _payload
 
     def __prepare_response_function(self, response):
-        j_response = response.json()
-        choices = j_response.get("choices", [])
-        if not len(choices):
-            if "message" in j_response:
-                choices = [j_response]
-            if not len(choices):
-                self.logger.debug(j_response)
-                raise RuntimeError(f"No choices found in response: {response}")
+        j_response, choices, assistant_response = self._get_choices_from_response(
+            response=response
+        )
 
         return {
             "response": {
                 "article_text": choices[0].get("message", {}).get("content")
             },
-            "generation_time": time.time() - self._start,
+            "generation_time": time.time() - self._start_time,
         }
