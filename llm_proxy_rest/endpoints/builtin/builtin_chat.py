@@ -60,7 +60,12 @@ class ConversationWithModel(EndpointWithHttpRequestI):
                 "role": "user",
                 "content": _payload["user_last_statement"],
             },
-        ] + self.__prepare_history(payload=_payload)
+        ]
+
+        _history = self.__prepare_history(payload=_payload)
+        if len(_history):
+            _payload["messages"] += _history
+
         return _payload
 
     @staticmethod
