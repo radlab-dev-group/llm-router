@@ -69,16 +69,47 @@ LLM_PROXY_API_MINIMUM=1 python3 -m llm_proxy_rest.rest_api
 
 ## 🛣️ Endpoints Overview
 
-All URLs are prefixed by the value of `LLM_PROXY_API_EP_PREFIX` (default **/api**).
 
-| Method | Path                                | Description                                                                                                   | Typical Payload                                                                                                               |
-|--------|-------------------------------------|---------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
-| `POST` | `/chat`                             | Simple chat with a model (OpenAI‑compatible). Returns either streamed chunks or a full response.              | `{ "model": "gpt-4o", "messages": [{ "role": "user", "content": "Hello" }], "stream": true }`                                 |
-| `POST` | `/conversation_with_model`          | Chat that automatically injects a language‑aware system prompt from the built‑in prompt library.              | `{ "model_name": "gemini-1.5-pro", "user_last_statement": "Explain recursion.", "language": "en" }`                           |
-| `POST` | `/extended_conversation_with_model` | Same as above but with extra generation options (temperature, top‑k, etc.) and optional custom system prompt. | `{ "model_name": "llama3", "user_last_statement": "...", "system_prompt": "...", "temperature": 0.7, "max_new_tokens": 256 }` |
-| `GET`  | `/tags`                             | Returns a list of tags/metadata for available models (e.g., provider, supported languages).                   |                                                                                                                               |
-| `GET`  | `/ping`                             | Health‑check endpoint – returns `200 OK` if the service is running.                                           |                                                                                                                               |
-| `POST` | `/passthrough`                      | Directly forwards a raw request to the underlying provider (useful for custom endpoints).                     |                                                                                                                               |
+All endpoints are exposed under the REST API service. Unless stated otherwise, methods are POST and consume/produce JSON.
+
+### Built-in Text Utilities
+- `POST /builtin/generate_questions`
+  - **Purpose**: Generate a list of questions for each provided text.
+  - **Required**: `texts`, `model_name`
+  - **Optional**: `number_of_questions`, `stream`, and other common options
+  - **Response**: For each input text returns an array of generated questions.
+
+- `POST /builtin/translate`
+  - **Purpose**: Translate input texts to Polish.
+  - **Required**: `texts`, `model_name`
+  - **Optional**: `stream` and other common options
+  - **Response**: Array of objects `{ original, translated }` per input text.
+
+- `POST /builtin/simplify_text`
+  - **Purpose**: Simplify input texts (make them easier to read).
+  - **Required**: `texts`, `model_name`
+  - **Optional**: `stream`, `temperature`, `max_tokens` and other common options
+  - **Response**: Array of simplified texts aligned with input order.
+
+### Content Generation
+- `POST /builtin/generate_article_from_text`
+  - **Purpose**: Generate a short article/news-like snippet from a single text.
+  - **Required**: text, `model_name`
+  - **Optional**: `temperature`, `max_tokens`, `stream` and other common options
+  - **Response**: `{ article_text }`
+
+- `POST /builtin/create_full_article_from_texts`
+  - **Purpose**: Create a full article from multiple texts with a guiding user query.
+  - **Required**: `user_query`, `texts`, `model_name`
+  - **Optional**: `article_type`, `stream`, `temperature`, `max_tokens` and other common options
+  - **Response**: `{ article_text }`
+
+### Context QA (RAG-like)
+- `POST /builtin/generative_answer`
+  - **Purpose**: Answer a question using provided context (list of texts or map of `doc_name -> [texts]`).
+  - **Required**: `question_str`, `texts`, `model_name`
+  - **Optional**: `question_prompt`, `system_prompt`, `doc_name_in_answer`, `stream` and other common options
+  - **Response**: `{ article_text }` where the content is the model’s answer based on the supplied context.
 
 ### Streaming vs. Non‑Streaming Responses
 
