@@ -268,7 +268,7 @@ def run_all_tests() -> None:
         [Builtin.test_builtin_ping, "vllm_model", False],
         [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
         [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
-        [Builtin.test_builtin_generate_article_from_text, "vllm_model", True],
+        [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
     ]
     for fn, model_name, debug in test_functions:
         try:
