@@ -55,7 +55,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
         options = GenerativeConversationModel(**params)
         _payload = options.model_dump()
         _payload["model"] = _payload["model_name"]
-        _payload["history"] = [
+        _payload["messages"] = [
             {
                 "role": "user",
                 "content": _payload["user_last_statement"],
