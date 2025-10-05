@@ -42,16 +42,20 @@ export LLM_PROXY_API_MINIMUM=1
 
 ### 3️⃣ Optional configuration (via environment)
 
-| Variable                            | Purpose                                                    | Example                                |
-|-------------------------------------|------------------------------------------------------------|----------------------------------------|
-| `LLM_PROXY_API_LOG_FILENAME`        | Log file location                                          | `llm-proxy-rest.log`                   |
-| `LLM_PROXY_API_LOG_LEVEL`           | Logging verbosity (`DEBUG`, `INFO`, `WARN`, `ERROR`)       | `INFO`                                 |
-| `LLM_PROXY_API_TIMEOUT`             | Global request timeout (seconds)                           | `300`                                  |
-| `LLM_PROXY_API_EP_PREFIX`           | URL prefix for all endpoints                               | `/api`                                 |
-| `LLM_PROXY_API_DEFAULT_EP_LANGUAGE` | Default language for built‑in prompts                      | `pl`                                   |
-| `LLM_PROXY_API_PROMPTS_DIR`         | Directory with prompt files                                | `resources/prompts`                    |
-| `LLM_PROXY_API_MODELS_CONFIG`       | Path to model configuration JSON                           | `resources/configs/models-config.json` |
-| `LLM_PROXY_API_IN_DEBUG`            | Enable DEBUG‑level logging when set to any non‑empty value | `true`                                 |
+| Variable                            | Description                                                     | Default                                |
+|-------------------------------------|-----------------------------------------------------------------|----------------------------------------|
+| `LLM_PROXY_API_PROMPTS_DIR`         | Directory containing predefined system prompts.                 | `resources/prompts`                    |
+| `LLM_PROXY_API_MODELS_CONFIG`       | Path to the models configuration JSON file.                     | `resources/configs/models-config.json` |
+| `LLM_PROXY_API_DEFAULT_EP_LANGUAGE` | Default language for endpoint prompts.                          | `pl`                                   |
+| `LLM_PROXY_API_EXTERNAL_TIMEOUT`    | Timeout (seconds) for external model API calls.                 | `300`                                  |
+| `LLM_PROXY_API_LOG_FILENAME`        | Name of the log file.                                           | `llm-proxy-rest.log`                   |
+| `LLM_PROXY_API_LOG_LEVEL`           | Logging level (e.g., INFO, DEBUG).                              | `INFO`                                 |
+| `LLM_PROXY_API_EP_PREFIX`           | Prefix for all API endpoints.                                   | `/api`                                 |
+| `LLM_PROXY_API_MINIMUM`             | Run service in proxy‑only mode (boolean).                       | `False`                                |
+| `LLM_PROXY_API_IN_DEBUG`            | Run server in debug mode (boolean).                             | `False`                                |
+| `LLM_PROXY_API_SERVER_TYPE`         | Server implementation to use (`flask`, `gunicorn`, `waitress`). | `flask`                                |
+| `LLM_PROXY_API_SERVER_PORT`         | Port on which the server listens.                               | `8080`                                 |
+| `LLM_PROXY_API_SERVER_HOST`         | Host address for the server.                                    | `0.0.0.0`                              |
 
 ### 4️⃣ Run the REST API
 
