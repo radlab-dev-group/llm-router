@@ -1,14 +1,14 @@
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.core.data_models.builtin_chat import (
     GENAI_CONV_REQ_ARGS,
     GENAI_CONV_OPT_ARGS,
-    GenerativeConversationModel,
     EXT_GENAI_CONV_REQ_ARGS,
     EXT_GENAI_CONV_OPT_ARGS,
+    GenerativeConversationModel,
     ExtendedGenerativeConversationModel,
 )
 from llm_proxy_rest.core.decorators import EP
@@ -47,7 +47,6 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
         self._prepare_response_function = self.__prepare_response_function
 
-    @EP.response_time
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
@@ -60,9 +59,26 @@ class ConversationWithModel(EndpointWithHttpRequestI):
                 "role": "user",
                 "content": _payload["user_last_statement"],
             },
-        ] + _payload["historical_messages"]
+        ]
+
+        _history = self.__prepare_history(payload=_payload)
+        if len(_history):
+            _payload["messages"] = _history + _payload["messages"]
+
+        if "historical_messages" in _payload:
+            _payload.pop("historical_messages")
 
         return _payload
+
+    @staticmethod
+    def __prepare_history(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+        history = []
+        for m in payload["historical_messages"]:
+            if "user" in m:
+                history.append({"role": "user", "content": m["user"]})
+            if "assistant" in m:
+                history.append({"role": "assistant", "content": m["assistant"]})
+        return history
 
     def __prepare_response_function(self, response):
         j_response, choices, assistant_response = self._get_choices_from_response(
@@ -96,7 +112,6 @@ class ExtendedConversationWithModel(ConversationWithModel):
             model_handler=model_handler,
         )
 
-    @EP.response_time
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
