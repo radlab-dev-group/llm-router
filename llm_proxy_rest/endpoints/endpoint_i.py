@@ -156,6 +156,8 @@ class EndpointI(abc.ABC):
         self._prompt_str = None
         self._prompt_name = None
         self._map_prompt = None
+        self._prompt_str_postfix = None
+
         self.direct_return = direct_return
         self._prompt_handler = prompt_handler
         self._dont_add_api_prefix = dont_add_api_prefix
@@ -473,6 +475,12 @@ class EndpointI(abc.ABC):
             for _c, _t in map_prompt.items():
                 self._prompt_str = self._prompt_str.replace(_c, _t)
 
+        if self._prompt_str and self._prompt_str_postfix:
+            self._prompt_str += "\n\n" + self._prompt_str_postfix
+
+        if self._prompt_str:
+            self._prompt_str = self._prompt_str.strip()
+
     @staticmethod
     def __get_language(params: Dict[str, Any]) -> str:
         """
@@ -611,6 +619,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         try:
             self._map_prompt = None
+            self._prompt_str_postfix = None
 
             params = self.prepare_payload(params)
             self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
