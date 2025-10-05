@@ -51,13 +51,16 @@ class SimplifyTextModel(_GenerativeOptionsModel):
 SIMPLIFY_TEXT_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
 SIMPLIFY_TEXT_OPT = GENAI_OPT_ARGS_BASE
 
-# -------------------------------------------------------------------
-# class CreateArticleFromNewsList(_GenerativeOptionsModel):
-#     user_query: str
-#     texts: List[str] = None
-#     article_type: str | None = None
-#
 
+# -------------------------------------------------------------------
+class CreateArticleFromNewsList(_GenerativeOptionsModel):
+    user_query: str
+    texts: List[str] = None
+    article_type: str | None = None
+
+
+FULL_ARTICLE_REQ = ["user_query", "texts"] + GENAI_REQ_ARGS_BASE
+FULL_ARTICLE_OPT = ["article_type"] + GENAI_OPT_ARGS_BASE
 
 #
 # class GenerativeQAModel(_GenerativeOptionsModel):
