@@ -72,13 +72,13 @@ run_vllm_on_host \
   "${gpu}" \
   "${DIR_WITH_HOSTS_CONFIGS}" \
   "${VLLM_SCRIPT_TO_RUN}"
-
-run_llama_services_on_host \
-  "${ip_addr}" \
-  "${gpu}" \
-  "${workers}" \
-  "${DIR_WITH_HOSTS_CONFIGS}" \
-  "${LLMS_SCRIPT_TO_RUN}" \
-  "${LLMS_CONFIG_TO_USE}"
+#
+#run_llama_services_on_host \
+#  "${ip_addr}" \
+#  "${gpu}" \
+#  "${workers}" \
+#  "${DIR_WITH_HOSTS_CONFIGS}" \
+#  "${LLMS_SCRIPT_TO_RUN}" \
+#  "${LLMS_CONFIG_TO_USE}"
 
 # =============================================================================
