@@ -11,6 +11,9 @@ from llm_proxy_rest.core.data_models.builtin_utils import (
     GenerateArticleFromText,
     GENERATE_ART_REQ,
     GENERATE_ART_OPT,
+    TRANSLATE_TEXT_REQ,
+    TRANSLATE_TEXT_OPT,
+    TranslateTextModel,
 )
 from llm_proxy_rest.core.decorators import EP
 from llm_proxy_rest.base.model_handler import ModelHandler
@@ -206,5 +209,77 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
             "response": {
                 "article_text": choices[0].get("message", {}).get("content")
             },
+            "generation_time": time.time() - self._start_time,
+        }
+
+
+class TranslateTexts(EndpointWithHttpRequestI):
+    REQUIRED_ARGS = TRANSLATE_TEXT_REQ
+    OPTIONAL_ARGS = TRANSLATE_TEXT_OPT
+    SYSTEM_PROMPT_NAME = {
+        "pl": "builtin/system/pl/translate-to-pl",
+        "en": "builtin/system/en/translate-to-pl",
+    }
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "translate",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            api_types=["builtin"],
+            method="POST",
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            direct_return=False,
+            call_for_each_user_msg=True,
+        )
+
+        self._prepare_response_function = self.__prepare_response_function
+
+    @EP.response_time
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+
+        options = TranslateTextModel(**params)
+        _payload = options.model_dump()
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {
+                "role": "user",
+                "content": _t,
+            }
+            for _t in _payload["texts"]
+        ]
+        _payload.pop("texts")
+
+        return _payload
+
+    def __prepare_response_function(self, responses, contents):
+        assert len(responses) == len(contents)
+
+        translations = []
+        for response, orig_text in zip(responses, contents):
+            _, _, translated_to_pl = self._get_choices_from_response(
+                response=response
+            )
+            translations.append(
+                {
+                    "original": orig_text,
+                    "translated": translated_to_pl,
+                }
+            )
+
+        return {
+            "response": translations,
             "generation_time": time.time() - self._start_time,
         }
