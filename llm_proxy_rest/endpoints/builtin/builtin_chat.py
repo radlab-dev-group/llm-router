@@ -1,16 +1,5 @@
-"""
-llm_proxy_rest.endpoints.builtin.builtin
-================================================
+from typing import Optional, Dict, Any
 
-Built‑in health‑check endpoint used by the REST API.  The module currently
-exposes a single endpoint class, :class:`Ping`, which implements a simple
-``GET`` request that returns a *pong* response.  The endpoint is useful for
-monitoring and for confirming that the service is reachable.
-"""
-
-from typing import Optional, Dict, Any, List
-
-from pydantic import ValidationError
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_proxy_rest.core.data_models.builtin_chat import (

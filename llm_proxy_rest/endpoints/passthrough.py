@@ -72,6 +72,7 @@ class PassthroughI(EndpointWithHttpRequestI, ABC):
             model_handler=model_handler,
             dont_add_api_prefix=dont_add_api_prefix,
             direct_return=direct_return,
+            call_for_each_user_msg=False,
         )
 
     @EP.response_time
