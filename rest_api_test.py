@@ -69,6 +69,19 @@ Zuvor hatte Amy bereits über den britischen Inseln gewütet. In Irland starb in
 """,
 }
 
+
+generate_questions_payload = {
+    "model_name": "",
+    "language": "en",
+    "number_of_questions": 2,
+    "texts": [
+        generate_news_payload["text"][: int(len(generate_news_payload["text"]) / 2)],
+        generate_news_payload["text"][
+            int(len(generate_news_payload["text"]) / 2) - 1 :
+        ],
+    ],
+}
+
 conv_with_model_payload = {
     "model_name": "",
     "user_last_statement": "Jaka jest kategoria tekstu: Ala ma kota i psa.",
@@ -247,6 +260,18 @@ class Builtin:
             print("Builtin generate_article_from_text:", resp.json())
         Builtin.parse_response(resp)
 
+    @staticmethod
+    def test_builtin_generate_questions(
+        model_name: str, debug: bool = False
+    ) -> None:
+        """Chat completion endpoint ``/api/generate_questions`` (POST)."""
+        payload = generate_questions_payload.copy()
+        payload["model_name"] = model_name
+        resp = _post("/api/generate_questions", payload)
+        if debug:
+            print("Builtin generate_questions:", resp.json())
+        Builtin.parse_response(resp)
+
 
 def run_all_tests() -> None:
     """Execute all endpoint tests sequentially."""
@@ -259,16 +284,17 @@ def run_all_tests() -> None:
 
     test_functions = [
         # test_lmstudio_models <- not fully integrated,
-        [Ollama.test_ollama_home_ep, "ollama120", False],
-        [Ollama.test_ollama_tags_ep, "ollama120", False],
-        [Ollama.test_ollama_chat_no_stream, "ollama120", False],
-        [Ollama.test_ollama_chat_stream, "ollama120", False],
-        [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
-        [VLLM.test_chat_vllm_stream, "vllm_model", False],
-        [Builtin.test_builtin_ping, "vllm_model", False],
-        [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
-        [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
-        [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
+        # [Ollama.test_ollama_home_ep, "ollama120", False],
+        # [Ollama.test_ollama_tags_ep, "ollama120", False],
+        # [Ollama.test_ollama_chat_no_stream, "ollama120", False],
+        # [Ollama.test_ollama_chat_stream, "ollama120", False],
+        # [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
+        # [VLLM.test_chat_vllm_stream, "vllm_model", False],
+        # [Builtin.test_builtin_ping, "vllm_model", False],
+        # [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
+        # [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
+        # [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
+        [Builtin.test_builtin_generate_questions, "vllm_model", True],
     ]
     for fn, model_name, debug in test_functions:
         try:
