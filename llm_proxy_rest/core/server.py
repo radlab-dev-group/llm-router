@@ -23,16 +23,16 @@ from llm_proxy_rest.base.constants import (
 )
 
 
-def run_flask_server(host: str = "0.0.0.0", port: int = 8080, debug: bool = False):
+def run_flask_server(host: str, port: int, debug: bool = False):
     """
     Run the Flask development server for the LLM Proxy REST API.
 
     Parameters
     ----------
-    host : str, optional
-        Interface address to bind the server to. Defaults to ``"0.0.0.0"``.
-    port : int, optional
-        TCP port on which the server will listen to. Defaults to ``8080``.
+    host : str,
+        Interface address to bind the server to.
+    port : int,
+        TCP port on which the server will listen to.
     debug : bool, optional
         Enable Flask debug mode. Useful during development. Defaults to ``False``.
 
@@ -53,8 +53,8 @@ def run_flask_server(host: str = "0.0.0.0", port: int = 8080, debug: bool = Fals
 
 
 def run_gunicorn_server(
-    host: str = "0.0.0.0",
-    port: int = 8080,
+    host: str,
+    port: int,
     workers: int = 1,
     timeout: int = 0,
     log_level: str = "info",
@@ -118,17 +118,17 @@ def run_gunicorn_server(
     StandaloneApplication(app, options).run()
 
 
-def run_waitress_server(host: str = "0.0.0.0", port: int = 8080, threads: int = 4):
+def run_waitress_server(host: str, port: int, threads: int = 4):
     """
     Run the Flask app with Waitress
     (pure-Python production server, Windows-friendly).
 
     Parameters
     ----------
-    host : str, optional
-        Interface address. Defaults to "0.0.0.0".
-    port : int, optional
-        TCP port. Defaults to 8080.
+    host : str,
+        Interface address.
+    port : int,
+        TCP port.
     threads : int, optional
         Number of threads for handling requests. Defaults to 4.
 
