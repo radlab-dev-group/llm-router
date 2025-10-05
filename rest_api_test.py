@@ -5,7 +5,8 @@ from typing import Any, Dict
 
 # Base URL of the llm‑proxy REST API.
 # Can be overridden by the environment variable LLM_PROXY_URL.
-BASE_URL = os.getenv("LLM_PROXY_URL", "http://192.168.100.66:8080")
+DEBUG_ALL = True
+BASE_URL = os.getenv("LLM_PROXY_URL", "http://192.168.100.71:8002")
 
 
 def _post(path: str, payload: Dict[str, Any]) -> requests.Response:
@@ -69,7 +70,6 @@ Zuvor hatte Amy bereits über den britischen Inseln gewütet. In Irland starb in
 """,
 }
 
-
 generate_questions_payload = {
     "model_name": "",
     "language": "",
@@ -86,7 +86,6 @@ conv_with_model_payload = {
     "model_name": "",
     "user_last_statement": "Jaka jest kategoria tekstu: Ala ma kota i psa.",
 }
-
 
 answer_question_payload = {
     "model_name": "",
@@ -244,9 +243,7 @@ class Builtin:
             print("Builtin ping:", print_json(resp))
 
     @staticmethod
-    def test_builtin_con_with_model_no_stream(
-        model_name: str, debug: bool = False
-    ) -> None:
+    def test_builtin_conv_no_stream(model_name: str, debug: bool = False) -> None:
         """Chat completion endpoint ``/api/conversation_with_model`` (POST)."""
         payload = conv_with_model_payload.copy()
         payload["model_name"] = model_name
@@ -256,7 +253,7 @@ class Builtin:
         Builtin.parse_response(resp)
 
     @staticmethod
-    def test_builtin_ext_con_with_model_no_stream(
+    def test_builtin_ext_conv_no_stream(
         model_name: str, debug: bool = False
     ) -> None:
         payload = conv_with_model_payload.copy()
@@ -268,9 +265,7 @@ class Builtin:
         Builtin.parse_response(resp)
 
     @staticmethod
-    def test_builtin_generate_article_from_text(
-        model_name: str, debug: bool = False
-    ) -> None:
+    def test_builtin_news_from_text(model_name: str, debug: bool = False) -> None:
         """Chat completion endpoint ``/api/generate_article_from_text`` (POST)."""
         payload = generate_news_payload.copy()
         payload["model_name"] = model_name
@@ -280,9 +275,7 @@ class Builtin:
         Builtin.parse_response(resp)
 
     @staticmethod
-    def test_builtin_create_full_article_from_text(
-        model_name: str, debug: bool = False
-    ) -> None:
+    def test_builtin_full_article(model_name: str, debug: bool = False) -> None:
         """Chat completion endpoint ``/api/create_full_article_from_texts`` (POST)."""
         payload = generate_questions_payload.copy()
         payload.pop("number_of_questions")
@@ -360,21 +353,21 @@ def run_all_tests() -> None:
 
     test_functions = [
         # test_lmstudio_models <- not fully integrated,
-        [Ollama.test_ollama_home_ep, "ollama120", False],
-        [Ollama.test_ollama_tags_ep, "ollama120", False],
-        [Ollama.test_ollama_chat_no_stream, "ollama120", False],
-        [Ollama.test_ollama_chat_stream, "ollama120", False],
-        [VLLM.test_chat_vllm_no_stream, "vllm_model", False],
-        [VLLM.test_chat_vllm_stream, "vllm_model", False],
-        [Builtin.test_builtin_ping, "vllm_model", False],
-        [Builtin.test_builtin_con_with_model_no_stream, "vllm_model", False],
-        [Builtin.test_builtin_ext_con_with_model_no_stream, "vllm_model", False],
-        [Builtin.test_builtin_generate_article_from_text, "vllm_model", False],
-        [Builtin.test_builtin_generate_questions, "vllm_model", False],
-        [Builtin.test_builtin_translate, "vllm_model", False],
-        [Builtin.test_builtin_simplification, "vllm_model", False],
-        [Builtin.test_builtin_create_full_article_from_text, "vllm_model", False],
-        [Builtin.test_builtin_generative_answer, "vllm_model", False],
+        [Ollama.test_ollama_home_ep, "ollama120", False or DEBUG_ALL],
+        [Ollama.test_ollama_tags_ep, "ollama120", False or DEBUG_ALL],
+        [Ollama.test_ollama_chat_no_stream, "ollama120", False or DEBUG_ALL],
+        [Ollama.test_ollama_chat_stream, "ollama120", False or DEBUG_ALL],
+        [VLLM.test_chat_vllm_no_stream, "vllm_model", False or DEBUG_ALL],
+        [VLLM.test_chat_vllm_stream, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_ping, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_conv_no_stream, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_ext_conv_no_stream, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_news_from_text, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_generate_questions, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_translate, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_simplification, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_full_article, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_generative_answer, "vllm_model", False or DEBUG_ALL],
     ]
     for fn, model_name, debug in test_functions:
         try:
