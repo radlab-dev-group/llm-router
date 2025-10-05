@@ -28,6 +28,7 @@ from typing import Optional, Dict, Any, Iterator, Iterable, List
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
+from requests import Response
 
 from llm_proxy_rest.base.model_handler import ModelHandler, ApiModel
 from llm_proxy_rest.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
@@ -395,35 +396,6 @@ class EndpointI(abc.ABC):
                 f"for endpoint {self._ep_name}"
             )
 
-    # def _filter_allowed_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
-    #     """
-    #     Strip out any keys that are not declared as required or optional.
-    #
-    #     Unknown keys generate a warning via the instance logger but are
-    #     otherwise ignored.
-    #
-    #     Parameters
-    #     ----------
-    #     params :
-    #         Raw request payload.
-    #
-    #     Returns
-    #     -------
-    #     dict
-    #         New dictionary containing only the parameters that appear in
-    #         :attr:`REQUIRED_ARGS` or :attr:`OPTIONAL_ARGS`.
-    #     """
-    #     allowed = set(self.REQUIRED_ARGS or []) | set(self.OPTIONAL_ARGS or [])
-    #     unknown = [k for k in params if k not in allowed]
-    #     if unknown:
-    #         self.logger.warning(
-    #             f"Ignoring unknown argument(s) {unknown} for endpoint {self._ep_name}",
-    #         )
-    #         filtered_params = {k: v for k, v in params.items() if k in allowed}
-    #     else:
-    #         filtered_params = params
-    #     return filtered_params
-
     def _check_method_is_allowed(self, method: str) -> None:
         """
         Ensure that *method* is one of the supported HTTP verbs.
@@ -487,7 +459,7 @@ class EndpointI(abc.ABC):
         self._api_model = api_model
 
     def _resolve_prompt_name(
-        self, params: Dict[str, Any], map_prompt: Dict[str, str]
+        self, params: Dict[str, Any], map_prompt: Optional[Dict[str, str]]
     ) -> None:
         if self.SYSTEM_PROMPT_NAME is not None:
             lang_str = self.__get_language(params=params)
@@ -499,7 +471,7 @@ class EndpointI(abc.ABC):
 
         if self._prompt_str and map_prompt:
             for _c, _t in map_prompt.items():
-                self._prompt_name = self._prompt_name.replace(_c, _t)
+                self._prompt_str = self._prompt_str.replace(_c, _t)
 
     @staticmethod
     def __get_language(params: Dict[str, Any]) -> str:
@@ -643,10 +615,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             params = self.prepare_payload(params)
             self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
-            map_prompt = {}
-            if "__map_prompt__" in params:
-                map_prompt = params.pop("__map_prompt__")
-
             if type(params) is dict:
                 if not params.get("status", True):
                     return params
@@ -682,18 +650,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
                 if bool((params or {}).get("stream", False)):
                     return self._call_http_request_stream(
-                        ep_url=ep_url, params=params, leave_only_allowed=False
+                        ep_url=ep_url, params=params
                     )
-                response = self._call_http_request(
-                    ep_url=ep_url, params=params, leave_only_allowed=False
-                )
+                response = self._call_http_request(ep_url=ep_url, params=params)
 
                 self.logger.debug("=" * 100)
                 self.logger.error(response)
                 self.logger.debug("=" * 100)
                 return response
 
-            self._resolve_prompt_name(params=params, map_prompt=map_prompt)
+            self._resolve_prompt_name(params=params, map_prompt=self._map_prompt)
             if self._prompt_name is not None:
                 self.logger.debug(f" -> prompt_name: {self._prompt_name}")
                 self.logger.debug(self._prompt_str)
@@ -703,16 +669,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 api_type=self._api_model.api_type
             )
 
-            # if bool((params or {}).get("stream", False)):
-            #     return self._call_http_request_stream(
-            #         ep_url=ep_url, params=params, leave_only_allowed=False
-            #     )
-            if self._call_for_each_user_msg:
-                raise Exception("NOT IMPLEMENTED")
+            if bool((params or {}).get("stream", False)):
+                # return self._call_http_request_stream(
+                #     ep_url=ep_url, params=params,
+                # )
+                raise Exception("Streaming API not supported for this endpoint!")
 
-            return self._call_http_request(
-                ep_url=ep_url, params=params, leave_only_allowed=False
-            )
+            return self._call_http_request(ep_url=ep_url, params=params)
         except Exception as e:
             self.logger.exception(e)
             return self.return_response_not_ok(str(e))
@@ -721,42 +684,23 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     # HTTP helpers
     # ------------------------------------------------------------------
     def _call_http_request(
-        self, ep_url: str, params: Dict[str, Any], leave_only_allowed: bool = True
+        self, ep_url: str, params: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """
-        Validate the payload and forward it to the remote service.
-
-        The method optionally filters the supplied *params* to keep only those
-        declared in :attr:`REQUIRED_ARGS` / :attr:`OPTIONAL_ARGS`,
-        injects the model name, and then delegates to either
-        :meth:`_call_post_with_payload` or :meth:`_call_get_with_payload`
-        based on the endpoint's configured HTTP verb.
-
-        Parameters
-        ----------
-        ep_url :
-            Relative path (without host) that will be appended to the model's
-            ``api_host``.
-        params :
-            Request payload.
-        leave_only_allowed :
-            When ``True`` (default) the payload is filtered to contain only
-            allowed keys.
-
-        Returns
-        -------
-        dict | None
-            Parsed JSON response from the downstream service.
-        """
-        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-        #
-        # if leave_only_allowed:
-        #     params = self._filter_allowed_params(params=params)
-
+        s_msg = {}
         params["model"] = self._api_model.name
+        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
 
         if self._prompt_str:
             s_msg = {"role": "system", "content": self._prompt_str}
+
+        if self._call_for_each_user_msg:
+            return self._call_http_request_for_each_user_message(
+                ep_url=ep_url,
+                system_message=s_msg,
+                params=params,
+            )
+
+        if self._prompt_str:
             params["messages"] = [s_msg] + params.get("messages", [])
 
         self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
@@ -765,8 +709,47 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             return self._call_post_with_payload(ep_url=ep_url, params=params)
         return self._call_get_with_payload(ep_url=ep_url, params=params)
 
+    def _call_http_request_for_each_user_message(
+        self,
+        ep_url: str,
+        system_message: Dict[str, Any],
+        params: Dict[str, Any],
+    ):
+        _payloads = []
+        for m in params.get("messages", {}):
+            if m.get("role", "?") == "user":
+                _params = params.copy()
+                _params["messages"] = [system_message, m]
+                _payloads.append([_params, m["content"]])
+
+        if self._ep_method != "POST":
+            raise Exception(
+                "_call_http_request_for_each_user_message "
+                'is not implemented for "GET" method'
+            )
+
+        contents = []
+        responses = []
+        for payload, content in _payloads:
+            self.logger.debug(json.dumps(payload, indent=2, ensure_ascii=False))
+            response = self._call_post_with_payload(
+                ep_url=ep_url, params=payload, return_raw_response=True
+            )
+            response.raise_for_status()
+            contents.append(content)
+            responses.append(response)
+
+            self.logger.debug(response.json())
+
+        if self._prepare_response_function is None:
+            raise Exception(
+                "_prepare_response_function must be implemented "
+                "when calling api for each user message"
+            )
+        return self._prepare_response_function(responses, contents)
+
     def _call_http_request_stream(
-        self, ep_url: str, params: Dict[str, Any], leave_only_allowed: bool = True
+        self, ep_url: str, params: Dict[str, Any]
     ) -> Iterator[str | bytes]:
         """
         Stream the response from a remote endpoint without decoding.
@@ -780,8 +763,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Fully qualified URL to the external service.
         params :
             Request payload.
-        leave_only_allowed :
-            Whether to filter *params* before sending.
 
         Yields
         ------
@@ -789,9 +770,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Individual NDJSON lines terminated by a newline.
         """
         ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-        #
-        # if leave_only_allowed:
-        #     params = self._filter_allowed_params(params=params)
 
         params["model"] = self._api_model.name
         params["stream"] = True
@@ -829,8 +807,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         return _stream_iter()
 
     def _call_post_with_payload(
-        self, ep_url: str, params: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+        self, ep_url: str, params: Dict[str, Any], return_raw_response: bool = False
+    ) -> Optional[Dict[str, Any] | Response]:
         """
         Issue a JSON‑encoded ``POST`` request to the remote endpoint.
 
@@ -858,6 +836,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         except requests.RequestException as exc:
             self.logger.exception(exc)
             raise RuntimeError(f"POST request to {ep_url} failed: {exc}") from exc
+
+        if return_raw_response:
+            return response
         return self.__return_http_response(response=response)
 
     def _call_get_with_payload(
@@ -922,7 +903,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
         try:
             if self._prepare_response_function:
-                return self._prepare_response_function(response=response)
+                return self._prepare_response_function(response)
             return response.json()
         except json.JSONDecodeError as e:
             self.logger.exception(e)
