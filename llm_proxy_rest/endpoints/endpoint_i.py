@@ -20,6 +20,8 @@ methods for performing outbound HTTP requests to an external service.
 
 import abc
 import json
+import time
+
 import requests
 
 from typing import Optional, Dict, Any, Iterator, Iterable, List
@@ -180,6 +182,9 @@ class EndpointI(abc.ABC):
 
         # Hook function to prepare response
         self._prepare_response_function = None
+
+        # marker when ep stared
+        self._start_time = None
 
     # ------------------------------------------------------------------
     # Public read‑only properties
@@ -343,6 +348,20 @@ class EndpointI(abc.ABC):
         if body is None or not len(body):
             return {"status": False}
         return {"status": False, "body": body}
+
+    @staticmethod
+    def _get_choices_from_response(response):
+        j_response = response.json()
+        choices = j_response.get("choices", [])
+        if not len(choices):
+            if "message" in j_response:
+                choices = [j_response]
+
+        assistant_response = ""
+        if len(choices):
+            assistant_response = choices[0].get("message", {}).get("content")
+
+        return j_response, choices, assistant_response
 
     # ------------------------------------------------------------------
     # Parameter validation helpers
@@ -615,7 +634,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Propagates any unexpected error; the Flask registrar will
             translate it into a 500 response.
         """
+        self._start_time = time.time()
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+
         try:
             self._map_prompt = None
 
