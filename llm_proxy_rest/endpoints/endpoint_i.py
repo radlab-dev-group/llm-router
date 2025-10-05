@@ -33,7 +33,6 @@ from requests import Response
 from llm_proxy_rest.base.model_handler import ModelHandler, ApiModel
 from llm_proxy_rest.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_proxy_rest.base.constants import (
-    SERVICE_AS_PROXY,
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     REST_API_TIMEOUT,
@@ -42,7 +41,6 @@ from llm_proxy_rest.base.constants import (
 from llm_proxy_rest.core.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
-    SYSTEM_PROMPT,
 )
 
 
