@@ -7,27 +7,34 @@
       "input_size": 4096,
       "model_path": ""
     },
-    "google/gemini-2.0-flash": {
+    "google/gemini-2.5-flash-lite": {
       "api_host": "https://generativelanguage.googleapis.com/v1beta/openai/",
       "api_token": "",
       "api_type": "openai",
       "input_size": 512000,
-      "model_path": ""
+      "model_path": "gemini-2.5-flash-lite"
     }
   },
   "openai_models": {
+    "openai/gpt-3.5-turbo-0125": {
+      "api_host": "https://api.openai.com",
+      "api_token": "",
+      "api_type": "openai",
+      "input_size": 256000,
+      "model_path": "gpt-3.5-turbo-0125"
+    },
     "gpt-oss:20b": {
       "api_host": "http://192.168.100.66:11434",
       "api_token": "",
       "api_type": "ollama",
-      "input_size": "256000",
+      "input_size": 256000,
       "model_path": ""
     },
     "gpt-oss:120b": {
       "api_host": "http://192.168.100.66:11434",
       "api_token": "",
       "api_type": "ollama",
-      "input_size": "256000",
+      "input_size": 256000,
       "model_path": ""
     }
   },
@@ -36,16 +43,17 @@
       "api_host": "http://192.168.100.66:11434",
       "api_token": "",
       "api_type": "ollama",
-      "input_size": "256000",
+      "input_size": 256000,
       "model_path": ""
     }
   },
   "active_models": {
     "google_models": [
       "google/gemma-3-12b-it",
-      "google/gemini-2.0-flash"
+      "google/gemini-2.5-flash-lite"
     ],
     "openai_models": [
+      "openai/gpt-3.5-turbo-0125",
       "gpt-oss:20b",
       "gpt-oss:120b"
     ],
