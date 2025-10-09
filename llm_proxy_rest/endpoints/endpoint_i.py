@@ -33,16 +33,15 @@ from requests import Response
 from llm_proxy_rest.base.model_handler import ModelHandler, ApiModel
 from llm_proxy_rest.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_proxy_rest.base.constants import (
-    SERVICE_AS_PROXY,
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     REST_API_TIMEOUT,
     DEFAULT_API_PREFIX,
 )
+from llm_proxy_rest.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_proxy_rest.core.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
-    SYSTEM_PROMPT,
 )
 
 
@@ -682,6 +681,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 api_type=self._api_model.api_type
             )
 
+            if self._api_model and self._api_model.api_type in ["openai"]:
+                params = self._filter_params_to_acceptable(
+                    api_type=self._api_model.api_type, params=params
+                )
+
             if bool((params or {}).get("stream", False)):
                 # return self._call_http_request_stream(
                 #     ep_url=ep_url, params=params,
@@ -693,6 +697,19 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             self.logger.exception(e)
             return self.return_response_not_ok(str(e))
 
+    @staticmethod
+    def _filter_params_to_acceptable(
+        api_type: str, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        _params = {}
+        if api_type == "openai":
+            for p in OPENAI_ACCEPTABLE_PARAMS:
+                if p in params:
+                    _params[p] = params[p]
+        else:
+            raise Exception(f"Unsupported API type: {api_type}")
+        return _params
+
     # ------------------------------------------------------------------
     # HTTP helpers
     # ------------------------------------------------------------------
@@ -700,17 +717,27 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         self, ep_url: str, params: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         s_msg = {}
-        params["model"] = self._api_model.name
+        params["model"] = (
+            self._api_model.model_path
+            if self._api_model.model_path
+            else self._api_model.name
+        )
         ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
+
+        headers = None
+        token_str = self._api_model.api_token
+        if token_str:
+            headers = {
+                "Authorization": f"Bearer {token_str}",
+                "Content-Type": "application/json",
+            }
 
         if self._prompt_str:
             s_msg = {"role": "system", "content": self._prompt_str}
 
         if self._call_for_each_user_msg:
             return self._call_http_request_for_each_user_message(
-                ep_url=ep_url,
-                system_message=s_msg,
-                params=params,
+                ep_url=ep_url, system_message=s_msg, params=params, headers=headers
             )
 
         if self._prompt_str:
@@ -719,14 +746,19 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
         if self._ep_method == "POST":
-            return self._call_post_with_payload(ep_url=ep_url, params=params)
-        return self._call_get_with_payload(ep_url=ep_url, params=params)
+            return self._call_post_with_payload(
+                ep_url=ep_url, params=params, headers=headers
+            )
+        return self._call_get_with_payload(
+            ep_url=ep_url, params=params, headers=headers
+        )
 
     def _call_http_request_for_each_user_message(
         self,
         ep_url: str,
         system_message: Dict[str, Any],
         params: Dict[str, Any],
+        headers: Optional[Dict[str, Any]] = None,
     ):
         _payloads = []
         for m in params.get("messages", {}):
@@ -746,7 +778,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         for payload, content in _payloads:
             self.logger.debug(json.dumps(payload, indent=2, ensure_ascii=False))
             response = self._call_post_with_payload(
-                ep_url=ep_url, params=payload, return_raw_response=True
+                ep_url=ep_url,
+                params=payload,
+                return_raw_response=True,
+                headers=headers,
             )
             response.raise_for_status()
             contents.append(content)
@@ -820,7 +855,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         return _stream_iter()
 
     def _call_post_with_payload(
-        self, ep_url: str, params: Dict[str, Any], return_raw_response: bool = False
+        self,
+        ep_url: str,
+        params: Dict[str, Any],
+        return_raw_response: bool = False,
+        headers: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any] | Response]:
         """
         Issue a JSON‑encoded ``POST`` request to the remote endpoint.
@@ -845,7 +884,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             status code.
         """
         try:
-            response = requests.post(ep_url, json=params, timeout=self._timeout)
+            response = requests.post(
+                ep_url, json=params, timeout=self._timeout, headers=headers
+            )
         except requests.RequestException as exc:
             self.logger.exception(exc)
             raise RuntimeError(f"POST request to {ep_url} failed: {exc}") from exc
@@ -855,7 +896,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         return self.__return_http_response(response=response)
 
     def _call_get_with_payload(
-        self, ep_url: str, params: Dict[str, Any]
+        self,
+        ep_url: str,
+        params: Dict[str, Any],
+        headers: Optional[Dict[str, Any]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Issue a ``GET`` request with the supplied query parameters.
@@ -880,7 +924,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             status code.
         """
         try:
-            response = requests.get(ep_url, params=params, timeout=self._timeout)
+            response = requests.get(
+                ep_url, params=params, timeout=self._timeout, headers=headers
+            )
         except requests.RequestException as exc:
             raise RuntimeError(f"GET request to {ep_url} failed: {exc}") from exc
         return self.__return_http_response(response=response)
