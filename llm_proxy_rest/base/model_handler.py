@@ -76,7 +76,7 @@ class ApiModel:
             api_type=str(cfg.get("api_type")),
             api_token=str(cfg.get("api_token", "")),
             input_size=input_size,
-            model_path=str(cfg.get("api_token", "")),
+            model_path=str(cfg.get("model_path", "")),
         )
 
     def as_dict(self) -> Dict[str, Any]:
