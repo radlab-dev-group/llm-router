@@ -109,7 +109,7 @@ def run_gunicorn_server(
         "workers": workers,
         "timeout": timeout,
         "loglevel": log_level,
-        "worker_class": "gevent",
+        # "worker_class": "gevent",
         "accesslog": "-",
         "errorlog": "-",
         "keepalive": 75,
