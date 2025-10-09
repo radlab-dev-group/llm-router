@@ -6,7 +6,7 @@ from typing import Any, Dict
 # Base URL of the llm‑proxy REST API.
 # Can be overridden by the environment variable LLM_PROXY_URL.
 DEBUG_ALL = True
-BASE_URL = os.getenv("LLM_PROXY_URL", "http://192.168.100.71:8002")
+BASE_URL = os.getenv("LLM_PROXY_URL", "http://192.168.100.65:8080")
 
 
 def _post(path: str, payload: Dict[str, Any]) -> requests.Response:
@@ -347,7 +347,8 @@ def run_all_tests() -> None:
     models = {
         "ollama20": "gpt-oss:20b",
         "ollama120": "gpt-oss:120b",
-        "external_model_name": "google/gemini-2.0-flash",
+        "external_model_name_openai": "openai/gpt-3.5-turbo-0125",
+        "external_model_name_google": "google/gemini-2.5-flash-lite",
         "vllm_model": "google/gemma-3-12b-it",
     }
 
