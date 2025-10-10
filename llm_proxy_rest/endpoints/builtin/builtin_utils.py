@@ -439,6 +439,8 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
             model_handler=model_handler,
         )
 
+        self._prepare_response_function = self.__prepare_response_function
+
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
@@ -478,5 +480,14 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
         _payload.pop("question_str")
         _payload.pop("system_prompt")
         _payload.pop("question_prompt")
-
         return _payload
+
+    def __prepare_response_function(self, response):
+        j_response, choices, assistant_response = self._get_choices_from_response(
+            response=response
+        )
+
+        return {
+            "response": choices[0].get("message", {}).get("content"),
+            "generation_time": time.time() - self._start_time,
+        }
