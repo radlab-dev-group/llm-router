@@ -1,4 +1,4 @@
-## llm‑proxy‑api
+## llm‑router
 
 A lightweight, extensible gateway that exposes a clean **REST** API for interacting with
 multiple Large Language Model (LLM) providers (OpenAI, Ollama, vLLM, etc.).  
