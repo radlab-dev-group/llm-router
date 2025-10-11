@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 
 setup(
-    name="llm-proxy-api",
+    name="llm-router",
     version="0.1.0",
     author="RadLab team",
     packages=find_packages(exclude=("tests", "docs")),
