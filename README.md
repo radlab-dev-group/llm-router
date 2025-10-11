@@ -28,12 +28,11 @@ allowing your application to talk to any supported LLM through a single, consist
 
 ### 1️⃣ Create & activate a virtual environment
 
-
 > **Prerequisite**: `radlab-ml-utils`
 >
-> This project uses the 
-> [radlab-ml-utils](https://github.com/radlab-dev-group/ml-utils) 
-> library for machine learning utilities 
+> This project uses the
+> [radlab-ml-utils](https://github.com/radlab-dev-group/ml-utils)
+> library for machine learning utilities
 > (e.g., experiment/result logging with Weights & Biases/wandb).
 > Install it before working with ML-related parts:
 >
@@ -41,7 +40,7 @@ allowing your application to talk to any supported LLM through a single, consist
 > pip install git+https://github.com/radlab-dev-group/ml-utils.git
 > ```
 >
-> For more options and details, see the library README: 
+> For more options and details, see the library README:
 > https://github.com/radlab-dev-group/ml-utils
 
 ```shell script
@@ -59,20 +58,21 @@ export LLM_PROXY_API_MINIMUM=1
 
 ### 3️⃣ Optional configuration (via environment)
 
-| Variable                            | Description                                                     | Default                                |
-|-------------------------------------|-----------------------------------------------------------------|----------------------------------------|
-| `LLM_PROXY_API_PROMPTS_DIR`         | Directory containing predefined system prompts.                 | `resources/prompts`                    |
-| `LLM_PROXY_API_MODELS_CONFIG`       | Path to the models configuration JSON file.                     | `resources/configs/models-config.json` |
-| `LLM_PROXY_API_DEFAULT_EP_LANGUAGE` | Default language for endpoint prompts.                          | `pl`                                   |
-| `LLM_PROXY_API_EXTERNAL_TIMEOUT`    | Timeout (seconds) for external model API calls.                 | `300`                                  |
-| `LLM_PROXY_API_LOG_FILENAME`        | Name of the log file.                                           | `llm-proxy-rest.log`                   |
-| `LLM_PROXY_API_LOG_LEVEL`           | Logging level (e.g., INFO, DEBUG).                              | `INFO`                                 |
-| `LLM_PROXY_API_EP_PREFIX`           | Prefix for all API endpoints.                                   | `/api`                                 |
-| `LLM_PROXY_API_MINIMUM`             | Run service in proxy‑only mode (boolean).                       | `False`                                |
-| `LLM_PROXY_API_IN_DEBUG`            | Run server in debug mode (boolean).                             | `False`                                |
-| `LLM_PROXY_API_SERVER_TYPE`         | Server implementation to use (`flask`, `gunicorn`, `waitress`). | `flask`                                |
-| `LLM_PROXY_API_SERVER_PORT`         | Port on which the server listens.                               | `8080`                                 |
-| `LLM_PROXY_API_SERVER_HOST`         | Host address for the server.                                    | `0.0.0.0`                              |
+| Variable                             | Description                                                                                                 | Default                                |
+|--------------------------------------|-------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `LLM_PROXY_API_PROMPTS_DIR`          | Directory containing predefined system prompts.                                                             | `resources/prompts`                    |
+| `LLM_PROXY_API_MODELS_CONFIG`        | Path to the models configuration JSON file.                                                                 | `resources/configs/models-config.json` |
+| `LLM_PROXY_API_DEFAULT_EP_LANGUAGE`  | Default language for endpoint prompts.                                                                      | `pl`                                   |
+| `LLM_PROXY_API_EXTERNAL_TIMEOUT`     | Timeout (seconds) for external model API calls.                                                             | `300`                                  |
+| `LLM_PROXY_API_LOG_FILENAME`         | Name of the log file.                                                                                       | `llm-proxy-rest.log`                   |
+| `LLM_PROXY_API_LOG_LEVEL`            | Logging level (e.g., INFO, DEBUG).                                                                          | `INFO`                                 |
+| `LLM_PROXY_API_EP_PREFIX`            | Prefix for all API endpoints.                                                                               | `/api`                                 |
+| `LLM_PROXY_API_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                                   | `False`                                |
+| `LLM_PROXY_API_IN_DEBUG`             | Run server in debug mode (boolean).                                                                         | `False`                                |
+| `LLM_PROXY_API_SERVER_TYPE`          | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                             | `flask`                                |
+| `LLM_PROXY_API_SERVER_PORT`          | Port on which the server listens.                                                                           | `8080`                                 |
+| `LLM_PROXY_API_SERVER_HOST`          | Host address for the server.                                                                                | `0.0.0.0`                              |
+| `LLM_PROXY_API_SERVER_WORKERS_COUNT` | Number of workers/threads (used in case when the selected server type supports multiworkers/multithreading) | `4`                                    |
 
 ### 4️⃣ Run the REST API
 
@@ -86,47 +86,50 @@ LLM_PROXY_API_MINIMUM=1 python3 -m llm_proxy_rest.rest_api
 
 ## 🛣️ Endpoints Overview
 
-
-All endpoints are exposed under the REST API service. Unless stated otherwise, methods are POST and consume/produce JSON.
+All endpoints are exposed under the REST API service. Unless stated otherwise, methods are POST and consume/produce
+JSON.
 
 ### Built-in Text Utilities
+
 - `POST /builtin/generate_questions`
-  - **Purpose**: Generate a list of questions for each provided text.
-  - **Required**: `texts`, `model_name`
-  - **Optional**: `number_of_questions`, `stream`, and other common options
-  - **Response**: For each input text returns an array of generated questions.
+    - **Purpose**: Generate a list of questions for each provided text.
+    - **Required**: `texts`, `model_name`
+    - **Optional**: `number_of_questions`, `stream`, and other common options
+    - **Response**: For each input text returns an array of generated questions.
 
 - `POST /builtin/translate`
-  - **Purpose**: Translate input texts to Polish.
-  - **Required**: `texts`, `model_name`
-  - **Optional**: `stream` and other common options
-  - **Response**: Array of objects `{ original, translated }` per input text.
+    - **Purpose**: Translate input texts to Polish.
+    - **Required**: `texts`, `model_name`
+    - **Optional**: `stream` and other common options
+    - **Response**: Array of objects `{ original, translated }` per input text.
 
 - `POST /builtin/simplify_text`
-  - **Purpose**: Simplify input texts (make them easier to read).
-  - **Required**: `texts`, `model_name`
-  - **Optional**: `stream`, `temperature`, `max_tokens` and other common options
-  - **Response**: Array of simplified texts aligned with input order.
+    - **Purpose**: Simplify input texts (make them easier to read).
+    - **Required**: `texts`, `model_name`
+    - **Optional**: `stream`, `temperature`, `max_tokens` and other common options
+    - **Response**: Array of simplified texts aligned with input order.
 
 ### Content Generation
+
 - `POST /builtin/generate_article_from_text`
-  - **Purpose**: Generate a short article/news-like snippet from a single text.
-  - **Required**: text, `model_name`
-  - **Optional**: `temperature`, `max_tokens`, `stream` and other common options
-  - **Response**: `{ article_text }`
+    - **Purpose**: Generate a short article/news-like snippet from a single text.
+    - **Required**: text, `model_name`
+    - **Optional**: `temperature`, `max_tokens`, `stream` and other common options
+    - **Response**: `{ article_text }`
 
 - `POST /builtin/create_full_article_from_texts`
-  - **Purpose**: Create a full article from multiple texts with a guiding user query.
-  - **Required**: `user_query`, `texts`, `model_name`
-  - **Optional**: `article_type`, `stream`, `temperature`, `max_tokens` and other common options
-  - **Response**: `{ article_text }`
+    - **Purpose**: Create a full article from multiple texts with a guiding user query.
+    - **Required**: `user_query`, `texts`, `model_name`
+    - **Optional**: `article_type`, `stream`, `temperature`, `max_tokens` and other common options
+    - **Response**: `{ article_text }`
 
 ### Context QA (RAG-like)
+
 - `POST /builtin/generative_answer`
-  - **Purpose**: Answer a question using provided context (list of texts or map of `doc_name -> [texts]`).
-  - **Required**: `question_str`, `texts`, `model_name`
-  - **Optional**: `question_prompt`, `system_prompt`, `doc_name_in_answer`, `stream` and other common options
-  - **Response**: `{ article_text }` where the content is the model’s answer based on the supplied context.
+    - **Purpose**: Answer a question using provided context (list of texts or map of `doc_name -> [texts]`).
+    - **Required**: `question_str`, `texts`, `model_name`
+    - **Optional**: `question_prompt`, `system_prompt`, `doc_name_in_answer`, `stream` and other common options
+    - **Response**: `{ article_text }` where the content is the model’s answer based on the supplied context.
 
 ### Streaming vs. Non‑Streaming Responses
 

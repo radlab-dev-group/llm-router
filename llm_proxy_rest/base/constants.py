@@ -46,17 +46,26 @@ DEFAULT_API_PREFIX = os.environ.get(
 # Run service as a proxy only
 SERVICE_AS_PROXY = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM")
 
-
+# Type of server, default is flask {flask, gunicorn, waitress}
 SERVER_TYPE = (
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_TYPE", "flask")
     .lower()
     .strip()
 )
 
+# Server port, default is 8080
 SERVER_PORT = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_PORT", "8080").strip()
 )
 
+# Number of workers (if server supports multiple workers), default: 4
+SERVER_WORKERS_COUNT = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKERS_COUNT", "4"
+    ).strip()
+)
+
+# Server host, default is 0.0.0.0
 SERVER_HOST = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_HOST", "0.0.0.0"
 ).strip()
@@ -70,7 +79,7 @@ if RUN_IN_DEBUG_MODE:
 def __verify_is_able_to_init():
     if not SERVICE_AS_PROXY:
         raise Exception(
-            f"Currently llm-api-proxy only supports service-as-proxy mode!\n"
+            f"Currently llm-proxy-api only supports service-as-proxy mode!\n"
             f"Environment: {_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM "
             f"must be set as True/1/yes/t\n\n"
             ">> LLM_PROXY_API_MINIMUM=1 python3 -m llm_proxy_rest.rest_api\n\n"
