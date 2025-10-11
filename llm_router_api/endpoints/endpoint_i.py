@@ -1,0 +1,988 @@
+"""
+Endpoint abstraction layer for the LLM‑proxy REST service.
+
+This module defines two abstract base classes that represent a
+*single* HTTP endpoint.  Concrete implementations inherit from one of
+these classes (selected by the ``SERVICE_AS_PROXY`` flag) and provide
+the actual request handling logic.
+
+The classes expose a small public API:
+
+* ``name`` – the URL path of the endpoint.
+* ``method`` – the HTTP verb (GET or POST) the endpoint expects.
+* ``run_ep`` – the entry point called by the Flask registrar.
+* ``prepare_payload`` – conversion of raw request parameters into the
+  payload that will be sent to the downstream model or external API.
+
+When ``SERVICE_AS_PROXY`` is ``True`` the endpoint also contains helper
+methods for performing outbound HTTP requests to an external service.
+"""
+
+import abc
+import json
+import time
+
+import requests
+
+from typing import Optional, Dict, Any, Iterator, Iterable, List
+
+from rdl_ml_utils.utils.logger import prepare_logger
+from rdl_ml_utils.handlers.prompt_handler import PromptHandler
+from requests import Response
+
+from llm_router_api.base.model_handler import ModelHandler, ApiModel
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
+from llm_router_api.base.constants import (
+    DEFAULT_EP_LANGUAGE,
+    REST_API_LOG_LEVEL,
+    REST_API_TIMEOUT,
+    DEFAULT_API_PREFIX,
+)
+from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
+from llm_router_api.core.data_models.constants import (
+    MODEL_NAME_PARAMS,
+    LANGUAGE_PARAM,
+)
+
+
+# ----------------------------------------------------------------------
+# Public abstract base class – used when the service runs *not* as a proxy.
+# ----------------------------------------------------------------------
+class EndpointI(abc.ABC):
+    """
+    Abstract representation of a single REST endpoint.
+
+    The class supplies a rich set of utilities for validation, logging,
+    and standardized response formatting.
+
+    Attributes
+    ----------
+    _ep_name: str
+        Relative URL path of the endpoint (e.g. ``"chat/completions"``).
+    _ep_method: str
+        HTTP method this endpoint expects – ``"GET"`` or ``"POST"``.
+    logger: logging.Logger
+        Module‑level logger configured with the supplied log file and level.
+    _model_handler: ModelHandler | None
+        Optional handler used to resolve model names to concrete
+        :class:`~llm_router_api.base.model_handler.ApiModel` objects.
+    _prompt_name: str | None
+        Resolved system‑prompt identifier (populated by
+        :meth:`_resolve_prompt_name`).
+    _prompt_handler: PromptHandler | None
+        Optional handler used to retrieve prompt templates.
+    _dont_add_api_prefix: bool
+        When ``True`` the endpoint URL is registered without the global
+        API prefix (``/api/v1`` by default).
+    _ep_types_str: List[str]
+        List of API types.
+    _api_type_dispatcher: ApiTypesDispatcher
+        Helper used to map a model's API type to concrete endpoint URLs.
+    _api_model: ApiModel | None
+        Model configuration selected by :meth:`_set_model`.
+    """
+
+    METHODS = ["GET", "POST"]
+    """Supported HTTP methods for any endpoint."""
+
+    REQUIRED_ARGS = []
+    """Names of parameters that **must** be supplied by the client."""
+
+    OPTIONAL_ARGS = []
+    """Names of parameters that are accepted but not required."""
+
+    SYSTEM_PROMPT_NAME = {"pl": None, "en": None}
+    """Mapping of language codes to system‑prompt identifiers."""
+
+    # ------------------------------------------------------------------
+    # Construction
+    # ------------------------------------------------------------------
+    def __init__(
+        self,
+        ep_name: str,
+        api_types: List[str],
+        method: str = "POST",
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        logger_file_name: Optional[str] = None,
+        model_handler: Optional[ModelHandler] = None,
+        prompt_handler: Optional[PromptHandler] = None,
+        dont_add_api_prefix: bool = False,
+        direct_return: bool = False,
+        call_for_each_user_msg: bool = False,
+    ):
+        """
+        Initialise an endpoint definition.
+
+        Parameters
+        ----------
+        ep_name :
+            URL fragment that identifies this endpoint (e.g. ``"chat"``).
+        method :
+            HTTP verb the endpoint will respond to; defaults to ``"POST"``.
+            Must be one of :attr:`METHODS`.
+        logger_level :
+            Logging level name (``"INFO"``, ``"DEBUG"``, …).  If omitted the
+            library default is used.
+        logger_file_name :
+            Path to a file where log records will be written.  When
+            ``None`` the default ``llm-proxy-rest.log`` is used.
+        model_handler :
+            Optional :class:`~llm_router_api.base.model_handler.ModelHandler`
+            instance used to resolve model identifiers supplied by the
+            client.
+        prompt_handler :
+            Optional :class:`~rdl_ml_utils.handlers.prompt_handler.PromptHandler`
+            used to fetch or render system prompts.
+        dont_add_api_prefix :
+            If ``True`` the endpoint URL will be registered without the
+            global ``DEFAULT_API_PREFIX`` prefix.
+        direct_return:
+            If ``True`` the payload is returned
+
+        Raises
+        ------
+        RuntimeError
+            If the endpoint does not declare any supported API types or
+            if the declared types are not present in the global
+            ``API_TYPES`` constant.
+        ValueError
+            If ``method`` is not listed in :attr:`METHODS`.
+        """
+        self._ep_name = ep_name
+        self._ep_method = method
+        self._model_handler = model_handler
+
+        self._prompt_str = None
+        self._prompt_str_force = None
+        self._prompt_name = None
+        self._map_prompt = None
+        self._prompt_str_postfix = None
+
+        self.direct_return = direct_return
+        self._prompt_handler = prompt_handler
+        self._dont_add_api_prefix = dont_add_api_prefix
+
+        self._call_for_each_user_msg = call_for_each_user_msg
+
+        self.logger = prepare_logger(
+            logger_name=__name__,
+            logger_file_name=logger_file_name or "llm-proxy-rest.log",
+            log_level=logger_level,
+            use_default_config=True,
+        )
+
+        self._ep_types_str = api_types
+        if self._ep_types_str is None or not len(self._ep_types_str):
+            raise RuntimeError("Endpoint api type is required!")
+
+        if not len(set(self._ep_types_str).intersection(set(API_TYPES))):
+            raise RuntimeError(f"Supported api types are [{', '.join(API_TYPES)}]!")
+
+        self._api_type_dispatcher = ApiTypesDispatcher()
+        self._check_method_is_allowed(method=method)
+
+        self._api_model: Optional[ApiModel] = None
+
+        # Hook function to prepare response
+        self._prepare_response_function = None
+
+        # marker when ep stared
+        self._start_time = None
+
+    # ------------------------------------------------------------------
+    # Public read‑only properties
+    # ------------------------------------------------------------------
+    @property
+    def name(self):
+        """
+        Return the raw endpoint name as supplied to the constructor.
+
+        The value is used by the Flask registrar to build the final route.
+        """
+        return self._ep_name
+
+    @property
+    def method(self):
+        """
+        Return the HTTP verb this endpoint expects (``"GET"`` or ``"POST"``).
+        """
+        return self._ep_method
+
+    @property
+    def prompt_name(self):
+        """
+        Return the resolved system‑prompt identifier for the current request.
+
+        The attribute is populated by :meth:`_resolve_prompt_name` during
+        request processing.
+        """
+        return self._prompt_name
+
+    @property
+    def add_api_prefix(self):
+        """
+        Indicate whether the global API prefix (``DEFAULT_API_PREFIX``) should
+        be prepended to the endpoint's URL when it is registered.
+
+        ``True`` means *do not* add the prefix (i.e., the endpoint opts out).
+        """
+        return not self._dont_add_api_prefix
+
+    # ------------------------------------------------------------------
+    # Core workflow
+    # ------------------------------------------------------------------
+    def run_ep(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any] | Iterable[str | bytes]]:
+        """
+        Execute the endpoint for a given request payload.
+
+        Sub‑classes override this method to implement the complete request
+        lifecycle (parameter validation, model resolution, prompt handling,
+        external API dispatch, …).  The base implementation raises
+        :class:`NotImplementedError` because the default behaviour
+        depends on whether the service runs as a proxy or a local model.
+
+        Parameters
+        ----------
+        params :
+            Dictionary of request parameters extracted by the Flask
+            registrar.  May be ``None`` for endpoints that do not expect
+            any input.
+
+        Returns
+        -------
+        dict | Iterable[bytes] | None
+            The concrete result that will be JSON‑encoded (or streamed) back
+            to the client.
+
+        Raises
+        ------
+        NotImplementedError
+            Always raised in the base class – concrete subclasses must
+            provide an implementation.
+        """
+        # try:
+        #     params = self.prepare_payload(params=params)
+        #     self._set_model(params=params)
+        #     self._resolve_prompt_name(params=params)
+        # except Exception:
+        #     raise
+        raise NotImplementedError(
+            "Method `run_ep` is not implemented for local models!"
+        )
+
+    @abc.abstractmethod
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Convert raw request parameters into the payload that will be sent to the
+        downstream model or external service.
+
+        Sub‑classes implement the business logic that interprets the incoming
+        parameters, validates them (or delegates to :meth:`_check_required_params`),
+        resolves the model to be used and returns a dictionary that represents
+        the endpoint's response body.
+
+        Parameters
+        ----------
+        params :
+            Dictionary of parameters extracted from the HTTP request.
+            May be ``None`` when the endpoint does not require input.
+
+        Returns
+        -------
+        dict | None
+            Normalised payload that will be forwarded to the downstream
+            service, or ``None`` if the endpoint produces no output.
+
+        Raises
+        ------
+        Exception
+            Any exception raised will be caught by the Flask registrar and
+            transformed into an appropriate HTTP error response.
+        """
+        raise NotImplementedError()
+
+    # ------------------------------------------------------------------
+    # Helper utilities for standardised JSON responses
+    # ------------------------------------------------------------------
+    @staticmethod
+    def return_response_ok(body: Any) -> Dict[str, Any]:
+        """
+        Build a successful response payload.
+
+        The wrapper follows the convention used throughout the project:
+        ``{"status": True, "body": <user‑data>}``.
+
+        Parameters
+        ----------
+        body :
+            Arbitrary data that will be placed under the ``"body"`` key.
+
+        Returns
+        -------
+        dict
+            Mapping ready for JSON serialisation.
+        """
+        return {"status": True, "body": body}
+
+    @staticmethod
+    def return_response_not_ok(body: Optional[Any]) -> Dict[str, Any]:
+        """
+        Build an error response payload.
+
+        If *body* is falsy (``None`` or empty) the resulting dictionary
+        contains only the ``"status": False`` flag.  Otherwise the payload
+        also includes a ``"body"`` key with the supplied value.
+
+        Parameters
+        ----------
+        body :
+            Optional error details or additional data to be returned to the
+            client.
+
+        Returns
+        -------
+        dict
+            Mapping following the ``{"status": False, "body": ...}`` convention.
+        """
+        if body is None or not len(body):
+            return {"status": False}
+        return {"status": False, "body": body}
+
+    @staticmethod
+    def _get_choices_from_response(response):
+        j_response = response.json()
+        choices = j_response.get("choices", [])
+        if not len(choices):
+            if "message" in j_response:
+                choices = [j_response]
+
+        assistant_response = ""
+        if len(choices):
+            assistant_response = choices[0].get("message", {}).get("content")
+
+        return j_response, choices, assistant_response
+
+    # ------------------------------------------------------------------
+    # Parameter validation helpers
+    # ------------------------------------------------------------------
+    def _check_required_params(self, params: Optional[Dict[str, Any]]) -> None:
+        """
+        Verify that all keys listed in :attr:`REQUIRED_ARGS` are present.
+
+        Parameters
+        ----------
+        params :
+            Dictionary of request parameters to validate.  ``None`` is treated
+            as an empty mapping.
+
+        Raises
+        ------
+        ValueError
+            If any required key is missing from *params*.
+        """
+        if (
+            params is None
+            or self.REQUIRED_ARGS is None
+            or not len(self.REQUIRED_ARGS)
+        ):
+            return
+
+        missing = [arg for arg in self.REQUIRED_ARGS if arg not in params]
+        if missing:
+            raise ValueError(
+                f"Missing required argument(s) {missing} "
+                f"for endpoint {self._ep_name}"
+            )
+
+    def _check_method_is_allowed(self, method: str) -> None:
+        """
+        Ensure that *method* is one of the supported HTTP verbs.
+
+        Parameters
+        ----------
+        method :
+            HTTP method name to validate.
+
+        Raises
+        ------
+        ValueError
+            If *method* is not present in :attr:`METHODS`.
+        """
+        if method not in self.METHODS:
+            _m_str = ", ".join(self.METHODS)
+            raise ValueError(
+                f"Unknown method {method}. Method must be one of {_m_str}"
+            )
+
+    # ------------------------------------------------------------------
+    # Model‑related helpers (used by proxy endpoints)
+    # ------------------------------------------------------------------
+    def _set_model(self, params: Dict[str, Any]) -> None:
+        """
+        Resolve the model identifier from *params* and store the matching
+        :class:`ApiModel` instance.
+
+        The method looks for any of the keys listed in
+        :data:`MODEL_NAME_PARAMS` (e.g. ``"model"``, ``"engine"``, …).  If a
+        matching model cannot be found, a :class:`ValueError` is raised.
+
+        Parameters
+        ----------
+        params :
+            Request payload from which the model name is extracted.
+
+        Raises
+        ------
+        ValueError
+            If the payload does not contain a recognised model key or the
+            model name cannot be resolved via ``self._model_handler``.
+        """
+        # if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
+        #     return
+
+        model_name = None
+        for m_name in MODEL_NAME_PARAMS:
+            model_name = params.get(m_name)
+            if model_name is not None:
+                break
+
+        if model_name is None:
+            raise ValueError(
+                f"Model name [{', '.join(MODEL_NAME_PARAMS)}] is required!"
+            )
+
+        api_model = self._model_handler.get_model(model_name=model_name)
+        if api_model is None:
+            raise ValueError(f"Model '{model_name}' not found in configuration")
+        self._api_model = api_model
+
+    def _resolve_prompt_name(
+        self, params: Dict[str, Any], map_prompt: Optional[Dict[str, str]]
+    ) -> None:
+        if self.SYSTEM_PROMPT_NAME is not None:
+            lang_str = self.__get_language(params=params)
+            self._prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
+
+        self._prompt_str = None
+        if self._prompt_str_force:
+            self._prompt_str = self._prompt_str_force
+        elif self._prompt_name:
+            self._prompt_str = self._prompt_handler.get_prompt(self._prompt_name)
+
+        if self._prompt_str and map_prompt:
+            for _c, _t in map_prompt.items():
+                self._prompt_str = self._prompt_str.replace(_c, _t)
+
+        if self._prompt_str and self._prompt_str_postfix:
+            self._prompt_str += "\n\n" + self._prompt_str_postfix
+
+        if self._prompt_str:
+            self._prompt_str = self._prompt_str.strip()
+
+    @staticmethod
+    def __get_language(params: Dict[str, Any]) -> str:
+        """
+        Extract the language code from a request payload.
+
+        The function looks for the ``LANGUAGE_PARAM`` key and falls back to
+        :data:`DEFAULT_EP_LANGUAGE` when the parameter is absent.
+
+        Parameters
+        ----------
+        params :
+            Request payload.
+
+        Returns
+        -------
+        str
+            Language identifier (e.g. ``"en"`` or ``"pl"``).
+        """
+        return params.get(LANGUAGE_PARAM, DEFAULT_EP_LANGUAGE)
+
+
+# ----------------------------------------------------------------------
+# Proxy‑enabled endpoint – performs outbound HTTP calls.
+# ----------------------------------------------------------------------
+class EndpointWithHttpRequestI(EndpointI, abc.ABC):
+    """
+    Abstract endpoint that forwards a request to an external LLM service.
+
+    The class builds on :class:`EndpointI` by adding utilities for
+    * validating required/optional parameters,
+    * filtering out unknown keys,
+    * constructing the final URL (optionally prefixed with the global API
+      prefix), and
+    * issuing the appropriate ``GET`` or ``POST`` request via the
+      :mod:`requests` library.
+    """
+
+    # ------------------------------------------------------------------
+    # Construction
+    # ------------------------------------------------------------------
+    def __init__(
+        self,
+        ep_name: str,
+        api_types: List[str],
+        method: str = "POST",
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        logger_file_name: Optional[str] = None,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        dont_add_api_prefix: bool = False,
+        direct_return: bool = False,
+        timeout: int = REST_API_TIMEOUT,
+        call_for_each_user_msg: bool = False,
+    ):
+        """
+        Initialize the HTTP‑request‑enabled endpoint.
+
+        All arguments are forwarded to :class:`EndpointI`.  In addition,
+        the constructor creates a few attributes used for dispatching chat
+        and completions endpoints and stores the request timeout.
+
+        Parameters
+        ----------
+        ep_name :
+            URL fragment that identifies the endpoint.
+        method :
+            HTTP verb; defaults to ``"POST"``.
+        logger_level :
+            Desired logging level; falls back to the library default.
+        logger_file_name :
+            Path to a file where log records will be written.
+        prompt_handler :
+            Optional handler for system prompts.
+        model_handler :
+            Optional handler for model configuration.
+        dont_add_api_prefix :
+            When ``True`` the global API prefix is omitted for this
+            endpoint.
+        direct_return:
+            When ``True`` the payload is returned
+        timeout :
+            Number of seconds after which outbound HTTP calls will be
+            aborted.
+        """
+        super().__init__(
+            ep_name=ep_name,
+            api_types=api_types,
+            method=method,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            model_handler=model_handler,
+            prompt_handler=prompt_handler,
+            dont_add_api_prefix=dont_add_api_prefix,
+            direct_return=direct_return,
+            call_for_each_user_msg=call_for_each_user_msg,
+        )
+
+        self._timeout = timeout
+
+    # ------------------------------------------------------------------
+    # Core execution flow
+    # ------------------------------------------------------------------
+    def run_ep(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any] | Iterable[str | bytes]]:
+        """
+        Execute the endpoint logic for a request.
+
+        The method first normalises the incoming parameters via
+        :meth:`prepare_payload`.  When ``self.direct_return`` is set the
+        normalised payload is returned verbatim.  Otherwise the method
+        attempts to act as a *simple proxy*: if the endpoint's API type
+        matches the model's API type, the request is forwarded to the
+        downstream service (optionally as a streaming request).
+
+        Parameters
+        ----------
+        params :
+            Dictionary of request arguments extracted by the Flask registrar.
+
+        Returns
+        -------
+        dict | Iterator[bytes] | None
+            Either a normal JSON‑serialisable dictionary, a streaming NDJSON
+            iterator, or ``None`` when the endpoint does not produce a
+            response.
+
+        Raises
+        ------
+        Exception
+            Propagates any unexpected error; the Flask registrar will
+            translate it into a 500 response.
+        """
+        self._start_time = time.time()
+        # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+
+        try:
+            self._map_prompt = None
+            self._prompt_str_force = None
+            self._prompt_str_postfix = None
+
+            params = self.prepare_payload(params)
+            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+
+            if type(params) is dict:
+                if not params.get("status", True):
+                    return params
+
+            if self.direct_return:
+                return params
+
+            # In case when the endpoint type is same as model endpoint type
+            # Then llms is used as a simple proxy with forwarding params
+            # and response from external api
+            simple_proxy = False
+            self._api_model = None
+            self._prompt_name = None
+            self._prompt_str = None
+
+            # When the endpoint does not declare required arguments, we treat
+            # it as a proxy that forwards the request to the model's own
+            # endpoint.
+            if not self.REQUIRED_ARGS:
+                self._set_model(params=params)
+                if self._api_model is None:
+                    raise ValueError(f"API model not found in params {params}")
+
+                self.logger.debug(self._api_model.as_dict())
+                if self._api_model.api_type.lower() in self._ep_types_str:
+                    simple_proxy = True
+
+            if simple_proxy:
+                ep_pref = ""
+                if self.add_api_prefix and DEFAULT_API_PREFIX:
+                    ep_pref = DEFAULT_API_PREFIX.strip()
+                ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
+
+                if bool((params or {}).get("stream", False)):
+                    return self._call_http_request_stream(
+                        ep_url=ep_url, params=params
+                    )
+                response = self._call_http_request(ep_url=ep_url, params=params)
+
+                self.logger.debug("=" * 100)
+                self.logger.error(response)
+                self.logger.debug("=" * 100)
+                return response
+
+            self._resolve_prompt_name(params=params, map_prompt=self._map_prompt)
+            if self._prompt_name is not None:
+                self.logger.debug(f" -> prompt_name: {self._prompt_name}")
+                self.logger.debug(self._prompt_str)
+
+            self.__dispatch_external_api_model(params)
+            ep_url = self._api_type_dispatcher.chat_ep(
+                api_type=self._api_model.api_type
+            )
+
+            if self._api_model and self._api_model.api_type in ["openai"]:
+                params = self._filter_params_to_acceptable(
+                    api_type=self._api_model.api_type, params=params
+                )
+
+            if bool((params or {}).get("stream", False)):
+                # return self._call_http_request_stream(
+                #     ep_url=ep_url, params=params,
+                # )
+                raise Exception("Streaming API not supported for this endpoint!")
+
+            return self._call_http_request(ep_url=ep_url, params=params)
+        except Exception as e:
+            self.logger.exception(e)
+            return self.return_response_not_ok(str(e))
+
+    @staticmethod
+    def _filter_params_to_acceptable(
+        api_type: str, params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        _params = {}
+        if api_type == "openai":
+            for p in OPENAI_ACCEPTABLE_PARAMS:
+                if p in params:
+                    _params[p] = params[p]
+        else:
+            raise Exception(f"Unsupported API type: {api_type}")
+        return _params
+
+    # ------------------------------------------------------------------
+    # HTTP helpers
+    # ------------------------------------------------------------------
+    def _call_http_request(
+        self, ep_url: str, params: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        s_msg = {}
+        params["model"] = (
+            self._api_model.model_path
+            if self._api_model.model_path
+            else self._api_model.name
+        )
+        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
+
+        headers = None
+        token_str = self._api_model.api_token
+        if token_str:
+            headers = {
+                "Authorization": f"Bearer {token_str}",
+                "Content-Type": "application/json",
+            }
+
+        if self._prompt_str:
+            s_msg = {"role": "system", "content": self._prompt_str}
+
+        if self._call_for_each_user_msg:
+            return self._call_http_request_for_each_user_message(
+                ep_url=ep_url, system_message=s_msg, params=params, headers=headers
+            )
+
+        if self._prompt_str:
+            params["messages"] = [s_msg] + params.get("messages", [])
+
+        self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+
+        if self._ep_method == "POST":
+            return self._call_post_with_payload(
+                ep_url=ep_url, params=params, headers=headers
+            )
+        return self._call_get_with_payload(
+            ep_url=ep_url, params=params, headers=headers
+        )
+
+    def _call_http_request_for_each_user_message(
+        self,
+        ep_url: str,
+        system_message: Dict[str, Any],
+        params: Dict[str, Any],
+        headers: Optional[Dict[str, Any]] = None,
+    ):
+        _payloads = []
+        for m in params.get("messages", {}):
+            if m.get("role", "?") == "user":
+                _params = params.copy()
+                _params["messages"] = [system_message, m]
+                _payloads.append([_params, m["content"]])
+
+        if self._ep_method != "POST":
+            raise Exception(
+                "_call_http_request_for_each_user_message "
+                'is not implemented for "GET" method'
+            )
+
+        contents = []
+        responses = []
+        for payload, content in _payloads:
+            self.logger.debug(json.dumps(payload, indent=2, ensure_ascii=False))
+            response = self._call_post_with_payload(
+                ep_url=ep_url,
+                params=payload,
+                return_raw_response=True,
+                headers=headers,
+            )
+            response.raise_for_status()
+            contents.append(content)
+            responses.append(response)
+
+            self.logger.debug(response.json())
+
+        if self._prepare_response_function is None:
+            raise Exception(
+                "_prepare_response_function must be implemented "
+                "when calling api for each user message"
+            )
+        return self._prepare_response_function(responses, contents)
+
+    def _call_http_request_stream(
+        self, ep_url: str, params: Dict[str, Any]
+    ) -> Iterator[str | bytes]:
+        """
+        Stream the response from a remote endpoint without decoding.
+
+        The implementation uses ``requests`` in streaming mode and yields raw
+        NDJSON lines as UTF‑8 encoded ``bytes`` objects.
+
+        Parameters
+        ----------
+        ep_url :
+            Fully qualified URL to the external service.
+        params :
+            Request payload.
+
+        Yields
+        ------
+        bytes
+            Individual NDJSON lines terminated by a newline.
+        """
+        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
+
+        params["model"] = self._api_model.name
+        params["stream"] = True
+
+        method = (self._ep_method or "POST").upper()
+
+        def _stream_iter() -> Iterator[str | bytes]:
+            try:
+                if method == "POST":
+                    with requests.post(
+                        ep_url, json=params, timeout=self._timeout, stream=True
+                    ) as r:
+                        r.raise_for_status()
+                        for line in r.iter_lines(decode_unicode=False):
+                            if line:  # Pomiń puste linie
+                                yield (
+                                    line.decode("utf-8", errors="replace") + "\n"
+                                ).encode("utf-8")
+                else:
+                    with requests.get(
+                        ep_url, params=params, timeout=self._timeout, stream=True
+                    ) as r:
+                        r.raise_for_status()
+                        for line in r.iter_lines(decode_unicode=False):
+                            if line:
+                                yield (
+                                    line.decode("utf-8", errors="replace") + "\n"
+                                ).encode("utf-8")
+            except requests.RequestException as exc:
+                import json as _json
+
+                err = {"error": str(exc)}
+                yield (_json.dumps(err) + "\n").encode("utf-8")
+
+        return _stream_iter()
+
+    def _call_post_with_payload(
+        self,
+        ep_url: str,
+        params: Dict[str, Any],
+        return_raw_response: bool = False,
+        headers: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any] | Response]:
+        """
+        Issue a JSON‑encoded ``POST`` request to the remote endpoint.
+
+        Parameters
+        ----------
+        ep_url :
+            Fully qualified URL.
+        params :
+            Payload to be JSON‑encoded.
+
+        Returns
+        -------
+        dict | None
+            Decoded JSON response or a ``{"raw_response": <text>}`` mapping
+            when the response is not valid JSON.
+
+        Raises
+        ------
+        RuntimeError
+            If the request fails or the remote service returns a non‑2xx
+            status code.
+        """
+        try:
+            response = requests.post(
+                ep_url, json=params, timeout=self._timeout, headers=headers
+            )
+        except requests.RequestException as exc:
+            self.logger.exception(exc)
+            raise RuntimeError(f"POST request to {ep_url} failed: {exc}") from exc
+
+        if return_raw_response:
+            return response
+        return self.__return_http_response(response=response)
+
+    def _call_get_with_payload(
+        self,
+        ep_url: str,
+        params: Dict[str, Any],
+        headers: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Issue a ``GET`` request with the supplied query parameters.
+
+        Parameters
+        ----------
+        ep_url :
+            Fully qualified URL.
+        params :
+            Mapping that will be turned into a query string.
+
+        Returns
+        -------
+        dict | None
+            Decoded JSON response or a ``{"raw_response": <text>}`` mapping
+            when the response is not valid JSON.
+
+        Raises
+        ------
+        RuntimeError
+            If the request fails or the remote service returns a non‑2xx
+            status code.
+        """
+        try:
+            response = requests.get(
+                ep_url, params=params, timeout=self._timeout, headers=headers
+            )
+        except requests.RequestException as exc:
+            raise RuntimeError(f"GET request to {ep_url} failed: {exc}") from exc
+        return self.__return_http_response(response=response)
+
+    def __return_http_response(self, response):
+        """
+        Normalize an HTTP response object into a Python dictionary.
+
+        If the response status code indicates an error, a
+        :class:`RuntimeError` is raised.  When the body cannot be parsed as
+        JSON a ``{"raw_response": <text>}`` mapping is returned instead.
+
+        Parameters
+        ----------
+        response:
+            ``requests.Response`` object obtained from a ``GET`` or ``POST``
+            call.
+
+        Returns
+        -------
+        dict
+            JSON payload or a raw‑response wrapper.
+
+        Raises
+        ------
+        RuntimeError
+            If ``response.ok`` is ``False``.
+        """
+        if not response.ok:
+            raise RuntimeError(
+                f"POST request to {self._ep_name} returned status "
+                f"{response.status_code}: {response.text}"
+            )
+        try:
+            if self._prepare_response_function:
+                return self._prepare_response_function(response)
+            return response.json()
+        except json.JSONDecodeError as e:
+            self.logger.exception(e)
+            return {"raw_response": response.text}
+
+    def __dispatch_external_api_model(self, params: Dict[str, Any]) -> None:
+        model_name = None
+        for _m_name in MODEL_NAME_PARAMS:
+            model_name = params.get(_m_name)
+            if model_name is not None and len(model_name.strip()):
+                break
+            model_name = None
+
+        if model_name is None:
+            raise Exception(
+                f"Model name must be provided by one of "
+                f"the param: [{', '.join(MODEL_NAME_PARAMS)}]"
+            )
+        try:
+            self._api_model = self._model_handler.get_model(model_name)
+        except (ValueError, Exception) as e:
+            self.logger.exception(e)
+            raise

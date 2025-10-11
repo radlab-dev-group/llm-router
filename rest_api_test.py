@@ -4,9 +4,9 @@ import requests
 from typing import Any, Dict
 
 # Base URL of the llm‑proxy REST API.
-# Can be overridden by the environment variable LLM_PROXY_URL.
+# Can be overridden by the environment variable LLM_ROUTER_URL.
 DEBUG_ALL = True
-BASE_URL = os.getenv("LLM_PROXY_URL", "http://192.168.100.65:8080")
+BASE_URL = os.getenv("LLM_ROUTER_URL", "http://192.168.100.65:8080")
 
 
 def _post(path: str, payload: Dict[str, Any]) -> requests.Response:

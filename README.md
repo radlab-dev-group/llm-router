@@ -53,33 +53,33 @@ pip install .
 ### 2️⃣ Minimum required environment variable
 
 ```shell script
-export LLM_PROXY_API_MINIMUM=1
+export LLM_ROUTER_MINIMUM=1
 ```
 
 ### 3️⃣ Optional configuration (via environment)
 
-| Variable                             | Description                                                                                                 | Default                                |
-|--------------------------------------|-------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| `LLM_PROXY_API_PROMPTS_DIR`          | Directory containing predefined system prompts.                                                             | `resources/prompts`                    |
-| `LLM_PROXY_API_MODELS_CONFIG`        | Path to the models configuration JSON file.                                                                 | `resources/configs/models-config.json` |
-| `LLM_PROXY_API_DEFAULT_EP_LANGUAGE`  | Default language for endpoint prompts.                                                                      | `pl`                                   |
-| `LLM_PROXY_API_EXTERNAL_TIMEOUT`     | Timeout (seconds) for external model API calls.                                                             | `300`                                  |
-| `LLM_PROXY_API_LOG_FILENAME`         | Name of the log file.                                                                                       | `llm-proxy-rest.log`                   |
-| `LLM_PROXY_API_LOG_LEVEL`            | Logging level (e.g., INFO, DEBUG).                                                                          | `INFO`                                 |
-| `LLM_PROXY_API_EP_PREFIX`            | Prefix for all API endpoints.                                                                               | `/api`                                 |
-| `LLM_PROXY_API_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                                   | `False`                                |
-| `LLM_PROXY_API_IN_DEBUG`             | Run server in debug mode (boolean).                                                                         | `False`                                |
-| `LLM_PROXY_API_SERVER_TYPE`          | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                             | `flask`                                |
-| `LLM_PROXY_API_SERVER_PORT`          | Port on which the server listens.                                                                           | `8080`                                 |
-| `LLM_PROXY_API_SERVER_HOST`          | Host address for the server.                                                                                | `0.0.0.0`                              |
-| `LLM_PROXY_API_SERVER_WORKERS_COUNT` | Number of workers/threads (used in case when the selected server type supports multiworkers/multithreading) | `4`                                    |
+| Variable                          | Description                                                                                                 | Default                                |
+|-----------------------------------|-------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `LLM_ROUTER_PROMPTS_DIR`          | Directory containing predefined system prompts.                                                             | `resources/prompts`                    |
+| `LLM_ROUTER_MODELS_CONFIG`        | Path to the models configuration JSON file.                                                                 | `resources/configs/models-config.json` |
+| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`  | Default language for endpoint prompts.                                                                      | `pl`                                   |
+| `LLM_ROUTER_EXTERNAL_TIMEOUT`     | Timeout (seconds) for external model API calls.                                                             | `300`                                  |
+| `LLM_ROUTER_LOG_FILENAME`         | Name of the log file.                                                                                       | `llm-proxy-rest.log`                   |
+| `LLM_ROUTER_LOG_LEVEL`            | Logging level (e.g., INFO, DEBUG).                                                                          | `INFO`                                 |
+| `LLM_ROUTER_EP_PREFIX`            | Prefix for all API endpoints.                                                                               | `/api`                                 |
+| `LLM_ROUTER_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                                   | `False`                                |
+| `LLM_ROUTER_IN_DEBUG`             | Run server in debug mode (boolean).                                                                         | `False`                                |
+| `LLM_ROUTER_SERVER_TYPE`          | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                             | `flask`                                |
+| `LLM_ROUTER_SERVER_PORT`          | Port on which the server listens.                                                                           | `8080`                                 |
+| `LLM_ROUTER_SERVER_HOST`          | Host address for the server.                                                                                | `0.0.0.0`                              |
+| `LLM_ROUTER_SERVER_WORKERS_COUNT` | Number of workers/threads (used in case when the selected server type supports multiworkers/multithreading) | `4`                                    |
 
 ### 4️⃣ Run the REST API
 
 ```shell script
 ./run-rest-api.sh
 # or
-LLM_PROXY_API_MINIMUM=1 python3 -m llm_proxy_rest.rest_api
+LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 ```
 
 ---
@@ -148,14 +148,14 @@ flag lives in the request schema (`OpenAIChatModel` and analogous models) and is
 
 ## ⚙️ Configuration Details
 
-| Config File / Variable                                   | Meaning                                                                                               |
-|----------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
-| `resources/configs/models-config.json`                   | JSON map of provider → model → default options (e.g., `keep_alive`, `options.num_ctx`).               |
-| `LLM_PROXY_API_PROMPTS_DIR`                              | Directory containing prompt templates (`*.prompt`). Sub‑folders are language‑specific (`en/`, `pl/`). |
-| `LLM_PROXY_API_DEFAULT_EP_LANGUAGE`                      | Language code used when a prompt does not explicitly specify one.                                     |
-| `LLM_PROXY_API_TIMEOUT`                                  | Upper bound for any request to an upstream LLM (seconds).                                             |
-| `LLM_PROXY_API_LOG_FILENAME` / `LLM_PROXY_API_LOG_LEVEL` | Logging destinations and verbosity.                                                                   |
-| `LLM_PROXY_API_IN_DEBUG`                                 | When set, enables DEBUG‑level logs and more verbose error payloads.                                   |
+| Config File / Variable                             | Meaning                                                                                               |
+|----------------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| `resources/configs/models-config.json`             | JSON map of provider → model → default options (e.g., `keep_alive`, `options.num_ctx`).               |
+| `LLM_ROUTER_PROMPTS_DIR`                           | Directory containing prompt templates (`*.prompt`). Sub‑folders are language‑specific (`en/`, `pl/`). |
+| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`                   | Language code used when a prompt does not explicitly specify one.                                     |
+| `LLM_ROUTER_TIMEOUT`                               | Upper bound for any request to an upstream LLM (seconds).                                             |
+| `LLM_ROUTER_LOG_FILENAME` / `LLM_ROUTER_LOG_LEVEL` | Logging destinations and verbosity.                                                                   |
+| `LLM_ROUTER_IN_DEBUG`                              | When set, enables DEBUG‑level logs and more verbose error payloads.                                   |
 
 ---
 
