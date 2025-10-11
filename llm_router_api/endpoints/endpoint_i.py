@@ -687,15 +687,55 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
             if bool((params or {}).get("stream", False)):
-                # return self._call_http_request_stream(
-                #     ep_url=ep_url, params=params,
-                # )
+                if not self._api_model:
+                    raise ValueError(
+                        "API model not found streaming is not possible!"
+                    )
+
+                if not self._api_model.api_type in ["openai", "vllm", "llmstudio"]:
+                    raise ValueError(
+                        f"Streaming is available only for [openai, vllm, llmstudio]"
+                    )
+
+                if self._call_for_each_user_msg:
+                    raise ValueError(
+                        "Streaming is available only for single message"
+                    )
+                # print("params=", params)
+                print(json.dumps(params, indent=2, ensure_ascii=False))
+                if "ollama" in self._ep_types_str:
+                    params = self._convert_ollama_messages_if_needed(params=params)
+                    # raise ValueError(f"Ollama is not supported with {self._api_model.api_type}")
+
+                return self._call_http_request_stream(
+                    ep_url=ep_url,
+                    params=params,
+                )
                 raise Exception("Streaming API not supported for this endpoint!")
 
             return self._call_http_request(ep_url=ep_url, params=params)
         except Exception as e:
             self.logger.exception(e)
             return self.return_response_not_ok(str(e))
+
+    @staticmethod
+    def _convert_ollama_messages_if_needed(params: Dict[str, Any]) -> Dict[str, Any]:
+        if not "messages" in params:
+            return params
+
+        messages = params["messages"]
+        if len(messages) == 1:
+            return params
+
+        if messages[0].get("role") == "user" and messages[1].get("role") == "user":
+            _messages = []
+            for message in messages:
+                _messages.append(message)
+                _messages.append({"role": "system", "content": ""})
+            _messages.pop(-1)
+            params["messages"] = _messages
+
+        return params
 
     @staticmethod
     def _filter_params_to_acceptable(
