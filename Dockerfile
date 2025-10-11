@@ -27,4 +27,4 @@ RUN pip3 install git+https://github.com/radlab-dev-group/ml-utils.git
 
 RUN chmod +x run-rest-api.sh
 
-CMD ["/srv/llm-proxy-api/run-rest-api.sh"]
+CMD ["/srv/llm-router/run-rest-api.sh"]
