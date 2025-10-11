@@ -701,16 +701,27 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     raise ValueError(
                         "Streaming is available only for single message"
                     )
-                # print("params=", params)
-                print(json.dumps(params, indent=2, ensure_ascii=False))
-                if "ollama" in self._ep_types_str:
-                    params = self._convert_ollama_messages_if_needed(params=params)
-                    # raise ValueError(f"Ollama is not supported with {self._api_model.api_type}")
 
-                return self._call_http_request_stream(
-                    ep_url=ep_url,
-                    params=params,
-                )
+                if self._api_model.api_type in self._ep_types_str:
+                    return self._call_http_request_stream(
+                        ep_url=ep_url,
+                        params=params,
+                    )
+
+                if "ollama" in self._ep_types_str:
+                    return self._call_http_request_stream_ollama(
+                        ep_url=ep_url,
+                        params=params,
+                    )
+                    # raise ValueError(
+                    #     f"{self._ep_types_str} is not "
+                    #     f"supported with {self._api_model.api_type}"
+                    # )
+
+                # return self._call_http_request_stream(
+                #     ep_url=ep_url,
+                #     params=params,
+                # )
                 raise Exception("Streaming API not supported for this endpoint!")
 
             return self._call_http_request(ep_url=ep_url, params=params)
@@ -728,11 +739,24 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             return params
 
         if messages[0].get("role") == "user" and messages[1].get("role") == "user":
+            skip_last = False
             _messages = []
-            for message in messages:
+            _msg_count = len(messages)
+            for _num, message in enumerate(messages):
+                skip_last = False
                 _messages.append(message)
-                _messages.append({"role": "system", "content": ""})
-            _messages.pop(-1)
+                if message["role"] == "assistant":
+                    continue
+
+                if _num + 1 < _msg_count:
+                    if messages[_num + 1]["role"] == "assistant":
+                        continue
+                _messages.append({"role": "assistant", "content": ""})
+                skip_last = True
+
+            if skip_last:
+                _messages.pop(-1)
+
             params["messages"] = _messages
 
         return params
@@ -872,7 +896,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     ) as r:
                         r.raise_for_status()
                         for line in r.iter_lines(decode_unicode=False):
-                            if line:  # Pomiń puste linie
+                            if line:
                                 yield (
                                     line.decode("utf-8", errors="replace") + "\n"
                                 ).encode("utf-8")
@@ -887,12 +911,381 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                                     line.decode("utf-8", errors="replace") + "\n"
                                 ).encode("utf-8")
             except requests.RequestException as exc:
-                import json as _json
-
                 err = {"error": str(exc)}
-                yield (_json.dumps(err) + "\n").encode("utf-8")
+                yield (json.dumps(err) + "\n").encode("utf-8")
 
         return _stream_iter()
+
+    #
+    # def _call_http_request_stream_ollama(
+    #         self, ep_url: str, params: Dict[str, Any]
+    # ) -> Iterator[bytes]:
+    #     """
+    #     Stream a response from an external API (e.g., OpenAI) but emit events in Ollama-like NDJSON format.
+    #
+    #     This method calls the target API with streaming enabled and adapts the incoming
+    #     event stream into Ollama-compatible chunks:
+    #       - {"model": "...", "created_at": "...", "message": {"role": "assistant", "content": "<delta>"}, "done": false}
+    #       - ...
+    #       - {"model": "...", "created_at": "...", "done": true}
+    #
+    #     Notes:
+    #     - Assumes OpenAI-compatible Server-Sent Events payload: lines starting with "data: ".
+    #     - For non-OpenAI endpoints that already return NDJSON chunks, lines are forwarded as-is.
+    #     """
+    #     # Normalize multi-message payload to be compatible with some backends if needed
+    #     params = self._convert_ollama_messages_if_needed(params=params)
+    #
+    #     # Build full target URL (external provider endpoint)
+    #     full_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
+    #
+    #     # Ensure streaming flags for downstream API
+    #     payload = dict(params or {})
+    #     payload["model"] = self._api_model.name
+    #     payload["stream"] = True
+    #
+    #     # Prepare headers (auth if provided)
+    #     headers = {
+    #         "Content-Type": "application/json",
+    #         "Accept": "application/json",
+    #     }
+    #     if self._api_model.api_token:
+    #         headers["Authorization"] = f"Bearer {self._api_model.api_token}"
+    #
+    #     method = (self._ep_method or "POST").upper()
+    #
+    #     def _now_iso() -> str:
+    #         import datetime
+    #         return datetime.datetime.utcnow().isoformat() + "Z"
+    #
+    #     def _ollama_chunk(delta: str, done: bool = False) -> bytes:
+    #         # Minimal Ollama-like shape
+    #         obj = {
+    #             "model": self._api_model.name,
+    #             "created_at": _now_iso(),
+    #             "done": done,
+    #         }
+    #         if not done:
+    #             obj["message"] = {"role": "assistant", "content": delta}
+    #         return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+    #
+    #     def _iter_lines(response) -> Iterator[bytes]:
+    #         """
+    #         Try to parse OpenAI-style SSE. If not matching, forward raw NDJSON lines.
+    #         """
+    #         sent_done = False
+    #         try:
+    #             for raw in response.iter_lines(decode_unicode=True):
+    #                 if not raw:
+    #                     continue
+    #
+    #                 line = raw.strip()
+    #
+    #                 # OpenAI SSE convention
+    #                 if line.startswith("data:"):
+    #                     data_str = line[5:].strip()
+    #                     if data_str == "[DONE]":
+    #                         if not sent_done:
+    #                             yield _ollama_chunk("", done=True)
+    #                             sent_done = True
+    #                         continue
+    #                     try:
+    #                         event = json.loads(data_str)
+    #                     except Exception:
+    #                         # Forward unparsable as raw
+    #                         yield (raw + "\n").encode("utf-8")
+    #                         continue
+    #
+    #                     # Extract delta text (chat.completions)
+    #                     delta_text = ""
+    #                     try:
+    #                         choices = event.get("choices", [])
+    #                         if choices:
+    #                             delta_obj = choices[0].get("delta") or choices[0].get("text") or {}
+    #                             if isinstance(delta_obj, dict):
+    #                                 delta_text = delta_obj.get("content") or ""
+    #                             elif isinstance(delta_obj, str):
+    #                                 delta_text = delta_obj
+    #                     except Exception:
+    #                         delta_text = ""
+    #
+    #                     if delta_text:
+    #                         yield _ollama_chunk(delta_text, done=False)
+    #
+    #                     # If provider marks finish_reason, close with done chunk once
+    #                     try:
+    #                         choices = event.get("choices", [])
+    #                         if choices and choices[0].get("finish_reason") and not sent_done:
+    #                             yield _ollama_chunk("", done=True)
+    #                             sent_done = True
+    #                     except Exception:
+    #                         pass
+    #                     continue
+    #
+    #                 # Some providers return pure NDJSON without "data:" prefix
+    #                 # Try parse as JSON with a few common shapes, otherwise forward
+    #                 try:
+    #                     evt = json.loads(line)
+    #                     # vLLM/openai-compatible stream line
+    #                     delta_text = ""
+    #                     if "choices" in evt:
+    #                         ch = evt["choices"]
+    #                         if ch:
+    #                             d = ch[0].get("delta") or ch[0].get("text") or {}
+    #                             if isinstance(d, dict):
+    #                                 delta_text = d.get("content") or ""
+    #                             elif isinstance(d, str):
+    #                                 delta_text = d
+    #                         if delta_text:
+    #                             yield _ollama_chunk(delta_text, done=False)
+    #                         if ch and ch[0].get("finish_reason") and not sent_done:
+    #                             yield _ollama_chunk("", done=True)
+    #                             sent_done = True
+    #                     # Generic models might send a terminal flag
+    #                     elif evt.get("done") is True and not sent_done:
+    #                         yield _ollama_chunk("", done=True)
+    #                         sent_done = True
+    #                     else:
+    #                         # Unknown JSON shape; forward raw
+    #                         yield (line + "\n").encode("utf-8")
+    #                 except Exception:
+    #                     # Not JSON; forward raw
+    #                     yield (line + "\n").encode("utf-8")
+    #         except requests.RequestException as exc:
+    #             err = {"error": str(exc)}
+    #             yield (json.dumps(err) + "\n").encode("utf-8")
+    #         finally:
+    #             # Ensure exactly one final done chunk if none was sent by upstream
+    #             if not sent_done:
+    #                 yield _ollama_chunk("", done=True)
+    #
+    #     try:
+    #         if method == "POST":
+    #             with requests.post(
+    #                     full_url,
+    #                     json=payload,
+    #                     headers=headers,
+    #                     timeout=self._timeout,
+    #                     stream=True,
+    #             ) as resp:
+    #                 resp.raise_for_status()
+    #                 for chunk in _iter_lines(resp):
+    #                     yield chunk
+    #         else:
+    #             with requests.get(
+    #                     full_url,
+    #                     params=payload,
+    #                     headers=headers,
+    #                     timeout=self._timeout,
+    #                     stream=True,
+    #             ) as resp:
+    #                 resp.raise_for_status()
+    #                 for chunk in _iter_lines(resp):
+    #                     yield chunk
+    #     except requests.RequestException as exc:
+    #         yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
+
+    def _call_http_request_stream_ollama(
+        self, ep_url: str, params: Dict[str, Any]
+    ) -> Iterator[bytes]:
+        """
+        Stream a response from an external API (e.g., OpenAI) but emit events in Ollama-like NDJSON format.
+
+        This method calls the target API with streaming enabled and adapts the incoming
+        event stream into Ollama-compatible chunks:
+          - {"model": "...", "created_at": "...", "message": {"role": "assistant", "content": "<delta>"}, "done": false}
+          - ...
+          - {"model": "...", "created_at": "...", "done": true, "total_duration": ..., "prompt_eval_count": ...}
+
+        Notes:
+        - Assumes OpenAI-compatible Server-Sent Events payload: lines starting with "data: ".
+        - For non-OpenAI endpoints that already return NDJSON chunks, lines are forwarded as-is.
+        """
+        # Normalize multi-message payload to be compatible with some backends if needed
+        params = self._convert_ollama_messages_if_needed(params=params)
+
+        # Build full target URL (external provider endpoint)
+        full_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
+
+        # Ensure streaming flags for downstream API
+        payload = dict(params or {})
+        payload["model"] = self._api_model.name
+        payload["stream"] = True
+
+        # Prepare headers (auth if provided)
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        if self._api_model.api_token:
+            headers["Authorization"] = f"Bearer {self._api_model.api_token}"
+
+        method = (self._ep_method or "POST").upper()
+
+        def _now_iso() -> str:
+            import datetime
+
+            return datetime.datetime.utcnow().isoformat() + "Z"
+
+        def _ollama_chunk(
+            delta: str, done: bool = False, usage: Dict[str, int] = None
+        ) -> bytes:
+            # Minimal Ollama-like shape
+            obj = {
+                "model": self._api_model.name,
+                "created_at": _now_iso(),
+                "done": done,
+            }
+            if not done:
+                obj["message"] = {"role": "assistant", "content": delta}
+            else:
+                # Final chunk needs these fields according to Ollama spec
+                obj["message"] = {"role": "assistant", "content": ""}
+                if usage:
+                    obj["prompt_eval_count"] = usage.get("prompt_tokens", 0)
+                    obj["eval_count"] = usage.get("completion_tokens", 0)
+                else:
+                    obj["prompt_eval_count"] = 0
+                    obj["eval_count"] = 0
+                obj["total_duration"] = 0
+                obj["load_duration"] = 0
+                obj["prompt_eval_duration"] = 0
+                obj["eval_duration"] = 0
+            return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
+
+        def _iter_lines(response) -> Iterator[bytes]:
+            """
+            Try to parse OpenAI-style SSE. If not matching, forward raw NDJSON lines.
+            """
+            sent_done = False
+            usage_data = None
+            try:
+                for raw in response.iter_lines(decode_unicode=True):
+                    if not raw:
+                        continue
+
+                    line = raw.strip()
+
+                    # OpenAI SSE convention
+                    if line.startswith("data:"):
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            if not sent_done:
+                                yield _ollama_chunk("", done=True, usage=usage_data)
+                                sent_done = True
+                            continue
+                        try:
+                            event = json.loads(data_str)
+                        except Exception:
+                            # Forward unparsable as raw
+                            yield (raw + "\n").encode("utf-8")
+                            continue
+
+                        # Capture usage data if present
+                        if "usage" in event:
+                            usage_data = event["usage"]
+
+                        # Extract delta text (chat.completions)
+                        delta_text = ""
+                        try:
+                            choices = event.get("choices", [])
+                            if choices:
+                                delta_obj = (
+                                    choices[0].get("delta")
+                                    or choices[0].get("text")
+                                    or {}
+                                )
+                                if isinstance(delta_obj, dict):
+                                    delta_text = delta_obj.get("content") or ""
+                                elif isinstance(delta_obj, str):
+                                    delta_text = delta_obj
+                        except Exception:
+                            delta_text = ""
+
+                        if delta_text:
+                            yield _ollama_chunk(delta_text, done=False)
+
+                        # If provider marks finish_reason, close with done chunk once
+                        try:
+                            choices = event.get("choices", [])
+                            if (
+                                choices
+                                and choices[0].get("finish_reason")
+                                and not sent_done
+                            ):
+                                yield _ollama_chunk("", done=True, usage=usage_data)
+                                sent_done = True
+                        except Exception:
+                            pass
+                        continue
+
+                    # Some providers return pure NDJSON without "data:" prefix
+                    # Try parse as JSON with a few common shapes, otherwise forward
+                    try:
+                        evt = json.loads(line)
+
+                        # Capture usage data
+                        if "usage" in evt:
+                            usage_data = evt["usage"]
+
+                        # vLLM/openai-compatible stream line
+                        delta_text = ""
+                        if "choices" in evt:
+                            ch = evt["choices"]
+                            if ch:
+                                d = ch[0].get("delta") or ch[0].get("text") or {}
+                                if isinstance(d, dict):
+                                    delta_text = d.get("content") or ""
+                                elif isinstance(d, str):
+                                    delta_text = d
+                            if delta_text:
+                                yield _ollama_chunk(delta_text, done=False)
+                            if ch and ch[0].get("finish_reason") and not sent_done:
+                                yield _ollama_chunk("", done=True, usage=usage_data)
+                                sent_done = True
+                        # Generic models might send a terminal flag
+                        elif evt.get("done") is True and not sent_done:
+                            yield _ollama_chunk("", done=True, usage=usage_data)
+                            sent_done = True
+                        else:
+                            # Unknown JSON shape; forward raw
+                            yield (line + "\n").encode("utf-8")
+                    except Exception:
+                        # Not JSON; forward raw
+                        yield (line + "\n").encode("utf-8")
+            except requests.RequestException as exc:
+                err = {"error": str(exc)}
+                yield (json.dumps(err) + "\n").encode("utf-8")
+            finally:
+                # Ensure exactly one final done chunk if none was sent by upstream
+                if not sent_done:
+                    yield _ollama_chunk("", done=True, usage=usage_data)
+
+        try:
+            if method == "POST":
+                with requests.post(
+                    full_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=self._timeout,
+                    stream=True,
+                ) as resp:
+                    resp.raise_for_status()
+                    for chunk in _iter_lines(resp):
+                        yield chunk
+            else:
+                with requests.get(
+                    full_url,
+                    params=payload,
+                    headers=headers,
+                    timeout=self._timeout,
+                    stream=True,
+                ) as resp:
+                    resp.raise_for_status()
+                    for chunk in _iter_lines(resp):
+                        yield chunk
+        except requests.RequestException as exc:
+            yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
 
     def _call_post_with_payload(
         self,
