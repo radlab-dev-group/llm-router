@@ -13,16 +13,28 @@ from llm_proxy_rest.core.server import (
     run_gunicorn_server,
     run_waitress_server,
 )
-from llm_proxy_rest.base.constants import SERVER_TYPE, SERVER_PORT, SERVER_HOST
+from llm_proxy_rest.base.constants import (
+    SERVER_TYPE,
+    SERVER_PORT,
+    SERVER_HOST,
+    SERVER_WORKERS_COUNT,
+)
 
 
 if __name__ == "__main__":
     if "--gunicorn" in sys.argv or SERVER_TYPE == "gunicorn":
         print("Starting with Gunicorn (production + streaming support)...")
-        run_gunicorn_server(host=SERVER_HOST, port=SERVER_PORT, workers=1, timeout=0)
+        run_gunicorn_server(
+            host=SERVER_HOST,
+            port=SERVER_PORT,
+            workers=SERVER_WORKERS_COUNT,
+            timeout=0,
+        )
     elif "--waitress" in sys.argv or SERVER_TYPE == "waitress":
         print("Starting with Waitress (production, Windows-friendly)...")
-        run_waitress_server(host=SERVER_HOST, port=SERVER_PORT, threads=4)
+        run_waitress_server(
+            host=SERVER_HOST, port=SERVER_PORT, threads=SERVER_WORKERS_COUNT
+        )
     else:
         print("Starting with Flask dev server (NOT recommended for streaming)...")
         run_flask_server(host=SERVER_HOST, port=SERVER_PORT, debug=False)
