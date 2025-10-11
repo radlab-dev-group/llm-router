@@ -13,4 +13,4 @@ LLM_ROUTER_TIMEOUT=500 \
   LLM_ROUTER_SERVER_HOST="0.0.0.0" \
   LLM_ROUTER_SERVER_WORKERS_COUNT=4 \
   LLM_ROUTER_EXTERNAL_TIMEOUT=300 \
-  python3 -m llm_proxy_rest.rest_api
+  python3 -m llm_router_api.rest_api
