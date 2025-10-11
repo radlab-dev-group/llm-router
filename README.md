@@ -64,7 +64,7 @@ export LLM_ROUTER_MINIMUM=1
 | `LLM_ROUTER_MODELS_CONFIG`        | Path to the models configuration JSON file.                                                                 | `resources/configs/models-config.json` |
 | `LLM_ROUTER_DEFAULT_EP_LANGUAGE`  | Default language for endpoint prompts.                                                                      | `pl`                                   |
 | `LLM_ROUTER_EXTERNAL_TIMEOUT`     | Timeout (seconds) for external model API calls.                                                             | `300`                                  |
-| `LLM_ROUTER_LOG_FILENAME`         | Name of the log file.                                                                                       | `llm-proxy-rest.log`                   |
+| `LLM_ROUTER_LOG_FILENAME`         | Name of the log file.                                                                                       | `llm-router.log`                       |
 | `LLM_ROUTER_LOG_LEVEL`            | Logging level (e.g., INFO, DEBUG).                                                                          | `INFO`                                 |
 | `LLM_ROUTER_EP_PREFIX`            | Prefix for all API endpoints.                                                                               | `/api`                                 |
 | `LLM_ROUTER_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                                   | `False`                                |
