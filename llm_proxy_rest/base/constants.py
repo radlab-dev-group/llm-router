@@ -60,7 +60,9 @@ SERVER_PORT = int(
 
 # Number of workers (if server supports multiple workers), default: 4
 SERVER_WORKERS_COUNT = int(
-    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKERS", "4").strip()
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKERS_COUNT", "4"
+    ).strip()
 )
 
 # Server host, default is 0.0.0.0
