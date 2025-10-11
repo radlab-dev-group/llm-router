@@ -125,7 +125,7 @@ class EndpointI(abc.ABC):
             library default is used.
         logger_file_name :
             Path to a file where log records will be written.  When
-            ``None`` the default ``llm-proxy-rest.log`` is used.
+            ``None`` the default ``llm-router.log`` is used.
         model_handler :
             Optional :class:`~llm_router_api.base.model_handler.ModelHandler`
             instance used to resolve model identifiers supplied by the
@@ -166,7 +166,7 @@ class EndpointI(abc.ABC):
 
         self.logger = prepare_logger(
             logger_name=__name__,
-            logger_file_name=logger_file_name or "llm-proxy-rest.log",
+            logger_file_name=logger_file_name or "llm-router.log",
             log_level=logger_level,
             use_default_config=True,
         )

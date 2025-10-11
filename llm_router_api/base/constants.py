@@ -30,7 +30,7 @@ REST_API_TIMEOUT = int(
 
 # Default name of a logging file
 REST_API_LOG_FILE_NAME = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_FILENAME", "llm-proxy-rest.log"
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_FILENAME", "llm-router.log"
 ).strip()
 
 # Default logging level
