@@ -14,12 +14,12 @@ RUN apt-get update && apt-get install -y supervisor htop curl htop jq git vim cr
 
 WORKDIR /srv/
 
-RUN git clone -b ${branch} https://github.com/radlab-dev-group/llm-proxy-api.git && \
-    cd /srv/llm-proxy-api  && \
+RUN git clone -b ${branch} https://github.com/radlab-dev-group/llm-router.git && \
+    cd /srv/llm-router  && \
     cat .git/HEAD > .version && git log -1 | head -1 >> .version && \
     rm -rf .git .gitignore
 
-WORKDIR /srv/llm-proxy-api
+WORKDIR /srv/llm-router
 
 RUN pip3 install -r requirements.txt
 
