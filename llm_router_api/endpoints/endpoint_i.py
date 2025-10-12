@@ -729,10 +729,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         params=params,
                         is_ollama=True,
                     )
-                    # raise ValueError(
-                    #     f"{self._ep_types_str} is not "
-                    #     f"supported with {self._api_model.api_type}"
-                    # )
 
                 # return self._call_http_request_stream(
                 #     ep_url=ep_url,
