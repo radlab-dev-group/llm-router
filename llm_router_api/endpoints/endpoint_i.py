@@ -734,7 +734,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         is_ollama=False,
                         is_generic_to_ollama=True,
                     )
-                raise Exception("Streaming API not supported for this endpoint!")
+                return self._http_executor.stream_response(
+                    ep_url=ep_url,
+                    params=params,
+                    is_ollama=False,
+                    is_generic_to_ollama=False,
+                )
+                # raise Exception("Streaming API not supported for this endpoint!")
 
             return self._http_executor.call_http_request(
                 ep_url=ep_url,
