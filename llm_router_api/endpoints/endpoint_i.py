@@ -22,27 +22,25 @@ import abc
 import json
 import time
 
-import requests
-
 from typing import Optional, Dict, Any, Iterator, Iterable, List
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
-from requests import Response
 
 from llm_router_api.base.model_handler import ModelHandler, ApiModel
-from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     REST_API_TIMEOUT,
     DEFAULT_API_PREFIX,
 )
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
 )
+from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 
 
 # ----------------------------------------------------------------------
@@ -227,6 +225,10 @@ class EndpointI(abc.ABC):
         ``True`` means *do not* add the prefix (i.e., the endpoint opts out).
         """
         return not self._dont_add_api_prefix
+
+    @property
+    def api_model(self):
+        return self._api_model
 
     # ------------------------------------------------------------------
     # Core workflow
@@ -581,6 +583,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         )
 
         self._timeout = timeout
+        self._http_executor = HttpRequestExecutor(self)
+
+    @property
+    def timeout(self):
+        return self._timeout
 
     # ------------------------------------------------------------------
     # Core execution flow
@@ -661,10 +668,17 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
 
                 if bool((params or {}).get("stream", False)):
-                    return self._call_http_request_stream(
-                        ep_url=ep_url, params=params
+                    return self._http_executor.stream_response(
+                        ep_url=ep_url,
+                        params=params,
+                        is_ollama=False,
                     )
-                response = self._call_http_request(ep_url=ep_url, params=params)
+                response = self._http_executor.call_http_request(
+                    ep_url=ep_url,
+                    params=params,
+                    prompt_str=self._prompt_str,
+                    call_for_each_user_msg=self._call_for_each_user_msg,
+                )
 
                 self.logger.debug("=" * 100)
                 self.logger.error(response)
@@ -687,12 +701,47 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
             if bool((params or {}).get("stream", False)):
+                if not self._api_model:
+                    raise ValueError(
+                        "API model not found streaming is not possible!"
+                    )
+
+                if not self._api_model.api_type in ["openai", "vllm", "llmstudio"]:
+                    raise ValueError(
+                        f"Streaming is available only for [openai, vllm, llmstudio]"
+                    )
+
+                if self._call_for_each_user_msg:
+                    raise ValueError(
+                        "Streaming is available only for single message"
+                    )
+
+                if self._api_model.api_type in self._ep_types_str:
+                    return self._http_executor.stream_response(
+                        ep_url=ep_url,
+                        params=params,
+                        is_ollama=False,
+                    )
+
+                if "ollama" in self._ep_types_str:
+                    return self._http_executor.stream_response(
+                        ep_url=ep_url,
+                        params=params,
+                        is_ollama=True,
+                    )
+
                 # return self._call_http_request_stream(
-                #     ep_url=ep_url, params=params,
+                #     ep_url=ep_url,
+                #     params=params,
                 # )
                 raise Exception("Streaming API not supported for this endpoint!")
 
-            return self._call_http_request(ep_url=ep_url, params=params)
+            return self._http_executor.call_http_request(
+                ep_url=ep_url,
+                params=params,
+                prompt_str=self._prompt_str,
+                call_for_each_user_msg=self._call_for_each_user_msg,
+            )
         except Exception as e:
             self.logger.exception(e)
             return self.return_response_not_ok(str(e))
@@ -710,228 +759,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             raise Exception(f"Unsupported API type: {api_type}")
         return _params
 
-    # ------------------------------------------------------------------
-    # HTTP helpers
-    # ------------------------------------------------------------------
-    def _call_http_request(
-        self, ep_url: str, params: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        s_msg = {}
-        params["model"] = (
-            self._api_model.model_path
-            if self._api_model.model_path
-            else self._api_model.name
-        )
-        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-
-        headers = None
-        token_str = self._api_model.api_token
-        if token_str:
-            headers = {
-                "Authorization": f"Bearer {token_str}",
-                "Content-Type": "application/json",
-            }
-
-        if self._prompt_str:
-            s_msg = {"role": "system", "content": self._prompt_str}
-
-        if self._call_for_each_user_msg:
-            return self._call_http_request_for_each_user_message(
-                ep_url=ep_url, system_message=s_msg, params=params, headers=headers
-            )
-
-        if self._prompt_str:
-            params["messages"] = [s_msg] + params.get("messages", [])
-
-        self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
-
-        if self._ep_method == "POST":
-            return self._call_post_with_payload(
-                ep_url=ep_url, params=params, headers=headers
-            )
-        return self._call_get_with_payload(
-            ep_url=ep_url, params=params, headers=headers
-        )
-
-    def _call_http_request_for_each_user_message(
-        self,
-        ep_url: str,
-        system_message: Dict[str, Any],
-        params: Dict[str, Any],
-        headers: Optional[Dict[str, Any]] = None,
-    ):
-        _payloads = []
-        for m in params.get("messages", {}):
-            if m.get("role", "?") == "user":
-                _params = params.copy()
-                _params["messages"] = [system_message, m]
-                _payloads.append([_params, m["content"]])
-
-        if self._ep_method != "POST":
-            raise Exception(
-                "_call_http_request_for_each_user_message "
-                'is not implemented for "GET" method'
-            )
-
-        contents = []
-        responses = []
-        for payload, content in _payloads:
-            self.logger.debug(json.dumps(payload, indent=2, ensure_ascii=False))
-            response = self._call_post_with_payload(
-                ep_url=ep_url,
-                params=payload,
-                return_raw_response=True,
-                headers=headers,
-            )
-            response.raise_for_status()
-            contents.append(content)
-            responses.append(response)
-
-            self.logger.debug(response.json())
-
-        if self._prepare_response_function is None:
-            raise Exception(
-                "_prepare_response_function must be implemented "
-                "when calling api for each user message"
-            )
-        return self._prepare_response_function(responses, contents)
-
-    def _call_http_request_stream(
-        self, ep_url: str, params: Dict[str, Any]
-    ) -> Iterator[str | bytes]:
-        """
-        Stream the response from a remote endpoint without decoding.
-
-        The implementation uses ``requests`` in streaming mode and yields raw
-        NDJSON lines as UTF‑8 encoded ``bytes`` objects.
-
-        Parameters
-        ----------
-        ep_url :
-            Fully qualified URL to the external service.
-        params :
-            Request payload.
-
-        Yields
-        ------
-        bytes
-            Individual NDJSON lines terminated by a newline.
-        """
-        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-
-        params["model"] = self._api_model.name
-        params["stream"] = True
-
-        method = (self._ep_method or "POST").upper()
-
-        def _stream_iter() -> Iterator[str | bytes]:
-            try:
-                if method == "POST":
-                    with requests.post(
-                        ep_url, json=params, timeout=self._timeout, stream=True
-                    ) as r:
-                        r.raise_for_status()
-                        for line in r.iter_lines(decode_unicode=False):
-                            if line:  # Pomiń puste linie
-                                yield (
-                                    line.decode("utf-8", errors="replace") + "\n"
-                                ).encode("utf-8")
-                else:
-                    with requests.get(
-                        ep_url, params=params, timeout=self._timeout, stream=True
-                    ) as r:
-                        r.raise_for_status()
-                        for line in r.iter_lines(decode_unicode=False):
-                            if line:
-                                yield (
-                                    line.decode("utf-8", errors="replace") + "\n"
-                                ).encode("utf-8")
-            except requests.RequestException as exc:
-                import json as _json
-
-                err = {"error": str(exc)}
-                yield (_json.dumps(err) + "\n").encode("utf-8")
-
-        return _stream_iter()
-
-    def _call_post_with_payload(
-        self,
-        ep_url: str,
-        params: Dict[str, Any],
-        return_raw_response: bool = False,
-        headers: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any] | Response]:
-        """
-        Issue a JSON‑encoded ``POST`` request to the remote endpoint.
-
-        Parameters
-        ----------
-        ep_url :
-            Fully qualified URL.
-        params :
-            Payload to be JSON‑encoded.
-
-        Returns
-        -------
-        dict | None
-            Decoded JSON response or a ``{"raw_response": <text>}`` mapping
-            when the response is not valid JSON.
-
-        Raises
-        ------
-        RuntimeError
-            If the request fails or the remote service returns a non‑2xx
-            status code.
-        """
-        try:
-            response = requests.post(
-                ep_url, json=params, timeout=self._timeout, headers=headers
-            )
-        except requests.RequestException as exc:
-            self.logger.exception(exc)
-            raise RuntimeError(f"POST request to {ep_url} failed: {exc}") from exc
-
-        if return_raw_response:
-            return response
-        return self.__return_http_response(response=response)
-
-    def _call_get_with_payload(
-        self,
-        ep_url: str,
-        params: Dict[str, Any],
-        headers: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Issue a ``GET`` request with the supplied query parameters.
-
-        Parameters
-        ----------
-        ep_url :
-            Fully qualified URL.
-        params :
-            Mapping that will be turned into a query string.
-
-        Returns
-        -------
-        dict | None
-            Decoded JSON response or a ``{"raw_response": <text>}`` mapping
-            when the response is not valid JSON.
-
-        Raises
-        ------
-        RuntimeError
-            If the request fails or the remote service returns a non‑2xx
-            status code.
-        """
-        try:
-            response = requests.get(
-                ep_url, params=params, timeout=self._timeout, headers=headers
-            )
-        except requests.RequestException as exc:
-            raise RuntimeError(f"GET request to {ep_url} failed: {exc}") from exc
-        return self.__return_http_response(response=response)
-
-    def __return_http_response(self, response):
+    def return_http_response(self, response):
         """
         Normalize an HTTP response object into a Python dictionary.
 
@@ -968,6 +796,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             self.logger.exception(e)
             return {"raw_response": response.text}
 
+    # ------------------------------------------------------------------
     def __dispatch_external_api_model(self, params: Dict[str, Any]) -> None:
         model_name = None
         for _m_name in MODEL_NAME_PARAMS:
