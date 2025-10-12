@@ -166,6 +166,7 @@ class HttpRequestExecutor:
         ep_url: str,
         params: Dict[str, Any],
         is_ollama: bool = False,
+        is_generic_to_ollama: bool = False,
     ) -> Iterator[bytes]:
         """
         Perform a streaming request and yield byte chunks.
@@ -184,12 +185,26 @@ class HttpRequestExecutor:
         is_ollama:
             Flag indicating whether Ollama‑specific conversion should be
             applied to the incoming stream.
+        is_generic_to_ollama:
+            Flag to stream a response from an Ollama endpoint
+            and convert it to the OpenAI‑compatible format
 
         Returns
         -------
         Iterator[bytes]
             An iterator yielding chunks of the HTTP response body.
+
+        Raises
+        ------
+        RuntimeError
+            When is_ollama and is_generic_to_ollama are ``True``.
         """
+
+        if is_ollama and is_generic_to_ollama:
+            raise RuntimeError(
+                "is_ollama and is_generic_to_ollama are mutually exclusive!"
+            )
+
         # common preparation
         params["model"] = (
             self._endpoint.api_model.model_path
@@ -211,6 +226,8 @@ class HttpRequestExecutor:
 
         if is_ollama:
             return self._stream_ollama(full_url, params, method, headers)
+        if is_generic_to_ollama:
+            return self._stream_generic_to_ollama(full_url, params, method, headers)
         else:
             return self._stream_generic(full_url, params, method, headers)
 
@@ -653,6 +670,115 @@ class HttpRequestExecutor:
                 yield (line + "\n").encode("utf-8")
         if not sent_done:
             yield self._ollama_chunk("", done=True, usage=usage_data)
+
+    def _stream_generic_to_ollama(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+    ) -> Iterator[bytes]:
+        """
+        Stream a response from an Ollama endpoint and convert it to the
+        OpenAI‑compatible format used by vLLM (i.e. the same JSON‑lines that
+        ``vllm``/``openai`` return for streaming completions).
+
+        The incoming stream is expected to be Ollama NDJSON (the format
+        produced by :meth:`_stream_ollama`).  Each line is parsed and
+        transformed into a JSON ``chat.completion.chunk`` object.  The
+        generator yields UTF‑8‑encoded bytes terminated by a newline.
+
+        Parameters
+        ----------
+        url:
+            Full request URL.
+        payload:
+            JSON payload for ``POST`` or query parameters for ``GET``.
+        method:
+            HTTP method – ``POST`` or ``GET`` (case‑insensitive).
+        headers:
+            Request headers, including authentication when configured.
+
+        Returns
+        -------
+        Iterator[bytes]
+            Byte chunks representing OpenAI‑style streaming responses.
+        """
+
+        def _iter() -> Iterator[bytes]:
+            try:
+                # Perform the actual HTTP request (same logic as _stream_generic)
+                if method == "POST":
+                    request_ctx = requests.post(
+                        url,
+                        json=payload,
+                        timeout=self._endpoint.timeout,
+                        stream=True,
+                        headers=headers,
+                    )
+                else:
+                    request_ctx = requests.get(
+                        url,
+                        params=payload,
+                        timeout=self._endpoint.timeout,
+                        stream=True,
+                        headers=headers,
+                    )
+                with request_ctx as resp:
+                    resp.raise_for_status()
+                    for raw_line in resp.iter_lines(decode_unicode=False):
+                        if not raw_line:
+                            continue
+                        try:
+                            ollama_obj = json.loads(
+                                raw_line.decode("utf-8", errors="replace")
+                            )
+                        except Exception:
+                            # If parsing fails, forward the raw line unchanged
+                            yield (raw_line + b"\n")
+                            continue
+
+                        # Build a base chunk dictionary
+                        base_chunk = {
+                            "id": "chatcmpl-"
+                            + datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"),
+                            "object": "chat.completion.chunk",
+                            "created": int(datetime.datetime.utcnow().timestamp()),
+                            "model": ollama_obj.get(
+                                "model", self._endpoint.api_model.name
+                            ),
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
+
+                        # If the Ollama payload signals the end of the stream
+                        if ollama_obj.get("done"):
+                            base_chunk["choices"][0]["finish_reason"] = "stop"
+                            # No delta content for the final chunk
+                            yield (
+                                json.dumps(base_chunk, ensure_ascii=False) + "\n"
+                            ).encode("utf-8")
+                            continue
+
+                        # Normal content chunk – extract the assistant delta
+                        delta_text = ollama_obj.get("message", {}).get("content", "")
+                        if delta_text:
+                            base_chunk["choices"][0]["delta"] = {
+                                "content": delta_text
+                            }
+                            yield (
+                                json.dumps(base_chunk, ensure_ascii=False) + "\n"
+                            ).encode("utf-8")
+            except requests.RequestException as exc:
+                err = {"error": str(exc)}
+                yield (json.dumps(err) + "\n").encode("utf-8")
+
+        return _iter()
 
     @staticmethod
     def _convert_ollama_messages_if_needed(params: Dict[str, Any]) -> Dict[str, Any]:
