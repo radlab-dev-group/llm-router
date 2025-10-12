@@ -3,9 +3,10 @@ import json
 import requests
 from typing import Any, Dict
 
-# Base URL of the llm‑proxy REST API.
-# Can be overridden by the environment variable LLM_ROUTER_URL.
-DEBUG_ALL = True
+from rdl_ml_utils.utils.env import bool_env_value
+
+
+DEBUG_ALL = bool_env_value("DEBUG_ALL")
 BASE_URL = os.getenv("LLM_ROUTER_URL", "http://192.168.100.65:8080")
 
 
