@@ -22,27 +22,25 @@ import abc
 import json
 import time
 
-import requests
-
 from typing import Optional, Dict, Any, Iterator, Iterable, List
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
-from requests import Response
 
 from llm_router_api.base.model_handler import ModelHandler, ApiModel
-from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     REST_API_TIMEOUT,
     DEFAULT_API_PREFIX,
 )
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
 )
+from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 
 
 # ----------------------------------------------------------------------
@@ -227,6 +225,10 @@ class EndpointI(abc.ABC):
         ``True`` means *do not* add the prefix (i.e., the endpoint opts out).
         """
         return not self._dont_add_api_prefix
+
+    @property
+    def api_model(self):
+        return self._api_model
 
     # ------------------------------------------------------------------
     # Core workflow
@@ -581,6 +583,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         )
 
         self._timeout = timeout
+        self._http_executor = HttpRequestExecutor(self)
+
+    @property
+    def timeout(self):
+        return self._timeout
 
     # ------------------------------------------------------------------
     # Core execution flow
@@ -661,10 +668,17 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
 
                 if bool((params or {}).get("stream", False)):
-                    return self._call_http_request_stream(
-                        ep_url=ep_url, params=params
+                    return self._http_executor.stream_response(
+                        ep_url=ep_url,
+                        params=params,
+                        is_ollama=False,
                     )
-                response = self._call_http_request(ep_url=ep_url, params=params)
+                response = self._http_executor.call_http_request(
+                    ep_url=ep_url,
+                    params=params,
+                    prompt_str=self._prompt_str,
+                    call_for_each_user_msg=self._call_for_each_user_msg,
+                )
 
                 self.logger.debug("=" * 100)
                 self.logger.error(response)
@@ -703,15 +717,17 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     )
 
                 if self._api_model.api_type in self._ep_types_str:
-                    return self._call_http_request_stream(
+                    return self._http_executor.stream_response(
                         ep_url=ep_url,
                         params=params,
+                        is_ollama=False,
                     )
 
                 if "ollama" in self._ep_types_str:
-                    return self._call_http_request_stream_ollama(
+                    return self._http_executor.stream_response(
                         ep_url=ep_url,
                         params=params,
+                        is_ollama=True,
                     )
                     # raise ValueError(
                     #     f"{self._ep_types_str} is not "
@@ -724,42 +740,15 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 # )
                 raise Exception("Streaming API not supported for this endpoint!")
 
-            return self._call_http_request(ep_url=ep_url, params=params)
+            return self._http_executor.call_http_request(
+                ep_url=ep_url,
+                params=params,
+                prompt_str=self._prompt_str,
+                call_for_each_user_msg=self._call_for_each_user_msg,
+            )
         except Exception as e:
             self.logger.exception(e)
             return self.return_response_not_ok(str(e))
-
-    @staticmethod
-    def _convert_ollama_messages_if_needed(params: Dict[str, Any]) -> Dict[str, Any]:
-        if not "messages" in params:
-            return params
-
-        messages = params["messages"]
-        if len(messages) == 1:
-            return params
-
-        if messages[0].get("role") == "user" and messages[1].get("role") == "user":
-            skip_last = False
-            _messages = []
-            _msg_count = len(messages)
-            for _num, message in enumerate(messages):
-                skip_last = False
-                _messages.append(message)
-                if message["role"] == "assistant":
-                    continue
-
-                if _num + 1 < _msg_count:
-                    if messages[_num + 1]["role"] == "assistant":
-                        continue
-                _messages.append({"role": "assistant", "content": ""})
-                skip_last = True
-
-            if skip_last:
-                _messages.pop(-1)
-
-            params["messages"] = _messages
-
-        return params
 
     @staticmethod
     def _filter_params_to_acceptable(
@@ -774,429 +763,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             raise Exception(f"Unsupported API type: {api_type}")
         return _params
 
-    # ------------------------------------------------------------------
-    # HTTP helpers
-    # ------------------------------------------------------------------
-    def _call_http_request(
-        self, ep_url: str, params: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        s_msg = {}
-        params["model"] = (
-            self._api_model.model_path
-            if self._api_model.model_path
-            else self._api_model.name
-        )
-        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-
-        headers = None
-        token_str = self._api_model.api_token
-        if token_str:
-            headers = {
-                "Authorization": f"Bearer {token_str}",
-                "Content-Type": "application/json",
-            }
-
-        if self._prompt_str:
-            s_msg = {"role": "system", "content": self._prompt_str}
-
-        if self._call_for_each_user_msg:
-            return self._call_http_request_for_each_user_message(
-                ep_url=ep_url, system_message=s_msg, params=params, headers=headers
-            )
-
-        if self._prompt_str:
-            params["messages"] = [s_msg] + params.get("messages", [])
-
-        self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
-
-        if self._ep_method == "POST":
-            return self._call_post_with_payload(
-                ep_url=ep_url, params=params, headers=headers
-            )
-        return self._call_get_with_payload(
-            ep_url=ep_url, params=params, headers=headers
-        )
-
-    def _call_http_request_for_each_user_message(
-        self,
-        ep_url: str,
-        system_message: Dict[str, Any],
-        params: Dict[str, Any],
-        headers: Optional[Dict[str, Any]] = None,
-    ):
-        _payloads = []
-        for m in params.get("messages", {}):
-            if m.get("role", "?") == "user":
-                _params = params.copy()
-                _params["messages"] = [system_message, m]
-                _payloads.append([_params, m["content"]])
-
-        if self._ep_method != "POST":
-            raise Exception(
-                "_call_http_request_for_each_user_message "
-                'is not implemented for "GET" method'
-            )
-
-        contents = []
-        responses = []
-        for payload, content in _payloads:
-            self.logger.debug(json.dumps(payload, indent=2, ensure_ascii=False))
-            response = self._call_post_with_payload(
-                ep_url=ep_url,
-                params=payload,
-                return_raw_response=True,
-                headers=headers,
-            )
-            response.raise_for_status()
-            contents.append(content)
-            responses.append(response)
-
-            self.logger.debug(response.json())
-
-        if self._prepare_response_function is None:
-            raise Exception(
-                "_prepare_response_function must be implemented "
-                "when calling api for each user message"
-            )
-        return self._prepare_response_function(responses, contents)
-
-    def _call_http_request_stream(
-        self, ep_url: str, params: Dict[str, Any]
-    ) -> Iterator[str | bytes]:
-        """
-        Stream the response from a remote endpoint without decoding.
-
-        The implementation uses ``requests`` in streaming mode and yields raw
-        NDJSON lines as UTF‑8 encoded ``bytes`` objects.
-
-        Parameters
-        ----------
-        ep_url :
-            Fully qualified URL to the external service.
-        params :
-            Request payload.
-
-        Yields
-        ------
-        bytes
-            Individual NDJSON lines terminated by a newline.
-        """
-        ep_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-
-        params["model"] = self._api_model.name
-        params["stream"] = True
-
-        method = (self._ep_method or "POST").upper()
-
-        def _stream_iter() -> Iterator[str | bytes]:
-            try:
-                if method == "POST":
-                    with requests.post(
-                        ep_url, json=params, timeout=self._timeout, stream=True
-                    ) as r:
-                        r.raise_for_status()
-                        for line in r.iter_lines(decode_unicode=False):
-                            if line:
-                                yield (
-                                    line.decode("utf-8", errors="replace") + "\n"
-                                ).encode("utf-8")
-                else:
-                    with requests.get(
-                        ep_url, params=params, timeout=self._timeout, stream=True
-                    ) as r:
-                        r.raise_for_status()
-                        for line in r.iter_lines(decode_unicode=False):
-                            if line:
-                                yield (
-                                    line.decode("utf-8", errors="replace") + "\n"
-                                ).encode("utf-8")
-            except requests.RequestException as exc:
-                err = {"error": str(exc)}
-                yield (json.dumps(err) + "\n").encode("utf-8")
-
-        return _stream_iter()
-
-
-    def _call_http_request_stream_ollama(
-        self, ep_url: str, params: Dict[str, Any]
-    ) -> Iterator[bytes]:
-        """
-        Stream a response from an external API (e.g., OpenAI) but emit events in Ollama-like NDJSON format.
-
-        This method calls the target API with streaming enabled and adapts the incoming
-        event stream into Ollama-compatible chunks:
-          - {"model": "...", "created_at": "...", "message": {"role": "assistant", "content": "<delta>"}, "done": false}
-          - ...
-          - {"model": "...", "created_at": "...", "done": true, "total_duration": ..., "prompt_eval_count": ...}
-
-        Notes:
-        - Assumes OpenAI-compatible Server-Sent Events payload: lines starting with "data: ".
-        - For non-OpenAI endpoints that already return NDJSON chunks, lines are forwarded as-is.
-        """
-        # Normalize multi-message payload to be compatible with some backends if needed
-        params = self._convert_ollama_messages_if_needed(params=params)
-
-        # Build full target URL (external provider endpoint)
-        full_url = self._api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-
-        # Ensure streaming flags for downstream API
-        payload = dict(params or {})
-        payload["model"] = self._api_model.name
-        payload["stream"] = True
-
-        # Prepare headers (auth if provided)
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        if self._api_model.api_token:
-            headers["Authorization"] = f"Bearer {self._api_model.api_token}"
-
-        method = (self._ep_method or "POST").upper()
-
-        def _now_iso() -> str:
-            import datetime
-
-            return datetime.datetime.utcnow().isoformat() + "Z"
-
-        def _ollama_chunk(
-            delta: str, done: bool = False, usage: Dict[str, int] = None
-        ) -> bytes:
-            # Minimal Ollama-like shape
-            obj = {
-                "model": self._api_model.name,
-                "created_at": _now_iso(),
-                "done": done,
-            }
-            if not done:
-                obj["message"] = {"role": "assistant", "content": delta}
-            else:
-                # Final chunk needs these fields according to Ollama spec
-                obj["message"] = {"role": "assistant", "content": ""}
-                if usage:
-                    obj["prompt_eval_count"] = usage.get("prompt_tokens", 0)
-                    obj["eval_count"] = usage.get("completion_tokens", 0)
-                else:
-                    obj["prompt_eval_count"] = 0
-                    obj["eval_count"] = 0
-                obj["total_duration"] = 0
-                obj["load_duration"] = 0
-                obj["prompt_eval_duration"] = 0
-                obj["eval_duration"] = 0
-            return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
-
-        def _iter_lines(response) -> Iterator[bytes]:
-            """
-            Try to parse OpenAI-style SSE. If not matching, forward raw NDJSON lines.
-            """
-            sent_done = False
-            usage_data = None
-            try:
-                for raw in response.iter_lines(decode_unicode=True):
-                    if not raw:
-                        continue
-
-                    line = raw.strip()
-
-                    # OpenAI SSE convention
-                    if line.startswith("data:"):
-                        data_str = line[5:].strip()
-                        if data_str == "[DONE]":
-                            if not sent_done:
-                                yield _ollama_chunk("", done=True, usage=usage_data)
-                                sent_done = True
-                            continue
-                        try:
-                            event = json.loads(data_str)
-                        except Exception:
-                            # Forward unparsable as raw
-                            yield (raw + "\n").encode("utf-8")
-                            continue
-
-                        # Capture usage data if present
-                        if "usage" in event:
-                            usage_data = event["usage"]
-
-                        # Extract delta text (chat.completions)
-                        delta_text = ""
-                        try:
-                            choices = event.get("choices", [])
-                            if choices:
-                                delta_obj = (
-                                    choices[0].get("delta")
-                                    or choices[0].get("text")
-                                    or {}
-                                )
-                                if isinstance(delta_obj, dict):
-                                    delta_text = delta_obj.get("content") or ""
-                                elif isinstance(delta_obj, str):
-                                    delta_text = delta_obj
-                        except Exception:
-                            delta_text = ""
-
-                        if delta_text:
-                            yield _ollama_chunk(delta_text, done=False)
-
-                        # If provider marks finish_reason, close with done chunk once
-                        try:
-                            choices = event.get("choices", [])
-                            if (
-                                choices
-                                and choices[0].get("finish_reason")
-                                and not sent_done
-                            ):
-                                yield _ollama_chunk("", done=True, usage=usage_data)
-                                sent_done = True
-                        except Exception:
-                            pass
-                        continue
-
-                    # Some providers return pure NDJSON without "data:" prefix
-                    # Try parse as JSON with a few common shapes, otherwise forward
-                    try:
-                        evt = json.loads(line)
-
-                        # Capture usage data
-                        if "usage" in evt:
-                            usage_data = evt["usage"]
-
-                        # vLLM/openai-compatible stream line
-                        delta_text = ""
-                        if "choices" in evt:
-                            ch = evt["choices"]
-                            if ch:
-                                d = ch[0].get("delta") or ch[0].get("text") or {}
-                                if isinstance(d, dict):
-                                    delta_text = d.get("content") or ""
-                                elif isinstance(d, str):
-                                    delta_text = d
-                            if delta_text:
-                                yield _ollama_chunk(delta_text, done=False)
-                            if ch and ch[0].get("finish_reason") and not sent_done:
-                                yield _ollama_chunk("", done=True, usage=usage_data)
-                                sent_done = True
-                        # Generic models might send a terminal flag
-                        elif evt.get("done") is True and not sent_done:
-                            yield _ollama_chunk("", done=True, usage=usage_data)
-                            sent_done = True
-                        else:
-                            # Unknown JSON shape; forward raw
-                            yield (line + "\n").encode("utf-8")
-                    except Exception:
-                        # Not JSON; forward raw
-                        yield (line + "\n").encode("utf-8")
-            except requests.RequestException as exc:
-                err = {"error": str(exc)}
-                yield (json.dumps(err) + "\n").encode("utf-8")
-            finally:
-                # Ensure exactly one final done chunk if none was sent by upstream
-                if not sent_done:
-                    yield _ollama_chunk("", done=True, usage=usage_data)
-
-        try:
-            if method == "POST":
-                with requests.post(
-                    full_url,
-                    json=payload,
-                    headers=headers,
-                    timeout=self._timeout,
-                    stream=True,
-                ) as resp:
-                    resp.raise_for_status()
-                    for chunk in _iter_lines(resp):
-                        yield chunk
-            else:
-                with requests.get(
-                    full_url,
-                    params=payload,
-                    headers=headers,
-                    timeout=self._timeout,
-                    stream=True,
-                ) as resp:
-                    resp.raise_for_status()
-                    for chunk in _iter_lines(resp):
-                        yield chunk
-        except requests.RequestException as exc:
-            yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
-
-    def _call_post_with_payload(
-        self,
-        ep_url: str,
-        params: Dict[str, Any],
-        return_raw_response: bool = False,
-        headers: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any] | Response]:
-        """
-        Issue a JSON‑encoded ``POST`` request to the remote endpoint.
-
-        Parameters
-        ----------
-        ep_url :
-            Fully qualified URL.
-        params :
-            Payload to be JSON‑encoded.
-
-        Returns
-        -------
-        dict | None
-            Decoded JSON response or a ``{"raw_response": <text>}`` mapping
-            when the response is not valid JSON.
-
-        Raises
-        ------
-        RuntimeError
-            If the request fails or the remote service returns a non‑2xx
-            status code.
-        """
-        try:
-            response = requests.post(
-                ep_url, json=params, timeout=self._timeout, headers=headers
-            )
-        except requests.RequestException as exc:
-            self.logger.exception(exc)
-            raise RuntimeError(f"POST request to {ep_url} failed: {exc}") from exc
-
-        if return_raw_response:
-            return response
-        return self.__return_http_response(response=response)
-
-    def _call_get_with_payload(
-        self,
-        ep_url: str,
-        params: Dict[str, Any],
-        headers: Optional[Dict[str, Any]] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Issue a ``GET`` request with the supplied query parameters.
-
-        Parameters
-        ----------
-        ep_url :
-            Fully qualified URL.
-        params :
-            Mapping that will be turned into a query string.
-
-        Returns
-        -------
-        dict | None
-            Decoded JSON response or a ``{"raw_response": <text>}`` mapping
-            when the response is not valid JSON.
-
-        Raises
-        ------
-        RuntimeError
-            If the request fails or the remote service returns a non‑2xx
-            status code.
-        """
-        try:
-            response = requests.get(
-                ep_url, params=params, timeout=self._timeout, headers=headers
-            )
-        except requests.RequestException as exc:
-            raise RuntimeError(f"GET request to {ep_url} failed: {exc}") from exc
-        return self.__return_http_response(response=response)
-
-    def __return_http_response(self, response):
+    def return_http_response(self, response):
         """
         Normalize an HTTP response object into a Python dictionary.
 
@@ -1233,6 +800,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             self.logger.exception(e)
             return {"raw_response": response.text}
 
+    # ------------------------------------------------------------------
     def __dispatch_external_api_model(self, params: Dict[str, Any]) -> None:
         model_name = None
         for _m_name in MODEL_NAME_PARAMS:
