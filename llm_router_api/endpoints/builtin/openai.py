@@ -17,64 +17,7 @@ from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.endpoints.passthrough import PassthroughI
 
 
-class OpenAIChatHandler(PassthroughI):
-    """
-    Base endpoint for forwarding chat‑style requests to an OpenAI‑compatible API.
-
-    The class does not enforce any required or optional arguments; the
-    concrete subclasses specify the appropriate HTTP method and route.
-    """
-
-    REQUIRED_ARGS = None
-    OPTIONAL_ARGS = None
-    SYSTEM_PROMPT_NAME = None
-
-    def __init__(
-        self,
-        logger_file_name: Optional[str] = None,
-        logger_level: Optional[str] = REST_API_LOG_LEVEL,
-        prompt_handler: Optional[ModelHandler] = None,
-        model_handler: Optional[PromptHandler] = None,
-        ep_name="chat",
-        method="POST",
-        dont_add_api_prefix: bool = False,
-        api_types: Optional[List[str]] = None,
-        direct_return: bool = False,
-    ):
-        """
-        Initialize the OpenAI chat endpoint.
-
-        Parameters
-        ----------
-        logger_file_name : Optional[str]
-            Log file name; defaults to the library’s standard configuration.
-        logger_level : Optional[str]
-            Logging level; defaults to :data:`REST_API_LOG_LEVEL`.
-        prompt_handler : Optional[ModelHandler]
-            Handler for prompt templates (passed through to the backend).
-        model_handler : Optional[PromptHandler]
-            Handler for model configuration.
-        ep_name : str
-            Endpoint name; defaults to ``"chat"``.
-        method : str
-            HTTP method to use; defaults to ``"POST"``.
-        dont_add_api_prefix : bool
-            If ``True`` the global API prefix is omitted.
-        """
-        super().__init__(
-            ep_name=ep_name,
-            api_types=api_types or ["openai", "lmstudio", "ollama"],
-            method=method,
-            logger_level=logger_level,
-            logger_file_name=logger_file_name,
-            prompt_handler=prompt_handler,
-            model_handler=model_handler,
-            dont_add_api_prefix=dont_add_api_prefix,
-            direct_return=direct_return,
-        )
-
-
-class OpenAICompletionHandler(OpenAIChatHandler):
+class OllamaCompletionHandler(PassthroughI):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/chat/completions`` route of an OpenAI‑compatible service.
@@ -102,12 +45,13 @@ class OpenAICompletionHandler(OpenAIChatHandler):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
-            api_types=["openai", "lmstudio", "ollama"],
+            api_types=["openai", "lmstudio"],
             direct_return=direct_return,
+            method="POST",
         )
 
 
-class OpenAIModelsHandler(OpenAIChatHandler):
+class OpenAIModelsHandler(PassthroughI):
     """
     Endpoint that lists available models from an OpenAI‑compatible service.
 
