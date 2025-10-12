@@ -439,9 +439,7 @@ class HttpRequestExecutor:
                         r.raise_for_status()
                         for line in r.iter_lines(decode_unicode=False):
                             if line:
-                                yield (
-                                    line.decode("utf-8", errors="replace") + "\n"
-                                ).encode("utf-8")
+                                yield line + b"\n"
                 else:
                     with requests.get(
                         url,
@@ -453,12 +451,10 @@ class HttpRequestExecutor:
                         r.raise_for_status()
                         for line in r.iter_lines(decode_unicode=False):
                             if line:
-                                yield (
-                                    line.decode("utf-8", errors="replace") + "\n"
-                                ).encode("utf-8")
+                                yield line + b"\n"
             except requests.RequestException as exc:
                 err = {"error": str(exc)}
-                yield (json.dumps(err) + "\n").encode("utf-8")
+                yield (json.dumps(err, ensure_ascii=False) + "\n").encode("utf-8")
 
         return _iter()
 
@@ -590,10 +586,14 @@ class HttpRequestExecutor:
         """
         sent_done = False
         usage_data = None
-        for raw in response.iter_lines(decode_unicode=True):
+        for raw in response.iter_lines(decode_unicode=False):
             if not raw:
                 continue
-            line = raw.strip()
+            try:
+                line = raw.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                # If UTF-8 fails, skip this line
+                continue
 
             # OpenAI SSE style
             if line.startswith("data:"):
@@ -606,7 +606,7 @@ class HttpRequestExecutor:
                 try:
                     event = json.loads(data_str)
                 except Exception:
-                    yield (raw + "\n").encode("utf-8")
+                    yield (line + "\n").encode("utf-8")
                     continue
 
                 if "usage" in event:
