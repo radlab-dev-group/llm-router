@@ -191,7 +191,11 @@ class HttpRequestExecutor:
             An iterator yielding chunks of the HTTP response body.
         """
         # common preparation
-        params["model"] = self._endpoint.api_model.name
+        params["model"] = (
+            self._endpoint.api_model.model_path
+            if self._endpoint.api_model.model_path
+            else self._endpoint.api_model.name
+        )
         params["stream"] = True
         full_url = (
             self._endpoint.api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
@@ -474,7 +478,6 @@ class HttpRequestExecutor:
         """
         # Normalise messages if needed (unchanged static helper)
         payload = self._convert_ollama_messages_if_needed(params=payload)
-
         try:
             if method == "POST":
                 with requests.post(
