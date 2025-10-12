@@ -672,6 +672,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         ep_url=ep_url,
                         params=params,
                         is_ollama=False,
+                        is_generic_to_ollama=False,
                     )
                 response = self._http_executor.call_http_request(
                     ep_url=ep_url,
@@ -706,11 +707,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         "API model not found streaming is not possible!"
                     )
 
-                if not self._api_model.api_type in ["openai", "vllm", "llmstudio"]:
-                    raise ValueError(
-                        f"Streaming is available only for [openai, vllm, llmstudio]"
-                    )
-
                 if self._call_for_each_user_msg:
                     raise ValueError(
                         "Streaming is available only for single message"
@@ -721,6 +717,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         ep_url=ep_url,
                         params=params,
                         is_ollama=False,
+                        is_generic_to_ollama=False,
                     )
 
                 if "ollama" in self._ep_types_str:
@@ -728,12 +725,15 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         ep_url=ep_url,
                         params=params,
                         is_ollama=True,
+                        is_generic_to_ollama=False,
                     )
-
-                # return self._call_http_request_stream(
-                #     ep_url=ep_url,
-                #     params=params,
-                # )
+                if self._api_model.api_type == "ollama":
+                    return self._http_executor.stream_response(
+                        ep_url=ep_url,
+                        params=params,
+                        is_ollama=False,
+                        is_generic_to_ollama=True,
+                    )
                 raise Exception("Streaming API not supported for this endpoint!")
 
             return self._http_executor.call_http_request(
