@@ -1,4 +1,5 @@
-"""llm_router_api.core._engine
+"""
+llm_router_api.core._engine
 ================================
 
 This module provides the :class:`FlaskEngine` class, which builds and
@@ -17,13 +18,22 @@ Typical usage
 >>> app.run()
 """
 
-from flask import Flask
+import traceback
+
+from flask import Flask, Response
 from typing import List, Type, Optional
 
 from llm_router_api.endpoints.endpoint_i import EndpointI
 from llm_router_api.register.auto_loader import EndpointAutoLoader
 from llm_router_api.register.register import FlaskEndpointRegistrar
-from llm_router_api.base.constants import DEFAULT_API_PREFIX, REST_API_LOG_LEVEL
+from llm_router_api.base.constants import (
+    DEFAULT_API_PREFIX,
+    REST_API_LOG_LEVEL,
+    USE_PROMETHEUS,
+)
+
+if USE_PROMETHEUS:
+    from llm_router_api.core.metrics import PrometheusMetrics
 
 
 class FlaskEngine:
@@ -50,6 +60,11 @@ class FlaskEngine:
     The engine does not start the Flask server; it only prepares the
     application instance.  The caller is responsible for running the app
     (e.g., via ``app.run()`` or a WSGI server such as Gunicorn).
+
+    If :data:`~llm_router_api.base.constants.USE_PROMETHEUS` is ``True``,
+    a ``PrometheusMetrics`` instance is created during ``prepare_flask_app``
+    and a ``/metrics`` endpoint is registered.  When the flag is ``False``,
+    no Prometheus integration is performed.
     """
 
     def __init__(
@@ -110,7 +125,37 @@ class FlaskEngine:
             )
         except RuntimeError as e:
             raise RuntimeError(f"Failed to register endpoints: {e}")
+
+        self.__register_prometheus_if_needed(flask_app)
+
         return flask_app
+
+    def __register_prometheus_if_needed(self, flask_app):
+        """
+        Register Prometheus metrics endpoint when ``USE_PROMETHEUS`` is enabled.
+
+        Parameters
+        ----------
+        flask_app : Flask
+            The Flask application instance to which the ``/metrics`` endpoint
+            will be attached.
+
+        The function silently returns if ``USE_PROMETHEUS`` is ``False``.
+        """
+        if not USE_PROMETHEUS:
+            return
+
+        try:
+            _m = PrometheusMetrics(
+                app=flask_app,
+                logger_file_name=self.logger_file_name,
+                logger_level=self.logger_level,
+            )
+            _m.register_metrics_ep()
+        except Exception:
+            raise RuntimeError(
+                f"Failed to register endpoints: {traceback.format_exc()}"
+            )
 
     def __auto_load_endpoints(self, base_class: Type[EndpointI]):
         """
