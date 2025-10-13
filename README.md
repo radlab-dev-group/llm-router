@@ -56,6 +56,7 @@ pip install .
 
 To enable Prometheus metrics collection you must install the optional
 metrics dependencies:
+
 ``` bash
 pip install .[metrics]
 ```
@@ -134,7 +135,7 @@ docker run \
 | `LLM_ROUTER_SERVER_PORT`          | Port on which the server listens.                                                                                                                             | `8080`                                 |
 | `LLM_ROUTER_SERVER_HOST`          | Host address for the server.                                                                                                                                  | `0.0.0.0`                              |
 | `LLM_ROUTER_SERVER_WORKERS_COUNT` | Number of workers/threads (used in case when the selected server type supports multiworkers/multithreading)                                                   | `4`                                    |
-| `LLM_ROUTER_USE_PROMETHEUS`       | Enable Prometheus metrics collection.** When set to `True`, the router registers a `/metrics` endpoint exposing Prometheus‑compatible metrics for monitoring. |
+| `LLM_ROUTER_USE_PROMETHEUS`       | Enable Prometheus metrics collection.** When set to `True`, the router registers a `/metrics` endpoint exposing Prometheus‑compatible metrics for monitoring. | `False`                                |
 
 ### 4️⃣ Run the REST API
 
