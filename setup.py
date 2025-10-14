@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="llm-router",
-    version="0.1.0",
+    version="0.1.1",
     author="RadLab team",
     packages=find_packages(exclude=("tests", "docs")),
     python_requires=">=3.10",
