@@ -18,6 +18,9 @@ from llm_router_api.base.constants import (
     SERVER_PORT,
     SERVER_HOST,
     SERVER_WORKERS_COUNT,
+    SERVER_THREADS_COUNT,
+    SERVER_WORKERS_CLASS,
+    LLM_ROUTER_API_TIMEOUT,
 )
 
 
@@ -28,7 +31,9 @@ if __name__ == "__main__":
             host=SERVER_HOST,
             port=SERVER_PORT,
             workers=SERVER_WORKERS_COUNT,
-            timeout=0,
+            threads=SERVER_THREADS_COUNT,
+            timeout=LLM_ROUTER_API_TIMEOUT,
+            worker_class=SERVER_WORKERS_CLASS,
         )
     elif "--waitress" in sys.argv or SERVER_TYPE == "waitress":
         print("Starting with Waitress (production, Windows-friendly)...")

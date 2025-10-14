@@ -17,7 +17,7 @@ from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.endpoints.passthrough import PassthroughI
 
 
-class OllamaCompletionHandler(PassthroughI):
+class OpenAICompletionHandler(PassthroughI):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/chat/completions`` route of an OpenAI‑compatible service.
@@ -45,6 +45,40 @@ class OllamaCompletionHandler(PassthroughI):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
+            api_types=["openai", "lmstudio"],
+            direct_return=direct_return,
+            method="POST",
+        )
+
+
+class OpenAICompletionHandlerWOApi(PassthroughI):
+    """
+    Completion endpoint that re‑uses the chat implementation but targets the
+    ``/chat/completions`` route of an OpenAI‑compatible service.
+    """
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name="chat/completions",
+        direct_return=False,
+    ):
+        """
+        Initialize the completion endpoint.
+
+        Parameters are identical to :class:`OpenAIChat` except
+        that the route defaults to ``"chat/completions"``.
+        """
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=True,
             api_types=["openai", "lmstudio"],
             direct_return=direct_return,
             method="POST",
