@@ -24,8 +24,13 @@ DEFAULT_EP_LANGUAGE = os.environ.get(
 ).strip()
 
 # Timeout to external models api
-REST_API_TIMEOUT = int(
+EXTERNAL_API_TIMEOUT = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}EXTERNAL_TIMEOUT", 300)
+)
+
+# Timeout to llm-router api
+LLM_ROUTER_API_TIMEOUT = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}TIMEOUT", 0)
 )
 
 # Default name of a logging file
@@ -61,9 +66,24 @@ SERVER_PORT = int(
 # Number of workers (if server supports multiple workers), default: 4
 SERVER_WORKERS_COUNT = int(
     os.environ.get(
-        f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKERS_COUNT", "4"
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKERS_COUNT", "2"
     ).strip()
 )
+
+# Number of threads (if server supports multithreading), default: 8
+SERVER_THREADS_COUNT = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_THREADS_COUNT", "8"
+    ).strip()
+)
+
+# In some servers like gunicorn is able to set worker class (f.e. gevent)
+SERVER_WORKERS_CLASS = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKER_CLASS", ""
+).strip()
+
+if not len(SERVER_WORKERS_CLASS):
+    SERVER_WORKERS_CLASS = None
 
 # Server host, default is 0.0.0.0
 SERVER_HOST = os.environ.get(
