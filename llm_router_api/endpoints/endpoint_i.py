@@ -657,7 +657,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 if self._api_model is None:
                     raise ValueError(f"API model not found in params {params}")
 
-                self.logger.debug(self._api_model.as_dict())
+                _md = self._api_model.as_dict().copy()
+                if "api_token" in _md:
+                    _md["api_token"] = "***"
+                self.logger.debug(f"Request model config: {_md}")
+
                 if self._api_model.api_type.lower() in self._ep_types_str:
                     simple_proxy = True
 
