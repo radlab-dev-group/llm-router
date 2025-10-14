@@ -9,4 +9,9 @@ setup(
     python_requires=">=3.10",
     entry_points={},
     install_requires=open("requirements.txt").read().splitlines(),
+    extras_require={
+        "metrics": [
+            "prometheus-client",
+        ],
+    },
 )
