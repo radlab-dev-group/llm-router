@@ -152,9 +152,8 @@ LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 
 ## Provider Selection
 
-The LLM‑router supports **multiple providers** for a single model.  
-Provider selection is handled by the **ProviderChooser** class, which delegates the
-choice to a configurable **strategy** implementation.
+The LLM‑router supports **multiple providers** for a single model. Provider selection is handled by 
+the **ProviderChooser** class, which delegates the choice to a configurable **strategy** implementation.
 
 ### Chooser
 
