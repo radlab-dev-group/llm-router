@@ -31,7 +31,7 @@ from llm_router_api.base.model_handler import ModelHandler, ApiModel
 from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
-    REST_API_TIMEOUT,
+    EXTERNAL_API_TIMEOUT,
     DEFAULT_API_PREFIX,
 )
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
@@ -536,7 +536,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         model_handler: Optional[ModelHandler] = None,
         dont_add_api_prefix: bool = False,
         direct_return: bool = False,
-        timeout: int = REST_API_TIMEOUT,
+        timeout: int = EXTERNAL_API_TIMEOUT,
         call_for_each_user_msg: bool = False,
     ):
         """
