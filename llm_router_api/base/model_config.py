@@ -3,7 +3,7 @@ Module providing ApiModelConfig for loading model configurations from a JSON fil
 """
 
 import json
-from typing import Dict
+from typing import Dict, List
 
 
 class ApiModelConfig:
@@ -68,13 +68,20 @@ class ApiModelConfig:
     def _active_models_configuration(self) -> Dict:
         """
         Build a dictionary containing the configuration for each active model.
-
+        Now each model maps to a **list** of provider configurations.
         Returns:
-            Dict[str, Dict]: Mapping of model name to its configuration dictionary.
+            Dict[str, List[Dict]]: Mapping of model name to a list of provider dicts.
         """
-        models_configuration = {}
+        models_configuration: Dict[str, List[Dict]] = {}
         models_json = json.load(open(self.models_config_path, "rt"))
         for m_type, models_list in self.active_models.items():
             for m_name in models_list:
-                models_configuration[m_name] = models_json[m_type][m_name]
+                provider_cfg = models_json[m_type][m_name]
+                if "providers" not in provider_cfg:
+                    raise KeyError(f"{m_type}:{m_name} has no providers!")
+                # if "api_host" in provider_cfg:
+                #     provider_cfg["id"] = f"{m_name}_{provider_cfg['api_host']}"
+                #     provider_cfg = {"providers": [provider_cfg]}
+                models_configuration[m_name] = provider_cfg
+
         return models_configuration
