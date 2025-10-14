@@ -1,57 +1,108 @@
 {
   "google_models": {
     "google/gemma-3-12b-it": {
-      "api_host": "http://192.168.100.79:7000/",
-      "api_token": "",
-      "api_type": "vllm",
-      "input_size": 4096,
-      "model_path": ""
+      "providers": [
+        {
+          "id": "gemma3_12b-vllm-79:7000",
+          "api_host": "http://192.168.100.79:7000/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": ""
+        },
+        {
+          "id": "gemma3_12b-vllm-71:7000",
+          "api_host": "http://192.168.100.71:7000/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": ""
+        },
+        {
+          "id": "gemma3_12b-vllm-71:7001",
+          "api_host": "http://192.168.100.71:7001/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": ""
+        }
+      ]
     },
     "google/gemini-2.5-flash-lite": {
-      "api_host": "https://generativelanguage.googleapis.com/v1beta/openai/",
-      "api_token": "",
-      "api_type": "openai",
-      "input_size": 512000,
-      "model_path": "gemini-2.5-flash-lite"
+      "providers": [
+        {
+          "id": "google_gemini_2_5-flash-lite",
+          "api_host": "https://generativelanguage.googleapis.com/v1beta/openai/",
+          "api_token": "",
+          "api_type": "openai",
+          "input_size": 512000,
+          "model_path": "gemini-2.5-flash-lite"
+        }
+      ]
     }
   },
   "openai_models": {
     "openai/gpt-3.5-turbo-0125": {
-      "api_host": "https://api.openai.com",
-      "api_token": "",
-      "api_type": "openai",
-      "input_size": 256000,
-      "model_path": "gpt-3.5-turbo-0125"
+      "providers": [
+        {
+          "id": "openai-gpt3_5-t-0125",
+          "api_host": "https://api.openai.com",
+          "api_token": "",
+          "api_type": "openai",
+          "input_size": 256000,
+          "model_path": "gpt-3.5-turbo-0125"
+        }
+      ]
     },
     "gpt-oss:20b": {
-      "api_host": "http://192.168.100.66:11434",
-      "api_token": "",
-      "api_type": "ollama",
-      "input_size": 256000,
-      "model_path": ""
+      "providers": [
+        {
+          "id": "gpt-oss-20b-ollama-66:11434",
+          "api_host": "http://192.168.100.66:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": ""
+        }
+      ]
     },
     "gpt-oss:120b": {
-      "api_host": "http://192.168.100.66:11434",
-      "api_token": "",
-      "api_type": "ollama",
-      "input_size": 256000,
-      "model_path": ""
+      "providers": [
+        {
+          "id": "gpt-oss-120b-ollama-66:11434",
+          "api_host": "http://192.168.100.66:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": ""
+        }
+      ]
     }
   },
   "qwen_models": {
     "qwen3:235b": {
-      "api_host": "http://192.168.100.66:11434",
-      "api_token": "",
-      "api_type": "ollama",
-      "input_size": 256000,
-      "model_path": ""
+      "providers": [
+        {
+          "id": "qwen3-235b-66:11434",
+          "api_host": "http://192.168.100.66:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": ""
+        }
+      ]
     },
     "qwen3-coder:30b": {
-      "api_host": "http://192.168.100.66:11434",
-      "api_token": "",
-      "api_type": "ollama",
-      "input_size": 256000,
-      "model_path": ""
+      "providers": [
+        {
+          "id": "qwen3-coder-30b-66:11434",
+          "api_host": "http://192.168.100.66:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": ""
+        }
+      ]
     }
   },
   "active_models": {

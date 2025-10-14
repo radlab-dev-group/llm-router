@@ -8,6 +8,7 @@ from typing import Iterable, Dict, Any, Optional, Callable, Type, List, Set
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_router_api.base.lb.chooser import ProviderChooser
 from llm_router_api.endpoints.passthrough import PassthroughI
 from llm_router_api.endpoints.endpoint_i import EndpointI, EndpointWithHttpRequestI
 from llm_router_api.base.model_handler import ModelHandler
@@ -29,6 +30,7 @@ class EndpointAutoLoader:
         base_class: Type[EndpointI],
         prompts_dir: str,
         models_config_path: str,
+        provider_chooser: ProviderChooser,
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
     ):
@@ -48,7 +50,9 @@ class EndpointAutoLoader:
         self.prompts_dir = prompts_dir
 
         self._prompt_handler = PromptHandler(base_dir=prompts_dir)
-        self._model_handler = ModelHandler(models_config_path=models_config_path)
+        self._model_handler = ModelHandler(
+            models_config_path=models_config_path, provider_chooser=provider_chooser
+        )
 
         self._logger_level = logger_level
         self._logger_file_name = logger_file_name

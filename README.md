@@ -14,13 +14,19 @@ allowing your application to talk to any supported LLM through a single, consist
 | **Unified REST interface**          | One endpoint schema works for OpenAI‑compatible, Ollama, vLLM and any future provider.                                                                  |
 | **Provider‑agnostic streaming**     | The `stream` flag (default `true`) controls whether the proxy forwards **chunked** responses as they arrive or returns a **single** aggregated payload. |
 | **Built‑in prompt library**         | Language‑aware system prompts stored under `resources/prompts` can be referenced automatically.                                                         |
-| **Dynamic model configuration**     | JSON file (`models-config.json`) defines provider, model name, default options and per‑model overrides.                                                 |
-| **Pluggable providers**             | New providers are added by implementing the `BaseProvider` interface in `llm_proxy_rest/core/api_types`.                                                |
+| **Dynamic model configuration**     | JSON file (`models-config.json`) defines providers, model name, default options and per‑model overrides.                                                |
 | **Request validation**              | Pydantic models guarantee correct payloads; errors are returned with clear messages.                                                                    |
 | **Structured logging**              | Configurable log level, filename, and optional JSON formatting.                                                                                         |
 | **Health & metadata endpoints**     | `/ping` (simple 200 OK) and `/tags` (available model tags/metadata).                                                                                    |
 | **Simple deployment**               | One‑liner run script or `python -m llm_proxy_rest.rest_api`.                                                                                            |
 | **Extensible conversation formats** | Basic chat, conversation with system prompt, and extended conversation with richer options (e.g., temperature, top‑k, custom system prompt).            |
+| **Multi‑provider model support**    | Each model can be backed by multiple providers (VLLM, Ollama, OpenAI) defined in `models-config.json`.                                                  |
+| **Provider selection abstraction**  | `ProviderChooser` delegates to a configurable strategy, enabling easy swapping of load‑balancing, round‑robin, weighted‑random, etc.                    |
+| **Load‑balanced default strategy**  | `LoadBalancedStrategy` distributes requests evenly across providers using in‑memory usage counters.                                                     |
+| **Dynamic model handling**          | `ModelHandler` loads model definitions at runtime and resolves the appropriate provider per request.                                                    |
+| **Pluggable endpoint architecture** | Automatic discovery and registration of all concrete `EndpointI` implementations via `EndpointAutoLoader`.                                              |
+| **Prometheus metrics integration**  | Optional `/metrics` endpoint for latency, error counts, and provider usage statistics.                                                                  |
+| **Docker ready**                    | Dockerfile and scripts for containerised deployment.                                                                                                    |
 
 ---
 
@@ -147,6 +153,82 @@ docker run \
 # or
 LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 ```
+
+---
+
+## Provider Selection
+
+The LLM‑router supports **multiple providers** for a single model. Provider selection is handled by
+the **ProviderChooser** class, which delegates the choice to a configurable **strategy** implementation.
+
+### Chooser
+
+``` python
+from llm_router_api.base.lb.chooser import ProviderChooser
+from llm_router_api.base.lb.strategy import LoadBalancedStrategy
+
+# By default the chooser uses the LoadBalancedStrategy
+provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+```
+
+`ProviderChooser.get_provider(model_name, providers)` receives the model name
+and the list of provider configurations (as defined in `models-config.json`) and
+returns the chosen provider dictionary.
+
+### Strategy Interface
+
+All strategies must implement `ChooseProviderStrategyI`:
+
+``` python
+class ChooseProviderStrategyI(ABC):
+    @abstractmethod
+    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+        """Select one provider configuration for the given model."""
+        raise NotImplementedError
+```
+
+### Built‑in Strategy: LoadBalancedStrategy
+
+The default `LoadBalancedStrategy` distributes requests evenly across providers
+by keeping an in‑memory usage counter per model/provider pair.
+
+``` python
+class LoadBalancedStrategy(ChooseProviderStrategyI):
+    def __init__(self) -> None:
+        self._usage_counters: Dict[str, Dict[str, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
+
+    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+        # selects the provider with the smallest usage count
+        ...
+```
+
+### Current Setting
+
+In **`engine.py`** the Flask engine creates the chooser like this:
+
+``` python
+self._provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+```
+
+Therefore, unless overridden, the application uses the **load‑balanced** provider
+selection strategy out of the box.
+
+### Extending with Custom Strategies
+
+To use a different strategy (e.g., round‑robin, random weighted, latency‑based),
+implement `ChooseProviderStrategyI` and pass the instance to `ProviderChooser`:
+
+``` python
+from llm_router_api.base.lb.chooser import ProviderChooser
+from my_strategies import RoundRobinStrategy
+
+chooser = ProviderChooser(strategy=RoundRobinStrategy())
+```
+
+The rest of the code – `ModelHandler`, endpoint implementations, etc. – will
+automatically use the chooser you provide.
 
 ---
 
