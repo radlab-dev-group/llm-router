@@ -150,6 +150,83 @@ LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 
 ---
 
+## Provider Selection
+
+The LLM‑router supports **multiple providers** for a single model.  
+Provider selection is handled by the **ProviderChooser** class, which delegates the
+choice to a configurable **strategy** implementation.
+
+### Chooser
+
+``` python
+from llm_router_api.base.lb.chooser import ProviderChooser
+from llm_router_api.base.lb.strategy import LoadBalancedStrategy
+
+# By default the chooser uses the LoadBalancedStrategy
+provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+```
+
+`ProviderChooser.get_provider(model_name, providers)` receives the model name
+and the list of provider configurations (as defined in `models-config.json`) and
+returns the chosen provider dictionary.
+
+### Strategy Interface
+
+All strategies must implement `ChooseProviderStrategyI`:
+
+``` python
+class ChooseProviderStrategyI(ABC):
+    @abstractmethod
+    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+        """Select one provider configuration for the given model."""
+        raise NotImplementedError
+```
+
+### Built‑in Strategy: LoadBalancedStrategy
+
+The default `LoadBalancedStrategy` distributes requests evenly across providers
+by keeping an in‑memory usage counter per model/provider pair.
+
+``` python
+class LoadBalancedStrategy(ChooseProviderStrategyI):
+    def __init__(self) -> None:
+        self._usage_counters: Dict[str, Dict[str, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
+
+    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+        # selects the provider with the smallest usage count
+        ...
+```
+
+### Current Setting
+
+In **`engine.py`** the Flask engine creates the chooser like this:
+
+``` python
+self._provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+```
+
+Therefore, unless overridden, the application uses the **load‑balanced** provider
+selection strategy out of the box.
+
+### Extending with Custom Strategies
+
+To use a different strategy (e.g., round‑robin, random weighted, latency‑based),
+implement `ChooseProviderStrategyI` and pass the instance to `ProviderChooser`:
+
+``` python
+from llm_router_api.base.lb.chooser import ProviderChooser
+from my_strategies import RoundRobinStrategy
+
+chooser = ProviderChooser(strategy=RoundRobinStrategy())
+```
+
+The rest of the code – `ModelHandler`, endpoint implementations, etc. – will
+automatically use the chooser you provide.
+
+---
+
 ## 🛣️ Endpoints Overview
 
 All endpoints are exposed under the REST API service. Unless stated otherwise, methods are POST and consume/produce
