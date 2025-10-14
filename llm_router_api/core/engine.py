@@ -23,6 +23,8 @@ import traceback
 from flask import Flask, Response
 from typing import List, Type, Optional
 
+from llm_router_api.base.lb.chooser import ProviderChooser
+from llm_router_api.base.lb.strategy import LoadBalancedStrategy
 from llm_router_api.endpoints.endpoint_i import EndpointI
 from llm_router_api.register.auto_loader import EndpointAutoLoader
 from llm_router_api.register.register import FlaskEndpointRegistrar
@@ -101,6 +103,11 @@ class FlaskEngine:
         self.logger_level = logger_level
         self.logger_file_name = logger_file_name
 
+        # NOTE: Currently LoadBalancedStrategy is implemented. Should be replaced
+        # NOTE: in the future when new strategies will be implemented.
+        # IDEA: Provider should be configurable by ENV value
+        self._provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+
     def prepare_flask_app(
         self,
     ):
@@ -176,6 +183,7 @@ class FlaskEngine:
             base_class=base_class,
             prompts_dir=self.prompts_dir,
             models_config_path=self.models_config_path,
+            provider_chooser=self._provider_chooser,
             logger_file_name=self.logger_file_name,
             logger_level=self.logger_level,
         )
