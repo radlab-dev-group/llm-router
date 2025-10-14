@@ -21,6 +21,8 @@ callers only need to supply endpoint‑specific parameters.
 """
 
 import json
+import urllib
+
 import requests
 import datetime
 
@@ -118,18 +120,15 @@ class HttpRequestExecutor:
             else self._endpoint.api_model.name
         )
 
-        # build full URL (host + endpoint path)
-        full_url = (
-            self._endpoint.api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-        )
+        full_url = self._prepare_full_url_ep(ep_url)
+
+        if not headers:
+            headers = {"Content-Type": "application/json"}
 
         # auth header
         token_str = self._endpoint.api_model.api_token
         if token_str:
-            headers = {
-                "Authorization": f"Bearer {token_str}",
-                "Content-Type": "application/json",
-            }
+            headers["Authorization"] = f"Bearer {token_str}"
 
         # prepend system prompt if required
         system_msg = {}
@@ -212,9 +211,8 @@ class HttpRequestExecutor:
             else self._endpoint.api_model.name
         )
         params["stream"] = True
-        full_url = (
-            self._endpoint.api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-        )
+        full_url = self._prepare_full_url_ep(ep_url)
+
         method = (self._endpoint.method or "POST").upper()
         headers = {
             "Content-Type": "application/json",
@@ -232,8 +230,11 @@ class HttpRequestExecutor:
             return self._stream_generic(full_url, params, method, headers)
 
     # ------------------------------------------------------------------
-    # Private helpers – moved unchanged from the original class
+    # Private helpers
     # ------------------------------------------------------------------
+    def _prepare_full_url_ep(self, ep_url: str) -> str:
+        return urllib.parse.urljoin(self._endpoint.api_model.api_host, ep_url)
+
     def _call_for_each_user_message(
         self,
         ep_url: str,
@@ -273,7 +274,7 @@ class HttpRequestExecutor:
             ``_prepare_response_function`` is missing.
         """
         _payloads = []
-        for m in params.get("messages", {}):
+        for m in params.get("messages", []):
             if m.get("role", "?") == "user":
                 _params = params.copy()
                 _params["messages"] = [system_message, m]
@@ -288,7 +289,8 @@ class HttpRequestExecutor:
         contents = []
         responses = []
         for payload, content in _payloads:
-            self.logger.debug(json.dumps(payload, indent=2, ensure_ascii=False))
+            self.logger.debug(f"Request payload: {payload}")
+
             response = self._call_post_with_payload(
                 ep_url=ep_url,
                 params=payload,
