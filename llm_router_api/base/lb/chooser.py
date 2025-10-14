@@ -12,4 +12,6 @@ class ProviderChooser:
         self.strategy: ChooseProviderStrategyI = strategy or LoadBalancedStrategy()
 
     def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
+        if not providers:
+            raise RuntimeError(f"{model_name} does not have any providers!")
         return self.strategy.choose(model_name, providers)
