@@ -95,6 +95,9 @@ RUN_IN_DEBUG_MODE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}IN_DEBUG")
 if RUN_IN_DEBUG_MODE:
     REST_API_LOG_LEVEL = "DEBUG"
 
+# Use Prometheus to collect metrics
+USE_PROMETHEUS = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}USE_PROMETHEUS")
+
 
 def __verify_is_able_to_init():
     if not SERVICE_AS_PROXY:

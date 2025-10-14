@@ -28,6 +28,8 @@ allowing your application to talk to any supported LLM through a single, consist
 
 ### 1️⃣ Create & activate a virtual environment
 
+#### Base requirements
+
 > **Prerequisite**: `radlab-ml-utils`
 >
 > This project uses the
@@ -49,6 +51,28 @@ source .venv/bin/activate
 pip install -r requirements.txt
 pip install .
 ```
+
+#### Prometheus Metrics
+
+To enable Prometheus metrics collection you must install the optional
+metrics dependencies:
+
+``` bash
+pip install .[metrics]
+```
+
+Then start the application with the environment variable set:
+
+``` bash
+export LLM_ROUTER_USE_PROMETHEUS=1
+```
+
+When `LLM_ROUTER_USE_PROMETHEUS` is enabled, the router automatically
+registers a **`/metrics`** endpoint (under the API prefix, e.g.
+`/api/metrics`). This endpoint exposes Prometheus‑compatible metrics such
+as request counts, latencies, and any custom counters defined by the
+application. Prometheus servers can scrape this URL to collect runtime
+metrics for monitoring and alerting.
 
 ### 2️⃣ Minimum required environment variable
 
@@ -96,24 +120,25 @@ docker run \
 
 ### 3️⃣ Optional configuration (via environment)
 
-| Variable                          | Description                                                                                    | Default                                |
-|-----------------------------------|------------------------------------------------------------------------------------------------|----------------------------------------|
-| `LLM_ROUTER_PROMPTS_DIR`          | Directory containing predefined system prompts.                                                | `resources/prompts`                    |
-| `LLM_ROUTER_MODELS_CONFIG`        | Path to the models configuration JSON file.                                                    | `resources/configs/models-config.json` |
-| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`  | Default language for endpoint prompts.                                                         | `pl`                                   |
-| `LLM_ROUTER_TIMEOUT`              | Timeout (seconds) for llm-router API calls.                                                    | `0`                                    |
-| `LLM_ROUTER_EXTERNAL_TIMEOUT`     | Timeout (seconds) for external model API calls.                                                | `300`                                  |
-| `LLM_ROUTER_LOG_FILENAME`         | Name of the log file.                                                                          | `llm-router.log`                       |
-| `LLM_ROUTER_LOG_LEVEL`            | Logging level (e.g., INFO, DEBUG).                                                             | `INFO`                                 |
-| `LLM_ROUTER_EP_PREFIX`            | Prefix for all API endpoints.                                                                  | `/api`                                 |
-| `LLM_ROUTER_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                      | `False`                                |
-| `LLM_ROUTER_IN_DEBUG`             | Run server in debug mode (boolean).                                                            | `False`                                |
-| `LLM_ROUTER_SERVER_TYPE`          | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                | `flask`                                |
-| `LLM_ROUTER_SERVER_PORT`          | Port on which the server listens.                                                              | `8080`                                 |
-| `LLM_ROUTER_SERVER_HOST`          | Host address for the server.                                                                   | `0.0.0.0`                              |
-| `LLM_ROUTER_SERVER_WORKERS_COUNT` | Number of workers (used in case when the selected server type supports multiworkers)           | `2`                                    |
-| `LLM_ROUTER_SERVER_THREADS_COUNT` | Number of workers threads (used in case when the selected server type supports multithreading) | `8`                                    |
-| `LLM_ROUTER_SERVER_WORKER_CLASS`  | If server accepts workers type, its able to set worker class by this environment.              | `None`                                 |
+| Variable                          | Description                                                                                                                                                   | Default                                |
+|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `LLM_ROUTER_PROMPTS_DIR`          | Directory containing predefined system prompts.                                                                                                               | `resources/prompts`                    |
+| `LLM_ROUTER_MODELS_CONFIG`        | Path to the models configuration JSON file.                                                                                                                   | `resources/configs/models-config.json` |
+| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`  | Default language for endpoint prompts.                                                                                                                        | `pl`                                   |
+| `LLM_ROUTER_TIMEOUT`              | Timeout (seconds) for llm-router API calls.                                                                                                                   | `0`                                    |
+| `LLM_ROUTER_EXTERNAL_TIMEOUT`     | Timeout (seconds) for external model API calls.                                                                                                               | `300`                                  |
+| `LLM_ROUTER_LOG_FILENAME`         | Name of the log file.                                                                                                                                         | `llm-router.log`                       |
+| `LLM_ROUTER_LOG_LEVEL`            | Logging level (e.g., INFO, DEBUG).                                                                                                                            | `INFO`                                 |
+| `LLM_ROUTER_EP_PREFIX`            | Prefix for all API endpoints.                                                                                                                                 | `/api`                                 |
+| `LLM_ROUTER_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                                                                                     | `False`                                |
+| `LLM_ROUTER_IN_DEBUG`             | Run server in debug mode (boolean).                                                                                                                           | `False`                                |
+| `LLM_ROUTER_SERVER_TYPE`          | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                                                                               | `flask`                                |
+| `LLM_ROUTER_SERVER_PORT`          | Port on which the server listens.                                                                                                                             | `8080`                                 |
+| `LLM_ROUTER_SERVER_HOST`          | Host address for the server.                                                                                                                                  | `0.0.0.0`                              |
+| `LLM_ROUTER_SERVER_WORKERS_COUNT` | Number of workers (used in case when the selected server type supports multiworkers)                                                                          | `2`                                    |
+| `LLM_ROUTER_SERVER_THREADS_COUNT` | Number of workers threads (used in case when the selected server type supports multithreading)                                                                | `8`                                    |
+| `LLM_ROUTER_SERVER_WORKER_CLASS`  | If server accepts workers type, its able to set worker class by this environment.                                                                             | `None`                                 |
+| `LLM_ROUTER_USE_PROMETHEUS`       | Enable Prometheus metrics collection.** When set to `True`, the router registers a `/metrics` endpoint exposing Prometheus‑compatible metrics for monitoring. | `False`                                |
 
 ### 4️⃣ Run the REST API
 
