@@ -10,6 +10,7 @@ This module defines:
 from dataclasses import dataclass
 from typing import Dict, Optional, Any
 
+from llm_router_api.base.lb.chooser import ProviderChooser
 from llm_router_api.base.model_config import ApiModelConfig
 
 
@@ -34,6 +35,7 @@ class ApiModel:
         Optional path to model (in case when local model is used)
     """
 
+    id: str
     name: str
     api_host: str
     api_type: str
@@ -64,18 +66,13 @@ class ApiModel:
         The "input_size" value can be an integer or a numeric string;
         it will be converted to an int. If conversion fails, defaults to 0.
         """
-        raw_size = cfg.get("input_size", 0)
-        try:
-            input_size = int(raw_size)
-        except (TypeError, ValueError):
-            input_size = 0
-
         return ApiModel(
+            id=str(cfg["id"]),
             name=name,
-            api_host=str(cfg.get("api_host", "")),
-            api_type=str(cfg.get("api_type")),
+            api_host=str(cfg["api_host"]),
+            api_type=str(cfg["api_type"]),
             api_token=str(cfg.get("api_token", "")),
-            input_size=input_size,
+            input_size=int(cfg.get("input_size", 0)),
             model_path=str(cfg.get("model_path", "")),
         )
 
@@ -108,7 +105,7 @@ class ModelHandler:
         Loader responsible for reading and exposing model configuration.
     """
 
-    def __init__(self, models_config_path: str):
+    def __init__(self, models_config_path: str, provider_chooser: ProviderChooser):
         """
         Initialize the handler with the provided configuration path.
 
@@ -117,6 +114,7 @@ class ModelHandler:
         models_config_path : str
             Path to the JSON configuration file containing model definitions.
         """
+        self.provider_chooser = provider_chooser
         self.api_model_config: ApiModelConfig = ApiModelConfig(models_config_path)
 
     def get_model(self, model_name: str) -> Optional[ApiModel]:
@@ -133,10 +131,15 @@ class ModelHandler:
         Optional[ApiModel]
             ApiModel instance if found; otherwise, None.
         """
-        cfg = self.api_model_config.models_configs.get(model_name)
-        if cfg is None:
+        providers = self.api_model_config.models_configs[model_name].get(
+            "providers", []
+        )
+        model_host_cfg = self.provider_chooser.get_provider(
+            model_name=model_name, providers=providers
+        )
+        if model_host_cfg is None:
             return None
-        return ApiModel.from_config(model_name, cfg)
+        return ApiModel.from_config(model_name, model_host_cfg)
 
     def list_active_models(self) -> Dict[str, Any]:
         """
