@@ -14,6 +14,8 @@ These helpers are used by ``rest_api.py`` to select the appropriate server
 based on command‑line flags or the ``SERVER_TYPE`` configuration constant.
 """
 
+from typing import Optional
+
 from llm_router_api.core.engine import FlaskEngine
 from llm_router_api.base.constants import (
     PROMPTS_DIR,
@@ -55,9 +57,11 @@ def run_flask_server(host: str, port: int, debug: bool = False):
 def run_gunicorn_server(
     host: str,
     port: int,
-    workers: int = 1,
+    workers: int = 2,
+    threads: int = 8,
     timeout: int = 0,
     log_level: str = "info",
+    worker_class: Optional[str] = None,
 ):
     """
     Run the Flask app with Gunicorn
@@ -107,13 +111,16 @@ def run_gunicorn_server(
     options = {
         "bind": f"{host}:{port}",
         "workers": workers,
+        "threads": threads,
         "timeout": timeout,
         "loglevel": log_level,
-        # "worker_class": "gevent",
         "accesslog": "-",
         "errorlog": "-",
         "keepalive": 75,
     }
+
+    if worker_class and len(worker_class.strip()):
+        options["worker_class"] = worker_class
 
     StandaloneApplication(app, options).run()
 

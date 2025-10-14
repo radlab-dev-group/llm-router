@@ -45,6 +45,13 @@
       "api_type": "ollama",
       "input_size": 256000,
       "model_path": ""
+    },
+    "qwen3-coder:30b": {
+      "api_host": "http://192.168.100.66:11434",
+      "api_token": "",
+      "api_type": "ollama",
+      "input_size": 256000,
+      "model_path": ""
     }
   },
   "active_models": {
@@ -58,7 +65,8 @@
       "gpt-oss:120b"
     ],
     "qwen_models": [
-      "qwen3:235b"
+      "qwen3:235b",
+      "qwen3-coder:30b"
     ]
   }
 }
