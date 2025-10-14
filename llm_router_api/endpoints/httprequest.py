@@ -222,6 +222,7 @@ class HttpRequestExecutor:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
+        params = self._convert_ollama_messages_if_needed(params=params)
         if is_ollama:
             return self._stream_ollama(full_url, params, method, headers)
         if is_generic_to_ollama:
@@ -491,8 +492,7 @@ class HttpRequestExecutor:
         Iterator[bytes]
             An iterator yielding Ollama‑compatible NDJSON lines.
         """
-        # Normalise messages if needed (unchanged static helper)
-        payload = self._convert_ollama_messages_if_needed(params=payload)
+
         try:
             if method == "POST":
                 with requests.post(
