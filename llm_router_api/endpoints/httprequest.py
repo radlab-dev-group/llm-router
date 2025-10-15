@@ -21,7 +21,6 @@ callers only need to supply endpoint‑specific parameters.
 """
 
 import json
-import urllib
 
 import requests
 import datetime
@@ -121,7 +120,6 @@ class HttpRequestExecutor:
         )
 
         full_url = self._prepare_full_url_ep(ep_url)
-
         if not headers:
             headers = {"Content-Type": "application/json"}
 
@@ -234,7 +232,10 @@ class HttpRequestExecutor:
     # Private helpers
     # ------------------------------------------------------------------
     def _prepare_full_url_ep(self, ep_url: str) -> str:
-        return urllib.parse.urljoin(self._endpoint.api_model.api_host, ep_url)
+        full_url = (
+            self._endpoint.api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
+        )
+        return full_url
 
     def _call_for_each_user_message(
         self,
