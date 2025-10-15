@@ -17,6 +17,7 @@ from llm_router_api.base.constants import USE_PROMETHEUS, REST_API_LOG_LEVEL
 IS_PROMETHEUS_AVAILABLE = False
 try:
     from prometheus_client import (
+        Gauge,
         Counter,
         Histogram,
         generate_latest,
@@ -25,6 +26,7 @@ try:
 
     IS_PROMETHEUS_AVAILABLE = True
 except ImportError:
+    Gauge = None
     Counter = None
     Histogram = None
     generate_latest = None
@@ -126,6 +128,52 @@ class PrometheusMetrics(object):
             "http_request_duration_seconds",
             "Histogram of request latency (seconds)",
             ["method", "endpoint"],
+            buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+        )
+
+        self.REQUEST_IN_PROGRESS = Gauge(
+            "http_requests_in_progress",
+            "Number of HTTP requests currently being processed.",
+        )
+
+        self.REQUEST_EXCEPTIONS = Counter(
+            "http_request_exceptions_total",
+            "Total number of HTTP requests that resulted in an exception (5xx status).",
+            ["method", "endpoint"],
+        )
+
+        self.REQUEST_SIZE = Histogram(
+            "http_request_size_bytes",
+            "Size of HTTP request bodies in bytes.",
+            ["method", "endpoint"],
+            buckets=(
+                100,
+                500,
+                1_000,
+                5_000,
+                10_000,
+                50_000,
+                100_000,
+                500_000,
+                1_000_000,
+            ),
+        )
+
+        self.RESPONSE_SIZE = Histogram(
+            "http_response_size_bytes",
+            "Size of HTTP response bodies in bytes.",
+            ["method", "endpoint", "http_status"],
+            buckets=(
+                100,
+                500,
+                1_000,
+                5_000,
+                10_000,
+                50_000,
+                100_000,
+                500_000,
+                1_000_000,
+            ),
         )
 
     def _register_request_hooks(self):
@@ -142,6 +190,15 @@ class PrometheusMetrics(object):
         @self.flask_app.before_request
         def _start_timer():
             request.start_time = time.time()
+            # Increment in‑progress gauge
+            self.REQUEST_IN_PROGRESS.inc()
+
+            # Record request size if a body is present
+            if request.content_length:
+                self.REQUEST_SIZE.labels(
+                    method=request.method,
+                    endpoint=request.path,
+                ).observe(request.content_length)
 
         @self.flask_app.after_request
         def _record_metrics(response):
@@ -151,6 +208,26 @@ class PrometheusMetrics(object):
                     method=request.method,
                     endpoint=request.path,
                 ).observe(elapsed)
+
+                # Record response size (Content‑Length header
+                # may be missing for streamed responses)
+                resp_length = response.calculate_content_length()
+                if resp_length is not None:
+                    self.RESPONSE_SIZE.labels(
+                        method=request.method,
+                        endpoint=request.path,
+                        http_status=response.status_code,
+                    ).observe(resp_length)
+
+                # Decrement in‑progress gauge
+                self.REQUEST_IN_PROGRESS.dec()
+
+                # Count exceptions (5xx)
+                if 500 <= response.status_code < 600:
+                    self.REQUEST_EXCEPTIONS.labels(
+                        method=request.method,
+                        endpoint=request.path,
+                    ).inc()
 
             self.REQUEST_COUNT.labels(
                 method=request.method,
