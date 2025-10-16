@@ -3,14 +3,6 @@
     "google/gemma-3-12b-it": {
       "providers": [
         {
-          "id": "gemma3_12b-vllm-79:7000",
-          "api_host": "http://192.168.100.79:7000/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": ""
-        },
-        {
           "id": "gemma3_12b-vllm-71:7000",
           "api_host": "http://192.168.100.71:7000/",
           "api_token": "",
@@ -33,7 +25,7 @@
         {
           "id": "google_gemini_2_5-flash-lite",
           "api_host": "https://generativelanguage.googleapis.com/v1beta/openai/",
-          "api_token": "",
+          "api_token": "AIzaSyDYjl8eVqO9LXOXe589xNWvBDXuEfJqITA",
           "api_type": "openai",
           "input_size": 512000,
           "model_path": "gemini-2.5-flash-lite"

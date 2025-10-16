@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any, List
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 
-from llm_router_api.core.data_models.builtin_utils import (
+from llm_router_lib.data_models.builtin_utils import (
     GenerateQuestionFromTextsModel,
     GENERATE_Q_REQ,
     GENERATE_Q_OPT,
