@@ -2,9 +2,10 @@ import os
 
 from rdl_ml_utils.utils.env import bool_env_value
 
-
-class _DontChangeMe:
-    MAIN_ENV_PREFIX = "LLM_ROUTER_"
+from llm_router_api.base.constants_base import (
+    _DontChangeMe,
+    DEFAULT_EP_LANGUAGE as _DEFAULT_EP_LANGUAGE,
+)
 
 
 # Directory with predefined system prompts
@@ -18,10 +19,8 @@ MODELS_CONFIG_FILE = os.environ.get(
     "resources/configs/models-config.json",
 ).strip()
 
-# Default ep language - e.g. for getting proper prompt
-DEFAULT_EP_LANGUAGE = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}DEFAULT_EP_LANGUAGE", "pl"
-).strip()
+# # Default ep language - e.g. for getting proper prompt
+DEFAULT_EP_LANGUAGE = _DEFAULT_EP_LANGUAGE
 
 # Timeout to external models api
 EXTERNAL_API_TIMEOUT = int(

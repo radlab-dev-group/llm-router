@@ -27,6 +27,11 @@ from typing import Optional, Dict, Any, Iterator, Iterable, List
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_router_lib.data_models.constants import (
+    MODEL_NAME_PARAMS,
+    LANGUAGE_PARAM,
+)
+
 from llm_router_api.base.model_handler import ModelHandler, ApiModel
 from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
@@ -36,10 +41,6 @@ from llm_router_api.base.constants import (
 )
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
-from llm_router_api.core.data_models.constants import (
-    MODEL_NAME_PARAMS,
-    LANGUAGE_PARAM,
-)
 from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 
 
