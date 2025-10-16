@@ -60,9 +60,6 @@ pip install .
 
 # Core library + API wrapper (llm-router-api).
 pip install .[api]
-
-# Core library + API wrapper + Prometheus client.
-pip install .[api,metrics]
 ```
 
 #### Prometheus Metrics
@@ -71,7 +68,7 @@ To enable Prometheus metrics collection you must install the optional
 metrics dependencies:
 
 ``` bash
-pip install .[metrics]
+pip install .[api,metrics]
 ```
 
 Then start the application with the environment variable set:
