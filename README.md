@@ -54,8 +54,15 @@ allowing your application to talk to any supported LLM through a single, consist
 ```shell script
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+
+# Only the core library (llm-router-lib).
 pip install .
+
+# Core library + API wrapper (llm-router-api).
+pip install .[api]
+
+# Core library + API wrapper + Prometheus client.
+pip install .[api,metrics]
 ```
 
 #### Prometheus Metrics
