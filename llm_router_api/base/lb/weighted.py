@@ -354,23 +354,44 @@ class DynamicWeightedStrategy(WeightedStrategy):
         """
         chosen_cfg = super().choose(model_name, providers)
 
-        # ---- rejestracja latencji ----
+        self.__latency_recording(chosen_cfg=chosen_cfg)
+
+        return chosen_cfg
+
+    def __latency_recording(self, chosen_cfg: Dict) -> None:
+        """
+        Record the time interval (latency) between consecutive selections of
+        the same provider.
+
+        The method updates two internal structures:
+
+        * ``_last_chosen_time`` – a mapping from provider key to the timestamp
+          of the most recent selection.
+        * ``_latency_history`` – a mapping from provider key to a bounded
+          ``deque`` that stores the elapsed time (in seconds) between the
+          current selection and the previous one.
+
+        If the provider has not been selected before, only the timestamp is
+        stored; no latency entry is added.  The size of each deque is limited
+        by ``_history_size`` to bound memory usage.
+
+        Parameters
+        ----------
+        chosen_cfg : Dict
+            The configuration dictionary of the provider that has just been
+            selected.  The provider's unique key is obtained via
+            :meth:`_provider_key`.
+        """
         key = self._provider_key(chosen_cfg)
         now = time.time()
 
         if key in self._last_chosen_time:
             interval = now - self._last_chosen_time[key]
-            # utwórz (lub pobierz) deque dla tego klucza i zapisz nowy pomiar
             hist = self._latency_history.setdefault(
                 key, deque(maxlen=self._history_size)
             )
             hist.append(interval)
-
-        # zapamiętaj moment bieżącego wyboru
         self._last_chosen_time[key] = now
-        # --------------------------------
-
-        return chosen_cfg
 
     def get_latency_history(self, provider_key: str) -> List[float]:
         """
