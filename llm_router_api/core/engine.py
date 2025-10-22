@@ -20,11 +20,11 @@ Typical usage
 
 import traceback
 
-from flask import Flask, Response
+from flask import Flask
 from typing import List, Type, Optional
 
 from llm_router_api.base.lb.chooser import ProviderChooser
-from llm_router_api.base.lb.strategy import LoadBalancedStrategy
+
 from llm_router_api.endpoints.endpoint_i import EndpointI
 from llm_router_api.register.auto_loader import EndpointAutoLoader
 from llm_router_api.register.register import FlaskEndpointRegistrar
@@ -106,7 +106,9 @@ class FlaskEngine:
         # NOTE: Currently LoadBalancedStrategy is implemented. Should be replaced
         # NOTE: in the future when new strategies will be implemented.
         # IDEA: Provider should be configurable by ENV value
-        self._provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+        # IDEA: strategy name must be one of:
+        # [balanced, weighted, dynamic_weighted]
+        self._provider_chooser = ProviderChooser(strategy_name="weighted")
 
     def prepare_flask_app(
         self,
