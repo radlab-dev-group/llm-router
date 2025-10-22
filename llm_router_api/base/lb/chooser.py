@@ -20,15 +20,16 @@ raised during initialisation.
 
 from typing import List, Dict, Optional
 
+from llm_router_api.base.constants_base import BalanceStrategies
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
 
 from llm_router_api.base.lb.balanced import LoadBalancedStrategy
 from llm_router_api.base.lb.weighted import WeightedStrategy, DynamicWeightedStrategy
 
 STRATEGIES = {
-    "balanced": LoadBalancedStrategy,
-    "weighted": WeightedStrategy,
-    "dynamic_weighted": DynamicWeightedStrategy,
+    BalanceStrategies.BALANCED: LoadBalancedStrategy,
+    BalanceStrategies.WEIGHTED: WeightedStrategy,
+    BalanceStrategies.DYNAMIC_WEIGHTED: DynamicWeightedStrategy,
 }
 
 
@@ -112,8 +113,12 @@ class ProviderChooser:
         """
         if not self.strategy_name:
             return None
+
         _cls = STRATEGIES.get(strategy_name)
-        return _cls() if _cls else None
+        if not _cls:
+            raise RuntimeError(f"Strategy {strategy_name} not found!")
+
+        return _cls()
 
     def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
         """
