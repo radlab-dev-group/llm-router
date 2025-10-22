@@ -14,20 +14,29 @@ class ChooseProviderStrategyI(ABC):
     @staticmethod
     def _provider_key(provider_cfg: Dict) -> str:
         """
-        Return a deterministic string key for a provider configuration.
+        Return a unique identifier for a provider configuration.
 
-        The key is used to store per‑provider state such as usage counters
-        or latency histories.
+        The identifier is derived from fields that uniquely identify a
+        provider (e.g., its name or endpoint).  Subclasses may rely on
+        this key for caching the per ‑ provider state.
         """
         return provider_cfg.get("id") or provider_cfg.get("api_host", "unknown")
 
     @abstractmethod
     def choose(self, model_name: str, providers: List[Dict]) -> Dict:
         """
-        Select a provider for *model_name* from *providers*.
+        Choose a provider for the given model.
 
-        Implementations may use static weights, dynamic metrics, or any
-        other heuristic.  The returned dictionary must be one of the
-        elements from *providers*.
+        Parameters
+        ----------
+        model_name: str
+            Name of the model for which a provider is required.
+        providers: List[Dict]
+            List of provider configuration dictionaries.
+
+        Returns
+        -------
+        Dict
+            The selected provider configuration.
         """
         raise NotImplementedError
