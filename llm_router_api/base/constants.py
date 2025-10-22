@@ -5,6 +5,8 @@ from rdl_ml_utils.utils.env import bool_env_value
 from llm_router_api.base.constants_base import (
     _DontChangeMe,
     DEFAULT_EP_LANGUAGE as _DEFAULT_EP_LANGUAGE,
+    POSSIBLE_BALANCE_STRATEGIES,
+    BalanceStrategies,
 )
 
 
@@ -97,6 +99,11 @@ if RUN_IN_DEBUG_MODE:
 # Use Prometheus to collect metrics
 USE_PROMETHEUS = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}USE_PROMETHEUS")
 
+# Strategy for load balancing when a multi-provider model is available
+SERVER_BALANCE_STRATEGY = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}BALANCE_STRATEGY", BalanceStrategies.BALANCED
+).strip()
+
 
 def __verify_is_able_to_init():
     if not SERVICE_AS_PROXY:
@@ -108,4 +115,13 @@ def __verify_is_able_to_init():
         )
 
 
+def __verify_correctness():
+    if SERVER_BALANCE_STRATEGY not in POSSIBLE_BALANCE_STRATEGIES:
+        raise Exception(
+            f"{SERVER_BALANCE_STRATEGY} is not a valid strategy for balancing.\n"
+            f"Available strategies: {POSSIBLE_BALANCE_STRATEGIES}"
+        )
+
+
 __verify_is_able_to_init()
+__verify_correctness()

@@ -119,6 +119,7 @@ docker run \
   -e LLM_ROUTER_DEFAULT_EP_LANGUAGE="pl" \
   -e LLM_ROUTER_LOG_FILENAME="llm-proxy-rest.log" \
   -e LLM_ROUTER_EXTERNAL_TIMEOUT=300 \
+  -e LLM_ROUTER_BALANCE_STRATEGY=balanced \
   -e LLM_ROUTER_MODELS_CONFIG=/srv/cfg.json \
   -e LLM_ROUTER_PROMPTS_DIR="/srv/prompts" \
   -v "${PWD}/resources/configs/models-config.json":/srv/cfg.json \
@@ -142,6 +143,7 @@ docker run \
 | `LLM_ROUTER_EP_PREFIX`            | Prefix for all API endpoints.                                                                                                                                 | `/api`                                 |
 | `LLM_ROUTER_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                                                                                     | `False`                                |
 | `LLM_ROUTER_IN_DEBUG`             | Run server in debug mode (boolean).                                                                                                                           | `False`                                |
+| `LLM_ROUTER_BALANCE_STRATEGY`     | Strategy used to balance routing between LLM providers. Allowed values are `balanced`, `weighted`, and `dynamic_weighted` as defined in `constants_base.py`.  | `balanced`                             |
 | `LLM_ROUTER_SERVER_TYPE`          | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                                                                               | `flask`                                |
 | `LLM_ROUTER_SERVER_PORT`          | Port on which the server listens.                                                                                                                             | `8080`                                 |
 | `LLM_ROUTER_SERVER_HOST`          | Host address for the server.                                                                                                                                  | `0.0.0.0`                              |
