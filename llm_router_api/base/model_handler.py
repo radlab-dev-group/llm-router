@@ -7,6 +7,8 @@ This module defines:
   helpers to retrieve individual model definitions.
 """
 
+import threading
+
 from dataclasses import dataclass
 from typing import Dict, Optional, Any
 
@@ -42,6 +44,7 @@ class ApiModel:
     api_token: str
     input_size: int
     model_path: Optional[str] = None
+    is_chosen: bool = False
 
     @staticmethod
     def from_config(name: str, cfg: Dict) -> "ApiModel":
@@ -74,6 +77,7 @@ class ApiModel:
             api_token=str(cfg.get("api_token", "")),
             input_size=int(cfg.get("input_size", 0)),
             model_path=str(cfg.get("model_path", "")),
+            is_chosen=bool(cfg.get("is_chosen", False)),
         )
 
     def as_dict(self) -> Dict[str, Any]:
@@ -84,6 +88,7 @@ class ApiModel:
             "api_token": self.api_token,
             "input_size": self.input_size,
             "model_path": self.model_path,
+            "is_chosen": self.is_chosen,
         }
 
 
@@ -117,6 +122,8 @@ class ModelHandler:
         self.provider_chooser = provider_chooser
         self.api_model_config: ApiModelConfig = ApiModelConfig(models_config_path)
 
+        self._lock = threading.Lock()
+
     def get_model(self, model_name: str) -> Optional[ApiModel]:
         """
         Return a model definition for the given name.
@@ -131,14 +138,24 @@ class ModelHandler:
         Optional[ApiModel]
             ApiModel instance if found; otherwise, None.
         """
-        providers = self.api_model_config.models_configs[model_name].get(
-            "providers", []
-        )
-        model_host_cfg = self.provider_chooser.get_provider(
-            model_name=model_name, providers=providers
-        )
-        if model_host_cfg is None:
-            return None
+        with self._lock:
+            providers = self.api_model_config.models_configs[model_name].get(
+                "providers", []
+            )
+            model_host_cfg = self.provider_chooser.get_provider(
+                model_name=model_name, providers=providers
+            )
+            if model_host_cfg is None:
+                return None
+            model_host_cfg["is_chosen"] = True
+            for i, provider in enumerate(providers):
+                _p_k = provider.get("id", provider.get("host", "unknown"))
+                _m_k = model_host_cfg.get("id", model_host_cfg.get("host", "unknown"))
+                if _p_k == _m_k:
+                    providers[i] = model_host_cfg
+                    break
+            self.api_model_config.models_configs[model_name]["providers"] = providers
+
         return ApiModel.from_config(model_name, model_host_cfg)
 
     def list_active_models(self) -> Dict[str, Any]:
