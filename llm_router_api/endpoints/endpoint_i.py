@@ -231,6 +231,10 @@ class EndpointI(abc.ABC):
     def api_model(self):
         return self._api_model
 
+    @property
+    def model_handler(self):
+        return self._model_handler
+
     # ------------------------------------------------------------------
     # Core workflow
     # ------------------------------------------------------------------
