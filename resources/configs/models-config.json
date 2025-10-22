@@ -8,7 +8,8 @@
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
-          "model_path": ""
+          "model_path": "",
+          "weight": 1.0
         },
         {
           "id": "gemma3_12b-vllm-71:7001",
@@ -16,7 +17,8 @@
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
-          "model_path": ""
+          "model_path": "",
+          "weight": 1.0
         },
         {
           "id": "gemma3_12b-vllm-70:7000",
@@ -24,7 +26,8 @@
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
-          "model_path": ""
+          "model_path": "",
+          "weight": 1.0
         },
         {
           "id": "gemma3_12b-vllm-70:7001",
@@ -32,7 +35,8 @@
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
-          "model_path": ""
+          "model_path": "",
+          "weight": 1.0
         },
         {
           "id": "gemma3_12b-vllm-70:7002",
@@ -40,7 +44,35 @@
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
-          "model_path": ""
+          "model_path": "",
+          "weight": 1.0
+        },
+        {
+          "id": "gemma3_12b-vllm-66:7000",
+          "api_host": "http://192.168.100.66:7000/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": "",
+          "weight": 0.0
+        },
+        {
+          "id": "gemma3_12b-vllm-66:7001",
+          "api_host": "http://192.168.100.66:7001/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": "",
+          "weight": 0.0
+        },
+        {
+          "id": "gemma3_12b-vllm-66:7002",
+          "api_host": "http://192.168.100.66:7002/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": "",
+          "weight": 0.0
         }
       ]
     },
