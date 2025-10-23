@@ -619,9 +619,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
         try:
             params = self.prepare_payload(params)
-            map_prompt = params.pop("map_prompt", {})
-            prompt_str_force = params.pop("prompt_str_force", "")
-            prompt_str_postfix = params.pop("prompt_str_postfix", "")
+            map_prompt = None
+            prompt_str_force = None
+            prompt_str_postfix = None
+            if type(params) is dict:
+                map_prompt = params.pop("map_prompt", {})
+                prompt_str_force = params.pop("prompt_str_force", "")
+                prompt_str_postfix = params.pop("prompt_str_postfix", "")
 
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
