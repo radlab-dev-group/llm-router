@@ -146,4 +146,7 @@ class ProviderChooser:
         """
         if not providers:
             raise RuntimeError(f"{model_name} does not have any providers!")
-        return self.strategy.choose(model_name, providers)
+        return self.strategy.get_provider(model_name, providers)
+
+    def put_provider(self, model_name: str, provider: Dict) -> None:
+        self.strategy.put_provider(model_name, provider)

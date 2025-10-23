@@ -133,7 +133,7 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
                 probs = [p / total for p in adjusted]
         return probs
 
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
         """
         - Oblicza cechy i logity dla aktualnych providerów.
         - Mapuje na prawdopodobieństwa (softmax z temperaturą i p_min).
@@ -167,7 +167,7 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
             self.set_weight_by_key(key, p)
 
         # 3) Wybór providera wykorzystujący zaktualizowane wagi
-        chosen_cfg = super().choose(model_name, providers)
+        chosen_cfg = super().get_provider(model_name, providers)
 
         # 4) Rejestracja interwału (DynamicWeightedStrategy zapisze historię)
         #    oraz aktualizacja EMA metryk + nauka na podstawie poprzedniego interwału

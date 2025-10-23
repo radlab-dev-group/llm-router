@@ -23,7 +23,7 @@ class ChooseProviderStrategyI(ABC):
         return provider_cfg.get("id") or provider_cfg.get("api_host", "unknown")
 
     @abstractmethod
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
         """
         Choose a provider for the given model.
 
@@ -40,3 +40,24 @@ class ChooseProviderStrategyI(ABC):
             The selected provider configuration.
         """
         raise NotImplementedError
+
+    def put_provider(self, model_name: str, provider: Dict) -> None:
+        """
+        Notify the strategy that a provider has been used.
+
+        This method is called after a provider has been selected and used,
+        allowing the strategy to update its internal state (e.g., for
+        tracking usage, updating metrics, or implementing feedback loops).
+
+        The default implementation does nothing. Subclasses may override
+        this method to implement stateful behavior such as round-robin
+        rotation, failure tracking, or performance-based selection.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the model for which the provider was used.
+        provider : Dict
+            The provider configuration dictionary that was used.
+        """
+        pass

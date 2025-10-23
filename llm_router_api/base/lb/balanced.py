@@ -11,7 +11,7 @@ class LoadBalancedStrategy(ChooseProviderStrategyI):
             lambda: defaultdict(int)
         )
 
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
         if not providers:
             raise ValueError(f"No providers configured for model '{model_name}'")
 
