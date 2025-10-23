@@ -129,7 +129,7 @@ class WeightedStrategy(ChooseProviderStrategyI):
 
         return [w / total for w in weights]
 
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
         """
         Select a provider for *model_name* based on static weights.
 
@@ -330,7 +330,7 @@ class DynamicWeightedStrategy(WeightedStrategy):
             return [1.0 / n] * n
         return [w / total for w in weights]
 
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
         """
         Choose a provider using the deterministic weighted algorithm and
         record the latency since the last selection of the same provider.
@@ -352,7 +352,7 @@ class DynamicWeightedStrategy(WeightedStrategy):
         Dict
             The configuration dictionary of the selected provider.
         """
-        chosen_cfg = super().choose(model_name, providers)
+        chosen_cfg = super().get_provider(model_name, providers)
 
         self.__latency_recording(chosen_cfg=chosen_cfg)
 
@@ -411,3 +411,4 @@ class DynamicWeightedStrategy(WeightedStrategy):
             is returned.
         """
         return list(self._latency_history.get(provider_key, []))
+
