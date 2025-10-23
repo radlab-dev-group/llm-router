@@ -33,6 +33,7 @@ except ImportError:
 
 from typing import List, Dict
 
+from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
 
 
@@ -53,8 +54,8 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
     def __init__(
         self,
         models_config_path: str,
-        redis_host: str = "192.168.100.67",
-        redis_port: int = 6379,
+        redis_host: str = REDIS_HOST,
+        redis_port: int = REDIS_PORT,
         redis_db: int = 0,
         timeout: int = 60,
         check_interval: float = 0.1,

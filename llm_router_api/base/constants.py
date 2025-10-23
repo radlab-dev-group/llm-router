@@ -104,6 +104,12 @@ SERVER_BALANCE_STRATEGY = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}BALANCE_STRATEGY", BalanceStrategies.BALANCED
 ).strip()
 
+# Strategy for load balancing when a multi-provider model is available
+REDIS_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_HOST", "").strip()
+
+# Strategy for load balancing when a multi-provider model is available
+REDIS_PORT = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PORT", 6379))
+
 
 def __verify_is_able_to_init():
     if not SERVICE_AS_PROXY:
