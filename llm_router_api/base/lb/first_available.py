@@ -64,6 +64,37 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         self.timeout = timeout
         self.check_interval = check_interval
 
+        # -----------------------------------------------------------------
+        # Atomic acquire script – treat missing field as “available”
+        # -----------------------------------------------------------------
+        self._acquire_script = self.redis_client.register_script(
+            """
+                local redis_key = KEYS[1]
+                local field = ARGV[1]
+                local v = redis.call('HGET', redis_key, field)
+                -- v == false  -> field does not exist (nil)
+                -- v == 'false' -> explicitly marked as free
+                if v == false or v == 'false' then
+                    redis.call('HSET', redis_key, field, 'true')
+                    return 1
+                end
+                return 0
+            """
+        )
+
+        # -----------------------------------------------------------------
+        # Atomic release script – simply delete the field (no race condition)
+        # -----------------------------------------------------------------
+        self._release_script = self.redis_client.register_script(
+            """
+                local redis_key = KEYS[1]
+                local field = ARGV[1]
+                -- Delete the field; returns 1 if field existed, 0 otherwise
+                redis.call('HDEL', redis_key, field)
+                return 1
+            """
+        )
+
         self._clear_buffers()
 
     @staticmethod
@@ -134,97 +165,53 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                 )
 
     def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
-        """
-        Get the first available provider for the model.
-
-        This method:
-        1. Initializes provider status in Redis on first use.
-        2. Waits for an available provider (one with is_chosen=False).
-        3. Marks the selected provider as unavailable (is_chosen=True).
-        4. Returns the provider configuration.
-
-        Blocks with polling if no providers are available, up to the timeout.
-
-        Parameters
-        ----------
-        model_name : str
-            The model name.
-        providers : List[Dict]
-            List of provider configurations.
-
-        Returns
-        -------
-        Dict
-            The first available provider configuration.
-
-        Raises
-        ------
-        TimeoutError
-            If no available provider is found within the timeout period.
-        ValueError
-            If the provider list is empty.
-        """
-        if not providers:
-            raise ValueError(f"No providers configured for model '{model_name}'")
-
-        # Initialize providers on first use
-        # self._initialize_providers(model_name, providers)
+        # ... existing code up to redis_key/start_time ...
 
         redis_key = self._get_redis_key(model_name)
         start_time = time.time()
 
+        # Ensure fields exist; if someone removed the hash, recreate it
+        if not self.redis_client.exists(redis_key):
+            for p in providers:
+                pid = self._provider_key(p)
+                self.redis_client.hset(redis_key, f"{pid}:is_chosen", "false")
+
         while True:
-            print("?", providers)
             if time.time() - start_time > self.timeout:
                 raise TimeoutError(
                     f"No available provider found for model '{model_name}' "
                     f"within {self.timeout} seconds"
                 )
 
-            # Try to find an available provider
             for provider in providers:
                 provider_id = self._provider_key(provider)
                 provider_field = f"{provider_id}:is_chosen"
-
-                # Atomically check and set the provider as chosen
-                # Use Redis pipeline for atomic operation
-                pipe = self.redis_client.pipeline()
                 try:
-                    pipe.watch(redis_key)
-                    is_chosen = self.redis_client.hget(redis_key, provider_field)
-
-                    if is_chosen == "false":
-                        # Provider is available, mark it as chosen
-                        pipe.multi()
-                        pipe.hset(redis_key, provider_field, "true")
-                        pipe.execute()
+                    ok = int(
+                        self._acquire_script(keys=[redis_key], args=[provider_field])
+                    )
+                    if ok == 1:
+                        # **Store the exact field name inside the dict** so that
+                        # `put_provider` can release the same key even if the dict
+                        # is later mutated.
+                        provider["__chosen_field"] = provider_field
                         return provider
-
-                except redis.WatchError:
+                except Exception:
+                    time.sleep(self.check_interval)
                     continue
-                finally:
-                    pipe.reset()
 
-            # No available provider found, wait and retry
             time.sleep(self.check_interval)
 
     def put_provider(self, model_name: str, provider: Dict) -> None:
-        """
-        Mark a provider as available again after use.
-
-        This method marks the provider as available (is_chosen=False) so it can
-        be selected by other waiting processes.
-
-        Parameters
-        ----------
-        model_name : str
-            The model name.
-        provider : Dict
-            The provider configuration dictionary that was used.
-        """
         redis_key = self._get_redis_key(model_name)
-        provider_id = self._provider_key(provider)
-        provider_field = f"{provider_id}:is_chosen"
+        provider_field = provider.get("__chosen_field")
+        if provider_field is None:
+            provider_id = self._provider_key(provider)
+            provider_field = f"{provider_id}:is_chosen"
 
-        # Mark provider as available
-        self.redis_client.hset(redis_key, provider_field, "false")
+        try:
+            self.redis_client.hdel(redis_key, provider_field)
+        except Exception:
+            raise
+
+        provider.pop("__chosen_field", None)
