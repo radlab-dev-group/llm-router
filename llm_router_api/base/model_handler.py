@@ -138,15 +138,12 @@ class ModelHandler:
         Optional[ApiModel]
             ApiModel instance if found; otherwise, None.
         """
-        model_host_cfg = None
-        with self._lock:
-            providers = self.api_model_config.models_configs[model_name].get(
-                "providers", []
-            )
-
-            model_host_cfg = self.provider_chooser.get_provider(
-                model_name=model_name, providers=providers
-            )
+        providers = self.api_model_config.models_configs[model_name].get(
+            "providers", []
+        )
+        model_host_cfg = self.provider_chooser.get_provider(
+            model_name=model_name, providers=providers
+        )
 
         if model_host_cfg is None:
             return None
@@ -172,10 +169,9 @@ class ModelHandler:
         The operation is performed under a thread‑safe lock because multiple
         threads may read or modify the provider list concurrently.
         """
-        with self._lock:
-            self.provider_chooser.put_provider(
-                model_name=model_name, provider=provider
-            )
+        self.provider_chooser.put_provider(
+            model_name=model_name, provider=provider
+        )
 
     def list_active_models(self) -> Dict[str, Any]:
         """
