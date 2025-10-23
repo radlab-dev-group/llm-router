@@ -105,7 +105,8 @@ class FlaskEngine:
         self.logger_file_name = logger_file_name
 
         self._provider_chooser = ProviderChooser(
-            strategy_name=SERVER_BALANCE_STRATEGY
+            models_config_path=models_config_path,
+            strategy_name=SERVER_BALANCE_STRATEGY,
         )
 
     def prepare_flask_app(
