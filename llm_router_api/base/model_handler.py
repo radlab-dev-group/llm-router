@@ -108,6 +108,8 @@ class ModelHandler:
         Loader responsible for reading and exposing model configuration.
     """
 
+    LIST_MODEL_FIELDS_REMOVE = ["model_path", "api_token"]
+
     def __init__(self, models_config_path: str, provider_chooser: ProviderChooser):
         """
         Initialize the handler with the provided configuration path.
@@ -189,12 +191,20 @@ class ModelHandler:
             }
         """
         result: Dict[str, Any] = {}
+        models_configs = self.api_model_config.models_configs
         for m_type, names in self.api_model_config.active_models.items():
             models = []
             for name in names:
-                model = self.get_model_provider(name)
-                if not model:
+                _p = models_configs[name].get("providers", [])
+                if not len(_p):
                     continue
-                models.append(model.as_dict())
+
+                model = _p[0].copy()
+                for _r in self.LIST_MODEL_FIELDS_REMOVE:
+                    if _r in model:
+                        model.pop(_r)
+
+                model["name"] = name
+                models.append(model)
             result[m_type] = models
         return result
