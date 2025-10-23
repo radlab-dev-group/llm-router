@@ -139,11 +139,11 @@ class ModelHandler:
             ApiModel instance if found; otherwise, None.
         """
         model_host_cfg = None
-        providers = self.api_model_config.models_configs[model_name].get(
-            "providers", []
-        )
-
         with self._lock:
+            providers = self.api_model_config.models_configs[model_name].get(
+                "providers", []
+            )
+
             model_host_cfg = self.provider_chooser.get_provider(
                 model_name=model_name, providers=providers
             )
