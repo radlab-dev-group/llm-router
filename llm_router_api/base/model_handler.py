@@ -169,9 +169,7 @@ class ModelHandler:
         The operation is performed under a thread‑safe lock because multiple
         threads may read or modify the provider list concurrently.
         """
-        self.provider_chooser.put_provider(
-            model_name=model_name, provider=provider
-        )
+        self.provider_chooser.put_provider(model_name=model_name, provider=provider)
 
     def list_active_models(self) -> Dict[str, Any]:
         """
