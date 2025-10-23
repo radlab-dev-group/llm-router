@@ -76,12 +76,8 @@ class ApiModelConfig:
         models_json = json.load(open(self.models_config_path, "rt"))
         for m_type, models_list in self.active_models.items():
             for m_name in models_list:
-                provider_cfg = models_json[m_type][m_name]
-                if "providers" not in provider_cfg:
+                model_config = models_json[m_type][m_name]
+                if "providers" not in model_config:
                     raise KeyError(f"{m_type}:{m_name} has no providers!")
-                # if "api_host" in provider_cfg:
-                #     provider_cfg["id"] = f"{m_name}_{provider_cfg['api_host']}"
-                #     provider_cfg = {"providers": [provider_cfg]}
-                models_configuration[m_name] = provider_cfg
-
+                models_configuration[m_name] = model_config
         return models_configuration
