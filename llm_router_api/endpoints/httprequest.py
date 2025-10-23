@@ -234,11 +234,29 @@ class HttpRequestExecutor:
 
         params = self._convert_ollama_messages_if_needed(params=params)
         if is_ollama:
-            return self._stream_ollama(full_url, params, method, headers)
+            return self._stream_ollama(
+                full_url,
+                params,
+                method,
+                headers,
+                api_model_provider=api_model_provider,
+            )
         if is_generic_to_ollama:
-            return self._stream_generic_to_ollama(full_url, params, method, headers)
+            return self._stream_generic_to_ollama(
+                full_url,
+                params,
+                method,
+                headers,
+                api_model_provider=api_model_provider,
+            )
         else:
-            return self._stream_generic(full_url, params, method, headers)
+            return self._stream_generic(
+                full_url,
+                params,
+                method,
+                headers,
+                api_model_provider=api_model_provider,
+            )
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -417,6 +435,7 @@ class HttpRequestExecutor:
         payload: Dict[str, Any],
         method: str,
         headers: Dict[str, Any],
+        api_model_provider: ApiModel,
     ) -> Iterator[bytes]:
         """
         Perform a generic streaming request without Ollama conversion.
@@ -479,6 +498,7 @@ class HttpRequestExecutor:
         payload: Dict[str, Any],
         method: str,
         headers: Dict[str, Any],
+        api_model_provider: ApiModel,
     ) -> Iterator[bytes]:
         """
         Perform a streaming request and convert the stream to Ollama NDJSON.
@@ -515,7 +535,9 @@ class HttpRequestExecutor:
                     stream=True,
                 ) as resp:
                     resp.raise_for_status()
-                    for chunk in self._parse_ollama_stream(resp):
+                    for chunk in self._parse_ollama_stream(
+                        resp, api_model_provider=api_model_provider
+                    ):
                         yield chunk
             else:
                 with requests.get(
@@ -526,7 +548,9 @@ class HttpRequestExecutor:
                     stream=True,
                 ) as resp:
                     resp.raise_for_status()
-                    for chunk in self._parse_ollama_stream(resp):
+                    for chunk in self._parse_ollama_stream(
+                        resp, api_model_provider=api_model_provider
+                    ):
                         yield chunk
         except requests.RequestException as exc:
             yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
@@ -539,6 +563,7 @@ class HttpRequestExecutor:
         delta: str,
         done: bool = False,
         usage: Dict[str, int] = None,
+        api_model_provider: ApiModel = None,
     ) -> bytes:
         """
         Build a single Ollama‑compatible NDJSON line.
@@ -559,10 +584,11 @@ class HttpRequestExecutor:
             JSON line encoded as UTF‑8, terminated by a newline.
         """
         obj = {
-            "model": self._endpoint.api_model.name,
+            "model": api_model_provider.name,
             "created_at": datetime.datetime.utcnow().isoformat() + "Z",
             "done": done,
         }
+
         if not done:
             obj["message"] = {"role": "assistant", "content": delta}
         else:
@@ -577,9 +603,12 @@ class HttpRequestExecutor:
             obj["load_duration"] = 0
             obj["prompt_eval_duration"] = 0
             obj["eval_duration"] = 0
+
         return (json.dumps(obj, ensure_ascii=False) + "\n").encode("utf-8")
 
-    def _parse_ollama_stream(self, response: Response) -> Iterator[bytes]:
+    def _parse_ollama_stream(
+        self, response: Response, api_model_provider: ApiModel
+    ) -> Iterator[bytes]:
         """
         Parse an OpenAI‑style SSE/NDJSON stream and emit Ollama NDJSON.
 
@@ -614,7 +643,12 @@ class HttpRequestExecutor:
                 data_str = line[5:].strip()
                 if data_str == "[DONE]":
                     if not sent_done:
-                        yield self._ollama_chunk("", done=True, usage=usage_data)
+                        yield self._ollama_chunk(
+                            delta="",
+                            done=True,
+                            usage=usage_data,
+                            api_model_provider=api_model_provider,
+                        )
                         sent_done = True
                     continue
                 try:
@@ -642,13 +676,22 @@ class HttpRequestExecutor:
                     delta_text = ""
 
                 if delta_text:
-                    yield self._ollama_chunk(delta_text, done=False)
+                    yield self._ollama_chunk(
+                        delta=delta_text,
+                        done=False,
+                        api_model_provider=api_model_provider,
+                    )
 
                 # finish reason → final chunk
                 try:
                     choices = event.get("choices", [])
                     if choices and choices[0].get("finish_reason") and not sent_done:
-                        yield self._ollama_chunk("", done=True, usage=usage_data)
+                        yield self._ollama_chunk(
+                            delta="",
+                            done=True,
+                            usage=usage_data,
+                            api_model_provider=api_model_provider,
+                        )
                         sent_done = True
                 except Exception:
                     pass
@@ -671,19 +714,38 @@ class HttpRequestExecutor:
                         elif isinstance(d, str):
                             delta_text = d
                     if delta_text:
-                        yield self._ollama_chunk(delta_text, done=False)
+                        yield self._ollama_chunk(
+                            delta_text,
+                            done=False,
+                            api_model_provider=api_model_provider,
+                        )
                     if ch and ch[0].get("finish_reason") and not sent_done:
-                        yield self._ollama_chunk("", done=True, usage=usage_data)
+                        yield self._ollama_chunk(
+                            delta="",
+                            done=True,
+                            usage=usage_data,
+                            api_model_provider=api_model_provider,
+                        )
                         sent_done = True
                 elif evt.get("done") is True and not sent_done:
-                    yield self._ollama_chunk("", done=True, usage=usage_data)
+                    yield self._ollama_chunk(
+                        delta="",
+                        done=True,
+                        usage=usage_data,
+                        api_model_provider=api_model_provider,
+                    )
                     sent_done = True
                 else:
                     yield (line + "\n").encode("utf-8")
             except Exception:
                 yield (line + "\n").encode("utf-8")
         if not sent_done:
-            yield self._ollama_chunk("", done=True, usage=usage_data)
+            yield self._ollama_chunk(
+                delta="",
+                done=True,
+                usage=usage_data,
+                api_model_provider=api_model_provider,
+            )
 
     def _stream_generic_to_ollama(
         self,
@@ -691,6 +753,7 @@ class HttpRequestExecutor:
         payload: Dict[str, Any],
         method: str,
         headers: Dict[str, Any],
+        api_model_provider: ApiModel,
     ) -> Iterator[bytes]:
         """
         Stream a response from an Ollama endpoint and convert it to the
