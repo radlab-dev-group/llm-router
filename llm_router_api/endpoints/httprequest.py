@@ -28,6 +28,8 @@ import datetime
 from requests import Response
 from typing import Optional, Dict, Any, Iterator
 
+from llm_router_api.base.model_handler import ApiModel
+
 
 class HttpRequestExecutor:
     """
@@ -70,6 +72,7 @@ class HttpRequestExecutor:
         self,
         ep_url: str,
         params: Dict[str, Any],
+        api_model_provider: ApiModel,
         prompt_str: Optional[str] = None,
         call_for_each_user_msg: bool = False,
         headers: Optional[Dict[str, Any]] = None,
@@ -93,6 +96,8 @@ class HttpRequestExecutor:
         params:
             Dictionary of request parameters; will be mutated to include the
             model name and, optionally, the system prompt.
+        api_model_provider:
+            Model provider used to construct API requests.
         prompt_str:
             Optional system‑prompt text to prepend to the conversation.
         call_for_each_user_msg:
@@ -114,17 +119,19 @@ class HttpRequestExecutor:
         """
         # inject model name
         params["model"] = (
-            self._endpoint.api_model.model_path
-            if self._endpoint.api_model.model_path
-            else self._endpoint.api_model.name
+            api_model_provider.model_path
+            if api_model_provider.model_path
+            else api_model_provider.name
         )
 
-        full_url = self._prepare_full_url_ep(ep_url)
+        full_url = self._prepare_full_url_ep(
+            ep_url, api_model_provider=api_model_provider
+        )
         if not headers:
             headers = {"Content-Type": "application/json"}
 
         # auth header
-        token_str = self._endpoint.api_model.api_token
+        token_str = api_model_provider.api_token
         if token_str:
             headers["Authorization"] = f"Bearer {token_str}"
 
@@ -162,6 +169,7 @@ class HttpRequestExecutor:
         self,
         ep_url: str,
         params: Dict[str, Any],
+        api_model_provider: ApiModel,
         is_ollama: bool = False,
         is_generic_to_ollama: bool = False,
     ) -> Iterator[bytes]:
@@ -179,6 +187,8 @@ class HttpRequestExecutor:
             Relative endpoint path to which the request is sent.
         params:
             Payload parameters; ``model`` and ``stream`` are added automatically.
+        api_model_provider:
+            Model provider used to construct API requests.
         is_ollama:
             Flag indicating whether Ollama‑specific conversion should be
             applied to the incoming stream.
@@ -204,19 +214,21 @@ class HttpRequestExecutor:
 
         # common preparation
         params["model"] = (
-            self._endpoint.api_model.model_path
-            if self._endpoint.api_model.model_path
-            else self._endpoint.api_model.name
+            api_model_provider.model_path
+            if api_model_provider.model_path
+            else api_model_provider.name
         )
         params["stream"] = True
-        full_url = self._prepare_full_url_ep(ep_url)
+        full_url = self._prepare_full_url_ep(
+            ep_url, api_model_provider=api_model_provider
+        )
 
         method = (self._endpoint.method or "POST").upper()
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
-        token = self._endpoint.api_model.api_token
+        token = api_model_provider.api_token
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
@@ -231,10 +243,9 @@ class HttpRequestExecutor:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
-    def _prepare_full_url_ep(self, ep_url: str) -> str:
-        full_url = (
-            self._endpoint.api_model.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-        )
+    @staticmethod
+    def _prepare_full_url_ep(ep_url: str, api_model_provider: ApiModel) -> str:
+        full_url = api_model_provider.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
         return full_url
 
     def _call_for_each_user_message(

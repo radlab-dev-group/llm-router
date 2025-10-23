@@ -151,12 +151,6 @@ class EndpointI(abc.ABC):
         self._ep_method = method
         self._model_handler = model_handler
 
-        self._prompt_str = None
-        self._prompt_str_force = None
-        self._prompt_name = None
-        self._map_prompt = None
-        self._prompt_str_postfix = None
-
         self.direct_return = direct_return
         self._prompt_handler = prompt_handler
         self._dont_add_api_prefix = dont_add_api_prefix
@@ -179,8 +173,6 @@ class EndpointI(abc.ABC):
 
         self._api_type_dispatcher = ApiTypesDispatcher()
         self._check_method_is_allowed(method=method)
-
-        self._api_model: Optional[ApiModel] = None
 
         # Hook function to prepare response
         self._prepare_response_function = None
@@ -208,16 +200,6 @@ class EndpointI(abc.ABC):
         return self._ep_method
 
     @property
-    def prompt_name(self):
-        """
-        Return the resolved system‑prompt identifier for the current request.
-
-        The attribute is populated by :meth:`_resolve_prompt_name` during
-        request processing.
-        """
-        return self._prompt_name
-
-    @property
     def add_api_prefix(self):
         """
         Indicate whether the global API prefix (``DEFAULT_API_PREFIX``) should
@@ -226,10 +208,6 @@ class EndpointI(abc.ABC):
         ``True`` means *do not* add the prefix (i.e., the endpoint opts out).
         """
         return not self._dont_add_api_prefix
-
-    @property
-    def api_model(self):
-        return self._api_model
 
     @property
     def model_handler(self):
@@ -269,12 +247,6 @@ class EndpointI(abc.ABC):
             Always raised in the base class – concrete subclasses must
             provide an implementation.
         """
-        # try:
-        #     params = self.prepare_payload(params=params)
-        #     self._set_model(params=params)
-        #     self._resolve_prompt_name(params=params)
-        # except Exception:
-        #     raise
         raise NotImplementedError(
             "Method `run_ep` is not implemented for local models!"
         )
@@ -428,7 +400,7 @@ class EndpointI(abc.ABC):
     # ------------------------------------------------------------------
     # Model‑related helpers (used by proxy endpoints)
     # ------------------------------------------------------------------
-    def _set_model(self, params: Dict[str, Any]) -> None:
+    def _get_model_provider(self, params: Dict[str, Any]) -> ApiModel:
         """
         Resolve the model identifier from *params* and store the matching
         :class:`ApiModel` instance.
@@ -454,14 +426,14 @@ class EndpointI(abc.ABC):
         api_model = self._model_handler.get_model_provider(model_name=model_name)
         if api_model is None:
             raise ValueError(f"Model '{model_name}' not found in configuration")
-        self._api_model = api_model
+        return api_model
 
-    def _unset_model(self, params: Dict[str, Any]) -> None:
-        if not self._api_model:
+    def _unset_model(self, api_model_provider, params: Dict[str, Any]) -> None:
+        if not api_model_provider:
             return
         model_name = self._model_name_from_params(params=params)
         self._model_handler.put_model_provider(
-            model_name=model_name, provider=self._api_model.as_dict()
+            model_name=model_name, provider=api_model_provider.as_dict()
         )
 
     @staticmethod
@@ -479,27 +451,33 @@ class EndpointI(abc.ABC):
         return model_name
 
     def _resolve_prompt_name(
-        self, params: Dict[str, Any], map_prompt: Optional[Dict[str, str]]
-    ) -> None:
+        self,
+        params: Dict[str, Any],
+        map_prompt: Optional[Dict[str, str]],
+        prompt_str_force: Optional[str] = None,
+        prompt_str_postfix: Optional[str] = None,
+    ) -> tuple[str | None, str | None]:
+        prompt_str = None
+        prompt_name: str | None = None
         if self.SYSTEM_PROMPT_NAME is not None:
             lang_str = self.__get_language(params=params)
-            self._prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
+            prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
 
-        self._prompt_str = None
-        if self._prompt_str_force:
-            self._prompt_str = self._prompt_str_force
-        elif self._prompt_name:
-            self._prompt_str = self._prompt_handler.get_prompt(self._prompt_name)
+        if prompt_str_force and len(prompt_str_force):
+            prompt_str = prompt_str_force
+        elif prompt_name:
+            prompt_str = self._prompt_handler.get_prompt(prompt_name)
 
-        if self._prompt_str and map_prompt:
+        if prompt_str and map_prompt:
             for _c, _t in map_prompt.items():
-                self._prompt_str = self._prompt_str.replace(_c, _t)
+                prompt_str = prompt_str.replace(_c, _t)
 
-        if self._prompt_str and self._prompt_str_postfix:
-            self._prompt_str += "\n\n" + self._prompt_str_postfix
+        if prompt_str and prompt_str_postfix:
+            prompt_str += "\n\n" + prompt_str_postfix
 
-        if self._prompt_str:
-            self._prompt_str = self._prompt_str.strip()
+        if prompt_str:
+            prompt_str = prompt_str.strip()
+        return prompt_name, prompt_str
 
     @staticmethod
     def __get_language(params: Dict[str, Any]) -> str:
@@ -643,11 +621,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
         try:
-            self._map_prompt = None
-            self._prompt_str_force = None
-            self._prompt_str_postfix = None
-
             params = self.prepare_payload(params)
+            map_prompt = params.pop("map_prompt", {})
+            prompt_str_force = params.pop("prompt_str_force", "")
+            prompt_str_postfix = params.pop("prompt_str_postfix", "")
+
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
             if type(params) is dict:
@@ -661,25 +639,29 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # Then llms is used as a simple proxy with forwarding params
             # and response from external api
             simple_proxy = False
-            self._api_model = None
-            self._prompt_name = None
-            self._prompt_str = None
 
             # When the endpoint does not declare required arguments, we treat
             # it as a proxy that forwards the request to the model's own
             # endpoint.
+            api_model_provider = self._get_model_provider(params=params)
+            if api_model_provider is None:
+                raise ValueError(f"API model not found in params {params}")
+
+            _md = api_model_provider.as_dict().copy()
+            if "api_token" in _md:
+                _md["api_token"] = "***"
+            self.logger.debug(f"Request model config: {_md}")
+
             if not self.REQUIRED_ARGS:
-                self._set_model(params=params)
-                if self._api_model is None:
-                    raise ValueError(f"API model not found in params {params}")
-
-                _md = self._api_model.as_dict().copy()
-                if "api_token" in _md:
-                    _md["api_token"] = "***"
-                self.logger.debug(f"Request model config: {_md}")
-
-                if self._api_model.api_type.lower() in self._ep_types_str:
+                if api_model_provider.api_type.lower() in self._ep_types_str:
                     simple_proxy = True
+
+            prompt_name, prompt_str = self._resolve_prompt_name(
+                params=params,
+                map_prompt=map_prompt,
+                prompt_str_force=prompt_str_force,
+                prompt_str_postfix=prompt_str_postfix,
+            )
 
             if simple_proxy:
                 ep_pref = ""
@@ -693,51 +675,49 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         params=params,
                         is_ollama=False,
                         is_generic_to_ollama=False,
+                        api_model_provider=api_model_provider,
                     )
                 response = self._http_executor.call_http_request(
                     ep_url=ep_url,
                     params=params,
-                    prompt_str=self._prompt_str,
+                    prompt_str=prompt_str,
+                    api_model_provider=api_model_provider,
                     call_for_each_user_msg=self._call_for_each_user_msg,
                 )
                 self.logger.debug("=" * 100)
                 self.logger.debug(response)
                 self.logger.debug("=" * 100)
-                self._unset_model(params=params)
+                self._unset_model(
+                    params=params, api_model_provider=api_model_provider
+                )
                 return response
 
-            self._resolve_prompt_name(params=params, map_prompt=self._map_prompt)
-            if self._prompt_name is not None:
-                self.logger.debug(f" -> prompt_name: {self._prompt_name}")
-                self.logger.debug(f" -> prompt_str: {str(self._prompt_str)[:40]}...")
+            if prompt_name is not None:
+                self.logger.debug(f" -> prompt_name: {prompt_name}")
+                self.logger.debug(f" -> prompt_str: {str(prompt_str)[:40]}...")
 
-            self.__dispatch_external_api_model(params)
             ep_url = self._api_type_dispatcher.chat_ep(
-                api_type=self._api_model.api_type
+                api_type=api_model_provider.api_type
             )
 
-            if self._api_model and self._api_model.api_type in ["openai"]:
+            if api_model_provider.api_type in ["openai"]:
                 params = self._filter_params_to_acceptable(
-                    api_type=self._api_model.api_type, params=params
+                    api_type=api_model_provider.api_type, params=params
                 )
 
             if bool((params or {}).get("stream", False)):
-                if not self._api_model:
-                    raise ValueError(
-                        "API model not found, streaming is not possible!"
-                    )
-
                 if self._call_for_each_user_msg:
                     raise ValueError(
                         "Streaming is available only for single message"
                     )
 
-                if self._api_model.api_type in self._ep_types_str:
+                if api_model_provider.api_type in self._ep_types_str:
                     return self._http_executor.stream_response(
                         ep_url=ep_url,
                         params=params,
                         is_ollama=False,
                         is_generic_to_ollama=False,
+                        api_model_provider=api_model_provider,
                     )
 
                 if "ollama" in self._ep_types_str:
@@ -746,28 +726,34 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         params=params,
                         is_ollama=True,
                         is_generic_to_ollama=False,
+                        api_model_provider=api_model_provider,
                     )
-                if self._api_model.api_type == "ollama":
+
+                if api_model_provider.api_type == "ollama":
                     return self._http_executor.stream_response(
                         ep_url=ep_url,
                         params=params,
                         is_ollama=False,
                         is_generic_to_ollama=True,
+                        api_model_provider=api_model_provider,
                     )
+
                 return self._http_executor.stream_response(
                     ep_url=ep_url,
                     params=params,
                     is_ollama=False,
                     is_generic_to_ollama=False,
+                    api_model_provider=api_model_provider,
                 )
 
             response = self._http_executor.call_http_request(
                 ep_url=ep_url,
                 params=params,
-                prompt_str=self._prompt_str,
+                prompt_str=prompt_str,
+                api_model_provider=api_model_provider,
                 call_for_each_user_msg=self._call_for_each_user_msg,
             )
-            self._unset_model(params=params)
+            self._unset_model(api_model_provider=api_model_provider, params=params)
             return response
         except Exception as e:
             self.logger.exception(e)
@@ -823,11 +809,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             self.logger.exception(e)
             return {"raw_response": response.text}
 
-    # ------------------------------------------------------------------
-    def __dispatch_external_api_model(self, params: Dict[str, Any]) -> None:
-        try:
-            model_name = self._model_name_from_params(params=params)
-            self._api_model = self._model_handler.get_model_provider(model_name)
-        except (ValueError, Exception) as e:
-            self.logger.exception(e)
-            raise
+    # # ------------------------------------------------------------------
+    # def __dispatch_external_api_model(self, params: Dict[str, Any]) -> Optional[ApiModel]:
+    #     try:
+    #         model_name = self._model_name_from_params(params=params)
+    #         return self._model_handler.get_model_provider(model_name)
+    #     except (ValueError, Exception) as e:
+    #         self.logger.exception(e)
+    #         raise
