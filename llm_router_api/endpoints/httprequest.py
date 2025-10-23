@@ -151,7 +151,7 @@ class HttpRequestExecutor:
         if prompt_str:
             params["messages"] = [system_msg] + params.get("messages", [])
 
-        self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+        # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
         if self._endpoint.method == "POST":
             return self._call_post_with_payload(
