@@ -65,9 +65,6 @@ class EndpointI(abc.ABC):
     _model_handler: ModelHandler | None
         Optional handler used to resolve model names to concrete
         :class:`~llm_router_api.base.model_handler.ApiModel` objects.
-    _prompt_name: str | None
-        Resolved system‑prompt identifier (populated by
-        :meth:`_resolve_prompt_name`).
     _prompt_handler: PromptHandler | None
         Optional handler used to retrieve prompt templates.
     _dont_add_api_prefix: bool
@@ -77,8 +74,6 @@ class EndpointI(abc.ABC):
         List of API types.
     _api_type_dispatcher: ApiTypesDispatcher
         Helper used to map a model's API type to concrete endpoint URLs.
-    _api_model: ApiModel | None
-        Model configuration selected by :meth:`_set_model`.
     """
 
     METHODS = ["GET", "POST"]
@@ -428,7 +423,9 @@ class EndpointI(abc.ABC):
             raise ValueError(f"Model '{model_name}' not found in configuration")
         return api_model
 
-    def _unset_model(self, api_model_provider, params: Dict[str, Any]) -> None:
+    def _unset_model(
+        self, api_model_provider: ApiModel, params: Dict[str, Any]
+    ) -> None:
         if not api_model_provider:
             return
         model_name = self._model_name_from_params(params=params)
@@ -617,9 +614,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Propagates any unexpected error; the Flask registrar will
             translate it into a 500 response.
         """
+        api_model_provider = None
         self._start_time = time.time()
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
-
         try:
             params = self.prepare_payload(params)
             map_prompt = params.pop("map_prompt", {})
@@ -684,9 +681,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     api_model_provider=api_model_provider,
                     call_for_each_user_msg=self._call_for_each_user_msg,
                 )
-                self.logger.debug("=" * 100)
-                self.logger.debug(response)
-                self.logger.debug("=" * 100)
+                # self.logger.debug("=" * 100)
+                # self.logger.debug(response)
+                # self.logger.debug("=" * 100)
+
                 self._unset_model(
                     params=params, api_model_provider=api_model_provider
                 )
@@ -758,6 +756,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         except Exception as e:
             self.logger.exception(e)
             return self.return_response_not_ok(str(e))
+        finally:
+            if api_model_provider is not None:
+                self._unset_model(
+                    api_model_provider=api_model_provider, params=params
+                )
 
     @staticmethod
     def _filter_params_to_acceptable(
