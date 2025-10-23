@@ -8,23 +8,11 @@ except ImportError:
     REDIS_IS_AVAILABLE = False
 
 from typing import List, Dict
+
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
 
 
 class FirstAvailableStrategy(ChooseProviderStrategyI):
-    """
-    First Available Strategy using Redis for distributed provider state management.
-
-    This strategy maintains provider availability status in Redis and selects
-    the first available provider. Multiple processes can safely access this
-    strategy simultaneously thanks to Redis-backed synchronization.
-
-    For each model, providers are stored in Redis with the format:
-    {model_name}:{provider_id} -> {"is_chosen": bool}
-
-    When get_provider is called, it marks a provider as unavailable (is_chosen=True).
-    When put_provider is called, it marks a provider as available again (is_chosen=False).
-    """
 
     def __init__(
         self,
@@ -64,9 +52,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         self.timeout = timeout
         self.check_interval = check_interval
 
-        # -----------------------------------------------------------------
         # Atomic acquire script – treat missing field as “available”
-        # -----------------------------------------------------------------
         self._acquire_script = self.redis_client.register_script(
             """
                 local redis_key = KEYS[1]
@@ -82,9 +68,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             """
         )
 
-        # -----------------------------------------------------------------
         # Atomic release script – simply delete the field (no race condition)
-        # -----------------------------------------------------------------
         self._release_script = self.redis_client.register_script(
             """
                 local redis_key = KEYS[1]
