@@ -6,7 +6,9 @@ from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
 
 class LoadBalancedStrategy(ChooseProviderStrategyI):
 
-    def __init__(self) -> None:
+    def __init__(self, models_config_path: str) -> None:
+        super().__init__(models_config_path)
+
         self._usage_counters: Dict[str, Dict[str, int]] = defaultdict(
             lambda: defaultdict(int)
         )

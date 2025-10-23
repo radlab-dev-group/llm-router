@@ -1,6 +1,8 @@
 from typing import List, Dict
 from abc import ABC, abstractmethod
 
+from llm_router_api.base.model_config import ApiModelConfig
+
 
 class ChooseProviderStrategyI(ABC):
     """
@@ -10,6 +12,11 @@ class ChooseProviderStrategyI(ABC):
     provider configuration dictionary based on the supplied model name
     and the list of available providers.
     """
+
+    def __init__(self, models_config_path: str) -> None:
+        self._api_model_config = ApiModelConfig(
+            models_config_path=models_config_path
+        )
 
     @staticmethod
     def _provider_key(provider_cfg: Dict) -> str:

@@ -14,6 +14,7 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
 
     def __init__(
         self,
+        models_config_path: str,
         initial_providers: List[Dict] | None = None,
         history_size: int = 10_000,
         learning_rate: float = 0.1,
@@ -28,7 +29,9 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
         enable_decision_logging: bool = False,
     ) -> None:
         super().__init__(
-            initial_providers=initial_providers, history_size=history_size
+            initial_providers=initial_providers,
+            history_size=history_size,
+            models_config_path=models_config_path,
         )
         # Parametry uczenia i mapowania
         self._lr = learning_rate
