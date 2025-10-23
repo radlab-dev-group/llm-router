@@ -44,7 +44,6 @@ class ApiModel:
     api_token: str
     input_size: int
     model_path: Optional[str] = None
-    is_chosen: bool = False
 
     @staticmethod
     def from_config(name: str, cfg: Dict) -> "ApiModel":
@@ -77,18 +76,17 @@ class ApiModel:
             api_token=str(cfg.get("api_token", "")),
             input_size=int(cfg.get("input_size", 0)),
             model_path=str(cfg.get("model_path", "")),
-            is_chosen=bool(cfg.get("is_chosen", False)),
         )
 
     def as_dict(self) -> Dict[str, Any]:
         return {
+            "id": self.id,
             "name": self.name,
             "api_host": self.api_host,
             "api_type": self.api_type,
             "api_token": self.api_token,
             "input_size": self.input_size,
             "model_path": self.model_path,
-            "is_chosen": self.is_chosen,
         }
 
 
@@ -124,7 +122,7 @@ class ModelHandler:
 
         self._lock = threading.Lock()
 
-    def get_model(self, model_name: str) -> Optional[ApiModel]:
+    def get_model_provider(self, model_name: str) -> Optional[ApiModel]:
         """
         Return a model definition for the given name.
 
@@ -138,25 +136,44 @@ class ModelHandler:
         Optional[ApiModel]
             ApiModel instance if found; otherwise, None.
         """
+        model_host_cfg = None
+        providers = self.api_model_config.models_configs[model_name].get(
+            "providers", []
+        )
+
         with self._lock:
-            providers = self.api_model_config.models_configs[model_name].get(
-                "providers", []
-            )
             model_host_cfg = self.provider_chooser.get_provider(
                 model_name=model_name, providers=providers
             )
-            if model_host_cfg is None:
-                return None
-            model_host_cfg["is_chosen"] = True
-            for i, provider in enumerate(providers):
-                _p_k = provider.get("id", provider.get("host", "unknown"))
-                _m_k = model_host_cfg.get("id", model_host_cfg.get("host", "unknown"))
-                if _p_k == _m_k:
-                    providers[i] = model_host_cfg
-                    break
-            self.api_model_config.models_configs[model_name]["providers"] = providers
+
+        if model_host_cfg is None:
+            return None
 
         return ApiModel.from_config(model_name, model_host_cfg)
+
+    def put_model_provider(self, model_name: str, provider: dict) -> None:
+        """
+        Set ``is_chosen`` flag of the given provider to ``False`` and update the
+        stored providers list for the specified model.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the model whose provider list should be updated.
+        provider : dict
+            Provider dictionary (as stored in the configuration) that should be
+            un‑selected.  The dictionary must contain either an ``id`` key or a
+            ``host`` key that uniquely identifies the provider.
+
+        Notes
+        -----
+        The operation is performed under a thread‑safe lock because multiple
+        threads may read or modify the provider list concurrently.
+        """
+        with self._lock:
+            self.provider_chooser.put_provider(
+                model_name=model_name, provider=provider
+            )
 
     def list_active_models(self) -> Dict[str, Any]:
         """
@@ -175,7 +192,7 @@ class ModelHandler:
         for m_type, names in self.api_model_config.active_models.items():
             models = []
             for name in names:
-                model = self.get_model(name)
+                model = self.get_model_provider(name)
                 if not model:
                     continue
                 models.append(model.as_dict())
