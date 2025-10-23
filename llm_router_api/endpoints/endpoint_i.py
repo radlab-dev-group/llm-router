@@ -450,7 +450,22 @@ class EndpointI(abc.ABC):
         """
         # if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
         #     return
+        model_name = self._model_name_from_params(params=params)
+        api_model = self._model_handler.get_model_provider(model_name=model_name)
+        if api_model is None:
+            raise ValueError(f"Model '{model_name}' not found in configuration")
+        self._api_model = api_model
 
+    def _unset_model(self, params: Dict[str, Any]) -> None:
+        if not self._api_model:
+            return
+        model_name = self._model_name_from_params(params=params)
+        self._model_handler.put_model_provider(
+            model_name=model_name, provider=self._api_model.as_dict()
+        )
+
+    @staticmethod
+    def _model_name_from_params(params: Dict[str, Any]) -> str | None:
         model_name = None
         for m_name in MODEL_NAME_PARAMS:
             model_name = params.get(m_name)
@@ -461,11 +476,7 @@ class EndpointI(abc.ABC):
             raise ValueError(
                 f"Model name [{', '.join(MODEL_NAME_PARAMS)}] is required!"
             )
-
-        api_model = self._model_handler.get_model(model_name=model_name)
-        if api_model is None:
-            raise ValueError(f"Model '{model_name}' not found in configuration")
-        self._api_model = api_model
+        return model_name
 
     def _resolve_prompt_name(
         self, params: Dict[str, Any], map_prompt: Optional[Dict[str, str]]
@@ -689,16 +700,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     prompt_str=self._prompt_str,
                     call_for_each_user_msg=self._call_for_each_user_msg,
                 )
-
                 self.logger.debug("=" * 100)
-                self.logger.error(response)
+                self.logger.debug(response)
                 self.logger.debug("=" * 100)
+                self._unset_model(params=params)
                 return response
 
             self._resolve_prompt_name(params=params, map_prompt=self._map_prompt)
             if self._prompt_name is not None:
                 self.logger.debug(f" -> prompt_name: {self._prompt_name}")
-                self.logger.debug(self._prompt_str)
+                self.logger.debug(f" -> prompt_str: {str(self._prompt_str)[:40]}...")
 
             self.__dispatch_external_api_model(params)
             ep_url = self._api_type_dispatcher.chat_ep(
@@ -713,7 +724,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             if bool((params or {}).get("stream", False)):
                 if not self._api_model:
                     raise ValueError(
-                        "API model not found streaming is not possible!"
+                        "API model not found, streaming is not possible!"
                     )
 
                 if self._call_for_each_user_msg:
@@ -749,14 +760,15 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     is_ollama=False,
                     is_generic_to_ollama=False,
                 )
-                # raise Exception("Streaming API not supported for this endpoint!")
 
-            return self._http_executor.call_http_request(
+            response = self._http_executor.call_http_request(
                 ep_url=ep_url,
                 params=params,
                 prompt_str=self._prompt_str,
                 call_for_each_user_msg=self._call_for_each_user_msg,
             )
+            self._unset_model(params=params)
+            return response
         except Exception as e:
             self.logger.exception(e)
             return self.return_response_not_ok(str(e))
@@ -813,20 +825,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
     # ------------------------------------------------------------------
     def __dispatch_external_api_model(self, params: Dict[str, Any]) -> None:
-        model_name = None
-        for _m_name in MODEL_NAME_PARAMS:
-            model_name = params.get(_m_name)
-            if model_name is not None and len(model_name.strip()):
-                break
-            model_name = None
-
-        if model_name is None:
-            raise Exception(
-                f"Model name must be provided by one of "
-                f"the param: [{', '.join(MODEL_NAME_PARAMS)}]"
-            )
         try:
-            self._api_model = self._model_handler.get_model(model_name)
+            model_name = self._model_name_from_params(params=params)
+            self._api_model = self._model_handler.get_model_provider(model_name)
         except (ValueError, Exception) as e:
             self.logger.exception(e)
             raise
