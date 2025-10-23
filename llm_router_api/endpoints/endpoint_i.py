@@ -752,6 +752,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 call_for_each_user_msg=self._call_for_each_user_msg,
             )
             self._unset_model(api_model_provider=api_model_provider, params=params)
+            api_model_provider = None
             return response
         except Exception as e:
             self.logger.exception(e)
