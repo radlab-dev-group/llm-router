@@ -120,6 +120,8 @@ docker run \
   -e LLM_ROUTER_LOG_FILENAME="llm-proxy-rest.log" \
   -e LLM_ROUTER_EXTERNAL_TIMEOUT=300 \
   -e LLM_ROUTER_BALANCE_STRATEGY=balanced \
+  -e LLM_ROUTER_REDIS_HOST="192.168.100.67" \
+  -e LLM_ROUTER_REDIS_PORT=6379 \
   -e LLM_ROUTER_MODELS_CONFIG=/srv/cfg.json \
   -e LLM_ROUTER_PROMPTS_DIR="/srv/prompts" \
   -v "${PWD}/resources/configs/models-config.json":/srv/cfg.json \
@@ -131,26 +133,28 @@ docker run \
 
 ### 3️⃣ Optional configuration (via environment)
 
-| Variable                          | Description                                                                                                                                                   | Default                                |
-|-----------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| `LLM_ROUTER_PROMPTS_DIR`          | Directory containing predefined system prompts.                                                                                                               | `resources/prompts`                    |
-| `LLM_ROUTER_MODELS_CONFIG`        | Path to the models configuration JSON file.                                                                                                                   | `resources/configs/models-config.json` |
-| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`  | Default language for endpoint prompts.                                                                                                                        | `pl`                                   |
-| `LLM_ROUTER_TIMEOUT`              | Timeout (seconds) for llm-router API calls.                                                                                                                   | `0`                                    |
-| `LLM_ROUTER_EXTERNAL_TIMEOUT`     | Timeout (seconds) for external model API calls.                                                                                                               | `300`                                  |
-| `LLM_ROUTER_LOG_FILENAME`         | Name of the log file.                                                                                                                                         | `llm-router.log`                       |
-| `LLM_ROUTER_LOG_LEVEL`            | Logging level (e.g., INFO, DEBUG).                                                                                                                            | `INFO`                                 |
-| `LLM_ROUTER_EP_PREFIX`            | Prefix for all API endpoints.                                                                                                                                 | `/api`                                 |
-| `LLM_ROUTER_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                                                                                     | `False`                                |
-| `LLM_ROUTER_IN_DEBUG`             | Run server in debug mode (boolean).                                                                                                                           | `False`                                |
-| `LLM_ROUTER_BALANCE_STRATEGY`     | Strategy used to balance routing between LLM providers. Allowed values are `balanced`, `weighted`, and `dynamic_weighted` as defined in `constants_base.py`.  | `balanced`                             |
-| `LLM_ROUTER_SERVER_TYPE`          | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                                                                               | `flask`                                |
-| `LLM_ROUTER_SERVER_PORT`          | Port on which the server listens.                                                                                                                             | `8080`                                 |
-| `LLM_ROUTER_SERVER_HOST`          | Host address for the server.                                                                                                                                  | `0.0.0.0`                              |
-| `LLM_ROUTER_SERVER_WORKERS_COUNT` | Number of workers (used in case when the selected server type supports multiworkers)                                                                          | `2`                                    |
-| `LLM_ROUTER_SERVER_THREADS_COUNT` | Number of workers threads (used in case when the selected server type supports multithreading)                                                                | `8`                                    |
-| `LLM_ROUTER_SERVER_WORKER_CLASS`  | If server accepts workers type, its able to set worker class by this environment.                                                                             | `None`                                 |
-| `LLM_ROUTER_USE_PROMETHEUS`       | Enable Prometheus metrics collection.** When set to `True`, the router registers a `/metrics` endpoint exposing Prometheus‑compatible metrics for monitoring. | `False`                                |
+| Variable                          | Description                                                                                                                                                                    | Default                                |
+|-----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `LLM_ROUTER_PROMPTS_DIR`          | Directory containing predefined system prompts.                                                                                                                                | `resources/prompts`                    |
+| `LLM_ROUTER_MODELS_CONFIG`        | Path to the models configuration JSON file.                                                                                                                                    | `resources/configs/models-config.json` |
+| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`  | Default language for endpoint prompts.                                                                                                                                         | `pl`                                   |
+| `LLM_ROUTER_TIMEOUT`              | Timeout (seconds) for llm-router API calls.                                                                                                                                    | `0`                                    |
+| `LLM_ROUTER_EXTERNAL_TIMEOUT`     | Timeout (seconds) for external model API calls.                                                                                                                                | `300`                                  |
+| `LLM_ROUTER_LOG_FILENAME`         | Name of the log file.                                                                                                                                                          | `llm-router.log`                       |
+| `LLM_ROUTER_LOG_LEVEL`            | Logging level (e.g., INFO, DEBUG).                                                                                                                                             | `INFO`                                 |
+| `LLM_ROUTER_EP_PREFIX`            | Prefix for all API endpoints.                                                                                                                                                  | `/api`                                 |
+| `LLM_ROUTER_MINIMUM`              | Run service in proxy‑only mode (boolean).                                                                                                                                      | `False`                                |
+| `LLM_ROUTER_IN_DEBUG`             | Run server in debug mode (boolean).                                                                                                                                            | `False`                                |
+| `LLM_ROUTER_BALANCE_STRATEGY`     | Strategy used to balance routing between LLM providers. Allowed values are `balanced`, `weighted`, `dynamic_weighted` and `first_available` as defined in `constants_base.py`. | `balanced`                             |
+| `LLM_ROUTER_REDIS_HOST`           | Redis host for load‑balancing when a multi‑provider model is available.                                                                                                        | `<empty string>`                       |
+| `LLM_ROUTER_REDIS_PORT`           | Redis port for load‑balancing when a multi‑provider model is available.                                                                                                        | `6379`                                 |
+| `LLM_ROUTER_SERVER_TYPE`          | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                                                                                                | `flask`                                |
+| `LLM_ROUTER_SERVER_PORT`          | Port on which the server listens.                                                                                                                                              | `8080`                                 |
+| `LLM_ROUTER_SERVER_HOST`          | Host address for the server.                                                                                                                                                   | `0.0.0.0`                              |
+| `LLM_ROUTER_SERVER_WORKERS_COUNT` | Number of workers (used in case when the selected server type supports multiworkers)                                                                                           | `2`                                    |
+| `LLM_ROUTER_SERVER_THREADS_COUNT` | Number of workers threads (used in case when the selected server type supports multithreading)                                                                                 | `8`                                    |
+| `LLM_ROUTER_SERVER_WORKER_CLASS`  | If server accepts workers type, its able to set worker class by this environment.                                                                                              | `None`                                 |
+| `LLM_ROUTER_USE_PROMETHEUS`       | Enable Prometheus metrics collection.** When set to `True`, the router registers a `/metrics` endpoint exposing Prometheus‑compatible metrics for monitoring.                  | `False`                                |
 
 ### 4️⃣ Run the REST API
 
