@@ -134,11 +134,11 @@ textarea {
     color: var(--muted)
 }
 
-/* Sekcja paneli: jeden pod drugim */
+/* Panele w jednej kolumnie */
 .grid {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 16px
 }
 
 .panel {
@@ -157,21 +157,19 @@ textarea {
     flex-wrap: wrap
 }
 
-/* Tabele i kolumny */
+/* Tabele */
 .table {
     width: 100%;
     border-collapse: collapse;
     background: var(--card);
     border: 1px solid #21262d;
-    table-layout: fixed
+    table-layout: auto
 }
 
 .table th, .table td {
     border-top: 1px solid #21262d;
     padding: 8px;
     vertical-align: middle;
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap
 }
 
@@ -179,81 +177,49 @@ textarea {
     padding: 6px
 }
 
-/* Szerokości kolumn w tabeli providerów */
-.table.compact th:nth-child(1) {
-    width: 220px
+/* Minimalne szerokości kolumn — wymuszają poziomy scroll */
+.col-id {
+    min-width: 220px
 }
 
-/* ID */
-.table.compact th:nth-child(2) {
-    width: 260px
+.col-host {
+    min-width: 260px
 }
 
-/* Host */
-.table.compact th:nth-child(3) {
-    width: 90px
+.col-api {
+    min-width: 90px;
+    text-align: center
 }
 
-/* API */
-.table.compact th:nth-child(4) {
-    width: 90px
+.col-input {
+    min-width: 90px
 }
 
-/* Input */
-.table.compact th:nth-child(5) {
-    width: 160px
+.col-path {
+    min-width: 160px
 }
 
-/* Model path */
-.table.compact th:nth-child(6) {
-    width: 90px
+.col-weight {
+    min-width: 90px
 }
 
-/* Waga */
-.table.compact th:nth-child(7) {
-    width: 220px
+.col-token {
+    min-width: 220px
 }
 
-/* Token */
-.table.compact th:nth-child(8) {
-    width: 90px
+.col-enabled {
+    min-width: 110px;
+    text-align: center
 }
 
-/* Włączony */
-.table.compact th:nth-child(9) {
-    width: 100px
+.col-actions {
+    min-width: 100px
 }
 
-/* Akcje */
-
-/* Inputy w tabelach */
+/* Inputy w tabeli */
 .table input, .table select {
     width: 100%;
     min-width: 0
-}
-
-.w100 {
-    width: 100%
-}
-
-.w240 {
-    width: 240px;
-    max-width: 100%
-}
-
-.w200 {
-    width: 200px;
-    max-width: 100%
-}
-
-.w90 {
-    width: 90px;
-    max-width: 100%
-}
-
-.w50 {
-    width: 50px;
-    max-width: 100%
 }
 
 .pre {
@@ -264,7 +230,7 @@ textarea {
     overflow: auto
 }
 
-/* Token z przyciskiem */
+/* Token + przycisk */
 .token-field {
     display: flex;
     gap: 6px;
@@ -280,7 +246,7 @@ textarea {
     white-space: nowrap
 }
 
-/* Nagłówki details */
+/* Details nagłówki */
 summary {
     display: flex;
     align-items: center;
@@ -297,22 +263,19 @@ summary button {
     flex: 0 0 auto
 }
 
-/* Rolowana tabela providerów w obrębie modelu */
+/* Scroll poziomy dla tabeli providerów (zachowuje thead) */
 .model {
     margin-top: 8px
 }
 
-.model > table {
-    display: block;
-    max-height: 360px;
-    overflow: auto;
+.model .scroll-wrap {
+    overflow-x: auto;
+    overflow-y: hidden;
     border-radius: 6px
 }
 
-.model > table thead, .model > table tbody {
-    display: table;
-    width: 100%;
-    table-layout: fixed
+.model .scroll-wrap table {
+    min-width: 1100px
 }
 
 /* Karty i listy */
@@ -344,23 +307,21 @@ summary button {
     flex-wrap: wrap
 }
 
-/* Sekcje akcji */
+/* Akcje */
 .actions {
     display: flex;
     gap: 8px;
     flex-wrap: wrap
 }
 
-/* Misc */
-.nowrap {
-    white-space: nowrap
-}
-
-/* Responsywność: wymuszenie jednego panelu na małych ekranach – już domyślnie column */
+/* Drobna responsywność: węższa treść na bardzo szerokich ekranach */
 @media (min-width: 1280px) {
     .container {
         max-width: 960px
     }
+}
 
-    /* węższy, czytelniejszy słupek */
+/* Misc */
+.nowrap {
+    white-space: nowrap
 }

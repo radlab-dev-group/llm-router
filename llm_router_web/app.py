@@ -227,14 +227,28 @@ def list_configs():
 def view_config(config_id):
     cfg = Config.query.get_or_404(config_id)
     data = to_json(cfg.id)
-    versions = ConfigVersion.query.filter_by(config_id=cfg.id).order_by(ConfigVersion.version.desc()).all()
+    versions = (
+        ConfigVersion.query.filter_by(config_id=cfg.id)
+        .order_by(ConfigVersion.version.desc())
+        .all()
+    )
     pretty = {
-        "active_models": json.dumps(data.get("active_models", {}), ensure_ascii=False, indent=2),
-        "google_models": json.dumps(data.get("google_models", {}), ensure_ascii=False, indent=2),
-        "openai_models": json.dumps(data.get("openai_models", {}), ensure_ascii=False, indent=2),
-        "qwen_models": json.dumps(data.get("qwen_models", {}), ensure_ascii=False, indent=2),
+        "active_models": json.dumps(
+            data.get("active_models", {}), ensure_ascii=False, indent=2
+        ),
+        "google_models": json.dumps(
+            data.get("google_models", {}), ensure_ascii=False, indent=2
+        ),
+        "openai_models": json.dumps(
+            data.get("openai_models", {}), ensure_ascii=False, indent=2
+        ),
+        "qwen_models": json.dumps(
+            data.get("qwen_models", {}), ensure_ascii=False, indent=2
+        ),
     }
-    return render_template("view.html", cfg=cfg, data=data, versions=versions, pretty=pretty)
+    return render_template(
+        "view.html", cfg=cfg, data=data, versions=versions, pretty=pretty
+    )
 
 
 @app.route("/configs/<int:config_id>/export")
