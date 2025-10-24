@@ -569,8 +569,8 @@ class HttpRequestExecutor:
     # ------------------------------------------------------------------
     # Ollama‑specific helpers
     # ------------------------------------------------------------------
+    @staticmethod
     def _ollama_chunk(
-        self,
         delta: str,
         done: bool = False,
         usage: Dict[str, int] = None,
@@ -596,8 +596,11 @@ class HttpRequestExecutor:
         """
         obj = {
             "model": api_model_provider.name,
-            "created_at": datetime.datetime.utcnow().isoformat() + "Z",
+            "created_at": datetime.datetime.now().isoformat() + "Z",
             "done": done,
+            "message": {},
+            "eval_count": 0,
+            "prompt_eval_count": 0,
         }
 
         if not done:
@@ -607,9 +610,6 @@ class HttpRequestExecutor:
             if usage:
                 obj["prompt_eval_count"] = usage.get("prompt_tokens", 0)
                 obj["eval_count"] = usage.get("completion_tokens", 0)
-            else:
-                obj["prompt_eval_count"] = 0
-                obj["eval_count"] = 0
             obj["total_duration"] = 0
             obj["load_duration"] = 0
             obj["prompt_eval_duration"] = 0
