@@ -198,10 +198,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             The provider dictionary that was returned by :meth:`get_provider`.
         """
         redis_key = self._get_redis_key(model_name)
-        provider_field = provider.get("__chosen_field")
-        if provider_field is None:
-            provider_field = self._provider_field(provider)
-
+        provider_field = self._provider_field(provider)
         try:
             self.redis_client.hdel(redis_key, provider_field)
         except Exception:
@@ -209,11 +206,12 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
 
         provider.pop("__chosen_field", None)
 
-    @staticmethod
-    def _get_redis_key(model_name: str) -> str:
+    def _get_redis_key(self, model_name: str) -> str:
         """
         Return Redis key prefix for a given model.
         """
+        for ch in self.REPLACE_PROVIDER_KEY:
+            model_name = model_name.replace(ch, "_")
         return f"model:{model_name}"
 
     def _provider_field(self, provider: dict) -> str:
@@ -305,11 +303,15 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         for _, models_names in active_models.items():
             for model_name in models_names:
                 redis_key = self._get_redis_key(model_name)
+                providers = models_configs[model_name]["providers"]
+                if len(providers) > 0:
+                    model_path = providers[0].get("model_path", "").strip()
+                    if model_path:
+                        model_name = model_path
 
                 init_flag = self._init_flag(model_name)
                 self.redis_client.delete(init_flag)
 
-                providers = models_configs[model_name]["providers"]
                 for provider in providers:
                     provider_field = self._provider_field(provider)
                     self.redis_client.hset(redis_key, provider_field, "false")
