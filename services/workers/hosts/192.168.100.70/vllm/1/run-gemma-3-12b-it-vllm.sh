@@ -7,7 +7,7 @@ MODEL_PATH=google/gemma-3-12b-it
 
 vllm serve \
         "${MODEL_PATH}" \
-        --port 7000 \
+        --port 7001 \
         --host 0.0.0.0 \
         --quantization bitsandbytes \
         --load-format bitsandbytes \

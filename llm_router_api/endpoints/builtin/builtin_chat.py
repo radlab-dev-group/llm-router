@@ -3,7 +3,7 @@ from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
-from llm_router_api.core.data_models.builtin_chat import (
+from llm_router_lib.data_models.builtin_chat import (
     GENAI_CONV_REQ_ARGS,
     GENAI_CONV_OPT_ARGS,
     EXT_GENAI_CONV_REQ_ARGS,

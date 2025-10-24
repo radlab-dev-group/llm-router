@@ -1,0 +1,16 @@
+{
+  "google_models": {
+    "google/gemma-3-12b-it": {
+      "api_host": "http://0.0.0.0:7002/",
+      "api_token": "",
+      "api_type": "vllm",
+      "input_size": 4096,
+      "model_path": ""
+    }
+  },
+  "active_models": {
+    "google_models": [
+      "google/gemma-3-12b-it"
+    ]
+  }
+}

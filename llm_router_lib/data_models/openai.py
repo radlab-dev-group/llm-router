@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import List, Dict, Any
 
-from llm_router_api.base.constants import DEFAULT_EP_LANGUAGE
+from llm_router_api.base.constants_base import DEFAULT_EP_LANGUAGE
 
 
 class OpenAIChatModel(BaseModel):
