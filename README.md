@@ -166,64 +166,98 @@ LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 
 ---
 
-## Provider Selection
+## ⚖️ Load Balancing Strategies
 
-The LLM‑router supports **multiple providers** for a single model. Provider selection is handled by
-the **ProviderChooser** class, which delegates the choice to a configurable **strategy** implementation.
+The `llm-router` supports various strategies for selecting the most suitable provider
+when multiple options exist for a given model. This ensures efficient
+and reliable routing of requests. The available strategies are:
 
-### Chooser
+### 1. `balanced` (Default)
 
-``` python
-from llm_router_api.base.lb.chooser import ProviderChooser
-from llm_router_api.base.lb.strategy import LoadBalancedStrategy
+* **Description:** This is the default strategy. It aims to distribute requests
+  evenly across available providers by keeping track of how many times each provider has
+  been used for a specific model. It selects the provider that has been used the least.
+* **When to use:** Ideal for scenarios where all providers are considered equal
+  in terms of capacity and performance. It provides a simple and effective way to balance the load.
+* **Implementation:** Implemented in `llm_router_api.base.lb.balanced.LoadBalancedStrategy`.
 
-# By default the chooser uses the LoadBalancedStrategy
-provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+### 2. `weighted`
+
+* **Description:** This strategy allows you to assign static weights to providers.
+  Providers with higher weights are more likely to be selected. The selection is deterministic,
+  ensuring that over time, the request distribution closely matches the configured weights.
+* **When to use:** Useful when you have providers with different capacities or performance
+  characteristics, and you want to prioritize certain providers without needing dynamic adjustments.
+* **Implementation:** Implemented in `llm_router_api.base.lb.weighted.WeightedStrategy`.
+
+### 3. `dynamic_weighted`
+
+* **Description:** An extension of the `weighted` strategy. It not only uses weights
+  but also tracks the latency between successive selections of the same provider.
+  This allows for more adaptive routing, as providers with consistently high latency
+  might be de-prioritized over time. You can also dynamically update provider weights.
+* **When to use:** Recommended for dynamic environments where provider performance
+  can fluctuate. It offers more sophisticated load balancing by considering both
+  configured weights and real-time performance metrics (latency).
+* **Implementation:** Implemented in `llm_router_api.base.lb.weighted.DynamicWeightedStrategy`.
+
+### 4. `first_available`
+
+* **Description:** This strategy selects the very first provider that is available.
+  It uses Redis to coordinate across multiple workers, ensuring that only one
+  worker can use a specific provider at a time.
+* **When to use:** Suitable for critical applications where you need the fastest
+  possible response and want to ensure that a request is immediately handled by any available
+  provider, without complex load distribution logic. It guarantees that a provider,
+  once taken, is exclusive until released.
+* **Implementation:** Implemented in `llm_router_api.base.lb.first_available.FirstAvailableStrategy`.
+
+**When using the** `first_available` load balancing strategy, a **Redis server is required**
+for coordinating provider availability across multiple workers.
+
+The connection details for Redis can be configured using environment variables:
+
+```shell
+LLM_ROUTER_BALANCE_STRATEGY="first_available" \
+LLM_ROUTER_REDIS_HOST="your.machine.redis.host" \
+LLM_ROUTER_REDIS_PORT=redis_port \
 ```
 
-`ProviderChooser.get_provider(model_name, providers)` receives the model name
-and the list of provider configurations (as defined in `models-config.json`) and
-returns the chosen provider dictionary.
+**Installing Redis on Ubuntu**
 
-### Strategy Interface
+To install Redis on an Ubuntu system, follow these steps:
 
-All strategies must implement `ChooseProviderStrategyI`:
+1. **Update package list:**
 
-``` python
-class ChooseProviderStrategyI(ABC):
-    @abstractmethod
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
-        """Select one provider configuration for the given model."""
-        raise NotImplementedError
+```shell
+sudo apt update
 ```
 
-### Built‑in Strategy: LoadBalancedStrategy
+2. **Install Redis server:**
 
-The default `LoadBalancedStrategy` distributes requests evenly across providers
-by keeping an in‑memory usage counter per model/provider pair.
-
-``` python
-class LoadBalancedStrategy(ChooseProviderStrategyI):
-    def __init__(self) -> None:
-        self._usage_counters: Dict[str, Dict[str, int]] = defaultdict(
-            lambda: defaultdict(int)
-        )
-
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
-        # selects the provider with the smallest usage count
-        ...
+```shell
+sudo apt install redis-server
 ```
 
-### Current Setting
+3. **Start and enable Redis service:**
+   The Redis service should start automatically after installation.
+   To ensure it's running and starts on system boot, you can use the following commands:
 
-In **`engine.py`** the Flask engine creates the chooser like this:
-
-``` python
-self._provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+``` shell
+sudo systemctl status redis-server
+sudo systemctl enable redis-server
 ```
 
-Therefore, unless overridden, the application uses the **load‑balanced** provider
-selection strategy out of the box.
+4. **Configure Redis (optional):**
+   The default Redis configuration (`/etc/redis/redis.conf`) is usually sufficient
+   to get started. If you need to adjust settings (e.g., address, port),
+   edit this file. After making configuration changes, restart the Redis server:
+
+```shell
+sudo systemctl restart redis-server
+```
+
+---
 
 ### Extending with Custom Strategies
 
