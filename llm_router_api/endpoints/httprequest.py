@@ -151,19 +151,23 @@ class HttpRequestExecutor:
         if prompt_str:
             params["messages"] = [system_msg] + params.get("messages", [])
 
-        # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
-
-        if self._endpoint.method == "POST":
-            return self._call_post_with_payload(
+        try:
+            if self._endpoint.method == "POST":
+                return self._call_post_with_payload(
+                    ep_url=full_url,
+                    params=params,
+                    headers=headers,
+                )
+            return self._call_get_with_payload(
                 ep_url=full_url,
                 params=params,
                 headers=headers,
             )
-        return self._call_get_with_payload(
-            ep_url=full_url,
-            params=params,
-            headers=headers,
-        )
+        except Exception as e:
+            response = Response()
+            response.status_code = 400
+            response._content = str(e).encode("utf-8")
+            return response
 
     def stream_response(
         self,

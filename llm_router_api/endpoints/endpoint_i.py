@@ -520,6 +520,17 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
       :mod:`requests` library.
     """
 
+    class RetryResponse:
+        # Code - definition
+        #  * 400 - Raised by internal httprequest
+        #  * 404 - Not Found
+        #  * 503 - Service Unavailable
+        #  * 504 - Gateway Timeout
+        #  * > 500 - General error
+        RETRY_WHEN_STATUS = [400, 404, 429, 503, 504, 500]
+        TIME_TO_WAIT_SEC = 0.1
+        MAX_RECONNECTIONS = 10
+
     # ------------------------------------------------------------------
     # Construction
     # ------------------------------------------------------------------
@@ -591,7 +602,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     # Core execution flow
     # ------------------------------------------------------------------
     def run_ep(
-        self, params: Optional[Dict[str, Any]]
+        self, params: Optional[Dict[str, Any]], reconnect_number: Optional[int] = 0
     ) -> Optional[Dict[str, Any] | Iterable[str | bytes]]:
         """
         Execute the endpoint logic for a request.
@@ -608,6 +619,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         params :
             Dictionary of request arguments extracted by the Flask registrar.
 
+        reconnect_number: Defaults to ``0``.
+            Number of times when the endpoint is trying to reconnect to the
+            external host chosen by the provider.
+
         Returns
         -------
         dict | Iterator[bytes] | None
@@ -621,6 +636,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Propagates any unexpected error; the Flask registrar will
             translate it into a 500 response.
         """
+        orig_params = params.copy()
         api_model_provider = None
         clear_chosen_provider_finally = False
 
@@ -696,13 +712,26 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     api_model_provider=api_model_provider,
                     call_for_each_user_msg=self._call_for_each_user_msg,
                 )
-                # self.logger.debug("=" * 100)
-                # self.logger.debug(response)
-                # self.logger.debug("=" * 100)
-
                 self.unset_model(
                     params=params, api_model_provider=api_model_provider
                 )
+
+                status_code = None
+                if type(response) not in [dict]:
+                    status_code = response.status_code
+
+                if (
+                    status_code
+                    and status_code in self.RetryResponse.RETRY_WHEN_STATUS
+                ):
+                    if reconnect_number < self.RetryResponse.MAX_RECONNECTIONS:
+                        print("CZEKAMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM")
+                        time.sleep(self.RetryResponse.TIME_TO_WAIT_SEC)
+                        print("JUZPOCZEKALEMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM")
+                        return self.run_ep(
+                            params=orig_params, reconnect_number=reconnect_number + 1
+                        )
+
                 clear_chosen_provider_finally = False
                 return response
 
@@ -770,6 +799,25 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
             self.unset_model(api_model_provider=api_model_provider, params=params)
             clear_chosen_provider_finally = False
+
+            status_code = None
+            if type(response) not in [dict]:
+                status_code = response.status_code
+
+            if status_code and status_code in self.RetryResponse.RETRY_WHEN_STATUS:
+                self.logger.warning(
+                    f" Provider {api_model_provider.id} responded with "
+                    f"{status_code}. Retrying {reconnect_number + 1}/"
+                    f"{self.RetryResponse.MAX_RECONNECTIONS}."
+                )
+
+                if reconnect_number < self.RetryResponse.MAX_RECONNECTIONS:
+                    time.sleep(self.RetryResponse.TIME_TO_WAIT_SEC)
+                    return self.run_ep(
+                        params=orig_params, reconnect_number=reconnect_number + 1
+                    )
+                self.logger.error(f"Max reconnections exceeded: {reconnect_number}!")
+
             return response
         except Exception as e:
             self.logger.exception(e)
