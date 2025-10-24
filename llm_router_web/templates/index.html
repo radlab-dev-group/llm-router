@@ -17,7 +17,9 @@
             <a class="btn" href="{{ url_for('view_config', config_id=c.id) }}">Podgląd</a>
             <a class="btn" href="{{ url_for('edit_config', config_id=c.id) }}">Edytuj</a>
             <a class="btn" href="{{ url_for('export_config', config_id=c.id) }}">Eksport JSON</a>
-            <button class="btn" hx-post="{{ url_for('set_active_config', config_id=c.id) }}" hx-swap="none">Ustaw jako aktywny</button>
+            <button class="btn" hx-post="{{ url_for('set_active_config', config_id=c.id) }}" hx-swap="none">Ustaw jako
+                aktywny
+            </button>
         </div>
     </li>
     {% else %}
