@@ -417,7 +417,7 @@ class EndpointI(abc.ABC):
         """
         # if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
         #     return
-        model_name = self._model_name_from_params(params=params)
+        model_name = self._model_name_from_params_or_model(params=params)
         api_model = self._model_handler.get_model_provider(model_name=model_name)
         if api_model is None:
             raise ValueError(f"Model '{model_name}' not found in configuration")
@@ -428,14 +428,21 @@ class EndpointI(abc.ABC):
     ) -> None:
         if not api_model_provider:
             return
-        model_name = self._model_name_from_params(params=params)
+        model_name = self._model_name_from_params_or_model(
+            params=params, api_model_provider=api_model_provider
+        )
         self._model_handler.put_model_provider(
             model_name=model_name, provider=api_model_provider.as_dict()
         )
 
     @staticmethod
-    def _model_name_from_params(params: Dict[str, Any]) -> str | None:
+    def _model_name_from_params_or_model(
+        params: Dict[str, Any], api_model_provider: Optional[ApiModel] = None
+    ) -> str | None:
         model_name = None
+        if api_model_provider:
+            return api_model_provider.name
+
         for m_name in MODEL_NAME_PARAMS:
             model_name = params.get(m_name)
             if model_name is not None:
