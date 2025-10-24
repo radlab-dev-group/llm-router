@@ -320,7 +320,7 @@ class HttpRequestExecutor:
         contents = []
         responses = []
         for payload, content in _payloads:
-            self.logger.debug(f"Request payload: {payload}")
+            # self.logger.debug(f"Request payload: {payload}")
 
             response = self._call_post_with_payload(
                 ep_url=ep_url,
@@ -332,7 +332,7 @@ class HttpRequestExecutor:
             contents.append(content)
             responses.append(response)
 
-            self.logger.debug(response.json())
+            # self.logger.debug(response.json())
 
         if self._endpoint._prepare_response_function is None:
             raise Exception(
@@ -489,6 +489,10 @@ class HttpRequestExecutor:
             except requests.RequestException as exc:
                 err = {"error": str(exc)}
                 yield (json.dumps(err, ensure_ascii=False) + "\n").encode("utf-8")
+            finally:
+                self._endpoint.unset_model(
+                    params=payload, api_model_provider=api_model_provider
+                )
 
         return _iter()
 
@@ -525,35 +529,42 @@ class HttpRequestExecutor:
             An iterator yielding Ollama‑compatible NDJSON lines.
         """
 
-        try:
-            if method == "POST":
-                with requests.post(
-                    url,
-                    json=payload,
-                    headers=headers,
-                    timeout=self._endpoint.timeout,
-                    stream=True,
-                ) as resp:
-                    resp.raise_for_status()
-                    for chunk in self._parse_ollama_stream(
-                        resp, api_model_provider=api_model_provider
-                    ):
-                        yield chunk
-            else:
-                with requests.get(
-                    url,
-                    params=payload,
-                    headers=headers,
-                    timeout=self._endpoint.timeout,
-                    stream=True,
-                ) as resp:
-                    resp.raise_for_status()
-                    for chunk in self._parse_ollama_stream(
-                        resp, api_model_provider=api_model_provider
-                    ):
-                        yield chunk
-        except requests.RequestException as exc:
-            yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
+        def _iter() -> Iterator[bytes]:
+            try:
+                if method == "POST":
+                    with requests.post(
+                        url,
+                        json=payload,
+                        headers=headers,
+                        timeout=self._endpoint.timeout,
+                        stream=True,
+                    ) as resp:
+                        resp.raise_for_status()
+                        for chunk in self._parse_ollama_stream(
+                            resp, api_model_provider=api_model_provider
+                        ):
+                            yield chunk
+                else:
+                    with requests.get(
+                        url,
+                        params=payload,
+                        headers=headers,
+                        timeout=self._endpoint.timeout,
+                        stream=True,
+                    ) as resp:
+                        resp.raise_for_status()
+                        for chunk in self._parse_ollama_stream(
+                            resp, api_model_provider=api_model_provider
+                        ):
+                            yield chunk
+            except requests.RequestException as exc:
+                yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
+            finally:
+                self._endpoint.unset_model(
+                    params=payload, api_model_provider=api_model_provider
+                )
+
+        return _iter()
 
     # ------------------------------------------------------------------
     # Ollama‑specific helpers
@@ -854,6 +865,10 @@ class HttpRequestExecutor:
             except requests.RequestException as exc:
                 err = {"error": str(exc)}
                 yield (json.dumps(err) + "\n").encode("utf-8")
+            finally:
+                self._endpoint.unset_model(
+                    params=payload, api_model_provider=api_model_provider
+                )
 
         return _iter()
 
