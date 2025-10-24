@@ -7,8 +7,6 @@ This module defines:
   helpers to retrieve individual model definitions.
 """
 
-import threading
-
 from dataclasses import dataclass
 from typing import Dict, Optional, Any
 
@@ -121,8 +119,6 @@ class ModelHandler:
         """
         self.provider_chooser = provider_chooser
         self.api_model_config: ApiModelConfig = ApiModelConfig(models_config_path)
-
-        self._lock = threading.Lock()
 
     def get_model_provider(self, model_name: str) -> Optional[ApiModel]:
         """
