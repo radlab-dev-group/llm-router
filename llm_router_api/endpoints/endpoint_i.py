@@ -395,7 +395,7 @@ class EndpointI(abc.ABC):
     # ------------------------------------------------------------------
     # Model‑related helpers (used by proxy endpoints)
     # ------------------------------------------------------------------
-    def _get_model_provider(self, params: Dict[str, Any]) -> ApiModel:
+    def get_model_provider(self, params: Dict[str, Any]) -> ApiModel:
         """
         Resolve the model identifier from *params* and store the matching
         :class:`ApiModel` instance.
@@ -423,7 +423,7 @@ class EndpointI(abc.ABC):
             raise ValueError(f"Model '{model_name}' not found in configuration")
         return api_model
 
-    def _unset_model(
+    def unset_model(
         self, api_model_provider: ApiModel, params: Dict[str, Any]
     ) -> None:
         if not api_model_provider:
@@ -615,6 +615,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             translate it into a 500 response.
         """
         api_model_provider = None
+        clear_chosen_provider_finally = False
+
         self._start_time = time.time()
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
         try:
@@ -644,9 +646,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # When the endpoint does not declare required arguments, we treat
             # it as a proxy that forwards the request to the model's own
             # endpoint.
-            api_model_provider = self._get_model_provider(params=params)
+            api_model_provider = self.get_model_provider(params=params)
             if api_model_provider is None:
                 raise ValueError(f"API model not found in params {params}")
+            clear_chosen_provider_finally = True
 
             _md = api_model_provider.as_dict().copy()
             if "api_token" in _md:
@@ -671,6 +674,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
 
                 if bool((params or {}).get("stream", False)):
+                    clear_chosen_provider_finally = False
                     return self._http_executor.stream_response(
                         ep_url=ep_url,
                         params=params,
@@ -689,9 +693,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 # self.logger.debug(response)
                 # self.logger.debug("=" * 100)
 
-                self._unset_model(
+                self.unset_model(
                     params=params, api_model_provider=api_model_provider
                 )
+                clear_chosen_provider_finally = False
                 return response
 
             if prompt_name is not None:
@@ -713,6 +718,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         "Streaming is available only for single message"
                     )
 
+                clear_chosen_provider_finally = False
                 if api_model_provider.api_type in self._ep_types_str:
                     return self._http_executor.stream_response(
                         ep_url=ep_url,
@@ -755,15 +761,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 api_model_provider=api_model_provider,
                 call_for_each_user_msg=self._call_for_each_user_msg,
             )
-            self._unset_model(api_model_provider=api_model_provider, params=params)
-            api_model_provider = None
+            self.unset_model(api_model_provider=api_model_provider, params=params)
+            clear_chosen_provider_finally = False
             return response
         except Exception as e:
             self.logger.exception(e)
+            clear_chosen_provider_finally = True
             return self.return_response_not_ok(str(e))
         finally:
-            if api_model_provider is not None:
-                self._unset_model(
+            if clear_chosen_provider_finally and api_model_provider is not None:
+                self.unset_model(
                     api_model_provider=api_model_provider, params=params
                 )
 
