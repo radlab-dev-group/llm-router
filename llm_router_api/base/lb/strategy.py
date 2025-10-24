@@ -5,6 +5,8 @@ from llm_router_api.base.model_config import ApiModelConfig
 
 
 class ChooseProviderStrategyI(ABC):
+    REPLACE_PROVIDER_KEY = ["/", ":", "-", ".", ",", ";", " ", "\t", "\n"]
+
     """
     Abstract base for provider‑selection strategies.
 
@@ -18,8 +20,7 @@ class ChooseProviderStrategyI(ABC):
             models_config_path=models_config_path
         )
 
-    @staticmethod
-    def _provider_key(provider_cfg: Dict) -> str:
+    def _provider_key(self, provider_cfg: Dict) -> str:
         """
         Return a unique identifier for a provider configuration.
 
@@ -27,7 +28,10 @@ class ChooseProviderStrategyI(ABC):
         provider (e.g., its name or endpoint).  Subclasses may rely on
         this key for caching the per ‑ provider state.
         """
-        return provider_cfg.get("id") or provider_cfg.get("api_host", "unknown")
+        _pk = provider_cfg.get("id") or provider_cfg.get("api_host", "unknown")
+        for ch in self.REPLACE_PROVIDER_KEY:
+            _pk = _pk.replace(ch, "_")
+        return _pk
 
     @abstractmethod
     def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
