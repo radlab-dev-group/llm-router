@@ -9,20 +9,20 @@
 </div>
 
 <h3>Active Models</h3>
-<pre class="pre">{{ data.active_models | tojson(indent=2, ensure_ascii=False) }}</pre>
+<pre class="pre">{{ pretty.active_models }}</pre>
 
 <h3>Modele</h3>
 <details open>
     <summary>Google</summary>
-    <pre class="pre">{{ data.google_models | tojson(indent=2, ensure_ascii=False) }}</pre>
+    <pre class="pre">{{ pretty.google_models }}</pre>
 </details>
 <details open>
     <summary>OpenAI</summary>
-    <pre class="pre">{{ data.openai_models | tojson(indent=2, ensure_ascii=False) }}</pre>
+    <pre class="pre">{{ pretty.openai_models }}</pre>
 </details>
 <details open>
     <summary>Qwen</summary>
-    <pre class="pre">{{ data.qwen_models | tojson(indent=2, ensure_ascii=False) }}</pre>
+    <pre class="pre">{{ pretty.qwen_models }}</pre>
 </details>
 
 <h3>Historia wersji</h3>
