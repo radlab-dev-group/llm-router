@@ -134,23 +134,11 @@ textarea {
     color: var(--muted)
 }
 
-/* Siatka paneli */
+/* Sekcja paneli: jeden pod drugim */
 .grid {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 16px;
-    grid-template-columns:repeat(3, minmax(320px, 1fr))
-}
-
-@media (max-width: 1200px) {
-    .grid {
-        grid-template-columns:repeat(2, minmax(320px, 1fr))
-    }
-}
-
-@media (max-width: 760px) {
-    .grid {
-        grid-template-columns:1fr
-    }
 }
 
 .panel {
@@ -366,4 +354,13 @@ summary button {
 /* Misc */
 .nowrap {
     white-space: nowrap
+}
+
+/* Responsywność: wymuszenie jednego panelu na małych ekranach – już domyślnie column */
+@media (min-width: 1280px) {
+    .container {
+        max-width: 960px
+    }
+
+    /* węższy, czytelniejszy słupek */
 }
