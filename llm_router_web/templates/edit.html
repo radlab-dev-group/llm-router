@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Edycja: {{ cfg.name }}</h2>
+
+<form method="post" class="form">
+    <h3>Active Models</h3>
+    <div class="grid">
+        {% for fam, models in families.items() %}
+        <div>
+            <h4>{{ fam }}</h4>
+            <select name="{{ fam }}[]" multiple size="6" class="w100">
+                {% for m in models %}
+                <option value="{{ m.name }}" {% if m.name in actives[fam] %}selected{% endif %}>{{ m.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endfor %}
+    </div>
+    <label>Opis zmian (opcjonalnie)
+        <input type="text" name="note" placeholder="np. zmiana wag, dodanie providera">
+    </label>
+    <div class="form-actions">
+        <button class="btn" type="submit">Zapisz aktywne</button>
+        <a class="btn btn-secondary" href="{{ url_for('view_config', config_id=cfg.id) }}">Podgląd</a>
+    </div>
+</form>
+
+<hr>
+
+<h3>Modele i Providerzy</h3>
+
+<div class="grid">
+    {% for fam, models in families.items() %}
+    <section class="panel">
+        <div class="panel-header">
+            <h4>{{ fam }}</h4>
+            <form hx-post="{{ url_for('add_model', config_id=cfg.id) }}" hx-trigger="submit" hx-swap="none" class="inline">
+                <input type="hidden" name="family" value="{{ fam }}">
+                <input type="text" name="name" placeholder="Nazwa modelu (np. google/gemma-3-12b-it)" required>
+                <button class="btn btn-small" type="submit">Dodaj model</button>
+            </form>
+        </div>
+        {% for m in models %}
+        <details class="model" open>
+            <summary>
+                <strong>{{ m.name }}</strong>
+                <button class="btn btn-small danger"
+                        hx-post="{{ url_for('delete_model', model_id=m.id) }}"
+                        hx-swap="none"
+                        onclick="return confirm('Usunąć model {{ m.name }}?')">Usuń</button>
+            </summary>
+
+            <table class="table compact">
+                <thead>
+                <tr>
+                    <th>ID</th><th>Host</th><th>API</th><th>Input</th><th>Model path</th><th>Waga</th><th>Token</th><th>Włączony</th><th>Akcje</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for p in m.providers %}
+                <tr x-data="{ masked: true }">
+                    <td><input class="w200" value="{{ p.provider_id }}" @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider_id:$event.target.value})})"></td>
+                    <td><input class="w240" value="{{ p.api_host }}" @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_host:$event.target.value})})"></td>
+                    <td>
+                        <select @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_type:$event.target.value})})">
+                            {% for t in ['vllm','openai','ollama'] %}
+                            <option value="{{ t }}" {% if p.api_type == t %}selected{% endif %}>{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td><input type="number" min="1" class="w100" value="{{ p.input_size }}" @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({input_size:parseInt($event.target.value)})})"></td>
+                    <td><input class="w200" value="{{ p.model_path or '' }}" @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model_path:$event.target.value})})"></td>
+                    <td><input type="number" step="0.01" min="0" max="1" class="w90" value="{{ '%.2f'|format(p.weight) }}" @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({weight:parseFloat($event.target.value)})})"></td>
+                    <td>
+                        <div class="token-field">
+                            <input :type="masked ? 'password' : 'text'" value="{{ p.api_token }}" @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_token:$event.target.value})})">
+                            <button class="btn btn-small" type="button" @click="masked = !masked">{{ '{{' }} masked ? 'Pokaż' : 'Ukryj' {{ '}}' }}</button>
+                        </div>
+                    </td>
+                    <td>
+                        <input type="checkbox" {% if p.enabled %}checked{% endif %}
+                               @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:$event.target.checked})})">
+                    </td>
+                    <td class="nowrap">
+                        <!-- Tu można dodać przycisk do usuwania providera, jeśli chcesz -->
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="9" class="muted">Brak providerów.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+
+            <details>
+                <summary>Dodaj providera</summary>
+                <form class="form-inline" onsubmit="return addProvider{{ m.id }}(event)">
+                    <input type="text" placeholder="id" id="pid-{{ m.id }}" required>
+                    <input type="url" placeholder="api_host" id="phost-{{ m.id }}" required>
+                    <select id="ptype-{{ m.id }}">
+                        <option>vllm</option>
+                        <option>openai</option>
+                        <option>ollama</option>
+                    </select>
+                    <input type="number" placeholder="input_size" id="psize-{{ m.id }}" value="4096" min="1">
+                    <input type="text" placeholder="model_path" id="ppath-{{ m.id }}">
+                    <input type="number" step="0.01" min="0" max="1" placeholder="weight" id="pweight-{{ m.id }}" value="1.0">
+                    <input type="text" placeholder="api_token" id="ptoken-{{ m.id }}">
+                    <label class="chk"><input type="checkbox" id="penabled-{{ m.id }}" checked> włączony</label>
+                    <button class="btn btn-small" type="submit">Dodaj</button>
+                </form>
+                <script>
+                    async function addProvider{{ m.id }}(e){
+                      e.preventDefault();
+                      const payload = {
+                        id: document.getElementById('pid-{{ m.id }}').value,
+                        api_host: document.getElementById('phost-{{ m.id }}').value,
+                        api_type: document.getElementById('ptype-{{ m.id }}').value,
+                        input_size: parseInt(document.getElementById('psize-{{ m.id }}').value || "4096"),
+                        model_path: document.getElementById('ppath-{{ m.id }}').value,
+                        weight: parseFloat(document.getElementById('pweight-{{ m.id }}').value || "1.0"),
+                        api_token: document.getElementById('ptoken-{{ m.id }}').value,
+                        enabled: document.getElementById('penabled-{{ m.id }}').checked
+                      };
+                      const res = await fetch('{{ url_for("add_provider", model_id=m.id) }}', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      });
+                      if(res.ok){ location.reload(); } else { alert("Błąd dodawania providera"); }
+                    }
+                </script>
+            </details>
+        </details>
+        {% else %}
+        <p class="muted">Brak modeli w tej rodzinie.</p>
+        {% endfor %}
+    </section>
+    {% endfor %}
+</div>
+
+<div class="actions">
+    <a class="btn" href="{{ url_for('export_config', config_id=cfg.id) }}">Eksport JSON</a>
+    <button class="btn" hx-post="{{ url_for('set_active_config', config_id=cfg.id) }}" hx-swap="none">Ustaw jako aktywny</button>
+    <a class="btn btn-secondary" href="{{ url_for('view_config', config_id=cfg.id) }}">Podgląd</a>
+</div>
+
+<hr>
+
+<h3>Historia wersji</h3>
+<div hx-get="{{ url_for('list_versions', config_id=cfg.id) }}" hx-trigger="load" hx-target="#versions" hx-swap="innerHTML"></div>
+<table class="table" id="versions"></table>
+<script>
+    document.body.addEventListener('htmx:afterOnLoad', (e) => {
+      if (e.detail.target && e.detail.target.id === 'versions') {
+        try {
+          const data = JSON.parse(e.detail.xhr.responseText);
+          e.detail.target.innerHTML = `
+            <thead><tr><th>Wersja</th><th>Data</th><th>Opis</th><th>Akcje</th></tr></thead>
+            <tbody>
+            ${data.map(v => `
+              <tr>
+                <td>v${v.version}</td>
+                <td>${new Date(v.created_at).toLocaleString()}</td>
+                <td>${v.note || ''}</td>
+                <td><button class="btn btn-small" onclick="restoreV(${v.version})">Przywróć</button></td>
+              </tr>
+            `).join('')}
+            </tbody>`;
+        } catch (_) {}
+      }
+    });
+    async function restoreV(v){
+      if(!confirm('Przywrócić wersję v'+v+'?')) return;
+      const res = await fetch('{{ url_for("restore_version", config_id=cfg.id, version=0) }}'.replace('/0/','/'+v+'/'), {method:'POST'});
+      if(res.ok){ location.reload(); } else { alert('Błąd przywracania'); }
+    }
+</script>
+{% endblock %}

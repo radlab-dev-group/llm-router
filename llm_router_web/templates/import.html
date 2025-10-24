@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Import konfiguracji</h2>
+<form method="post" enctype="multipart/form-data" class="form">
+    <label>Nazwa (opcjonalnie)
+        <input type="text" name="name" placeholder="np. production-1">
+    </label>
+    <label>Plik JSON
+        <input type="file" name="file" accept="application/json">
+    </label>
+    <p class="muted">Lub wklej JSON poniżej:</p>
+    <label>JSON
+        <textarea name="json" rows="12" placeholder="{ ... }"></textarea>
+    </label>
+    <div class="form-actions">
+        <button class="btn" type="submit">Importuj</button>
+        <a class="btn btn-secondary" href="{{ url_for('index') }}">Anuluj</a>
+    </div>
+</form>
+{% endblock %}

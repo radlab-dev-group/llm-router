@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Podgląd: {{ cfg.name }} {% if cfg.is_active %}<span class="badge">AKTYWNY</span>{% endif %}</h2>
+
+<div class="actions">
+    <a class="btn" href="{{ url_for('edit_config', config_id=cfg.id) }}">Edytuj</a>
+    <a class="btn" href="{{ url_for('export_config', config_id=cfg.id) }}">Eksport JSON</a>
+    <button class="btn" hx-post="{{ url_for('set_active_config', config_id=cfg.id) }}" hx-swap="none">Ustaw jako aktywny</button>
+</div>
+
+<h3>Active Models</h3>
+<pre class="pre">{{ data.active_models | tojson(indent=2, ensure_ascii=False) }}</pre>
+
+<h3>Modele</h3>
+<details open>
+    <summary>Google</summary>
+    <pre class="pre">{{ data.google_models | tojson(indent=2, ensure_ascii=False) }}</pre>
+</details>
+<details open>
+    <summary>OpenAI</summary>
+    <pre class="pre">{{ data.openai_models | tojson(indent=2, ensure_ascii=False) }}</pre>
+</details>
+<details open>
+    <summary>Qwen</summary>
+    <pre class="pre">{{ data.qwen_models | tojson(indent=2, ensure_ascii=False) }}</pre>
+</details>
+
+<h3>Historia wersji</h3>
+<table class="table">
+    <thead><tr><th>Wersja</th><th>Data</th><th>Opis</th><th>Akcje</th></tr></thead>
+    <tbody>
+    {% for v in versions %}
+    <tr>
+        <td>v{{ v.version }}</td>
+        <td>{{ v.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ v.note }}</td>
+        <td>
+            <button class="btn btn-small"
+                    hx-post="{{ url_for('restore_version', config_id=cfg.id, version=v.version) }}"
+                    hx-swap="none">Przywróć</button>
+        </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">Brak wersji.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
