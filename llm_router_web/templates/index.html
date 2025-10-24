@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Konfiguracje</h2>
+<div class="actions">
+    <a class="btn" href="{{ url_for('new_config') }}">Nowy konfig</a>
+    <a class="btn" href="{{ url_for('import_config') }}">Załaduj istniejący</a>
+    <a class="btn" href="{{ url_for('list_configs') }}">Zdefiniowane konfigi</a>
+</div>
+<ul class="card-list">
+    {% for c in configs %}
+    <li class="card">
+        <div class="card-title">
+            <strong>{{ c.name }}</strong>
+            {% if c.is_active %}<span class="badge">AKTYWNY</span>{% endif %}
+        </div>
+        <div class="card-actions">
+            <a class="btn" href="{{ url_for('view_config', config_id=c.id) }}">Podgląd</a>
+            <a class="btn" href="{{ url_for('edit_config', config_id=c.id) }}">Edytuj</a>
+            <a class="btn" href="{{ url_for('export_config', config_id=c.id) }}">Eksport JSON</a>
+            <button class="btn" hx-post="{{ url_for('set_active_config', config_id=c.id) }}" hx-swap="none">Ustaw jako aktywny</button>
+        </div>
+    </li>
+    {% else %}
+    <li>Brak konfiguracji.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

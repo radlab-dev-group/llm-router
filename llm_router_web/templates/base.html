@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="pl" x-data>
+<head>
+    <meta charset="UTF-8" />
+    <title>{{ title or "Model Configurator" }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+    <h1 class="logo"><a href="{{ url_for('index') }}">Model Configurator</a></h1>
+    <nav class="menu">
+        <a href="{{ url_for('new_config') }}">Nowy konfig</a>
+        <a href="{{ url_for('import_config') }}">Załaduj istniejący</a>
+        <a href="{{ url_for('list_configs') }}">Zdefiniowane konfigi</a>
+    </nav>
+</header>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="flash-container">
+    {% for category, message in messages %}
+    <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+<main class="container">
+    {% block content %}{% endblock %}
+</main>
+</body>
+</html>
