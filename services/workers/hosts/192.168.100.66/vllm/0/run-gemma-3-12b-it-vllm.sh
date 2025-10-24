@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 MODEL_PATH=google/gemma-3-12b-it
 

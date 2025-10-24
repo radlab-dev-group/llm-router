@@ -1,41 +1,74 @@
-from abc import ABC, abstractmethod
-from collections import defaultdict
 from typing import List, Dict
+from abc import ABC, abstractmethod
+
+from llm_router_api.base.model_config import ApiModelConfig
 
 
 class ChooseProviderStrategyI(ABC):
+    REPLACE_PROVIDER_KEY = ["/", ":", "-", ".", ",", ";", " ", "\t", "\n"]
 
-    @staticmethod
-    def _provider_key(provider_cfg: Dict) -> str:
-        return provider_cfg.get("id") or provider_cfg.get("api_host", "unknown")
+    """
+    Abstract base for provider‑selection strategies.
 
-    @abstractmethod
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
-        raise NotImplementedError
+    Concrete subclasses must implement :meth:`choose` which returns a
+    provider configuration dictionary based on the supplied model name
+    and the list of available providers.
+    """
 
-
-class LoadBalancedStrategy(ChooseProviderStrategyI):
-
-    def __init__(self) -> None:
-        self._usage_counters: Dict[str, Dict[str, int]] = defaultdict(
-            lambda: defaultdict(int)
+    def __init__(self, models_config_path: str) -> None:
+        self._api_model_config = ApiModelConfig(
+            models_config_path=models_config_path
         )
 
-    def choose(self, model_name: str, providers: List[Dict]) -> Dict:
-        if not providers:
-            raise ValueError(f"No providers configured for model '{model_name}'")
+    def _provider_key(self, provider_cfg: Dict) -> str:
+        """
+        Return a unique identifier for a provider configuration.
 
-        min_used = None
-        chosen_cfg = None
-        for cfg in providers:
-            key = self._provider_key(cfg)
-            used = self._usage_counters[model_name][key]
+        The identifier is derived from fields that uniquely identify a
+        provider (e.g., its name or endpoint).  Subclasses may rely on
+        this key for caching the per ‑ provider state.
+        """
+        _pk = provider_cfg.get("id") or provider_cfg.get("api_host", "unknown")
+        for ch in self.REPLACE_PROVIDER_KEY:
+            _pk = _pk.replace(ch, "_")
+        return _pk
 
-            if min_used is None or used < min_used:
-                min_used = used
-                chosen_cfg = cfg
+    @abstractmethod
+    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
+        """
+        Choose a provider for the given model.
 
-        chosen_key = self._provider_key(chosen_cfg)
-        self._usage_counters[model_name][chosen_key] += 1
+        Parameters
+        ----------
+        model_name: str
+            Name of the model for which a provider is required.
+        providers: List[Dict]
+            List of provider configuration dictionaries.
 
-        return chosen_cfg
+        Returns
+        -------
+        Dict
+            The selected provider configuration.
+        """
+        raise NotImplementedError
+
+    def put_provider(self, model_name: str, provider: Dict) -> None:
+        """
+        Notify the strategy that a provider has been used.
+
+        This method is called after a provider has been selected and used,
+        allowing the strategy to update its internal state (e.g., for
+        tracking usage, updating metrics, or implementing feedback loops).
+
+        The default implementation does nothing. Subclasses may override
+        this method to implement stateful behavior such as round-robin
+        rotation, failure tracking, or performance-based selection.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the model for which the provider was used.
+        provider : Dict
+            The provider configuration dictionary that was used.
+        """
+        pass

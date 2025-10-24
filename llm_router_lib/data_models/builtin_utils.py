@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 
-from llm_router_api.core.data_models.builtin_chat import (
+from llm_router_lib.data_models.builtin_chat import (
     _GenerativeOptionsModel,
     GENAI_REQ_ARGS_BASE,
     GENAI_OPT_ARGS_BASE,

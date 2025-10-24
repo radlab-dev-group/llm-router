@@ -4,7 +4,7 @@ from typing import Optional, Dict, Any, List
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 
-from llm_router_api.core.data_models.builtin_utils import (
+from llm_router_lib.data_models.builtin_utils import (
     GenerateQuestionFromTextsModel,
     GENERATE_Q_REQ,
     GENERATE_Q_OPT,
@@ -391,10 +391,10 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
         options = CreateArticleFromNewsList(**params)
         _payload = options.model_dump()
 
-        self._map_prompt = {
+        map_prompt = {
             "##USER_Q_STR##": _payload["user_query"],
         }
-        self._prompt_str_postfix = _payload.get("article_type")
+        prompt_str_postfix = _payload.get("article_type")
 
         user_texts_str = "\n\n".join(
             t.strip() for t in _payload["texts"] if len(t.strip())
@@ -411,6 +411,9 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
         _payload.pop("texts")
         _payload.pop("user_query")
         _payload.pop("article_type")
+
+        _payload["map_prompt"] = map_prompt
+        _payload["prompt_str_postfix"] = prompt_str_postfix
 
         return _payload
 
@@ -451,11 +454,11 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
         _payload["stream"] = _payload.get("stream", False)
         _payload["model"] = _payload["model_name"]
 
-        self._map_prompt = {
+        map_prompt = {
             "##QUESTION_STR##": _payload["question_str"],
         }
-        self._prompt_str_postfix = _payload.get("question_prompt")
-        self._prompt_str_force = _payload.get("system_prompt")
+        prompt_str_postfix = _payload.get("question_prompt")
+        prompt_str_force = _payload.get("system_prompt")
 
         context = ""
         if type(_payload["texts"]) is dict:
@@ -480,6 +483,11 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
         _payload.pop("question_str")
         _payload.pop("system_prompt")
         _payload.pop("question_prompt")
+
+        _payload["map_prompt"] = map_prompt
+        _payload["prompt_str_force"] = prompt_str_force
+        _payload["prompt_str_postfix"] = prompt_str_postfix
+
         return _payload
 
     def __prepare_response_function(self, response):

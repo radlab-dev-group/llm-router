@@ -20,11 +20,11 @@ Typical usage
 
 import traceback
 
-from flask import Flask, Response
+from flask import Flask
 from typing import List, Type, Optional
 
 from llm_router_api.base.lb.chooser import ProviderChooser
-from llm_router_api.base.lb.strategy import LoadBalancedStrategy
+
 from llm_router_api.endpoints.endpoint_i import EndpointI
 from llm_router_api.register.auto_loader import EndpointAutoLoader
 from llm_router_api.register.register import FlaskEndpointRegistrar
@@ -32,6 +32,7 @@ from llm_router_api.base.constants import (
     DEFAULT_API_PREFIX,
     REST_API_LOG_LEVEL,
     USE_PROMETHEUS,
+    SERVER_BALANCE_STRATEGY,
 )
 
 if USE_PROMETHEUS:
@@ -103,10 +104,10 @@ class FlaskEngine:
         self.logger_level = logger_level
         self.logger_file_name = logger_file_name
 
-        # NOTE: Currently LoadBalancedStrategy is implemented. Should be replaced
-        # NOTE: in the future when new strategies will be implemented.
-        # IDEA: Provider should be configurable by ENV value
-        self._provider_chooser = ProviderChooser(strategy=LoadBalancedStrategy())
+        self._provider_chooser = ProviderChooser(
+            models_config_path=models_config_path,
+            strategy_name=SERVER_BALANCE_STRATEGY,
+        )
 
     def prepare_flask_app(
         self,
