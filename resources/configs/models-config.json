@@ -46,7 +46,9 @@
           "input_size": 4096,
           "model_path": "",
           "weight": 1.0
-        },
+        }
+      ],
+      "providers_sleep": [
         {
           "id": "gemma3_12b-vllm-66:7000",
           "api_host": "http://192.168.100.66:7000/",
