@@ -22,6 +22,7 @@ Typical usage::
 
 """
 
+import random
 import time
 
 try:
@@ -31,7 +32,7 @@ try:
 except ImportError:
     REDIS_IS_AVAILABLE = False
 
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
@@ -120,7 +121,12 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
 
         self._clear_buffers()
 
-    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(
+        self,
+        model_name: str,
+        providers: List[Dict],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict:
         """
         Acquire the first available provider for *model_name*.
 
@@ -137,6 +143,8 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             The name of the model for which a provider is required.
         providers : List[Dict]
             A list of provider configuration dictionaries.
+        options: Dict[str, Any], default: None
+            Additional options passed to the chosen provider.
 
         Returns
         -------
@@ -154,6 +162,10 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         redis_key = self._get_redis_key(model_name)
         start_time = time.time()
 
+        is_random = options and options.get("random_choice", False)
+        if is_random:
+            print("===" * 300)
+
         # Ensure fields exist; if someone removed the hash, recreate it
         if not self.redis_client.exists(redis_key):
             for p in providers:
@@ -166,6 +178,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                     f"within {self.timeout} seconds"
                 )
 
+            available_providers = []
             for provider in providers:
                 provider_field = self._provider_field(provider)
                 try:
@@ -174,14 +187,25 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                     )
                     if ok == 1:
                         provider["__chosen_field"] = provider_field
-                        return provider
+                        if is_random:
+                            available_providers.append(provider)
+                        else:
+                            return provider
                 except Exception:
                     time.sleep(self.check_interval)
                     continue
 
+            if is_random and available_providers:
+                return random.choice(available_providers)
+
             time.sleep(self.check_interval)
 
-    def put_provider(self, model_name: str, provider: Dict) -> None:
+    def put_provider(
+        self,
+        model_name: str,
+        provider: Dict,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Release a previously acquired provider back to the pool.
 
@@ -196,6 +220,8 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             The model name associated with the provider.
         provider : Dict
             The provider dictionary that was returned by :meth:`get_provider`.
+        options: Dict[str, Any], default: None
+            Additional options passed to the chosen provider.
         """
         redis_key = self._get_redis_key(model_name)
         provider_field = self._provider_field(provider)
