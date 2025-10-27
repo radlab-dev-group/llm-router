@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 from collections import defaultdict
 
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
@@ -13,7 +13,12 @@ class LoadBalancedStrategy(ChooseProviderStrategyI):
             lambda: defaultdict(int)
         )
 
-    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(
+        self,
+        model_name: str,
+        providers: List[Dict],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict:
         if not providers:
             raise ValueError(f"No providers configured for model '{model_name}'")
 

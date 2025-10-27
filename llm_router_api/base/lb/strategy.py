@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 
 from llm_router_api.base.model_config import ApiModelConfig
@@ -34,7 +34,12 @@ class ChooseProviderStrategyI(ABC):
         return _pk
 
     @abstractmethod
-    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(
+        self,
+        model_name: str,
+        providers: List[Dict],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict:
         """
         Choose a provider for the given model.
 
@@ -44,6 +49,8 @@ class ChooseProviderStrategyI(ABC):
             Name of the model for which a provider is required.
         providers: List[Dict]
             List of provider configuration dictionaries.
+        options: Dict[str, Any], default: None
+            Options passed to the chosen provider.
 
         Returns
         -------
@@ -52,7 +59,12 @@ class ChooseProviderStrategyI(ABC):
         """
         raise NotImplementedError
 
-    def put_provider(self, model_name: str, provider: Dict) -> None:
+    def put_provider(
+        self,
+        model_name: str,
+        provider: Dict,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Notify the strategy that a provider has been used.
 
@@ -70,5 +82,7 @@ class ChooseProviderStrategyI(ABC):
             Name of the model for which the provider was used.
         provider : Dict
             The provider configuration dictionary that was used.
+        options: Dict[str, Any], default: None
+            Options passed to the chosen provider.
         """
         pass
