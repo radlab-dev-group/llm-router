@@ -25,7 +25,7 @@ interface.
 import time
 
 from collections import deque
-from typing import List, Dict
+from typing import List, Dict, Optional, Any
 from collections import defaultdict
 
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
@@ -131,7 +131,12 @@ class WeightedStrategy(ChooseProviderStrategyI):
 
         return [w / total for w in weights]
 
-    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(
+        self,
+        model_name: str,
+        providers: List[Dict],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict:
         """
         Select a provider for *model_name* based on static weights.
 
@@ -156,6 +161,8 @@ class WeightedStrategy(ChooseProviderStrategyI):
             List of provider configuration dictionaries.  Each dictionary
             must contain at least the information required by
             :meth:`_provider_key`.
+        options: Dict[str, Any], default: None
+            Additional options passed to the chosen provider.
 
         Returns
         -------
@@ -335,7 +342,12 @@ class DynamicWeightedStrategy(WeightedStrategy):
             return [1.0 / n] * n
         return [w / total for w in weights]
 
-    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(
+        self,
+        model_name: str,
+        providers: List[Dict],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict:
         """
         Choose a provider using the deterministic weighted algorithm and
         record the latency since the last selection of the same provider.
@@ -351,13 +363,17 @@ class DynamicWeightedStrategy(WeightedStrategy):
             Identifier of the model for which a provider is being selected.
         providers : List[Dict]
             List of provider configuration dictionaries.
+        options: Dict[str, Any], default: None
+            Additional options passed to the chosen provider.
 
         Returns
         -------
         Dict
             The configuration dictionary of the selected provider.
         """
-        chosen_cfg = super().get_provider(model_name, providers)
+        chosen_cfg = super().get_provider(
+            model_name=model_name, providers=providers, options=options
+        )
 
         self.__latency_recording(chosen_cfg=chosen_cfg)
 

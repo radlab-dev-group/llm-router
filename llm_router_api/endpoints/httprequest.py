@@ -151,25 +151,30 @@ class HttpRequestExecutor:
         if prompt_str:
             params["messages"] = [system_msg] + params.get("messages", [])
 
-        # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
-
-        if self._endpoint.method == "POST":
-            return self._call_post_with_payload(
+        try:
+            if self._endpoint.method == "POST":
+                return self._call_post_with_payload(
+                    ep_url=full_url,
+                    params=params,
+                    headers=headers,
+                )
+            return self._call_get_with_payload(
                 ep_url=full_url,
                 params=params,
                 headers=headers,
             )
-        return self._call_get_with_payload(
-            ep_url=full_url,
-            params=params,
-            headers=headers,
-        )
+        except Exception as e:
+            response = Response()
+            response.status_code = 400
+            response._content = str(e).encode("utf-8")
+            return response
 
     def stream_response(
         self,
         ep_url: str,
         params: Dict[str, Any],
         api_model_provider: ApiModel,
+        options: Optional[Dict[str, Any]] = None,
         is_ollama: bool = False,
         is_generic_to_ollama: bool = False,
     ) -> Iterator[bytes]:
@@ -189,6 +194,8 @@ class HttpRequestExecutor:
             Payload parameters; ``model`` and ``stream`` are added automatically.
         api_model_provider:
             Model provider used to construct API requests.
+        options: Optional Dict
+            Additional options passed to stream.
         is_ollama:
             Flag indicating whether Ollama‑specific conversion should be
             applied to the incoming stream.
@@ -235,26 +242,29 @@ class HttpRequestExecutor:
         params = self._convert_ollama_messages_if_needed(params=params)
         if is_ollama:
             return self._stream_ollama(
-                full_url,
-                params,
-                method,
-                headers,
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
                 api_model_provider=api_model_provider,
             )
         if is_generic_to_ollama:
             return self._stream_generic_to_ollama(
-                full_url,
-                params,
-                method,
-                headers,
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
                 api_model_provider=api_model_provider,
             )
         else:
             return self._stream_generic(
-                full_url,
-                params,
-                method,
-                headers,
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
                 api_model_provider=api_model_provider,
             )
 
@@ -435,6 +445,7 @@ class HttpRequestExecutor:
         payload: Dict[str, Any],
         method: str,
         headers: Dict[str, Any],
+        options: Dict[str, Any],
         api_model_provider: ApiModel,
     ) -> Iterator[bytes]:
         """
@@ -453,6 +464,8 @@ class HttpRequestExecutor:
             HTTP method – ``POST`` or ``GET`` (case‑insensitive).
         headers:
             Dictionary of request headers.
+        options: Dict
+            Additional options passed to stream
 
         Returns
         -------
@@ -491,7 +504,9 @@ class HttpRequestExecutor:
                 yield (json.dumps(err, ensure_ascii=False) + "\n").encode("utf-8")
             finally:
                 self._endpoint.unset_model(
-                    params=payload, api_model_provider=api_model_provider
+                    params=payload,
+                    api_model_provider=api_model_provider,
+                    options=options,
                 )
 
         return _iter()
@@ -502,6 +517,7 @@ class HttpRequestExecutor:
         payload: Dict[str, Any],
         method: str,
         headers: Dict[str, Any],
+        options: Dict[str, Any],
         api_model_provider: ApiModel,
     ) -> Iterator[bytes]:
         """
@@ -522,6 +538,8 @@ class HttpRequestExecutor:
             ``POST`` or ``GET``.
         headers:
             HTTP headers, including authentication when configured.
+        options: Dict
+            Additional options to pass to stream
 
         Returns
         -------
@@ -561,7 +579,9 @@ class HttpRequestExecutor:
                 yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
             finally:
                 self._endpoint.unset_model(
-                    params=payload, api_model_provider=api_model_provider
+                    params=payload,
+                    api_model_provider=api_model_provider,
+                    options=options,
                 )
 
         return _iter()
@@ -764,6 +784,7 @@ class HttpRequestExecutor:
         payload: Dict[str, Any],
         method: str,
         headers: Dict[str, Any],
+        options: Dict[str, Any],
         api_model_provider: ApiModel,
     ) -> Iterator[bytes]:
         """
@@ -786,6 +807,8 @@ class HttpRequestExecutor:
             HTTP method – ``POST`` or ``GET`` (case‑insensitive).
         headers:
             Request headers, including authentication when configured.
+        options: Dict
+            Additional options passed to stream
 
         Returns
         -------
@@ -867,7 +890,9 @@ class HttpRequestExecutor:
                 yield (json.dumps(err) + "\n").encode("utf-8")
             finally:
                 self._endpoint.unset_model(
-                    params=payload, api_model_provider=api_model_provider
+                    params=payload,
+                    api_model_provider=api_model_provider,
+                    options=options,
                 )
 
         return _iter()

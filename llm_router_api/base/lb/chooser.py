@@ -128,7 +128,9 @@ class ProviderChooser:
 
         return _cls(models_config_path=models_config_path)
 
-    def get_provider(self, model_name: str, providers: List[Dict]) -> Dict:
+    def get_provider(
+        self, model_name: str, providers: List[Dict], options: Optional[Dict] = None
+    ) -> Dict:
         """
         Choose a provider for *model_name* from *providers* using the configured strategy.
 
@@ -141,6 +143,8 @@ class ProviderChooser:
             The name of the model for which a provider is required.
         providers : List[Dict]
             A list of provider configuration dictionaries.
+        options: Optional[Dict], Default is ``None``.
+            Additional options to pass to ``self.strategy.choose``.
 
         Returns
         -------
@@ -154,7 +158,13 @@ class ProviderChooser:
         """
         if not providers:
             raise RuntimeError(f"{model_name} does not have any providers!")
-        return self.strategy.get_provider(model_name, providers)
+        return self.strategy.get_provider(
+            model_name=model_name, providers=providers, options=options
+        )
 
-    def put_provider(self, model_name: str, provider: Dict) -> None:
-        self.strategy.put_provider(model_name, provider)
+    def put_provider(
+        self, model_name: str, provider: Dict, options: Optional[Dict] = None
+    ) -> None:
+        self.strategy.put_provider(
+            model_name=model_name, provider=provider, options=options
+        )
