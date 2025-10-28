@@ -181,6 +181,8 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             for p in providers:
                 self.redis_client.hset(redis_key, self._provider_field(p), "false")
 
+        # self._print_provider_status(redis_key, providers)
+
         is_random = options and options.get("random_choice", False)
 
         while True:
@@ -431,3 +433,31 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                 self._initialize_providers(
                     model_name=model_name, providers=providers
                 )
+
+    def _print_provider_status(self, redis_key: str, providers: List[Dict]) -> None:
+        """
+        Print the lock status of each provider stored in the Redis hash
+        ``redis_key``.  Uses emojis for a quick visual cue:
+
+        * 🟢 – provider is free (`'false'` or missing)
+        * 🔴 – provider is currently taken (`'true'`)
+
+        The output is formatted in a table‑like layout for readability.
+        """
+        try:
+            # Retrieve the entire hash; missing fields default to None
+            hash_data = self.redis_client.hgetall(redis_key)
+        except Exception as exc:
+            print(f"[⚠️] Could not read Redis key '{redis_key}': {exc}")
+            return
+
+        print("\nProvider lock status:")
+        print("-" * 40)
+        for provider in providers:
+            field = self._provider_field(provider)
+            status = hash_data.get(field, "false")
+            icon = "🔴" if status == "true" else "🟢"
+            # Show a short identifier for the provider (fallback to field)
+            provider_id = provider.get("id") or provider.get("name") or field
+            print(f"{icon}  {provider_id:<30} [{field}]")
+        print("-" * 40)
