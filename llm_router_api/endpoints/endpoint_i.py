@@ -916,12 +916,3 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         except json.JSONDecodeError as e:
             self.logger.exception(e)
             return {"raw_response": response.text}
-
-    # # ------------------------------------------------------------------
-    # def __dispatch_external_api_model(self, params: Dict[str, Any]) -> Optional[ApiModel]:
-    #     try:
-    #         model_name = self._model_name_from_params(params=params)
-    #         return self._model_handler.get_model_provider(model_name)
-    #     except (ValueError, Exception) as e:
-    #         self.logger.exception(e)
-    #         raise
