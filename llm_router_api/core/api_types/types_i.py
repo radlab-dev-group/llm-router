@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from typing import Dict, Any
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any
 
 
 class ApiTypesI(ABC):
