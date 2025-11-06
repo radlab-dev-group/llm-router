@@ -126,6 +126,16 @@
           "input_size": 256000,
           "model_path": ""
         }
+      ],
+      "providers_sleep": [
+        {
+          "id": "gpt-oss-120b-ollama-70:11434",
+          "api_host": "http://192.168.100.70:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": ""
+        }
       ]
     }
   },
@@ -151,6 +161,14 @@
           "api_type": "ollama",
           "input_size": 256000,
           "model_path": ""
+        },
+        {
+          "id": "qwen3-coder-30b-70:11434",
+          "api_host": "http://192.168.100.70:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": ""
         }
       ]
     }
@@ -166,7 +184,6 @@
       "gpt-oss:120b"
     ],
     "qwen_models": [
-      "qwen3:235b",
       "qwen3-coder:30b"
     ]
   }
