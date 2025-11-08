@@ -163,10 +163,11 @@ class HttpRequestExecutor:
                 headers=headers,
             )
         except Exception as e:
-            response = Response()
-            response.status_code = 400
-            response._content = str(e).encode("utf-8")
-            return response
+            raise
+            # response = Response()
+            # response.status_code = 400
+            # response._content = str(e).encode("utf-8")
+            # return response
 
     def stream_response(
         self,
