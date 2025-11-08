@@ -36,6 +36,7 @@ from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
+from llm_router_api.base.lb.provider_monitor import RedisProviderMonitor
 
 
 class FirstAvailableStrategy(ChooseProviderStrategyI):
@@ -60,6 +61,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         redis_db: int = 0,
         timeout: int = 60,
         check_interval: float = 0.1,
+        clear_buffers: bool = True,
     ) -> None:
         """
         Initialize the FirstAvailableStrategy.
@@ -80,6 +82,8 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         check_interval : float, optional
             Time to sleep between checks for available providers (in seconds).
             Default is ``0.1``.
+        clear_buffers:
+            Whether to clear all buffers when starting. Default is ``True``.
         """
         if not REDIS_IS_AVAILABLE:
             raise RuntimeError("Redis is not available. Please install it first.")
@@ -119,7 +123,15 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             """
         )
 
-        self._clear_buffers()
+        if clear_buffers:
+            self._clear_buffers()
+
+        # Start providers monitor
+        self._monitor = RedisProviderMonitor(
+            redis_client=self.redis_client,
+            check_interval=5.0,
+            clear_buffers=clear_buffers,
+        )
 
     def get_provider(
         self,
@@ -173,6 +185,9 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         if not providers:
             return None
 
+        # Register providers for monitoring (only once per model)
+        self._monitor.add_providers(model_name, providers)
+
         redis_key = self._get_redis_key(model_name)
         start_time = time.time()
 
@@ -186,7 +201,14 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         is_random = options and options.get("random_choice", False)
 
         while True:
-            _providers = self._get_active_providers(providers=providers)
+            _providers = self._get_active_providers(
+                model_name=model_name, providers=providers
+            )
+
+            print("*" * 100)
+            print("_providers=", _providers)
+            print("*" * 100)
+
             if not len(_providers):
                 time.sleep(self.check_interval)
 
@@ -218,7 +240,6 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                             return provider
                     except Exception:
                         pass
-            # -------------------------------------------------------------
             time.sleep(self.check_interval)
 
     def put_provider(
@@ -321,7 +342,19 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                 continue
         return None
 
-    def _get_active_providers(self, providers: List[Dict]) -> List[Dict]:
+    def _get_active_providers(
+        self, model_name: str, providers: List[Dict]
+    ) -> List[Dict]:
+        active_providers = self._monitor.get_providers(
+            model_name=model_name, only_active=True
+        )
+
+        import json
+
+        print("A" * 100)
+        print(json.dumps(active_providers, indent=2))
+        print("A" * 100)
+
         return providers
 
     def _get_redis_key(self, model_name: str) -> str:
