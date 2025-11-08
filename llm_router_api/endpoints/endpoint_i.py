@@ -778,15 +778,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     if "ollama" in api_model_provider.api_type:
                         is_ollama_to_generic = True
 
-                print("==" * 100)
-                print("is simple_proxy? ", simple_proxy)
-                print("self._ep_types_str=", self._ep_types_str)
-                print("api_model_provider.api_type=", api_model_provider.api_type)
-                print("is_ollama=", is_ollama)
-                print("is_generic_to_ollama=", is_generic_to_ollama)
-                print("is_ollama_to_generic=", is_ollama_to_generic)
-                print("==" * 100)
-
                 return self._http_executor.stream_response(
                     ep_url=ep_url,
                     params=params,
