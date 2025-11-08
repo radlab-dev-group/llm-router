@@ -345,18 +345,24 @@ class HttpRequestExecutor:
             If the endpoint method is not ``POST`` or if the required
             ``_prepare_response_function`` is missing.
         """
-        _payloads = []
-        for m in params.get("messages", []):
-            if m.get("role", "?") == "user":
-                _params = params.copy()
-                _params["messages"] = [system_message, m]
-                _payloads.append([_params, m["content"]])
+        if self._endpoint._prepare_response_function is None:
+            raise Exception(
+                "_prepare_response_function must be implemented "
+                "when calling api for each user message"
+            )
 
         if self._endpoint.method != "POST":
             raise Exception(
                 "_call_http_request_for_each_user_message "
                 'is not implemented for "GET" method'
             )
+
+        _payloads = []
+        for m in params.get("messages", []):
+            if m.get("role", "?") == "user":
+                _params = params.copy()
+                _params["messages"] = [system_message, m]
+                _payloads.append([_params, m["content"]])
 
         contents = []
         responses = []
@@ -374,12 +380,6 @@ class HttpRequestExecutor:
             responses.append(response)
 
             # self.logger.debug(response.json())
-
-        if self._endpoint._prepare_response_function is None:
-            raise Exception(
-                "_prepare_response_function must be implemented "
-                "when calling api for each user message"
-            )
         return self._endpoint._prepare_response_function(responses, contents)
 
     def _call_post_with_payload(
