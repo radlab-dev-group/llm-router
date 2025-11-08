@@ -11,7 +11,7 @@ All endpoint classes inherit from :class:`EndpointWithHttpRequestI`,
 a ``prepare_payload`` implementation, and the appropriate HTTP method configuration.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
