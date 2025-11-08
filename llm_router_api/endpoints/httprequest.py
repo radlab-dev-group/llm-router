@@ -21,10 +21,9 @@ callers only need to supply endpoint‑specific parameters.
 """
 
 import json
-
-import requests
 import datetime
 
+import requests
 from requests import Response
 from typing import Optional, Dict, Any, Iterator
 
@@ -177,6 +176,7 @@ class HttpRequestExecutor:
         options: Optional[Dict[str, Any]] = None,
         is_ollama: bool = False,
         is_generic_to_ollama: bool = False,
+        is_ollama_to_generic: bool = False,
     ) -> Iterator[bytes]:
         """
         Perform a streaming request and yield byte chunks.
@@ -202,6 +202,9 @@ class HttpRequestExecutor:
         is_generic_to_ollama:
             Flag to stream a response from an Ollama endpoint
             and convert it to the OpenAI‑compatible format
+        is_ollama_to_generic:
+            Flag to stream a response from an OpenAI endpoint
+            and convert it to the Ollama format
 
         Returns
         -------
@@ -240,6 +243,20 @@ class HttpRequestExecutor:
             headers["Authorization"] = f"Bearer {token}"
 
         params = self._convert_ollama_messages_if_needed(params=params)
+
+        is_generic = True not in [
+            is_ollama,
+            is_generic_to_ollama,
+            is_ollama_to_generic,
+        ]
+        self.logger.debug(
+            f"Stream type: \n"
+            f"  * is_ollama={is_ollama} \n"
+            f"  * is_generic_to_ollama={is_generic_to_ollama} \n"
+            f"  * is_ollama_to_generic={is_ollama_to_generic} \n"
+            f"  * is_generic={is_generic}"
+        )
+
         if is_ollama:
             return self._stream_ollama(
                 url=full_url,
@@ -249,6 +266,7 @@ class HttpRequestExecutor:
                 options=options,
                 api_model_provider=api_model_provider,
             )
+
         if is_generic_to_ollama:
             return self._stream_generic_to_ollama(
                 url=full_url,
@@ -258,7 +276,18 @@ class HttpRequestExecutor:
                 options=options,
                 api_model_provider=api_model_provider,
             )
-        else:
+
+        if is_ollama_to_generic:
+            return self._stream_ollama_to_generic(
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
+                api_model_provider=api_model_provider,
+            )
+
+        if is_generic:
             return self._stream_generic(
                 url=full_url,
                 payload=params,
@@ -268,9 +297,11 @@ class HttpRequestExecutor:
                 api_model_provider=api_model_provider,
             )
 
-    # ------------------------------------------------------------------
+        raise Exception("Unknonw streaming type!")
+
+    # ------------------------------------------
     # Private helpers
-    # ------------------------------------------------------------------
+    # ------------------------------------------
     @staticmethod
     def _prepare_full_url_ep(ep_url: str, api_model_provider: ApiModel) -> str:
         full_url = api_model_provider.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
@@ -450,58 +481,38 @@ class HttpRequestExecutor:
     ) -> Iterator[bytes]:
         """
         Perform a generic streaming request without Ollama conversion.
-
-        The function yields each line of the response as a UTF‑8‑encoded
-        ``bytes`` object, preserving the original line endings.
-
-        Parameters
-        ----------
-        url:
-            Full request URL.
-        payload:
-            JSON payload for ``POST`` or query parameters for ``GET``.
-        method:
-            HTTP method – ``POST`` or ``GET`` (case‑insensitive).
-        headers:
-            Dictionary of request headers.
-        options: Dict
-            Additional options passed to stream
-
-        Returns
-        -------
-        Iterator[bytes]
-            An iterator over the streamed response lines.
+        Passes through the OpenAI SSE stream unchanged so that clients
+        receive the standard Server-Sent Events format.
         """
+        # Ensure we accept SSE format
+        headers.setdefault("Accept", "text/event-stream")
 
         def _iter() -> Iterator[bytes]:
             try:
+                request_kwargs = dict(
+                    url=url,
+                    timeout=self._endpoint.timeout,
+                    stream=True,
+                    headers=headers,
+                )
                 if method == "POST":
-                    with requests.post(
-                        url,
-                        json=payload,
-                        timeout=self._endpoint.timeout,
-                        stream=True,
-                        headers=headers,
-                    ) as r:
-                        r.raise_for_status()
-                        for line in r.iter_lines(decode_unicode=False):
-                            if line:
-                                yield line + b"\n"
+                    request_kwargs["json"] = payload
+                    req = requests.post(**request_kwargs)
                 else:
-                    with requests.get(
-                        url,
-                        params=payload,
-                        timeout=self._endpoint.timeout,
-                        stream=True,
-                        headers=headers,
-                    ) as r:
-                        r.raise_for_status()
-                        for line in r.iter_lines(decode_unicode=False):
-                            if line:
-                                yield line + b"\n"
+                    request_kwargs["params"] = payload
+                    req = requests.get(**request_kwargs)
+
+                with req as r:
+                    r.raise_for_status()
+                    # Stream raw chunks directly from the response
+                    # This preserves the SSE format with double newlines
+                    for chunk in r.iter_content(chunk_size=None):
+                        if chunk:
+                            yield chunk
             except requests.RequestException as exc:
                 err = {"error": str(exc)}
-                yield (json.dumps(err, ensure_ascii=False) + "\n").encode("utf-8")
+                # Send error in SSE format
+                yield (f"data: {json.dumps(err)}\n\n").encode("utf-8")
             finally:
                 self._endpoint.unset_model(
                     params=payload,
@@ -511,6 +522,9 @@ class HttpRequestExecutor:
 
         return _iter()
 
+    # -------------------------------------------------------------------------
+    # Ollama streaming
+    # -------------------------------------------------------------------------
     def _stream_ollama(
         self,
         url: str,
@@ -586,9 +600,9 @@ class HttpRequestExecutor:
 
         return _iter()
 
-    # ------------------------------------------------------------------
+    # ------------------------------------------
     # Ollama‑specific helpers
-    # ------------------------------------------------------------------
+    # ------------------------------------------
     @staticmethod
     def _ollama_chunk(
         delta: str,
@@ -615,7 +629,7 @@ class HttpRequestExecutor:
             JSON line encoded as UTF‑8, terminated by a newline.
         """
         obj = {
-            "model": api_model_provider.name,
+            "model": api_model_provider.model_path or api_model_provider.name,
             "created_at": datetime.datetime.now().isoformat() + "Z",
             "done": done,
             "message": {},
@@ -788,6 +802,189 @@ class HttpRequestExecutor:
         api_model_provider: ApiModel,
     ) -> Iterator[bytes]:
         """
+        Stream a response from an OpenAI-compatible endpoint and convert it to the
+        Ollama format (NDJSON).
+
+        The incoming stream is expected to be OpenAI-style SSE or NDJSON format.
+        Each chunk is parsed and transformed into Ollama-compatible NDJSON objects.
+        The generator yields UTF-8-encoded bytes terminated by a newline.
+
+        Parameters
+        ----------
+        url:
+            Full request URL.
+        payload:
+            JSON payload for ``POST`` or query parameters for ``GET``.
+        method:
+            HTTP method – ``POST`` or ``GET`` (case-insensitive).
+        headers:
+            Request headers, including authentication when configured.
+        options: Dict
+            Additional options passed to stream
+        api_model_provider:
+            Model provider information.
+
+        Returns
+        -------
+        Iterator[bytes]
+            Byte chunks representing Ollama-style NDJSON responses.
+        """
+
+        def _iter() -> Iterator[bytes]:
+            try:
+                # Perform the actual HTTP request
+                if method == "POST":
+                    request_ctx = requests.post(
+                        url,
+                        json=payload,
+                        timeout=self._endpoint.timeout,
+                        stream=True,
+                        headers=headers,
+                    )
+                else:
+                    request_ctx = requests.get(
+                        url,
+                        params=payload,
+                        timeout=self._endpoint.timeout,
+                        stream=True,
+                        headers=headers,
+                    )
+
+                with request_ctx as resp:
+                    resp.raise_for_status()
+                    sent_done = False
+                    usage_data = None
+
+                    for raw_line in resp.iter_lines(decode_unicode=False):
+                        if not raw_line:
+                            continue
+
+                        try:
+                            line = raw_line.decode("utf-8", errors="replace").strip()
+                        except Exception:
+                            continue
+
+                        # Handle OpenAI SSE format (data: prefix)
+                        if line.startswith("data:"):
+                            data_str = line[5:].strip()
+                            if data_str == "[DONE]":
+                                if not sent_done:
+                                    yield self._ollama_chunk(
+                                        delta="",
+                                        done=True,
+                                        usage=usage_data,
+                                        api_model_provider=api_model_provider,
+                                    )
+                                    sent_done = True
+                                continue
+
+                            try:
+                                openai_chunk = json.loads(data_str)
+                            except Exception:
+                                continue
+
+                            # Extract usage information if present
+                            if "usage" in openai_chunk:
+                                usage_data = openai_chunk["usage"]
+
+                            # Extract delta content from OpenAI format
+                            delta_text = ""
+                            choices = openai_chunk.get("choices", [])
+                            if choices:
+                                delta_obj = choices[0].get("delta", {})
+                                if isinstance(delta_obj, dict):
+                                    delta_text = delta_obj.get("content", "")
+
+                            if delta_text:
+                                yield self._ollama_chunk(
+                                    delta=delta_text,
+                                    done=False,
+                                    api_model_provider=api_model_provider,
+                                )
+
+                            # Check for finish_reason
+                            if (
+                                choices
+                                and choices[0].get("finish_reason")
+                                and not sent_done
+                            ):
+                                yield self._ollama_chunk(
+                                    delta="",
+                                    done=True,
+                                    usage=usage_data,
+                                    api_model_provider=api_model_provider,
+                                )
+                                sent_done = True
+                            continue
+
+                        # Handle plain JSON (no SSE prefix)
+                        try:
+                            openai_chunk = json.loads(line)
+
+                            if "usage" in openai_chunk:
+                                usage_data = openai_chunk["usage"]
+
+                            delta_text = ""
+                            choices = openai_chunk.get("choices", [])
+                            if choices:
+                                delta_obj = choices[0].get("delta", {})
+                                if isinstance(delta_obj, dict):
+                                    delta_text = delta_obj.get("content", "")
+
+                            if delta_text:
+                                yield self._ollama_chunk(
+                                    delta=delta_text,
+                                    done=False,
+                                    api_model_provider=api_model_provider,
+                                )
+
+                            if (
+                                choices
+                                and choices[0].get("finish_reason")
+                                and not sent_done
+                            ):
+                                yield self._ollama_chunk(
+                                    delta="",
+                                    done=True,
+                                    usage=usage_data,
+                                    api_model_provider=api_model_provider,
+                                )
+                                sent_done = True
+                        except Exception:
+                            # If parsing fails, skip this line
+                            continue
+
+                    # Ensure we always send a final done chunk
+                    if not sent_done:
+                        yield self._ollama_chunk(
+                            delta="",
+                            done=True,
+                            usage=usage_data,
+                            api_model_provider=api_model_provider,
+                        )
+
+            except requests.RequestException as exc:
+                err = {"error": str(exc)}
+                yield (json.dumps(err) + "\n").encode("utf-8")
+            finally:
+                self._endpoint.unset_model(
+                    params=payload,
+                    api_model_provider=api_model_provider,
+                    options=options,
+                )
+
+        return _iter()
+
+    def _stream_ollama_to_generic(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Dict[str, Any],
+        api_model_provider: ApiModel,
+    ) -> Iterator[bytes]:
+        """
         Stream a response from an Ollama endpoint and convert it to the
         OpenAI‑compatible format used by vLLM (i.e. the same JSON‑lines that
         ``vllm``/``openai`` return for streaming completions).
@@ -852,12 +1049,11 @@ class HttpRequestExecutor:
                         # Build a base chunk dictionary
                         base_chunk = {
                             "id": "chatcmpl-"
-                            + datetime.datetime.utcnow().strftime("%Y%m%d%H%M%S"),
+                            + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
                             "object": "chat.completion.chunk",
                             "created": int(datetime.datetime.utcnow().timestamp()),
-                            "model": ollama_obj.get(
-                                "model", self._endpoint.api_model.name
-                            ),
+                            "model": api_model_provider.model_path
+                            or api_model_provider.name,
                             "choices": [
                                 {
                                     "index": 0,
@@ -870,10 +1066,13 @@ class HttpRequestExecutor:
                         # If the Ollama payload signals the end of the stream
                         if ollama_obj.get("done"):
                             base_chunk["choices"][0]["finish_reason"] = "stop"
-                            # No delta content for the final chunk
+                            # Send the final chunk with SSE format
                             yield (
-                                json.dumps(base_chunk, ensure_ascii=False) + "\n"
+                                "data: "
+                                + json.dumps(base_chunk, ensure_ascii=False)
+                                + "\n\n"
                             ).encode("utf-8")
+                            yield b"data: [DONE]\n\n"
                             continue
 
                         # Normal content chunk – extract the assistant delta
@@ -882,12 +1081,15 @@ class HttpRequestExecutor:
                             base_chunk["choices"][0]["delta"] = {
                                 "content": delta_text
                             }
+                            # Send with SSE format (data: prefix)
                             yield (
-                                json.dumps(base_chunk, ensure_ascii=False) + "\n"
+                                "data: "
+                                + json.dumps(base_chunk, ensure_ascii=False)
+                                + "\n\n"
                             ).encode("utf-8")
             except requests.RequestException as exc:
                 err = {"error": str(exc)}
-                yield (json.dumps(err) + "\n").encode("utf-8")
+                yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
             finally:
                 self._endpoint.unset_model(
                     params=payload,
