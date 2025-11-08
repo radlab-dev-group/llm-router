@@ -376,6 +376,7 @@ def run_all_tests() -> None:
     ]
 
     def _run_test(fn, model_name, debug):
+        print("=" * 100)
         try:
             print(f"Running {fn.__name__} ...")
             fn(models[model_name], debug)
@@ -383,8 +384,6 @@ def run_all_tests() -> None:
             print(f"❌ {fn.__name__} failed: {e}")
         else:
             print(f"✅ {fn.__name__} succeeded")
-        finally:
-            print("-" * 40)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
         futures = [
