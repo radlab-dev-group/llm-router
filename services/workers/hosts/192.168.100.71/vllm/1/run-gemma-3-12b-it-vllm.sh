@@ -10,5 +10,5 @@ vllm serve \
         --host 0.0.0.0 \
         --quantization bitsandbytes \
         --load-format bitsandbytes \
-        --max-model-len=4096 \
+        --max-model-len=56000 \
         --gpu-memory-utilization=0.90
