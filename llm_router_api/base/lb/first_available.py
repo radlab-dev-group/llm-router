@@ -22,8 +22,8 @@ Typical usage::
 
 """
 
-import random
 import time
+import random
 
 try:
     import redis
@@ -186,6 +186,10 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         is_random = options and options.get("random_choice", False)
 
         while True:
+            _providers = self._get_active_providers(providers=providers)
+            if not len(_providers):
+                time.sleep(self.check_interval)
+
             if time.time() - start_time > self.timeout:
                 raise TimeoutError(
                     f"No available provider found for model '{model_name}' "
@@ -194,12 +198,14 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
 
             if is_random:
                 provider = self._try_acquire_random_provider(
-                    redis_key=redis_key, providers=providers
+                    redis_key=redis_key, providers=_providers
                 )
                 if provider:
+                    provider_field = self._provider_field(provider)
+                    provider["__chosen_field"] = provider_field
                     return provider
             else:
-                for provider in providers:
+                for provider in _providers:
                     provider_field = self._provider_field(provider)
                     try:
                         ok = int(
@@ -211,8 +217,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                             provider["__chosen_field"] = provider_field
                             return provider
                     except Exception:
-                        time.sleep(self.check_interval)
-                        continue
+                        pass
             # -------------------------------------------------------------
             time.sleep(self.check_interval)
 
@@ -314,11 +319,10 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                     return provider
             except Exception:
                 continue
+        return None
 
-        provider = providers[0]
-        provider_field = self._provider_field(provider)
-        provider["__chosen_field"] = provider_field
-        return provider
+    def _get_active_providers(self, providers: List[Dict]) -> List[Dict]:
+        return providers
 
     def _get_redis_key(self, model_name: str) -> str:
         """
