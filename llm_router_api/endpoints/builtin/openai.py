@@ -7,6 +7,7 @@ The module defines a base chat endpoint (:class:`OpenAIChat`) and two
 derived classes for completions and model listing.
 """
 
+import datetime
 from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -45,7 +46,7 @@ class OpenAICompletionHandler(PassthroughI):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
-            api_types=["openai", "lmstudio"],
+            api_types=["openai", "lmstudio", "vllm"],
             direct_return=direct_return,
             method="POST",
         )
@@ -79,7 +80,7 @@ class OpenAICompletionHandlerWOApi(PassthroughI):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=True,
-            api_types=["openai", "lmstudio"],
+            api_types=["openai", "lmstudio", "vllm"],
             direct_return=direct_return,
             method="POST",
         )
@@ -153,10 +154,20 @@ class OpenAIModelsHandler(PassthroughI):
             field with the available model tags.
         """
         self.direct_return = True
-        return {
-            "object": "list",
-            "data": self._api_type_dispatcher.tags(
-                models_config=self._model_handler.list_active_models(),
-                merge_to_list=True,
-            ),
-        }
+        return {"object": "list", "data": self.__proper_models_list_format()}
+
+    def __proper_models_list_format(self):
+        _models_data = self._api_type_dispatcher.tags(
+            models_config=self._model_handler.list_active_models(),
+            merge_to_list=True,
+        )
+        proper_models = []
+        for m in _models_data:
+            _model = {
+                "id": m["id"],
+                "object": m["object"],
+                "created": datetime.datetime.now().timestamp(),
+                "owned_by": m["owned_by"],
+            }
+            proper_models.append(_model)
+        return proper_models
