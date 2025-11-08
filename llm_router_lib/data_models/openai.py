@@ -12,7 +12,7 @@ class OpenAIChatModel(BaseModel):
     keep_alive: str = "30m"
     language: str = DEFAULT_EP_LANGUAGE
 
-    options: Dict[str, Any] = {"num_ctx": 16384}
+    options: Dict[str, Any] = {"num_ctx": 128000}
 
 
 OPENAI_CHAT_REQ_ARGS = ["model", "messages"]
