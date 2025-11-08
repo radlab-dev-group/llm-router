@@ -718,17 +718,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     ep_pref = DEFAULT_API_PREFIX.strip()
                 ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
 
-                # if bool((params or {}).get("stream", False)):
-                #     clear_chosen_provider_finally = False
-                #     return self._http_executor.stream_response(
-                #         ep_url=ep_url,
-                #         params=params,
-                #         options=options,
-                #         is_ollama=False,
-                #         is_generic_to_ollama=False,
-                #         api_model_provider=api_model_provider,
-                #     )
-
                 response = self._http_executor.call_http_request(
                     ep_url=ep_url,
                     params=params,
