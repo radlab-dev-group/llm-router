@@ -710,22 +710,25 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 prompt_str_postfix=prompt_str_postfix,
             )
 
-            if simple_proxy:
+            use_streaming = bool((params or {}).get("stream", False))
+
+            if simple_proxy and not use_streaming:
                 ep_pref = ""
                 if self.add_api_prefix and DEFAULT_API_PREFIX:
                     ep_pref = DEFAULT_API_PREFIX.strip()
                 ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
 
-                if bool((params or {}).get("stream", False)):
-                    clear_chosen_provider_finally = False
-                    return self._http_executor.stream_response(
-                        ep_url=ep_url,
-                        params=params,
-                        options=options,
-                        is_ollama=False,
-                        is_generic_to_ollama=False,
-                        api_model_provider=api_model_provider,
-                    )
+                # if bool((params or {}).get("stream", False)):
+                #     clear_chosen_provider_finally = False
+                #     return self._http_executor.stream_response(
+                #         ep_url=ep_url,
+                #         params=params,
+                #         options=options,
+                #         is_ollama=False,
+                #         is_generic_to_ollama=False,
+                #         api_model_provider=api_model_provider,
+                #     )
+
                 response = self._http_executor.call_http_request(
                     ep_url=ep_url,
                     params=params,
@@ -756,49 +759,33 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     api_type=api_model_provider.api_type, params=params
                 )
 
-            if bool((params or {}).get("stream", False)):
+            if use_streaming:
+                clear_chosen_provider_finally = False
                 if self._call_for_each_user_msg:
                     raise ValueError(
                         "Streaming is available only for single message"
                     )
 
-                clear_chosen_provider_finally = False
-                if api_model_provider.api_type in self._ep_types_str:
-                    return self._http_executor.stream_response(
-                        ep_url=ep_url,
-                        params=params,
-                        options=options,
-                        is_ollama=False,
-                        is_generic_to_ollama=False,
-                        api_model_provider=api_model_provider,
-                    )
+                is_generic_to_ollama = False
+                is_ollama_to_generic = False
+                is_ollama = (
+                    "ollama" in self._ep_types_str
+                    and "ollama" in api_model_provider.api_type
+                )
+                if not is_ollama:
+                    if "ollama" in self._ep_types_str:
+                        is_generic_to_ollama = True
 
-                if "ollama" in self._ep_types_str:
-                    return self._http_executor.stream_response(
-                        ep_url=ep_url,
-                        params=params,
-                        options=options,
-                        is_ollama=True,
-                        is_generic_to_ollama=False,
-                        api_model_provider=api_model_provider,
-                    )
-
-                if api_model_provider.api_type == "ollama":
-                    return self._http_executor.stream_response(
-                        ep_url=ep_url,
-                        params=params,
-                        options=options,
-                        is_ollama=False,
-                        is_generic_to_ollama=True,
-                        api_model_provider=api_model_provider,
-                    )
+                    if "ollama" in api_model_provider.api_type:
+                        is_ollama_to_generic = True
 
                 return self._http_executor.stream_response(
                     ep_url=ep_url,
                     params=params,
                     options=options,
-                    is_ollama=False,
-                    is_generic_to_ollama=False,
+                    is_ollama=is_ollama,
+                    is_generic_to_ollama=is_generic_to_ollama,
+                    is_ollama_to_generic=is_ollama_to_generic,
                     api_model_provider=api_model_provider,
                 )
 
@@ -916,12 +903,3 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         except json.JSONDecodeError as e:
             self.logger.exception(e)
             return {"raw_response": response.text}
-
-    # # ------------------------------------------------------------------
-    # def __dispatch_external_api_model(self, params: Dict[str, Any]) -> Optional[ApiModel]:
-    #     try:
-    #         model_name = self._model_name_from_params(params=params)
-    #         return self._model_handler.get_model_provider(model_name)
-    #     except (ValueError, Exception) as e:
-    #         self.logger.exception(e)
-    #         raise
