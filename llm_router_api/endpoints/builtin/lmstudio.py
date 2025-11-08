@@ -11,16 +11,17 @@ All endpoint classes inherit from :class:`EndpointWithHttpRequestI`,
 a ``prepare_payload`` implementation, and the appropriate HTTP method configuration.
 """
 
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_router_api.core.decorators import EP
 from llm_router_api.base.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
-from llm_router_api.endpoints.builtin.openai import OpenAIModelsHandler
+from llm_router_api.endpoints.passthrough import PassthroughI
 
 
-class LmStudioModelsHandler(OpenAIModelsHandler):
+class LmStudioModelsHandler(PassthroughI):
     """
     Endpoint that returns the list of model identifiers available in the
     LM Studio service.
@@ -46,4 +47,54 @@ class LmStudioModelsHandler(OpenAIModelsHandler):
             model_handler=model_handler,
             dont_add_api_prefix=False,
             api_types=["lmstudio"],
+            method="GET",
+            direct_return=True,
         )
+
+    @EP.response_time
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Execute the model‑listing logic.
+
+        Parameters
+        ----------
+        params : Optional[Dict[str, Any]]
+            Ignored – the endpoint does not accept query parameters.
+
+        Returns
+        -------
+        dict
+            A response containing the object type ``"list"`` and a ``data``
+            field with the available model tags.
+        """
+        # models = self.__proper_models_list_format()
+        models = self.__proper_models_list_format()
+        # import json
+        # print(json.dumps(models, indent=2, ensure_ascii=False))
+        return {"models": models}
+
+    def __proper_models_list_format(self):
+        _models_data = self._api_type_dispatcher.tags(
+            models_config=self._model_handler.list_active_models(),
+            merge_to_list=True,
+        )
+        proper_models = []
+        for m in _models_data:
+            _model = {
+                "type": "llm",
+                "modelKey": m["id"],
+                "format": "gguf",
+                "displayName": m["id"],
+                "path": m["id"],
+                "sizeBytes": 4683073952,
+                "paramsString": "7B",
+                "architecture": "qwen2",
+                "vision": False,
+                "trainedForToolUse": True,
+                "maxContextLength": 32768,
+            }
+            proper_models.append(_model)
+        return proper_models
