@@ -760,6 +760,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
             if use_streaming:
+                clear_chosen_provider_finally = False
                 if self._call_for_each_user_msg:
                     raise ValueError(
                         "Streaming is available only for single message"
