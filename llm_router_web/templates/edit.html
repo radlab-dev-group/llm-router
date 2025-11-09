@@ -158,7 +158,8 @@
             <details>
                 <summary class="clickable" style="cursor:pointer;">&#x2795; Add model provider</summary>
                 <form class="add-model-form" style="width:100%" onsubmit="return addProvider{{ m.id }}(event)">
-                    <label for="pid-{{ m.id }}"></label><input type="text" placeholder="Provider ID" id="pid-{{ m.id }}" required>
+                    <label for="pid-{{ m.id }}"></label><input type="text" placeholder="Provider ID" id="pid-{{ m.id }}"
+                                                               required>
                     <input type="url" placeholder="API host (e.g. https://api.example.com)" id="phost-{{ m.id }}"
                            required>
                     <!-- Button to test if the host is reachable -->
@@ -172,6 +173,7 @@
                     </select>
                     <input type="number" placeholder="Input size" id="psize-{{ m.id }}" value="4096" min="1">
                     <input type="text" placeholder="Model path (optional)" id="ppath-{{ m.id }}">
+                    <label for="pweight-{{ m.id }}">weight:</label>
                     <input type="number" step="0.01" min="0" max="1" placeholder="Weight (0‑1)" id="pweight-{{ m.id }}"
                            value="1.0">
                     <div class="token-field" x-data="{ masked: true }">
