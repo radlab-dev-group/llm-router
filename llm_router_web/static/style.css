@@ -324,7 +324,9 @@ summary button {
 .actions {
     display: flex;
     gap: 8px;
-    flex-wrap: wrap
+    flex-wrap: wrap;
+    margin-top: 20px;
+    margin-bottom: 20px;
 }
 
 /* Drobna responsywność: węższa treść na bardzo szerokich ekranach */
