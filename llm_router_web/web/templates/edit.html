@@ -1,12 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>You are editing config: <code>{{ cfg.name }}</code></h2>
-
-<form method="post" class="form" style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
-    <input type="text" name="new_name" value="{{ cfg.name }}" required
-           style="flex: 1 1 auto; padding: 6px 10px; border-radius: 4px; border: 1px solid #30363d;">
-    <button class="btn btn-small" type="submit">Rename</button>
-</form>
+<!-- Rename button placed next to the config name, with inline editing using Alpine.js -->
+<div x-data="{ editing: false, name: '{{ cfg.name }}' }" class="form-inline"
+     style="align-items:center; gap:8px; margin-bottom:16px;">
+    <template x-if="!editing">
+        <div style="display:flex; align-items:center; gap:8px;">
+            <h2 style="margin:0;">You are editing config: <code x-text="name"></code></h2>
+            <button type="button" class="btn btn-small" @click="editing = true">Rename</button>
+        </div>
+    </template>
+    <template x-if="editing">
+        <form method="post" class="form" style="display:flex; align-items:center; gap:8px;">
+            <input type="text" name="new_name" x-model="name" required
+                   style="flex:1 1 auto; padding:6px 10px; border-radius:4px; border:1px solid #30363d;">
+            <button class="btn btn-small" type="submit">Save</button>
+            <button type="button" class="btn btn-small btn-secondary" @click="editing = false">Cancel</button>
+        </form>
+    </template>
+</div>
 
 <form method="post" class="form">
     <h3>Active Models</h3>
