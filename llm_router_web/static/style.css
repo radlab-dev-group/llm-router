@@ -192,6 +192,7 @@ textarea {
 .table {
     border: 1px solid #30363d;
 }
+
 .table th, .table td {
     border-top: 1px solid #30363d;
 }
@@ -289,7 +290,8 @@ summary button {
 .model .scroll-wrap {
     overflow-x: auto;
     overflow-y: hidden;
-    border-radius: 6px
+    border-radius: 6px;
+    margin: 16px 0;
 }
 
 .model .scroll-wrap table {
@@ -373,9 +375,12 @@ summary button {
 }
 
 /* Divider between individual models – slightly darker */
-.model-divider {
-    border-top: 1px solid #30363d;
+hr.model-divider {
+    border: none;
+    height: 1px;
+    background-color: #30363d;
     margin: 12px 0;
+    opacity: 0.8;
 }
 
 /* większy odstęp od ostatniej pozycji w tabeli historii wersji */
