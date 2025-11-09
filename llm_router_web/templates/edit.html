@@ -116,8 +116,9 @@
                                        @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
                            {method:'POST',headers:{'Content-Type':'application/json'},
                             body:JSON.stringify({api_token:$event.target.value})})">
-                                <button class="btn btn-small" type="button" @click="masked = !masked">{{ '{{' }} masked
-                                    ? 'Pokaż' : 'Ukryj' {{ '}}' }}
+                                <button class="btn btn-small" type="button"
+                                        @click="masked = !masked"
+                                        x-text="masked ? 'Pokaż' : 'Ukryj'">
                                 </button>
                             </div>
                         </td>
