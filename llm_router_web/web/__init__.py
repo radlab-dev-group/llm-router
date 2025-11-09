@@ -8,10 +8,12 @@ from .utils import _ensure_provider_order_column
 
 def create_app() -> Flask:
     """Create and configure the Flask application."""
+    static_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "static"))
+
     app = Flask(
         __name__,
         static_url_path="/static",
-        static_folder="static",
+        static_folder=static_path,
         template_folder=os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "templates")
         ),

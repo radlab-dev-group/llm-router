@@ -92,12 +92,21 @@ def export_config_to_file(config_id: int):
 
 def _ensure_provider_order_column():
     """
-    SQLite does not support automatic migrations.  When the code first runs
+    SQLite does not support automatic migrations. When the code first runs
     against an existing DB the ``order`` column may be missing – this adds it
     if required.
     """
     engine = db.get_engine()
-    current_columns = [c["name"] for c in inspect(engine).get_columns("provider")]
+    inspector = inspect(engine)
+
+    # ----------------------------------------------------------------------
+    # If the ``provider`` table does not exist yet (first start‑up), simply
+    # return – ``db.create_all()`` will create the whole schema later.
+    # ----------------------------------------------------------------------
+    if not inspector.has_table("provider"):
+        return
+
+    current_columns = [c["name"] for c in inspector.get_columns("provider")]
     if "order" not in current_columns:
         with engine.connect() as conn:
             conn.execute(
@@ -105,5 +114,6 @@ def _ensure_provider_order_column():
                     'ALTER TABLE provider ADD COLUMN "order" INTEGER NOT NULL DEFAULT 0'
                 )
             )
+        # Refresh SQLAlchemy's metadata so the new column is recognised.
         db.metadata.clear()
         db.metadata.reflect(bind=engine)

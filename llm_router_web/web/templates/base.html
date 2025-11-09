@@ -1,12 +1,11 @@
 <!DOCTYPE html>
 <html lang="pl" x-data>
-
 <head>
     <meta charset="UTF-8"/>
     <title>{{ title or "LLM-router Model Configurator" }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <!-- give the link an id so we can switch its href with JavaScript -->
-    <link id="theme-link" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link id="theme-link" rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
@@ -14,7 +13,7 @@
 <header class="topbar">
     <h1 class="logo"><a href="{{ url_for('index') }}">LLM-router Model Configurator</a></h1>
     <nav class="menu">
-        <!-- existing navigation links -->
+        <!-- istniejące linki -->
         <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
            href="{{ url_for('new_config') }}">New config (from scratch)</a>
         <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
@@ -22,10 +21,22 @@
         <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
            href="{{ url_for('list_configs') }}">All defined configs</a>
 
-        <!-- NEW: theme toggle button (icon changes automatically) -->
+        <!-- przycisk przełącznika motywu -->
         <button id="theme-toggle" class="btn btn-small" title="Toggle dark/light mode">
             🌙
         </button>
+
+        {# ---- wylogowanie (widoczne po zalogowaniu) ---- #}
+        {% if session.get('user_id') %}
+        <a id="logout-btn" class="btn btn-small"
+           href="{{ url_for('logout') }}" title="Wyloguj">🚪</a>
+        {% endif %}
+
+        {# ---- przycisk „Dodaj użytkownika” – tylko dla admina ---- #}
+        {% if session.get('role') == 'admin' %}
+        <a id="add-user-btn" class="btn btn-small"
+           href="{{ url_for('admin_users') }}" title="Dodaj użytkownika">➕ Użytkownik</a>
+        {% endif %}
     </nav>
 </header>
 
@@ -42,6 +53,7 @@
 <main class="container">
     {% block content %}{% endblock %}
 </main>
+
 <script>
     (function () {
         const themeLink = document.getElementById('theme-link');
@@ -73,11 +85,12 @@
         });
 
         // React to system‑level changes (optional)
-        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-            if (!localStorage.getItem('theme')) {
-                setTheme(e.matches ? 'dark' : 'light');
-            }
-        });
+        window.matchMedia('(prefers-color-scheme: dark)')
+            .addEventListener('change', e => {
+                if (!localStorage.getItem('theme')) {
+                    setTheme(e.matches ? 'dark' : 'light');
+                }
+            });
     })();
 </script>
 </body>
