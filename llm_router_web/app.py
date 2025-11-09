@@ -1,3 +1,4 @@
+import os
 import io
 import json
 import requests
@@ -11,16 +12,51 @@ from flask import (
     jsonify,
     send_file,
     flash,
+    abort,
 )
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func, inspect, text
 from datetime import datetime
 
 app = Flask(__name__, static_url_path="/static", static_folder="static")
-app.config["SECRET_KEY"] = "change-me-local"
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///configs.db"
+# Use environment variables with sensible defaults
+app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "change-me-local")
+app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
+    "DATABASE_URL", "sqlite:///configs.db"
+)
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
+# Optional: enforce HTTPS in production
+if os.getenv("FLASK_ENV") == "production":
+    app.config["PREFERRED_URL_SCHEME"] = "https"
 db = SQLAlchemy(app)
+
+VALID_FAMILIES = {"google_models", "openai_models", "qwen_models"}
+
+
+# ---- Obsługa błędów ----
+@app.errorhandler(400)
+def handle_400(error):
+    """Return JSON for Bad Request."""
+    response = jsonify({"error": error.description or "Bad request"})
+    response.status_code = 400
+    return response
+
+
+@app.errorhandler(404)
+def handle_404(error):
+    """Return JSON for Not Found."""
+    response = jsonify({"error": "Resource not found"})
+    response.status_code = 404
+    return response
+
+
+@app.errorhandler(500)
+def handle_500(error):
+    """Return JSON for Internal Server Error."""
+    response = jsonify({"error": "Internal server error"})
+    response.status_code = 500
+    return response
 
 
 class Config(db.Model):
@@ -154,7 +190,7 @@ def snapshot_version(config_id: int, note: str = ""):
 
 
 @app.route("/")
-def index():
+def index() -> str:
     configs = Config.query.order_by(Config.updated_at.desc()).all()
     return render_template("index.html", configs=configs)
 
@@ -164,11 +200,9 @@ def new_config():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         if not name:
-            flash("Nazwa jest wymagana.", "error")
-            return redirect(url_for("new_config"))
+            abort(400, description="Nazwa jest wymagana.")
         if Config.query.filter_by(name=name).first():
-            flash("Konfig o takiej nazwie już istnieje.", "error")
-            return redirect(url_for("new_config"))
+            abort(400, description="Konfig o takiej nazwie już istnieje.")
         cfg = Config(name=name)
         db.session.add(cfg)
         db.session.commit()
@@ -304,17 +338,17 @@ def edit_config(config_id):
     return render_template("edit.html", cfg=cfg, families=families, actives=actives)
 
 
-@app.post("/configs/<int:config_id>/models/add")
-def add_model(config_id):
+@app.route("/configs/<int:config_id>/models/add", methods=["POST"])
+def add_model(config_id: int):
     fam = request.form.get("family")
     name = request.form.get("name", "").strip()
-    if fam not in {"google_models", "openai_models", "qwen_models"} or not name:
-        return jsonify({"ok": False, "error": "Błędne dane"}), 400
+    if fam not in VALID_FAMILIES or not name:
+        abort(400, description="Błędne dane")
     exists = Model.query.filter_by(
         config_id=config_id, family=fam, name=name
     ).first()
     if exists:
-        return jsonify({"ok": False, "error": "Model już istnieje"}), 400
+        abort(400, description="Model już istnieje")
     m = Model(config_id=config_id, family=fam, name=name)
     db.session.add(m)
     db.session.commit()
@@ -332,10 +366,10 @@ def delete_model(model_id):
     return jsonify({"ok": True})
 
 
-@app.post("/models/<int:model_id>/providers/add")
-def add_provider(model_id):
+@app.route("/models/<int:model_id>/providers/add", methods=["POST"])
+def add_provider(model_id: int):
     m = Model.query.get_or_404(model_id)
-    payload = request.json or {}
+    payload = request.get_json(silent=True) or {}
     max_order = (
         db.session.query(func.max(Provider.order)).filter_by(model_id=m.id).scalar()
         or 0
@@ -353,7 +387,7 @@ def add_provider(model_id):
         order=max_order + 1,
     )
     if p.api_type not in {"vllm", "openai", "ollama"}:
-        return jsonify({"ok": False, "error": "Nieobsługiwany api_type"}), 400
+        abort(400, description="Nieobsługiwany api_type")
     db.session.add(p)
     db.session.commit()
     snapshot_version(m.config_id, note=f"Dodano providera do {m.name}")
@@ -525,6 +559,7 @@ def _ensure_provider_order_column():
 
 if __name__ == "__main__":
     with app.app_context():
-        db.create_all()
+        # Ensure the ``order`` column exists before creating tables
         _ensure_provider_order_column()
+        db.create_all()
     app.run(host="0.0.0.0", port=8081, debug=True)
