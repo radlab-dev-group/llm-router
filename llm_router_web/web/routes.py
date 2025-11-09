@@ -213,13 +213,30 @@ def edit_user(user_id):
         return redirect(url_for("admin_users"))
 
     user = User.query.get_or_404(user_id)
+
+    # ----- password change -----
+    new_password = request.form.get("new_password")
+    if new_password:
+        # securely update the stored password hash
+        user.password_hash = generate_password_hash(new_password)
+        flash(f"Password for {user.username} updated.", "success")
+
+    # ----- role change -----
     role = request.form.get("role")
-    if role not in {"admin", "user"}:
-        flash("Invalid role.", "error")
-    else:
-        user.role = role
+    if role:
+        if role not in {"admin", "user"}:
+            flash(f"Invalid role {role}", "error")
+            # if role is invalid and no password change, stop processing
+            if not new_password:
+                return redirect(url_for("admin_users"))
+        else:
+            user.role = role
+            flash(f"Role for {user.username} updated to {role}.", "success")
+
+    # Commit changes if either password or role was modified
+    if new_password or role:
         db.session.commit()
-        flash(f"Role for {user.username} updated to {role}.", "success")
+
     return redirect(url_for("admin_users"))
 
 
