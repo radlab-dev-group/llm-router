@@ -178,21 +178,24 @@ textarea {
     border-collapse: collapse;
     background: var(--card);
     border: 1px solid #21262d;
-    table-layout: auto
+    table-layout: auto;
 }
+
 
 .table th, .table td {
     border-top: 1px solid #21262d;
     padding: 8px;
     vertical-align: middle;
-    white-space: nowrap
+    white-space: nowrap;
 }
 
-.table.compact th, .table.compact td {
-    padding: 6px
+.table {
+    border: 1px solid #30363d;
+}
+.table th, .table td {
+    border-top: 1px solid #30363d;
 }
 
-/* Minimalne szerokości kolumn — wymuszają poziomy scroll */
 .col-id {
     min-width: 220px
 }
