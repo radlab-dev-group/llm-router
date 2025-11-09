@@ -154,19 +154,20 @@
 
             <details>
                 <summary>Add model provider</summary>
-                <form class="form-inline" onsubmit="return addProvider{{ m.id }}(event)">
-                    <input type="text" placeholder="id" id="pid-{{ m.id }}" required>
-                    <input type="url" placeholder="api_host" id="phost-{{ m.id }}" required>
+                <form class="add-model-form" style="width:100%" onsubmit="return addProvider{{ m.id }}(event)">
+                    <input type="text" placeholder="Provider ID" id="pid-{{ m.id }}" required>
+                    <input type="url" placeholder="API host (e.g. https://api.example.com)" id="phost-{{ m.id }}"
+                           required>
                     <select id="ptype-{{ m.id }}">
-                        <option>vllm</option>
-                        <option>openai</option>
-                        <option>ollama</option>
+                        <option value="vllm">vllm</option>
+                        <option value="openai">openai</option>
+                        <option value="ollama">ollama</option>
                     </select>
-                    <input type="number" placeholder="input_size" id="psize-{{ m.id }}" value="4096" min="1">
-                    <input type="text" placeholder="model_path" id="ppath-{{ m.id }}">
-                    <input type="number" step="0.01" min="0" max="1" placeholder="weight"
-                           id="pweight-{{ m.id }}" value="1.0">
-                    <input type="text" placeholder="api_token" id="ptoken-{{ m.id }}">
+                    <input type="number" placeholder="Input size" id="psize-{{ m.id }}" value="4096" min="1">
+                    <input type="text" placeholder="Model path (optional)" id="ppath-{{ m.id }}">
+                    <input type="number" step="0.01" min="0" max="1" placeholder="Weight (0‑1)" id="pweight-{{ m.id }}"
+                           value="1.0">
+                    <input type="text" placeholder="API token (optional)" id="ptoken-{{ m.id }}">
                     <label class="chk"><input type="checkbox" id="penabled-{{ m.id }}" checked> enabled</label>
                     <button class="btn btn-small" type="submit">Add</button>
                 </form>
