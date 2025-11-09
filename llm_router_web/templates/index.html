@@ -6,23 +6,39 @@
     <a class="btn" href="{{ url_for('import_config') }}">Load existing config</a>
     <a class="btn" href="{{ url_for('list_configs') }}">Show defined configs</a>
 </div>
-<ul class="card-list">
+
+<table class="table">
+    <thead>
+    <tr>
+        <th>Config name</th>
+        <th>Preview</th>
+        <th>Edit</th>
+        <th>Export</th>
+        <th>Set as default</th>
+        <th>Is default</th>
+    </tr>
+    </thead>
+    <tbody>
     {% for c in configs %}
-    <li class="card">
-        <div class="card-title">
-            <strong>{{ c.name }}</strong>
-            {% if c.is_active %}<span class="badge">DEFAULT</span>{% endif %}
-        </div>
-        <div class="card-actions">
-            <a class="btn" href="{{ url_for('view_config', config_id=c.id) }}">Preview</a>
-            <a class="btn" href="{{ url_for('edit_config', config_id=c.id) }}">Edit</a>
-            <a class="btn" href="{{ url_for('export_config', config_id=c.id) }}">Export JSON</a>
-            <button class="btn" hx-post="{{ url_for('set_active_config', config_id=c.id) }}" hx-swap="none">Set as default
+    <tr>
+        <td>{{ c.name }}</td>
+        <td><a class="btn btn-small" href="{{ url_for('view_config', config_id=c.id) }}">Preview</a></td>
+        <td><a class="btn btn-small" href="{{ url_for('edit_config', config_id=c.id) }}">Edit</a></td>
+        <td><a class="btn btn-small" href="{{ url_for('export_config', config_id=c.id) }}">Export</a></td>
+        <td>
+            <button class="btn btn-small" hx-post="{{ url_for('set_active_config', config_id=c.id) }}" hx-swap="none">
+                Set as default
             </button>
-        </div>
-    </li>
+        </td>
+        <td class="nowrap">
+            {% if c.is_active %}<span class="badge">DEFAULT</span>{% else %}-{% endif %}
+        </td>
+    </tr>
     {% else %}
-    <li>No configuration found.</li>
+    <tr>
+        <td colspan="6">No configuration found.</td>
+    </tr>
     {% endfor %}
-</ul>
+    </tbody>
+</table>
 {% endblock %}
