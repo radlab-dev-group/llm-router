@@ -496,6 +496,15 @@ summary.clickable:hover {
     opacity: 0.8;
 }
 
+/* Light green background for inline code blocks */
+code {
+    /* use a translucent version of the “ok” colour */
+    background: rgba(40, 167, 69, 0.1);
+    color: #f6f8fa;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
 [id^="ptype-"],
 [id^="psize-"],
 [id^="pweight-"] {
