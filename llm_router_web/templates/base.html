@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="pl" x-data>
+
 <head>
     <meta charset="UTF-8"/>
     <title>{{ title or "LLM-router Model Configurator" }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- give the link an id so we can switch its href with JavaScript -->
+    <link id="theme-link" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
@@ -12,13 +14,18 @@
 <header class="topbar">
     <h1 class="logo"><a href="{{ url_for('index') }}">LLM-router Model Configurator</a></h1>
     <nav class="menu">
-        <!-- “active” class is added when the current endpoint matches the link -->
+        <!-- existing navigation links -->
         <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
            href="{{ url_for('new_config') }}">New config (from scratch)</a>
         <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
            href="{{ url_for('import_config') }}">Load existing config</a>
         <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
            href="{{ url_for('list_configs') }}">All defined configs</a>
+
+        <!-- NEW: theme toggle button (icon changes automatically) -->
+        <button id="theme-toggle" class="btn btn-small" title="Toggle dark/light mode">
+            🌙
+        </button>
     </nav>
 </header>
 
@@ -35,5 +42,43 @@
 <main class="container">
     {% block content %}{% endblock %}
 </main>
+<script>
+    (function () {
+        const themeLink = document.getElementById('theme-link');
+        const toggleBtn = document.getElementById('theme-toggle');
+
+        // Determine initial theme: saved preference > system preference > default (dark)
+        const savedTheme = localStorage.getItem('theme');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        let currentTheme = savedTheme || (prefersDark ? 'dark' : 'light');
+
+        const setTheme = (theme) => {
+            if (theme === 'dark') {
+                themeLink.href = "{{ url_for('static', filename='style.css') }}";
+                toggleBtn.textContent = '🌙';
+            } else {
+                themeLink.href = "{{ url_for('static', filename='style-light.css') }}";
+                toggleBtn.textContent = '☀️';
+            }
+            localStorage.setItem('theme', theme);
+            currentTheme = theme;
+        };
+
+        // Apply the initial theme
+        setTheme(currentTheme);
+
+        // Toggle on button click
+        toggleBtn.addEventListener('click', () => {
+            setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+        });
+
+        // React to system‑level changes (optional)
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+            if (!localStorage.getItem('theme')) {
+                setTheme(e.matches ? 'dark' : 'light');
+            }
+        });
+    })();
+</script>
 </body>
 </html>
