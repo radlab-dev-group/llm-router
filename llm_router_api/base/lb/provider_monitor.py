@@ -194,6 +194,12 @@ class RedisProviderMonitor:
         if not provider_id or not host:
             return
 
+        ep_to_call = "/"
+        api_type = provider["api_type"]
+        if api_type in ["vllm"]:
+            ep_to_call = "/health"
+
+        host = host.rstrip("/") + ep_to_call
         try:
             resp = requests.get(host, timeout=1)
             status = "true" if resp.status_code < 500 else "false"
