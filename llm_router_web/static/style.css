@@ -425,3 +425,15 @@ hr.model-divider {
 .form label input {
     margin-top: 12px;
 }
+
+/* Make summary elements with the .clickable class stand out as interactive */
+summary.clickable {
+    color: var(--accent);
+    font-weight: 600;
+    /* optional hover effect */
+    transition: opacity 0.2s;
+}
+
+summary.clickable:hover {
+    opacity: 0.8;
+}
