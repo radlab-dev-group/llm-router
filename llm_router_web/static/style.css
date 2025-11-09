@@ -126,7 +126,33 @@ input, select, textarea {
     border-radius: 6px;
     border: 1px solid #30363d;
     background: #0b0f14;
-    color: var(--fg)
+    color: var(--fg);
+}
+
+
+/* Reduce width of fields that only need short text/numeric values */
+.col-api input,
+.col-api select {
+    max-width: 80px; /* API type (select) */
+}
+
+.col-input input {
+    max-width: 80px; /* Context size (numeric) */
+}
+
+.col-weight input {
+    max-width: 80px; /* Weight (numeric) */
+}
+
+/* Keep other inputs full‑width */
+.col-id input,
+.col-host input,
+.col-path input,
+.col-token input,
+.col-token textarea,
+.col-enabled input,
+.col-actions input {
+    width: 100%;
 }
 
 textarea {
