@@ -1,5 +1,7 @@
-from typing import List, Dict, Any, Optional
+import logging
+
 from abc import ABC, abstractmethod
+from typing import List, Dict, Any, Optional
 
 from llm_router_api.base.model_config import ApiModelConfig
 
@@ -15,10 +17,13 @@ class ChooseProviderStrategyI(ABC):
     and the list of available providers.
     """
 
-    def __init__(self, models_config_path: str) -> None:
+    def __init__(
+        self, models_config_path: str, logger: Optional[logging.Logger]
+    ) -> None:
         self._api_model_config = ApiModelConfig(
             models_config_path=models_config_path
         )
+        self.logger = logger
 
     def _provider_key(self, provider_cfg: Dict) -> str:
         """

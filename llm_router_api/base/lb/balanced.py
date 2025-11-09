@@ -1,13 +1,17 @@
-from typing import List, Dict, Optional, Any
+import logging
+
 from collections import defaultdict
+from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
 
 
 class LoadBalancedStrategy(ChooseProviderStrategyI):
 
-    def __init__(self, models_config_path: str) -> None:
-        super().__init__(models_config_path)
+    def __init__(
+        self, models_config_path: str, logger: Optional[logging.Logger]
+    ) -> None:
+        super().__init__(models_config_path=models_config_path, logger=logger)
 
         self._usage_counters: Dict[str, Dict[str, int]] = defaultdict(
             lambda: defaultdict(int)

@@ -718,28 +718,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     ep_pref = DEFAULT_API_PREFIX.strip()
                 ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
 
-                # if bool((params or {}).get("stream", False)):
-                #     clear_chosen_provider_finally = False
-                #     return self._http_executor.stream_response(
-                #         ep_url=ep_url,
-                #         params=params,
-                #         options=options,
-                #         is_ollama=False,
-                #         is_generic_to_ollama=False,
-                #         api_model_provider=api_model_provider,
-                #     )
-
-                response = self._http_executor.call_http_request(
-                    ep_url=ep_url,
-                    params=params,
-                    prompt_str=prompt_str,
-                    api_model_provider=api_model_provider,
-                    call_for_each_user_msg=self._call_for_each_user_msg,
-                )
-
                 return self._return_response_or_rerun(
                     api_model_provider=api_model_provider,
-                    response=response,
+                    ep_url=ep_url,
+                    prompt_str=prompt_str,
                     orig_params=orig_params,
                     params=params,
                     options=options,
@@ -789,17 +771,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     api_model_provider=api_model_provider,
                 )
 
-            response = self._http_executor.call_http_request(
-                ep_url=ep_url,
-                params=params,
-                prompt_str=prompt_str,
-                api_model_provider=api_model_provider,
-                call_for_each_user_msg=self._call_for_each_user_msg,
-            )
-
             return self._return_response_or_rerun(
                 api_model_provider=api_model_provider,
-                response=response,
+                ep_url=ep_url,
+                prompt_str=prompt_str,
                 orig_params=orig_params,
                 params=params,
                 options=options,
@@ -820,19 +795,40 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     def _return_response_or_rerun(
         self,
         api_model_provider,
-        response,
+        ep_url: str,
+        prompt_str: str,
         orig_params: Dict,
         params: Dict,
         options: Dict,
         reconnect_number: int,
     ):
+        response = None
+        status_code_force = None
+        try:
+            response = self._http_executor.call_http_request(
+                ep_url=ep_url,
+                params=params,
+                prompt_str=prompt_str,
+                api_model_provider=api_model_provider,
+                call_for_each_user_msg=self._call_for_each_user_msg,
+            )
+        except Exception as e:
+            status_code_force = 500
+
         self.unset_model(
             api_model_provider=api_model_provider, params=params, options=options
         )
 
-        status_code = None
-        if type(response) not in [dict]:
+        status_code = None or status_code_force
+        if response and type(response) not in [dict]:
             status_code = response.status_code
+        elif not response:
+            status_code = 500
+        #
+        # print("====" * 20)
+        # print(response)
+        # print("status_code=", status_code)
+        # print("====" * 20)
 
         if status_code and status_code in self.RetryResponse.RETRY_WHEN_STATUS:
             self.logger.warning(
@@ -846,6 +842,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 if not options:
                     options = {}
                 options["random_choice"] = True
+
                 return self.run_ep(
                     params=orig_params,
                     reconnect_number=reconnect_number + 1,
