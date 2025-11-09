@@ -158,8 +158,8 @@ textarea {
     background: var(--card);
     padding: 12px;
     border-radius: 8px;
-    border: 1px solid #21262d;
-    min-width: 0
+    border: 1px solid var(--muted);
+    min-width: 0;
 }
 
 .panel-header {
