@@ -300,13 +300,22 @@
             return;
         }
 
+        // make config id available in the JS template strings
+        const configId = {{ cfg.id }};
+
         // 2️⃣ Build the table markup
         const rows = data.map(v => `
             <tr>
                 <td>v${v.version}</td>
                 <td>${new Date(v.created_at).toLocaleString()}</td>
                 <td>${v.note || ''}</td>
-                <td></td>
+                <td>
+                    <button class="btn btn-small"
+                            hx-post="/configs/${configId}/versions/${v.version}/restore"
+                            hx-trigger="click"
+                            hx-swap="none"
+                            hx-on="htmx:afterRequest: location.reload()">Restore</button>
+                </td>
             </tr>`).join('');
 
         e.detail.target.innerHTML = `
@@ -319,6 +328,11 @@
                 </tr>
             </thead>
             <tbody>${rows}</tbody>`;
+
+        // Ensure newly added HTMX attributes (hx-post, hx-trigger, etc.) are processed
+        if (typeof htmx !== 'undefined') {
+            htmx.process(e.detail.target);
+        }
 
         // 3️⃣ Hide all rows except the first (newest)
         const tbody = e.detail.target.querySelector('tbody');
