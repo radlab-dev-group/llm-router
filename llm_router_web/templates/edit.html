@@ -72,26 +72,29 @@
                         <th class="col-actions">Actions</th>
                     </tr>
                     </thead>
-                    <tbody>
-                    {% for p in m.providers %}
-                    <tr x-data="{ masked: true }">
+                    <!-- tbody is marked with data-model-id for the drag‑and‑drop script -->
+                    <tbody data-model-id="{{ m.id }}">
+                    {% for p in m.providers|sort(attribute='order') %}
+                    <tr x-data="{ masked: true }"
+                        data-provider-id="{{ p.id }}"
+                        draggable="true">
                         <td class="col-id">
                             <input value="{{ p.provider_id }}"
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                         {method:'POST',headers:{'Content-Type':'application/json'},
-                          body:JSON.stringify({provider_id:$event.target.value})})">
+                                 {method:'POST',headers:{'Content-Type':'application/json'},
+                                  body:JSON.stringify({provider_id:$event.target.value})})">
                         </td>
                         <td class="col-host">
                             <input value="{{ p.api_host }}"
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                         {method:'POST',headers:{'Content-Type':'application/json'},
-                          body:JSON.stringify({api_host:$event.target.value})})">
+                                 {method:'POST',headers:{'Content-Type':'application/json'},
+                                  body:JSON.stringify({api_host:$event.target.value})})">
                         </td>
                         <td class="col-api">
                             <select
                                     @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                        {method:'POST',headers:{'Content-Type':'application/json'},
-                         body:JSON.stringify({api_type:$event.target.value})})">
+                            {method:'POST',headers:{'Content-Type':'application/json'},
+                             body:JSON.stringify({api_type:$event.target.value})})">
                                 {% for t in ['vllm','openai','ollama'] %}
                                 <option value="{{ t }}" {% if p.api_type== t %}selected{% endif %}>{{ t }}</option>
                                 {% endfor %}
@@ -100,27 +103,27 @@
                         <td class="col-input">
                             <input type="number" min="1" value="{{ p.input_size }}"
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                         {method:'POST',headers:{'Content-Type':'application/json'},
-                          body:JSON.stringify({input_size:parseInt($event.target.value)})})">
+                             {method:'POST',headers:{'Content-Type':'application/json'},
+                              body:JSON.stringify({input_size:parseInt($event.target.value)})})">
                         </td>
                         <td class="col-path">
                             <input value="{{ p.model_path or '' }}"
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                         {method:'POST',headers:{'Content-Type':'application/json'},
-                          body:JSON.stringify({model_path:$event.target.value})})">
+                             {method:'POST',headers:{'Content-Type':'application/json'},
+                              body:JSON.stringify({model_path:$event.target.value})})">
                         </td>
                         <td class="col-weight">
                             <input type="number" step="0.01" min="0" max="1" value="{{ '%.2f'|format(p.weight) }}"
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                         {method:'POST',headers:{'Content-Type':'application/json'},
-                          body:JSON.stringify({weight:parseFloat($event.target.value)})})">
+                             {method:'POST',headers:{'Content-Type':'application/json'},
+                              body:JSON.stringify({weight:parseFloat($event.target.value)})})">
                         </td>
                         <td class="col-token">
                             <div class="token-field">
                                 <input :type="masked ? 'password' : 'text'" value="{{ p.api_token }}"
                                        @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                               {method:'POST',headers:{'Content-Type':'application/json'},
-                                body:JSON.stringify({api_token:$event.target.value})})">
+                                 {method:'POST',headers:{'Content-Type':'application/json'},
+                                  body:JSON.stringify({api_token:$event.target.value})})">
                                 <button class="btn btn-small" type="button"
                                         @click="masked = !masked"
                                         x-text="masked ? 'Show' : 'Hide'">
@@ -130,8 +133,8 @@
                         <td class="col-enabled">
                             <input type="checkbox" {% if p.enabled %}checked{% endif %}
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                         {method:'POST',headers:{'Content-Type':'application/json'},
-                          body:JSON.stringify({enabled:$event.target.checked})})">
+                             {method:'POST',headers:{'Content-Type':'application/json'},
+                              body:JSON.stringify({enabled:$event.target.checked})})">
                         </td>
                         <td class="col-actions nowrap">
                             <button class="btn btn-small danger"
@@ -196,9 +199,9 @@
                       if(res.ok){ location.reload(); } else { alert("Error while adding provider"); }
                     }
 
-                    // -------------------------------------------------
+                    // ---------------------------------
                     // Check host availability via server‑side proxy.
-                    // -------------------------------------------------
+                    // ---------------------------------
                     async function checkHost{{ m.id }}(){
                         const host = document.getElementById('phost-{{ m.id }}').value;
                         const statusEl = document.getElementById('host-status-{{ m.id }}');
@@ -228,7 +231,7 @@
                                     statusEl.textContent = `${code}`;
                                     statusEl.style.color = 'var(--ok)';
                                 } else if (code === 404) {
-                                    statusEl.textContent = '${code}';
+                                    statusEl.textContent = `${code}`;
                                     statusEl.style.color = 'var(--danger)';
                                 } else if (code >= 200 && code < 400) {
                                     statusEl.textContent = `OK!`;
@@ -341,7 +344,6 @@
         const btn = document.getElementById('toggle-history');
 
         if (trList.length <= 1) {
-            // only one entry – no need for a toggle button
             btn.style.display = 'none';
             return;
         }
@@ -363,6 +365,62 @@
             }
             btn.textContent = showAll ? 'Hide history' : 'Show full history';
         };
+    });
+
+    // -------------------------------------------------
+    // Drag‑and‑drop handling for providers
+    // -------------------------------------------------
+    document.addEventListener('DOMContentLoaded', function () {
+        function enableDnD(tbody) {
+            let dragSrc = null;
+
+            tbody.addEventListener('dragstart', function (e) {
+                const tr = e.target.closest('tr[data-provider-id]');
+                if (!tr) return;
+                dragSrc = tr;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', tr.dataset.providerId);
+            });
+
+            tbody.addEventListener('dragover', function (e) {
+                e.preventDefault();                 // allow drop
+                e.dataTransfer.dropEffect = 'move';
+            });
+
+            tbody.addEventListener('drop', function (e) {
+                e.preventDefault();
+                const targetTr = e.target.closest('tr[data-provider-id]');
+                if (!targetTr || targetTr === dragSrc) return;
+
+                // Insert dragged row before or after target row
+                if (dragSrc.rowIndex < targetTr.rowIndex) {
+                    targetTr.after(dragSrc);
+                } else {
+                    targetTr.before(dragSrc);
+                }
+
+                // Build new order array
+                const rows = Array.from(tbody.querySelectorAll('tr[data-provider-id]'));
+                const newOrder = rows.map(r => parseInt(r.dataset.providerId));
+
+                // Send to backend
+                const modelId = tbody.dataset.modelId;
+                fetch(`/models/${modelId}/providers/reorder`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ order: newOrder })
+                })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.ok) {
+                            alert('Failed to save new order');
+                        }
+                    })
+                    .catch(() => alert('Network error while reordering'));
+            });
+        }
+
+        document.querySelectorAll('tbody[data-model-id]').forEach(enableDnD);
     });
 </script>
 
