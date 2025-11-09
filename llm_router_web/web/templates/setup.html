@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+    <h2>Utwórz pierwszego administratora</h2>
+
+    {# wyświetlanie komunikatów flash #}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flash-container">
+        {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    <form method="post" class="form">
+        <label>Login (admin)
+            <input type="text" name="username" required>
+        </label>
+        <label>Hasło
+            <input type="password" name="password" required>
+        </label>
+
+        <div class="form-actions">
+            <button class="btn" type="submit">Utwórz</button>
+            <a class="btn btn-secondary" href="{{ url_for('login') }}">Powrót do logowania</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+    <h2>Panel administratora – zarządzanie użytkownikami</h2>
+
+    <h3>Dodaj nowego użytkownika</h3>
+    <form method="post" class="form">
+        <label>Login
+            <input type="text" name="username" required>
+        </label>
+        <label>Hasło
+            <input type="password" name="password" required>
+        </label>
+        <label>Rola
+            <select name="role">
+                <option value="user">Użytkownik</option>
+                <option value="admin">Administrator</option>
+            </select>
+        </label>
+        <div class="form-actions">
+            <button class="btn" type="submit">Dodaj</button>
+        </div>
+    </form>
+
+    <h3>Istniejący użytkownicy</h3>
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Login</th>
+            <th>Rola</th>
+            <th>Data założenia</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.username }}</td>
+            <td>{{ u.role }}</td>
+            <td>{{ u.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">Brak użytkowników.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

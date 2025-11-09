@@ -1,6 +1,7 @@
 import json
 import os
 from datetime import datetime
+from functools import wraps
 
 import requests
 from flask import (
@@ -12,8 +13,12 @@ from flask import (
     jsonify,
     flash,
     abort,
+    session,
 )
-from .models import db, Config, ConfigVersion, Model, Provider, ActiveModel
+
+from werkzeug.security import generate_password_hash, check_password_hash
+
+from .models import db, Config, ConfigVersion, Model, Provider, ActiveModel, User
 from .utils import (
     to_json,
     snapshot_version,
@@ -28,6 +33,156 @@ bp = Blueprint(
         os.path.join(os.path.dirname(__file__), "..", "web/templates")
     ),
 )
+
+
+# ----------------------------------------------------------------------
+# Helper decorators
+# ----------------------------------------------------------------------
+def login_required(view):
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+
+    return wrapped_view
+
+
+def admin_required(view):
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if session.get("role") != "admin":
+            abort(403)
+        return view(*args, **kwargs)
+
+    return wrapped_view
+
+
+# ----------------------------------------------------------------------
+# First‑run setup – force creation of an initial admin user
+# ----------------------------------------------------------------------
+@bp.before_app_request
+def ensure_initial_user():
+    """
+    * If the DB contains no users → force the one‑time setup page.
+    * Otherwise require a logged‑in user for every view **except**
+      - login
+      - setup
+      - static assets
+    """
+    # ----------------------------------------------------------------------
+    # 0️⃣  Skip static files (they have no endpoint or endpoint == "static")
+    # ----------------------------------------------------------------------
+    if request.path.startswith("/static/") or request.endpoint is None:
+        return  # let Flask serve the file unchanged
+
+    # ----------------------------------------------------------------------
+    # 1️⃣  Normalise endpoint name (remove blueprint prefix)
+    # ----------------------------------------------------------------------
+    endpoint = request.endpoint or ""
+    short_endpoint = endpoint.split(".")[-1]  # "web.login" → "login"
+
+    # ----------------------------------------------------------------------
+    # 2️⃣  No users at all → redirect to the *one‑time* setup page
+    # ----------------------------------------------------------------------
+    if User.query.count() == 0 and short_endpoint != "setup":
+        return redirect(url_for("setup"))
+
+    # ----------------------------------------------------------------------
+    # 3️⃣  Normal operation – allow only a few public endpoints
+    # ----------------------------------------------------------------------
+    allowed = {"login", "setup", "static"}
+    if short_endpoint not in allowed and "user_id" not in session:
+        return redirect(url_for("login"))
+
+
+# ----------------------------------------------------------------------
+# Authentication routes
+# ----------------------------------------------------------------------
+@bp.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password_hash, password):
+            session["user_id"] = user.id
+            session["role"] = user.role
+            flash("Logged in successfully.", "success")
+            return redirect(url_for("index"))
+        flash("Invalid credentials.", "error")
+        return redirect(url_for("login"))
+    return render_template("login.html")
+
+
+@bp.route("/logout")
+@login_required
+def logout():
+    session.clear()
+    flash("You have been logged out.", "success")
+    return redirect(url_for("login"))
+
+
+# ----------------------------------------------------------------------
+# First‑run admin creation (setup)
+# ----------------------------------------------------------------------
+@bp.route("/setup", methods=["GET", "POST"])
+def setup():
+    # This view is reachable only when there are no users in the DB.
+    if User.query.count() > 0:
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        if not username or not password:
+            flash("Both fields are required.", "error")
+            return redirect(url_for("setup"))
+
+        if User.query.filter_by(username=username).first():
+            flash("User already exists.", "error")
+            return redirect(url_for("setup"))
+
+        admin_user = User(
+            username=username,
+            password_hash=generate_password_hash(password),
+            role="admin",
+        )
+        db.session.add(admin_user)
+        db.session.commit()
+        flash("Initial admin user created – you can now log in.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("setup.html")
+
+
+# ----------------------------------------------------------------------
+# Admin panel – user management
+# ----------------------------------------------------------------------
+@bp.route("/admin/users", methods=["GET", "POST"])
+@admin_required
+def admin_users():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        role = request.form.get("role", "user")
+        if not username or not password:
+            flash("Username and password are required.", "error")
+        elif User.query.filter_by(username=username).first():
+            flash("User already exists.", "error")
+        else:
+            new_user = User(
+                username=username,
+                password_hash=generate_password_hash(password),
+                role=role,
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            flash(f"User {username} added.", "success")
+        return redirect(url_for("admin_users"))
+
+    users = User.query.order_by(User.username).all()
+    return render_template("admin_users.html", users=users)
 
 
 # ----------------------------------------------------------------------
