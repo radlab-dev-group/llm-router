@@ -406,3 +406,8 @@ summary button {
 .menu a {
     /* margin-left: 12px */
 }
+
+/* Added spacing between label text and its input field */
+.form label input {
+    margin-top: 12px;
+}
