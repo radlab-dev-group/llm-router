@@ -34,7 +34,9 @@
     <section class="panel">
         <div class="panel-header">
             <h4>{{ fam }}</h4>
-            <form hx-post="{{ url_for('add_model', config_id=cfg.id) }}" hx-trigger="submit" hx-swap="none"
+            <form hx-post="{{ url_for('add_model', config_id=cfg.id) }}" hx-trigger="submit"
+                  hx-swap="none"
+                  hx-on="htmx:afterRequest: location.reload()"
                   class="add-model-form">
                 <input type="hidden" name="family" value="{{ fam }}">
                 <input type="text" name="name"
