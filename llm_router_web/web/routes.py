@@ -120,6 +120,10 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         user = User.query.filter_by(username=username).first()
+        # ---- added check for blocked accounts ----
+        if user and not user.is_active:
+            flash("Your account has been blocked.", "error")
+            return redirect(url_for("login"))
         if user and check_password_hash(user.password_hash, password):
             session["user_id"] = user.id
             session["role"] = user.role
@@ -198,6 +202,41 @@ def admin_users():
 
     users = User.query.order_by(User.username).all()
     return render_template("admin_users.html", users=users)
+
+
+# ------ Admin: edit user role -------------------------------------------------
+@bp.post("/admin/users/<int:user_id>/edit")
+@admin_required
+def edit_user(user_id):
+    if user_id == session.get("user_id"):
+        flash("You cannot edit your own account.", "error")
+        return redirect(url_for("admin_users"))
+
+    user = User.query.get_or_404(user_id)
+    role = request.form.get("role")
+    if role not in {"admin", "user"}:
+        flash("Invalid role.", "error")
+    else:
+        user.role = role
+        db.session.commit()
+        flash(f"Role for {user.username} updated to {role}.", "success")
+    return redirect(url_for("admin_users"))
+
+
+# ------ Admin: block / unblock user -------------------------------------------
+@bp.post("/admin/users/<int:user_id>/toggle_block")
+@admin_required
+def toggle_block_user(user_id):
+    if user_id == session.get("user_id"):
+        flash("You cannot block/unblock yourself.", "error")
+        return redirect(url_for("admin_users"))
+
+    user = User.query.get_or_404(user_id)
+    user.is_active = not user.is_active
+    db.session.commit()
+    status = "unblocked" if user.is_active else "blocked"
+    flash(f"User {user.username} has been {status}.", "success")
+    return redirect(url_for("admin_users"))
 
 
 # ----------------------------------------------------------------------

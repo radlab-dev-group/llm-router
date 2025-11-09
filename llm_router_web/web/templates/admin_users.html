@@ -21,15 +21,16 @@
         </div>
     </form>
 </div>
-<div class="panel">
 
+<div class="panel">
     <h3>All users</h3>
     <table class="table">
         <thead>
         <tr>
             <th>Login</th>
-            <th>Rola</th>
-            <th>Created at</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Action</th>
         </tr>
         </thead>
         <tbody>
@@ -37,11 +38,32 @@
         <tr>
             <td>{{ u.username }}</td>
             <td>{{ u.role }}</td>
-            <td>{{ u.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td>{{ "Active" if u.is_active else "Blocked" }}</td>
+            <td class="nowrap">
+                <form method="post"
+                      action="{{ url_for('edit_user', user_id=u.id) }}"
+                      style="display:inline;">
+                    <select name="role" style="margin-right:4px;">
+                        <option value="user" {% if u.role == 'user' %}selected{% endif %}>User</option>
+                        <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>Admin</option>
+                    </select>
+                    <button class="btn btn-small" type="submit">Change role</button>
+                </form>
+
+                <!-- Block / Unblock button -->
+                <form method="post"
+                      action="{{ url_for('toggle_block_user', user_id=u.id) }}"
+                      style="display:inline;">
+                    <button class="btn btn-small {% if not u.is_active %}danger{% endif %}"
+                            type="submit">
+                        {{ "Unblock" if not u.is_active else "Block" }}
+                    </button>
+                </form>
+            </td>
         </tr>
         {% else %}
         <tr>
-            <td colspan="3">No users found.</td>
+            <td colspan="4">No users found.</td>
         </tr>
         {% endfor %}
         </tbody>

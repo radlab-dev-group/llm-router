@@ -89,6 +89,11 @@ class User(db.Model):
         nullable=False,
         default="user",  # possible values: "admin", "user"
     )
+    is_active = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,  # active by default
+    )
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     configs = db.relationship(
