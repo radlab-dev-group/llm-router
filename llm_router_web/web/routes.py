@@ -541,12 +541,20 @@ def restore_version(config_id, version):
         for mname, mval in (data.get(fam) or {}).items():
             m = Model(config_id=cfg.id, family=fam, name=mname)
             db.session.add(m)
-            for p in mval.get("providers", []):
+            # ---- recreate providers with correct fields ----
+            for idx, p in enumerate(mval.get("providers", [])):
                 db.session.add(
                     Provider(
                         model=m,
-                        provider_id=p.get(1.0) or 1.0,
-                        enabled=True,
+                        provider_id=p.get("id", ""),
+                        api_host=p.get("api_host", ""),
+                        api_token=p.get("api_token", ""),
+                        api_type=p.get("api_type", ""),
+                        input_size=int(p.get("input_size", 4096) or 4096),
+                        model_path=p.get("model_path", ""),
+                        weight=float(p.get("weight", 1.0) or 1.0),
+                        enabled=bool(p.get("enabled", True)),
+                        order=idx,
                     )
                 )
 

@@ -98,7 +98,24 @@ a.btn {
     padding: 8px 12px;
     border-radius: 6px;
     margin: 6px 0;
-    background: #20262d
+    background: #20262d;
+    color: var(--fg);
+}
+
+/* Colour‑coded variants for flash categories */
+.flash.success {
+    background: var(--ok); /* greenish – success */
+    color: #000; /* dark text for readability */
+}
+
+.flash.error {
+    background: var(--danger); /* red – error */
+    color: #fff;
+}
+
+.flash.info {
+    background: var(--accent); /* blue – informational */
+    color: #fff;
 }
 
 .form {
@@ -467,5 +484,5 @@ summary.clickable:hover {
 [id^="ptype-"],
 [id^="psize-"],
 [id^="pweight-"] {
-    max-width: 80px;          /* same as table columns for API type, context size and weight */
+    max-width: 80px; /* same as table columns for API type, context size and weight */
 }
