@@ -126,10 +126,10 @@ def to_json(config_id: int) -> dict:
 def snapshot_version(config_id: int, note: str = ""):
     payload = to_json(config_id)
     last = (
-            db.session.query(func.max(ConfigVersion.version))
-            .filter_by(config_id=config_id)
-            .scalar()
-            or 0
+        db.session.query(func.max(ConfigVersion.version))
+        .filter_by(config_id=config_id)
+        .scalar()
+        or 0
     )
     v = ConfigVersion(
         config_id=config_id,
@@ -138,6 +138,12 @@ def snapshot_version(config_id: int, note: str = ""):
         json_blob=json.dumps(payload, ensure_ascii=False, indent=2),
     )
     db.session.add(v)
+
+    cfg = Config.query.get(config_id)
+    if cfg:
+        cfg.updated_at = datetime.utcnow()
+        db.session.add(cfg)
+
     db.session.commit()
 
 
