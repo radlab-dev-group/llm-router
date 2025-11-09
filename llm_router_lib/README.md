@@ -178,46 +178,7 @@ malformed responses.
 All exceptions inherit from `LLMRouterError`, allowing a single `except LLMRouterError:` clause to catch any SDK‑related
 problem.
 
----  
-
-## Testing
-
-The library ships with a pytest‑compatible test suite in `llm_router_lib/tests/`.
-
-```shell script
-# Activate the virtualenv first
-source .venv/bin/activate
-
-# Run the tests
-pytest -q llm_router_lib/tests
-```
-
-The tests cover:
-
-* Model serialization/deserialization.
-* Service endpoint configuration.
-* HTTP error handling (mocked).
-
----  
-
-## Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/awesome‑feature`).
-3. Write code **and** accompanying tests.
-4. Run the full test suite (`pytest`).
-5. Submit a pull request with a clear description of the change.
-
-Before committing, run the code‑formatters and linters that the project uses:
-
-```shell script
-autopep8 --in-place --aggressive --aggressive **/*.py
-pylint llm_router_lib
-```
-
----  
+---
 
 ## License
 
