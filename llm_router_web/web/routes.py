@@ -290,6 +290,9 @@ def index():
     return render_template("index.html", configs=configs)
 
 
+# ----------------------------------------------------------------------
+# Configs Create / import
+# ----------------------------------------------------------------------
 @bp.route("/configs")
 def list_configs():
     user_id = _current_user_id()
@@ -301,9 +304,6 @@ def list_configs():
     return render_template("configs.html", configs=configs)
 
 
-# ----------------------------------------------------------------------
-# Create / import
-# ----------------------------------------------------------------------
 @bp.route("/configs/new", methods=["GET", "POST"])
 def new_config():
     if request.method == "POST":
@@ -320,7 +320,6 @@ def new_config():
     return render_template("new_config.html")
 
 
-@bp.route("/configs/import", methods=["GET", "POST"])
 @bp.route("/configs/import", methods=["GET", "POST"])
 def import_config():
     # make sure a user is logged in before we touch the DB
@@ -470,7 +469,6 @@ def edit_config(config_id):
     }
     return render_template("edit.html", cfg=cfg, families=families, actives=actives)
 
-
 # ----------------------------------------------------------------------
 # Model & provider management
 # ----------------------------------------------------------------------
@@ -588,6 +586,20 @@ def set_active_config(config_id):
     cfg.is_active = True
     db.session.commit()
     return jsonify({"ok": True})
+
+# ----------------------------------------------------------------------
+# Configuration deletion
+# ----------------------------------------------------------------------
+@bp.post("/configs/<int:config_id>/delete")
+def delete_config(config_id):
+    """Delete a configuration owned by the current user."""
+    cfg = _get_user_config(config_id)  # aborts 404 if not owned
+    db.session.delete(cfg)
+    db.session.commit()
+    flash(f"Configuration '{cfg.name}' has been deleted.", "success")
+    # After deletion redirect to the list view
+    return redirect(url_for("list_configs"))
+
 
 
 # ----------------------------------------------------------------------
