@@ -4,8 +4,11 @@
     <meta charset="UTF-8"/>
     <title>{{ title or "LLM-router Model Configurator" }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <!-- Common styles (independent of theme) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Theme‑specific stylesheet – will be swapped by the toggle button -->
     <link id="theme-link" rel="stylesheet"
-          href="{{ url_for('static', filename='style.css') }}">
+          href="{{ url_for('static', filename='style-dark.css') }}">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
@@ -68,7 +71,7 @@
 
         const setTheme = (theme) => {
             if (theme === 'dark') {
-                themeLink.href = "{{ url_for('static', filename='style.css') }}";
+                themeLink.href = "{{ url_for('static', filename='style-dark.css') }}";
                 toggleBtn.textContent = '🌙';
             } else {
                 themeLink.href = "{{ url_for('static', filename='style-light.css') }}";
@@ -95,5 +98,6 @@
             });
     })();
 </script>
+
 </body>
 </html>
