@@ -7,12 +7,12 @@
     <div class="grid active-models">
         {% for fam, models in families.items() %}
         <div class="panel">
-            <h4>{{ fam }}</h4>
-            <select name="{{ fam }}[]" multiple size="6" class="w100">
-                {% for m in models %}
-                <option value="{{ m.name }}" {% if m.name in actives[fam] %}selected{% endif %}>{{ m.name }}</option>
-                {% endfor %}
-            </select>
+            <h4>{{ fam }}</h4
+            ><select name="{{ fam }}[]" multiple size="6" class="w100">
+            {% for m in models %}
+            <option value="{{ m.name }}" {% if m.name in actives[fam] %}selected{% endif %}>{{ m.name }}</option>
+            {% endfor %}
+        </select>
         </div>
         {% endfor %}
     </div>
@@ -37,7 +37,8 @@
             <form hx-post="{{ url_for('add_model', config_id=cfg.id) }}" hx-trigger="submit" hx-swap="none"
                   class="add-model-form">
                 <input type="hidden" name="family" value="{{ fam }}">
-                <input type="text" name="name" placeholder="Model name (f.e. google/gemma-3-12b-it)" required>
+                <input type="text" name="name"
+                       placeholder="Model name (f.e. google/gemma-3-12b-it)" required>
                 <button class="btn btn-small" type="submit">Add model</button>
             </form>
         </div>
@@ -86,8 +87,8 @@
                         <td class="col-api">
                             <select
                                     @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                    {method:'POST',headers:{'Content-Type':'application/json'},
-                     body:JSON.stringify({api_type:$event.target.value})})">
+                        {method:'POST',headers:{'Content-Type':'application/json'},
+                         body:JSON.stringify({api_type:$event.target.value})})">
                                 {% for t in ['vllm','openai','ollama'] %}
                                 <option value="{{ t }}" {% if p.api_type== t %}selected{% endif %}>{{ t }}</option>
                                 {% endfor %}
@@ -115,8 +116,8 @@
                             <div class="token-field">
                                 <input :type="masked ? 'password' : 'text'" value="{{ p.api_token }}"
                                        @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                           {method:'POST',headers:{'Content-Type':'application/json'},
-                            body:JSON.stringify({api_token:$event.target.value})})">
+                               {method:'POST',headers:{'Content-Type':'application/json'},
+                                body:JSON.stringify({api_token:$event.target.value})})">
                                 <button class="btn btn-small" type="button"
                                         @click="masked = !masked"
                                         x-text="masked ? 'Show' : 'Hide'">
@@ -152,8 +153,8 @@
                     </select>
                     <input type="number" placeholder="input_size" id="psize-{{ m.id }}" value="4096" min="1">
                     <input type="text" placeholder="model_path" id="ppath-{{ m.id }}">
-                    <input type="number" step="0.01" min="0" max="1" placeholder="weight" id="pweight-{{ m.id }}"
-                           value="1.0">
+                    <input type="number" step="0.01" min="0" max="1" placeholder="weight"
+                           id="pweight-{{ m.id }}" value="1.0">
                     <input type="text" placeholder="api_token" id="ptoken-{{ m.id }}">
                     <label class="chk"><input type="checkbox" id="penabled-{{ m.id }}" checked> enabled</label>
                     <button class="btn btn-small" type="submit">Add</button>
@@ -176,7 +177,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload)
                       });
-                      if(res.ok){ location.reload(); } else { alert("Błąd dodawania providera"); }
+                      if(res.ok){ location.reload(); } else { alert("Error while adding provider"); }
                     }
                 </script>
             </details>
@@ -198,33 +199,84 @@
 <hr>
 
 <h3>History</h3>
-<div hx-get="{{ url_for('list_versions', config_id=cfg.id) }}" hx-trigger="load" hx-target="#versions"
-     hx-swap="innerHTML"></div>
-<table class="table" id="versions"></table>
+
+<button class="btn btn-small" id="toggle-history" style="display:none;">Show full history</button>
+
+<div id="history-wrapper">
+    <!-- HTMX fetches the JSON list of versions -->
+    <div hx-get="{{ url_for('list_versions', config_id=cfg.id) }}"
+         hx-trigger="load"
+         hx-target="#versions"
+         hx-swap="innerHTML">
+    </div>
+    <table class="table" id="versions"></table>
+</div>
+
 <script>
-    document.body.addEventListener('htmx:afterOnLoad', (e) => {
-      if (e.detail.target && e.detail.target.id === 'versions') {
+    /* After HTMX loads the JSON, build a table, then hide all rows except the newest.
+       The toggle button shows / hides the rest of the history. */
+    document.body.addEventListener('htmx:afterOnLoad', function (e) {
+        if (!e.detail.target || e.detail.target.id !== 'versions') return;
+
+        // 1️⃣ Parse JSON returned by /configs/<id>/versions
+        let data;
         try {
-          const data = JSON.parse(e.detail.xhr.responseText);
-          e.detail.target.innerHTML = `
-            <thead><tr><th>Wersja</th><th>Data</th><th>Opis</th><th>Akcje</th></tr></thead>
-            <tbody>
-            ${data.map(v => `
-              <tr>
+            data = JSON.parse(e.detail.xhr.responseText);
+        } catch (err) {
+            console.error('Failed to parse versions JSON', err);
+            return;
+        }
+
+        // 2️⃣ Build the table markup
+        const rows = data.map(v => `
+            <tr>
                 <td>v${v.version}</td>
                 <td>${new Date(v.created_at).toLocaleString()}</td>
                 <td>${v.note || ''}</td>
-                <td><button class="btn btn-small" onclick="restoreV(${v.version})">Restore</button></td>
-              </tr>
-            `).join('')}
-            </tbody>`;
-        } catch (_) {}
-      }
+                <td></td>
+            </tr>`).join('');
+
+        e.detail.target.innerHTML = `
+            <thead>
+                <tr>
+                    <th>Version</th>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>`;
+
+        // 3️⃣ Hide all rows except the first (newest)
+        const tbody = e.detail.target.querySelector('tbody');
+        const trList = tbody.querySelectorAll('tr');
+
+        const btn = document.getElementById('toggle-history');
+
+        if (trList.length <= 1) {
+            // only one entry – no need for a toggle button
+            btn.style.display = 'none';
+            return;
+        }
+
+        // hide older rows
+        for (let i = 1; i < trList.length; i++) {
+            trList[i].style.display = 'none';
+        }
+
+        // show the toggle button
+        btn.style.display = 'inline-block';
+        btn.textContent = 'Show full history';
+
+        // toggle handler
+        btn.onclick = function () {
+            const showAll = btn.textContent.startsWith('Show');
+            for (let i = 1; i < trList.length; i++) {
+                trList[i].style.display = showAll ? '' : 'none';
+            }
+            btn.textContent = showAll ? 'Hide history' : 'Show full history';
+        };
     });
-    async function restoreV(v){
-      if(!confirm('Restore v'+v+'?')) return;
-      const res = await fetch('{{ url_for("restore_version", config_id=cfg.id, version=0) }}'.replace('/0/','/'+v+'/'), {method:'POST'});
-      if(res.ok){ location.reload(); } else { alert('Error while restoring'); }
-    }
 </script>
+
 {% endblock %}
