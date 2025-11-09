@@ -173,8 +173,7 @@ class RedisProviderMonitor:
             if availability_keys:
                 self._redis_client.delete(*availability_keys)
         except Exception as e:
-            # Log or ignore errors – the caller can decide how to handle them
-            print(f"Failed to clear Redis buffers: {e}")
+            self.logger.error(f"Failed to clear Redis buffers: {e}")
 
     def _check_and_update_status(self, provider: Dict, avail_key: str) -> None:
         """
