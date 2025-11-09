@@ -124,6 +124,13 @@ a.btn {
     max-width: 800px
 }
 
+/* Align label text and its input on the same line */
+.form label {
+    display: flex;
+    align-items: center;
+    gap: 8px;           /* space between label text and field */
+}
+
 .form-inline {
     display: flex;
     flex-wrap: wrap;
@@ -436,6 +443,10 @@ hr.model-divider {
     display: flex;
     gap: 8px;
     align-items: stretch; /* stretch children to full height */
+}
+
+.menu .spacer {
+    flex: 1;
 }
 
 /* Rich, tab‑like style – now the link occupies the whole bar height */
