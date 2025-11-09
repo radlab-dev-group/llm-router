@@ -50,6 +50,7 @@
                 <button class="btn btn-small danger"
                         hx-post="{{ url_for('delete_model', model_id=m.id) }}"
                         hx-swap="none"
+                        hx-on="htmx:afterRequest: location.reload()"
                         onclick="return confirm('Are you sure to delete {{ m.name }}?')">Delete
                 </button>
             </summary>
