@@ -20,22 +20,24 @@
         <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
            href="{{ url_for('list_configs') }}">All defined configs</a>
 
+        {% if session.get('role') == 'admin' %}
+        <a id="add-user-btn" class="btn btn-small"
+           href="{{ url_for('admin_users') }}" title="Add user">Manage users</a>
+        {% endif %}
+
+
+        <span class="spacer"></span>
+
         <button id="theme-toggle" class="btn btn-small" title="Toggle dark/light mode">
             🌙
         </button>
 
-
-        {% if session.get('role') == 'admin' %}
-        <a id="add-user-btn" class="btn btn-small"
-           href="{{ url_for('admin_users') }}" title="Add user">➕ User</a>
-        {% endif %}
+        <span class="spacer"></span>
 
         {% if session.get('user_id') %}
         <a id="logout-btn" class="btn btn-small"
-           href="{{ url_for('logout') }}" title="Logout">🚪 Logout</a>
+           href="{{ url_for('logout') }}" title="Logout">Logout: 🚪</a>
         {% endif %}
-
-
     </nav>
 </header>
 
