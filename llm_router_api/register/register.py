@@ -159,7 +159,8 @@ class FlaskEndpointRegistrar:
 
                     response = Response(
                         stream_with_context(log_stream()),
-                        mimetype="application/x-ndjson",
+                        # mimetype="application/x-ndjson",
+                        mimetype="text/event-stream",
                         headers={
                             "Transfer-Encoding": "chunked",
                             "X-Accel-Buffering": "no",
