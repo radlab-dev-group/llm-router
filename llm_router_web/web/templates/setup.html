@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+    <h2>Create first admin account</h2>
+    <form method="post" class="form">
+        <label>Login
+            <input type="text" name="username" required>
+        </label>
+        <label>Password
+            <input type="password" name="password" required>
+        </label>
+        <label>Confirm password
+            <input type="password" name="password_confirm" required>
+        </label>
+
+        <div class="form-actions">
+            <button class="btn" type="submit">Create admin user</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

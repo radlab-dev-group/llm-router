@@ -119,16 +119,16 @@
     "gpt-oss:120b": {
       "providers": [
         {
-          "id": "gpt-oss-120b-ollama-70:11434",
-          "api_host": "http://192.168.100.70:11434",
+          "id": "gpt-oss-120b-ollama-66:11434",
+          "api_host": "http://192.168.100.66:11434",
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
           "model_path": ""
         },
         {
-          "id": "gpt-oss-120b-ollama-66:11434",
-          "api_host": "http://192.168.100.66:11434",
+          "id": "gpt-oss-120b-ollama-70:11434",
+          "api_host": "http://192.168.100.70:11434",
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,

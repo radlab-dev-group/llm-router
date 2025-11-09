@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+    <h2>All defined configs</h2>
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>Created at</th>
+            <th>Last update</th>
+            <th>Status</th>
+            <th>Action</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for c in configs %}
+        <tr>
+            <td>{{ c.name }}</td>
+            <td>{{ c.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td>{{ c.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+            <td>{% if c.is_active %}<span class="badge">DEFAULT</span>{% else %}-{% endif %}</td>
+            <td class="nowrap">
+                <a class="btn btn-small" href="{{ url_for('view_config', config_id=c.id) }}">View</a>
+                <a class="btn btn-small" href="{{ url_for('edit_config', config_id=c.id) }}">Edit</a>
+                <a class="btn btn-small" href="{{ url_for('export_config', config_id=c.id) }}">Export</a>
+                <button class="btn btn-small"
+                        hx-post="{{ url_for('set_active_config', config_id=c.id) }}"
+                        hx-swap="none"
+                        hx-on="htmx:afterRequest: location.reload()">
+                    Set as default
+                </button>
+                <!-- Delete config button with confirmation -->
+                <form method="post" action="{{ url_for('delete_config', config_id=c.id) }}" style="display:inline;">
+                    <button class="btn btn-small danger"
+                            type="submit"
+                            onclick="return confirm('Are you sure you want to delete config {{ c.name }}?');">
+                        Delete
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="5">No configs found.</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}

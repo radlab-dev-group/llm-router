@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Preview: {{ cfg.name }} {% if cfg.is_active %}<span class="badge">AKTYWNY</span>{% endif %}</h2>
+
+<div class="actions">
+    <a class="btn" href="{{ url_for('edit_config', config_id=cfg.id) }}">Edit</a>
+    <a class="btn" href="{{ url_for('export_config', config_id=cfg.id) }}">Export JSON</a>
+    <button class="btn" hx-post="{{ url_for('set_active_config', config_id=cfg.id) }}" hx-swap="none">Set as default
+    </button>
+</div>
+
+<h3>Active Models</h3>
+<pre class="pre">{{ pretty.active_models }}</pre>
+
+<h3>Models</h3>
+<details open>
+    <summary>Google</summary>
+    <pre class="pre">{{ pretty.google_models }}</pre>
+</details>
+<details open>
+    <summary>OpenAI</summary>
+    <pre class="pre">{{ pretty.openai_models }}</pre>
+</details>
+<details open>
+    <summary>Qwen</summary>
+    <pre class="pre">{{ pretty.qwen_models }}</pre>
+</details>
+
+<h3>Changelog</h3>
+<table class="table">
+    <thead>
+    <tr>
+        <th>Version</th>
+        <th>Date</th>
+        <th>Description</th>
+        <th>Action</th>
+    </tr>
+    </thead>
+    <tbody>
+    {% for v in versions %}
+    <tr>
+        <td>v{{ v.version }}</td>
+        <td>{{ v.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{{ v.note }}</td>
+        <td>
+            <button class="btn btn-small"
+                    hx-post="{{ url_for('restore_version', config_id=cfg.id, version=v.version) }}"
+                    hx-swap="none">Restore
+            </button>
+        </td>
+    </tr>
+    {% else %}
+    <tr>
+        <td colspan="4">No version in history.</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
