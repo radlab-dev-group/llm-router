@@ -469,6 +469,7 @@ def edit_config(config_id):
     }
     return render_template("edit.html", cfg=cfg, families=families, actives=actives)
 
+
 # ----------------------------------------------------------------------
 # Model & provider management
 # ----------------------------------------------------------------------
@@ -587,6 +588,7 @@ def set_active_config(config_id):
     db.session.commit()
     return jsonify({"ok": True})
 
+
 # ----------------------------------------------------------------------
 # Configuration deletion
 # ----------------------------------------------------------------------
@@ -599,7 +601,6 @@ def delete_config(config_id):
     flash(f"Configuration '{cfg.name}' has been deleted.", "success")
     # After deletion redirect to the list view
     return redirect(url_for("list_configs"))
-
 
 
 # ----------------------------------------------------------------------

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Edited config name: {{ cfg.name }}</h2>
+<h2>You are editing config: <code>{{ cfg.name }}</code></h2>
 
 <form method="post" class="form" style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
     <input type="text" name="new_name" value="{{ cfg.name }}" required
