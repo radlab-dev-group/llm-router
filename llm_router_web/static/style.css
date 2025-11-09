@@ -372,6 +372,12 @@ summary button {
     margin: 12px 0;
 }
 
+/* Divider between individual models – slightly darker */
+.model-divider {
+    border-top: 1px solid #30363d;
+    margin: 12px 0;
+}
+
 /* większy odstęp od ostatniej pozycji w tabeli historii wersji */
 .history-toggle {
     margin-top: 16px;
