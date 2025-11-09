@@ -116,6 +116,10 @@ def ensure_initial_user():
 # ----------------------------------------------------------------------
 @bp.route("/login", methods=["GET", "POST"])
 def login():
+    # If a user is already authenticated, send them to the main page
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
