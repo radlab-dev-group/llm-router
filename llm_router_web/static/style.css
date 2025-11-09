@@ -358,3 +358,9 @@ summary button {
 .add-model-form button {
     flex: 0 0 auto;
 }
+
+/* Separator between the family header and the model list */
+.model-separator {
+    border-top: 1px solid var(--muted);
+    margin: 12px 0;
+}
