@@ -157,6 +157,12 @@ def setup():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
+        password_confirm = request.form.get("password_confirm", "")
+
+        if password != password_confirm:
+            flash("Passwords do not match.", "error")
+            return redirect(url_for("setup"))
+
         if not username or not password:
             flash("Both fields are required.", "error")
             return redirect(url_for("setup"))
