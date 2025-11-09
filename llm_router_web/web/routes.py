@@ -126,7 +126,9 @@ def login():
             if not user.is_active:
                 flash("Your account has been blocked.", "error")
                 return redirect(url_for("login"))
+            # store user details in session for later use in templates
             session["user_id"] = user.id
+            session["username"] = user.username
             session["role"] = user.role
             flash("Logged in successfully.", "success")
             return redirect(url_for("index"))
@@ -475,8 +477,8 @@ def add_provider(model_id: int):
     m = Model.query.get_or_404(model_id)
     payload = request.get_json(silent=True) or {}
     max_order = (
-        db.session.query(func.max(Provider.order)).filter_by(model_id=m.id).scalar()
-        or 0
+            db.session.query(func.max(Provider.order)).filter_by(model_id=m.id).scalar()
+            or 0
     )
     p = Provider(
         model=m,

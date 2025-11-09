@@ -37,7 +37,7 @@
 
         {% if session.get('user_id') %}
         <a id="logout-btn" class="btn btn-small"
-           href="{{ url_for('logout') }}" title="Logout">Logout: 🚪</a>
+           href="{{ url_for('logout') }}" title="Logout">{{ session.get('username') }} 🚪</a>
         {% endif %}
     </nav>
 </header>
