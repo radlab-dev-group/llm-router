@@ -12,9 +12,13 @@
 <header class="topbar">
     <h1 class="logo"><a href="{{ url_for('index') }}">LLM-router Model Configurator</a></h1>
     <nav class="menu">
-        <a href="{{ url_for('new_config') }}">New config (from scratch)</a>
-        <a href="{{ url_for('import_config') }}">Load existing config</a>
-        <a href="{{ url_for('list_configs') }}">All defined configs</a>
+        <!-- “active” class is added when the current endpoint matches the link -->
+        <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
+           href="{{ url_for('new_config') }}">New config (from scratch)</a>
+        <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
+           href="{{ url_for('import_config') }}">Load existing config</a>
+        <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
+           href="{{ url_for('list_configs') }}">All defined configs</a>
     </nav>
 </header>
 

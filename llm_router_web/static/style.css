@@ -32,9 +32,10 @@ a.btn {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 16px;
+    height: 64px;
+    padding: 0 16px;
     background: #090d13;
-    border-bottom: 1px solid #21262d
+    border-bottom: 1px solid #21262d;
 }
 
 .logo a {
@@ -160,6 +161,7 @@ textarea {
     border-radius: 8px;
     border: 1px solid var(--muted);
     min-width: 0;
+    margin-bottom: 16px;
 }
 
 .panel-header {
@@ -370,4 +372,37 @@ summary button {
 /* większy odstęp od ostatniej pozycji w tabeli historii wersji */
 .history-toggle {
     margin-top: 16px;
+}
+
+/* Menu container keeps its flex layout */
+.menu {
+    display: flex;
+    gap: 8px;
+    align-items: stretch; /* stretch children to full height */
+}
+
+/* Rich, tab‑like style – now the link occupies the whole bar height */
+.menu a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 48px; /* fill .topbar height */
+    padding: 0 16px; /* horizontal padding only */
+    border-radius: 0;
+    background: var(--card);
+    color: var(--fg);
+    text-decoration: none;
+    transition: background 0.2s, color 0.2s;
+}
+
+/* Hover / active states keep the same colour scheme */
+.menu a:hover,
+.menu a.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Remove the old margin‑left rule (no longer needed) */
+.menu a {
+    /* margin-left: 12px */
 }
