@@ -17,9 +17,9 @@
         <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
            href="{{ url_for('new_config') }}">New config (from scratch)</a>
         <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
-           href="{{ url_for('import_config') }}">Load existing config</a>
+           href="{{ url_for('import_config') }}">Load config (from JSON)</a>
         <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
-           href="{{ url_for('list_configs') }}">All defined configs</a>
+           href="{{ url_for('list_configs') }}">Show all defined configs</a>
 
         {% if session.get('role') == 'admin' %}
         <a id="add-user-btn" class="btn btn-small"
@@ -37,7 +37,7 @@
 
         {% if session.get('user_id') %}
         <a id="logout-btn" class="btn btn-small danger"
-           href="{{ url_for('logout') }}" title="Logout">{{ session.get('username') }} 🚪</a>
+           href="{{ url_for('logout') }}" title="Logout">{{ session.get('username') }} – Logout 🚪</a>
         {% endif %}
     </nav>
 </header>
