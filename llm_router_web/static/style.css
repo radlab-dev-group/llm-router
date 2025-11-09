@@ -339,3 +339,22 @@ summary button {
 .nowrap {
     white-space: nowrap
 }
+
+/* layout for the “Add model” form */
+.add-model-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 10px 0;
+    width: 50%; /* the whole form takes half of the container */
+}
+
+/* Input expands to fill the space left by the button */
+.add-model-form input[name="name"] {
+    flex: 1 1 auto; /* grow/shrink as needed */
+}
+
+/* Keep the button at its natural size */
+.add-model-form button {
+    flex: 0 0 auto;
+}
