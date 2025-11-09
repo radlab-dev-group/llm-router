@@ -153,7 +153,7 @@
             </div>
 
             <details>
-                <summary>Add model provider</summary>
+                <summary class="clickable" style="cursor:pointer;">&#x2795; Add model provider</summary>
                 <form class="add-model-form" style="width:100%" onsubmit="return addProvider{{ m.id }}(event)">
                     <input type="text" placeholder="Provider ID" id="pid-{{ m.id }}" required>
                     <input type="url" placeholder="API host (e.g. https://api.example.com)" id="phost-{{ m.id }}"
