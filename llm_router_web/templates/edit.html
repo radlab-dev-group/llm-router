@@ -158,6 +158,10 @@
                     <input type="text" placeholder="Provider ID" id="pid-{{ m.id }}" required>
                     <input type="url" placeholder="API host (e.g. https://api.example.com)" id="phost-{{ m.id }}"
                            required>
+                    <!-- Button to test if the host is reachable -->
+                    <button type="button" class="btn btn-small" onclick="checkHost{{ m.id }}()">Check</button>
+                    <!-- Inline status message -->
+                    <span id="host-status-{{ m.id }}" class="muted" style="margin-left:8px;"></span>
                     <select id="ptype-{{ m.id }}">
                         <option value="vllm">vllm</option>
                         <option value="openai">openai</option>
@@ -190,6 +194,60 @@
                         body: JSON.stringify(payload)
                       });
                       if(res.ok){ location.reload(); } else { alert("Error while adding provider"); }
+                    }
+
+                    // -------------------------------------------------
+                    // Check host availability via server‑side proxy.
+                    // -------------------------------------------------
+                    async function checkHost{{ m.id }}(){
+                        const host = document.getElementById('phost-{{ m.id }}').value;
+                        const statusEl = document.getElementById('host-status-{{ m.id }}');
+
+                        if (!host) {
+                            statusEl.textContent = 'Please enter a host URL first.';
+                            statusEl.style.color = 'var(--danger)';
+                            return;
+                        }
+
+                        statusEl.textContent = 'Checking...';
+                        statusEl.style.color = 'var(--muted)';
+
+                        try {
+                            const resp = await fetch('{{ url_for("check_host") }}', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ url: host })
+                            });
+
+                            const data = await resp.json();
+
+                            // The proxy returns {status: xxx} on success
+                            if (resp.ok && typeof data.status === 'number') {
+                                const code = data.status;
+                                if (code >= 500) {
+                                    statusEl.textContent = `${code}`;
+                                    statusEl.style.color = 'var(--ok)';
+                                } else if (code === 404) {
+                                    statusEl.textContent = '${code}';
+                                    statusEl.style.color = 'var(--danger)';
+                                } else if (code >= 200 && code < 400) {
+                                    statusEl.textContent = `OK!`;
+                                    statusEl.style.color = 'var(--ok)';
+                                } else {
+                                    statusEl.textContent = `Host responded with status ${code}.`;
+                                    statusEl.style.color = 'var(--danger)';
+                                }
+                            } else {
+                                // Any error from the proxy (e.g., network timeout)
+                                const errMsg = data.error || 'Unable to reach the host.';
+                                statusEl.textContent = errMsg;
+                                statusEl.style.color = 'var(--danger)';
+                            }
+                        } catch (e) {
+                            console.error(e);
+                            statusEl.textContent = 'Unable to reach the host. Check the URL or server connectivity.';
+                            statusEl.style.color = 'var(--danger)';
+                        }
                     }
                 </script>
             </details>
