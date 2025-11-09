@@ -645,12 +645,27 @@ def restore_version(config_id, version):
     ).first_or_404()
     data = json.loads(v.json_blob)
 
-    # wipe current models & actives
-    Model.query.filter_by(config_id=cfg.id).delete()
-    ActiveModel.query.filter_by(config_id=cfg.id).delete()
-    db.session.flush()
+    # --------------------------------------------------------------
+    # 1️⃣  Remove *all* current data – providers, models and actives
+    # --------------------------------------------------------------
+    # Bulk delete of providers (must be done first, because a bulk
+    # Model.delete() would not cascade to providers)
+    Provider.query.filter(Provider.model.has(config_id=cfg.id)).delete(
+        synchronize_session=False
+    )
 
-    # load models & providers
+    # Delete models belonging to this config
+    Model.query.filter_by(config_id=cfg.id).delete(synchronize_session=False)
+
+    # Delete active‑model entries
+    ActiveModel.query.filter_by(config_id=cfg.id).delete(synchronize_session=False)
+
+    # Commit the deletions so the DB is clean before we re‑populate it
+    db.session.commit()
+
+    # --------------------------------------------------------------
+    # 2️⃣  Re‑create models & their providers from the snapshot
+    # --------------------------------------------------------------
     for fam in ["google_models", "openai_models", "qwen_models"]:
         for mname, mval in (data.get(fam) or {}).items():
             m = Model(config_id=cfg.id, family=fam, name=mname)
@@ -672,7 +687,9 @@ def restore_version(config_id, version):
                     )
                 )
 
-    # load active models
+    # --------------------------------------------------------------
+    # 3️⃣  Re‑create active‑model entries
+    # --------------------------------------------------------------
     for fam in ["google_models", "openai_models", "qwen_models"]:
         for mname in data.get("active_models", {}).get(fam) or []:
             db.session.add(
