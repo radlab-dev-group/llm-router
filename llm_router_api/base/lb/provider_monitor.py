@@ -1,8 +1,9 @@
 import json
+import logging
 import requests
 import threading
 
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 try:
     import redis
@@ -25,14 +26,14 @@ class RedisProviderMonitor:
     def __init__(
         self,
         redis_client: redis.Redis,
-        check_interval: float = 0.1,
+        check_interval: float = 30,
         clear_buffers: bool = False,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
         if not REDIS_IS_AVAILABLE:
             raise RuntimeError("Redis is not available. Please install it first.")
 
-        for i in range(10):
-            print("clear_buffers=", clear_buffers)
+        self.logger = logger
 
         self._redis_client = redis_client
         if clear_buffers:
@@ -132,7 +133,7 @@ class RedisProviderMonitor:
                 self._stop_event.wait(self._check_interval)
                 continue
 
-            print("keys=", keys)
+            self.logger.debug(f"[monitor] keys to check: {keys}")
             for providers_key in keys:
                 # Extract model name from key
                 model_name = providers_key.replace(f"{self._monitor_key()}:", "")
@@ -146,7 +147,6 @@ class RedisProviderMonitor:
                     continue
 
                 for provider in providers:
-                    print("checking provider=", provider)
                     # Use the shared helper to perform the health‑check
                     self._check_and_update_status(provider, avail_key)
 
@@ -193,14 +193,18 @@ class RedisProviderMonitor:
         host = provider.get("api_host")
         if not provider_id or not host:
             return
+
         try:
             resp = requests.get(host, timeout=1)
-            status = "true" if resp.ok else "false"
+            status = "true" if resp.status_code < 500 else "false"
         except Exception:
             status = "false"
+
+        self.logger.debug(
+            f"[monitor.provider_status] {provider_id} [{host}] status={status}"
+        )
+
         try:
             self._redis_client.hset(avail_key, provider_id, status)
         except Exception:
-            # If Redis is temporarily unavailable we simply skip this
-            # iteration; the next loop will retry.
             pass
