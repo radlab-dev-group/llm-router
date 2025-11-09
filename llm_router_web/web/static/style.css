@@ -1,3 +1,4 @@
+/* ----- Common stylesheet (shared by both themes) ----- */
 :root {
     --bg: #0d1117;
     --fg: #c9d1d9;
@@ -9,10 +10,12 @@
     --ok: #3fb950;
 }
 
+/* ----- Generic reset & layout ----- */
 * {
     box-sizing: border-box
 }
 
+/* ----- Body & typography ----- */
 body {
     margin: 0;
     font-family: Inter, system-ui, Segoe UI, Arial, sans-serif;
@@ -20,6 +23,7 @@ body {
     color: var(--fg)
 }
 
+/* ----- Links ----- */
 a {
     color: var(--accent);
     text-decoration: none
@@ -29,6 +33,7 @@ a.btn {
     color: #fff
 }
 
+/* ----- Top bar ----- */
 .topbar {
     display: flex;
     align-items: center;
@@ -43,28 +48,24 @@ a.btn {
     color: #fff
 }
 
+/* ----- Container ----- */
 .container {
-    /*max-width: 1200px;*/
     max-width: none;
     width: 100%;
     margin: 20px auto;
     padding: 0 16px
 }
 
+/* ----- Buttons – common part (background comes from theme) ----- */
 .btn {
-    background: var(--accent);
     border: none;
     padding: 8px 12px;
     border-radius: 6px;
-    cursor: pointer
+    cursor: pointer;
 }
 
 .btn:hover {
     opacity: .9
-}
-
-.btn-secondary {
-    background: #30363d
 }
 
 .btn-small {
@@ -72,10 +73,15 @@ a.btn {
     font-size: .9em
 }
 
-.danger {
-    background: var(--danger)
+/* ----- Secondary button (theme‑specific overrides live in theme files) ----- */
+.btn-secondary {
 }
 
+/* ----- Danger button (theme‑specific overrides live in theme files) ----- */
+.danger {
+}
+
+/* ----- Badges ----- */
 .badge {
     background: var(--ok);
     color: #000;
@@ -85,6 +91,7 @@ a.btn {
     font-size: .8em
 }
 
+/* ----- Flash messages ----- */
 .flash-container {
     max-width: 1200px;
     margin: 8px auto;
@@ -99,33 +106,32 @@ a.btn {
     color: var(--fg);
 }
 
-/* Colour‑coded variants for flash categories */
 .flash.success {
-    background: var(--ok); /* greenish – success */
-    color: #000; /* dark text for readability */
+    background: var(--ok);
+    color: #000;
 }
 
 .flash.error {
-    background: var(--danger); /* red – error */
+    background: var(--danger);
     color: #fff;
 }
 
 .flash.info {
-    background: var(--accent); /* blue – informational */
+    background: var(--accent);
     color: #fff;
 }
 
+/* ----- Forms ----- */
 .form {
     display: grid;
     gap: 12px;
     max-width: 800px
 }
 
-/* Align label text and its input on the same line */
 .form label {
     display: flex;
     align-items: center;
-    gap: 8px; /* space between label text and field */
+    gap: 8px;
 }
 
 .form-inline {
@@ -141,17 +147,11 @@ a.btn {
     gap: 8px
 }
 
+/* ----- Form controls – theme‑specific overrides live in theme files ----- */
 input, select, textarea {
-    width: 100%;
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid #30363d;
-    background: #0b0f14;
-    color: var(--fg);
 }
 
-
-/* Reduce width of fields that only need short text/numeric values */
+/* ----- Reduce width of fields that only need short text/numeric values ----- */
 .col-api input,
 .col-api select {
     max-width: 80px; /* API type (select) */
@@ -165,7 +165,7 @@ input, select, textarea {
     max-width: 80px; /* Weight (numeric) */
 }
 
-/* Keep other inputs full‑width */
+/* ----- Keep other inputs full‑width ----- */
 .col-id input,
 .col-host input,
 .col-path input,
@@ -176,50 +176,29 @@ input, select, textarea {
     width: 100%;
 }
 
+/* ----- Textarea font ----- */
 textarea {
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
 }
 
+/* ----- Misc helpers ----- */
 .muted {
     color: var(--muted)
 }
 
-.grid {
-    display: flex;
-    flex-direction: column;
-    gap: 16px
+.nowrap {
+    white-space: nowrap
 }
 
-/* Layout for Active Models – placed side by side */
-.grid.active-models {
-    flex-direction: row; /* arrange items horizontally */
-    flex-wrap: wrap; /* wrap to next line on small screens */
-    gap: 16px;
+/* ----- Pre‑formatted blocks – theme‑specific overrides live in theme files ----- */
+pre {
 }
 
-.grid.active-models .panel {
-    flex: 1 1 0; /* allow panels to grow/shrink equally */
-    min-width: 200px; /* minimum width for each select */
+/* ----- Inline code – theme‑specific overrides live in theme files ----- */
+code {
 }
 
-.panel {
-    background: var(--card);
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid var(--muted);
-    min-width: 0;
-    margin-bottom: 16px;
-}
-
-.panel-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    justify-content: space-between;
-    flex-wrap: wrap
-}
-
-/* Tabele */
+/* ----- Table layout (common) ----- */
 .table {
     width: 100%;
     border-collapse: collapse;
@@ -227,7 +206,6 @@ textarea {
     border: 1px solid #21262d;
     table-layout: auto;
 }
-
 
 .table th, .table td {
     border-top: 1px solid #21262d;
@@ -282,21 +260,40 @@ textarea {
     min-width: 100px
 }
 
-/* Inputy w tabeli */
+/* ----- Inputs inside tables ----- */
 .table input, .table select {
     width: 100%;
     min-width: 0
 }
 
-.pre {
-    background: #0b0f14;
-    border: 1px solid #30363d;
-    padding: 10px;
-    border-radius: 6px;
-    overflow: auto
+/* ----- Panels & grids ----- */
+.panel {
+    background: var(--card);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--muted);
+    min-width: 0;
+    margin-bottom: 16px;
 }
 
-/* Token + przycisk */
+.grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px
+}
+
+.grid.active-models {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.grid.active-models .panel {
+    flex: 1 1 0;
+    min-width: 200px;
+}
+
+/* ----- Token field ----- */
 .token-field {
     display: flex;
     gap: 6px;
@@ -312,7 +309,7 @@ textarea {
     white-space: nowrap
 }
 
-/* Details nagłówki */
+/* ----- Summary (details) ----- */
 summary {
     display: flex;
     align-items: center;
@@ -329,7 +326,7 @@ summary button {
     flex: 0 0 auto
 }
 
-/* Scroll poziomy dla tabeli providerów (zachowuje thead) */
+/* ----- Model scroll wrapper ----- */
 .model {
     margin-top: 8px
 }
@@ -345,7 +342,7 @@ summary button {
     min-width: 1100px
 }
 
-/* Karty i listy */
+/* ----- Card list & cards ----- */
 .card-list {
     list-style: none;
     padding: 0;
@@ -374,7 +371,7 @@ summary button {
     flex-wrap: wrap
 }
 
-/* Akcje */
+/* ----- Actions container ----- */
 .actions {
     display: flex;
     gap: 8px;
@@ -383,20 +380,14 @@ summary button {
     margin-bottom: 20px;
 }
 
-/* Drobna responsywność: węższa treść na bardzo szerokich ekranach */
+/* ----- Responsive container max‑width ----- */
 @media (min-width: 1280px) {
     .container {
-        /*max-width: 960px;*/
         max-width: none;
     }
 }
 
-/* Misc */
-.nowrap {
-    white-space: nowrap
-}
-
-/* layout for the “Add model” form */
+/* ----- Add‑model form ----- */
 .add-model-form {
     display: flex;
     gap: 8px;
@@ -405,23 +396,20 @@ summary button {
     width: 50%; /* the whole form takes half of the container */
 }
 
-/* Input expands to fill the space left by the button */
 .add-model-form input[name="name"] {
     flex: 1 1 auto; /* grow/shrink as needed */
 }
 
-/* Keep the button at its natural size */
 .add-model-form button {
     flex: 0 0 auto;
 }
 
-/* Separator between the family header and the model list */
+/* ----- Model separator & divider ----- */
 .model-separator {
     border-top: 1px solid var(--muted);
     margin: 12px 0;
 }
 
-/* Divider between individual models – slightly darker */
 hr.model-divider {
     border: none;
     height: 1px;
@@ -430,12 +418,12 @@ hr.model-divider {
     opacity: 0.8;
 }
 
-/* większy odstęp od ostatniej pozycji w tabeli historii wersji */
+/* ----- History toggle spacing ----- */
 .history-toggle {
     margin-top: 16px;
 }
 
-/* Menu container keeps its flex layout */
+/* ----- Menu ----- */
 .menu {
     display: flex;
     gap: 8px;
@@ -446,7 +434,6 @@ hr.model-divider {
     flex: 1;
 }
 
-/* Rich, tab‑like style – now the link occupies the whole bar height */
 .menu a {
     display: flex;
     align-items: center;
@@ -465,30 +452,27 @@ hr.model-divider {
     color: #fff;
 }
 
-/* Hover/active dla przycisku .danger – nie podmienia koloru na accent */
 .menu a.danger:hover,
 .menu a.danger.active {
     background: var(--danger-soft);
     color: #fff;
 }
 
-/* Hover / active states keep the same colour scheme */
 .menu a:hover,
 .menu a.active {
     background: var(--accent);
     color: #fff;
 }
 
-/* Added spacing between label text and its input field */
+/* ----- Form label input spacing ----- */
 .form label input {
     margin-top: 12px;
 }
 
-/* Make summary elements with the .clickable class stand out as interactive */
+/* ----- Clickable summary ----- */
 summary.clickable {
     color: var(--accent);
     font-weight: 600;
-    /* optional hover effect */
     transition: opacity 0.2s;
 }
 
@@ -496,15 +480,11 @@ summary.clickable:hover {
     opacity: 0.8;
 }
 
-/* Light green background for inline code blocks */
+/* ----- Inline code (theme‑specific overrides live in theme files) ----- */
 code {
-    /* use a translucent version of the “ok” colour */
-    background: rgba(40, 167, 69, 0.1);
-    color: #f6f8fa;
-    padding: 2px 4px;
-    border-radius: 4px;
 }
 
+/* ----- ID‑based width helpers ----- */
 [id^="ptype-"],
 [id^="psize-"],
 [id^="pweight-"] {
