@@ -20,6 +20,7 @@
             <th>Edit</th>
             <th>Export</th>
             <th>Set as default</th>
+            <th>Delete</th>
             <th>Is default</th>
         </tr>
         </thead>
@@ -39,6 +40,15 @@
                     Set as default
                 </button>
             </td>
+            <td>
+                    <form method="post" action="{{ url_for('delete_config', config_id=c.id) }}" style="display:inline;">
+                        <button class="btn btn-small danger"
+                                type="submit"
+                                onclick="return confirm('Are you sure you want to delete config {{ c.name }}?');">
+                            Delete
+                        </button>
+                    </form>
+                </td>
             <td class="nowrap">
                 {% if c.is_active %}<span class="badge">DEFAULT</span>{% else %}-{% endif %}
             </td>
