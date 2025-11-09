@@ -36,7 +36,7 @@
         <span class="spacer"></span>
 
         {% if session.get('user_id') %}
-        <a id="logout-btn" class="btn btn-small"
+        <a id="logout-btn" class="btn btn-small danger"
            href="{{ url_for('logout') }}" title="Logout">{{ session.get('username') }} 🚪</a>
         {% endif %}
     </nav>
