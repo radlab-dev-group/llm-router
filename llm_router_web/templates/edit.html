@@ -131,10 +131,10 @@
                           body:JSON.stringify({enabled:$event.target.checked})})">
                         </td>
                         <td class="col-actions nowrap">
-                            <!-- Nowy przycisk usuwania providera -->
                             <button class="btn btn-small danger"
                                     hx-post="{{ url_for('delete_provider', provider_id=p.id) }}"
                                     hx-swap="none"
+                                    hx-on="htmx:afterRequest: location.reload()"
                                     onclick="return confirm('Are you sure to delete this provider?')">
                                 Delete
                             </button>
