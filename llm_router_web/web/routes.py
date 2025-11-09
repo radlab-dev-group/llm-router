@@ -152,7 +152,12 @@ def logout():
 def setup():
     # This view is reachable only when there are no users in the DB.
     if User.query.count() > 0:
-        return redirect(url_for("login"))
+        # If a user already exists, prevent re‑access to the setup page.
+        # Logged‑in users are sent to the main index, otherwise to the login page.
+        if session.get("user_id"):
+            return redirect(url_for("index"))
+        else:
+            return redirect(url_for("login"))
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
