@@ -13,9 +13,8 @@ from flask import (
     flash,
 )
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import func
+from sqlalchemy import func, inspect, text
 from datetime import datetime
-
 
 app = Flask(__name__, static_url_path="/static", static_folder="static")
 app.config["SECRET_KEY"] = "change-me-local"
@@ -61,7 +60,10 @@ class Model(db.Model):
     )  # google_models | openai_models | qwen_models
     name = db.Column(db.String(200), nullable=False)
     providers = db.relationship(
-        "Provider", backref="model", cascade="all, delete-orphan"
+        "Provider",
+        backref="model",
+        cascade="all, delete-orphan",
+        order_by="Provider.order",
     )
 
 
@@ -76,6 +78,7 @@ class Provider(db.Model):
     model_path = db.Column(db.String(200), default="")
     weight = db.Column(db.Float, default=1.0, nullable=False)
     enabled = db.Column(db.Boolean, default=True, nullable=False)
+    order = db.Column(db.Integer, nullable=False, default=0)
 
 
 class ActiveModel(db.Model):
@@ -333,6 +336,10 @@ def delete_model(model_id):
 def add_provider(model_id):
     m = Model.query.get_or_404(model_id)
     payload = request.json or {}
+    max_order = (
+        db.session.query(func.max(Provider.order)).filter_by(model_id=m.id).scalar()
+        or 0
+    )
     p = Provider(
         model=m,
         provider_id=payload.get("id", ""),
@@ -343,6 +350,7 @@ def add_provider(model_id):
         model_path=payload.get("model_path", ""),
         weight=float(payload.get("weight", 1.0) or 1.0),
         enabled=bool(payload.get("enabled", True)),
+        order=max_order + 1,
     )
     if p.api_type not in {"vllm", "openai", "ollama"}:
         return jsonify({"ok": False, "error": "Nieobsługiwany api_type"}), 400
@@ -350,6 +358,23 @@ def add_provider(model_id):
     db.session.commit()
     snapshot_version(m.config_id, note=f"Dodano providera do {m.name}")
     return jsonify({"ok": True, "provider_id": p.id})
+
+
+@app.post("/models/<int:model_id>/providers/reorder")
+def reorder_providers(model_id):
+    m = Model.query.get_or_404(model_id)
+    payload = request.json or {}
+    ids = payload.get("order", [])
+    if not isinstance(ids, list):
+        return jsonify({"ok": False, "error": "Invalid payload"}), 400
+
+    for idx, pid in enumerate(ids):
+        p = Provider.query.filter_by(id=pid, model_id=model_id).first()
+        if p:
+            p.order = idx
+    db.session.commit()
+    snapshot_version(m.config_id, note="Reordered providers")
+    return jsonify({"ok": True})
 
 
 @app.post("/providers/<int:provider_id>/update")
@@ -474,7 +499,32 @@ def check_host():
         return jsonify({"error": str(exc)}), 500
 
 
+def _ensure_provider_order_column():
+    """
+    SQLite does not have built‑in migrations.  When the code is first
+    executed on an existing database the new ``order`` column will be
+    missing, causing the OperationalError you saw.  This helper checks
+    the table schema and adds the column if needed.
+    """
+    engine = db.get_engine()
+    # get current columns of the ``provider`` table
+    current_columns = [c["name"] for c in inspect(engine).get_columns("provider")]
+    if "order" not in current_columns:
+        # SQLite allows adding a column with a default value.
+        # Use SQLAlchemy `text` so the string is executable.
+        with engine.connect() as conn:
+            conn.execute(
+                text(
+                    'ALTER TABLE provider ADD COLUMN "order" INTEGER NOT NULL DEFAULT 0'
+                )
+            )
+        # after altering the table we need to reflect the new schema
+        db.metadata.clear()
+        db.metadata.reflect(bind=engine)
+
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
+        _ensure_provider_order_column()
     app.run(host="0.0.0.0", port=8081, debug=True)
