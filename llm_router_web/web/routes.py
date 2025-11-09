@@ -120,11 +120,12 @@ def login():
         username = request.form.get("username", "").strip()
         password = request.form.get("password", "")
         user = User.query.filter_by(username=username).first()
-        # ---- added check for blocked accounts ----
-        if user and not user.is_active:
-            flash("Your account has been blocked.", "error")
-            return redirect(url_for("login"))
+        # ---- verify credentials first ----
         if user and check_password_hash(user.password_hash, password):
+            # ---- then check if the account is active ----
+            if not user.is_active:
+                flash("Your account has been blocked.", "error")
+                return redirect(url_for("login"))
             session["user_id"] = user.id
             session["role"] = user.role
             flash("Logged in successfully.", "success")
