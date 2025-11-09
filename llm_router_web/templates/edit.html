@@ -200,8 +200,6 @@
 
 <h3>History</h3>
 
-<button class="btn btn-small" id="toggle-history" style="display:none;">Show full history</button>
-
 <div id="history-wrapper">
     <!-- HTMX fetches the JSON list of versions -->
     <div hx-get="{{ url_for('list_versions', config_id=cfg.id) }}"
@@ -211,6 +209,10 @@
     </div>
     <table class="table" id="versions"></table>
 </div>
+
+<button class="btn btn-small history-toggle" id="toggle-history" style="display:none;">
+    Show full history
+</button>
 
 <script>
     /* After HTMX loads the JSON, build a table, then hide all rows except the newest.

@@ -366,3 +366,8 @@ summary button {
     border-top: 1px solid var(--muted);
     margin: 12px 0;
 }
+
+/* większy odstęp od ostatniej pozycji w tabeli historii wersji */
+.history-toggle {
+    margin-top: 16px;
+}
