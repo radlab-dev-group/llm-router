@@ -34,7 +34,7 @@ db = SQLAlchemy(app)
 VALID_FAMILIES = {"google_models", "openai_models", "qwen_models"}
 
 
-# ---- Obsługa błędów ----
+# ---- Error handling ----
 @app.errorhandler(400)
 def handle_400(error):
     """Return JSON for Bad Request."""
@@ -125,6 +125,7 @@ class ActiveModel(db.Model):
 
 
 def to_json(config_id: int) -> dict:
+    """Serialize a configuration to a JSON‑compatible dict."""
     cfg = Config.query.get_or_404(config_id)
     out = {
         "google_models": {},
@@ -166,6 +167,7 @@ def to_json(config_id: int) -> dict:
 
 
 def snapshot_version(config_id: int, note: str = ""):
+    """Create a snapshot of the current config state as a new ConfigVersion."""
     payload = to_json(config_id)
     last = (
         db.session.query(func.max(ConfigVersion.version))
@@ -191,28 +193,31 @@ def snapshot_version(config_id: int, note: str = ""):
 
 @app.route("/")
 def index() -> str:
+    """Render the home page showing all configurations."""
     configs = Config.query.order_by(Config.updated_at.desc()).all()
     return render_template("index.html", configs=configs)
 
 
 @app.route("/configs/new", methods=["GET", "POST"])
 def new_config():
+    """Create a new empty configuration."""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         if not name:
-            abort(400, description="Nazwa jest wymagana.")
+            abort(400, description="Name is required.")
         if Config.query.filter_by(name=name).first():
-            abort(400, description="Konfig o takiej nazwie już istnieje.")
+            abort(400, description="Configuration with this name already exists.")
         cfg = Config(name=name)
         db.session.add(cfg)
         db.session.commit()
-        snapshot_version(cfg.id, note="Utworzono pusty konfig")
+        snapshot_version(cfg.id, note="Created empty config")
         return redirect(url_for("edit_config", config_id=cfg.id))
     return render_template("new_config.html")
 
 
 @app.route("/configs/import", methods=["GET", "POST"])
 def import_config():
+    """Import a configuration from a JSON file or raw JSON text."""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         raw = request.files.get("file")
@@ -221,12 +226,12 @@ def import_config():
         try:
             data = json.load(raw) if raw else json.loads(text or "")
         except Exception:
-            flash("Nieprawidłowy JSON.", "error")
+            flash("Invalid JSON.", "error")
             return redirect(url_for("import_config"))
         if not name:
             name = f"import-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
         if Config.query.filter_by(name=name).first():
-            flash("Nazwa zajęta.", "error")
+            flash("Name already taken.", "error")
             return redirect(url_for("import_config"))
         cfg = Config(name=name)
         db.session.add(cfg)
@@ -265,12 +270,14 @@ def import_config():
 
 @app.route("/configs")
 def list_configs():
+    """Render a page that lists all configurations."""
     configs = Config.query.order_by(Config.updated_at.desc()).all()
     return render_template("configs.html", configs=configs)
 
 
 @app.route("/configs/<int:config_id>")
 def view_config(config_id):
+    """Display a single configuration and its versions."""
     cfg = Config.query.get_or_404(config_id)
     data = to_json(cfg.id)
     versions = (
@@ -299,6 +306,7 @@ def view_config(config_id):
 
 @app.route("/configs/<int:config_id>/export")
 def export_config(config_id):
+    """Export a configuration as a downloadable JSON file."""
     payload = to_json(config_id)
     buf = io.BytesIO(
         json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
@@ -314,6 +322,7 @@ def export_config(config_id):
 
 @app.route("/configs/<int:config_id>/edit", methods=["GET", "POST"])
 def edit_config(config_id):
+    """Edit active models for a configuration."""
     cfg = Config.query.get_or_404(config_id)
     if request.method == "POST":
         note = request.form.get("note", "")
@@ -325,7 +334,7 @@ def edit_config(config_id):
                     ActiveModel(config_id=cfg.id, family=fam, model_name=mname)
                 )
         db.session.commit()
-        snapshot_version(cfg.id, note=note or "Aktualizacja aktywnych modeli")
+        snapshot_version(cfg.id, note=note or "Updated active models")
         return redirect(url_for("edit_config", config_id=cfg.id))
     families = {
         fam: Model.query.filter_by(config_id=cfg.id, family=fam).all()
@@ -340,34 +349,37 @@ def edit_config(config_id):
 
 @app.route("/configs/<int:config_id>/models/add", methods=["POST"])
 def add_model(config_id: int):
+    """Add a new model to a configuration."""
     fam = request.form.get("family")
     name = request.form.get("name", "").strip()
     if fam not in VALID_FAMILIES or not name:
-        abort(400, description="Błędne dane")
+        abort(400, description="Invalid data")
     exists = Model.query.filter_by(
         config_id=config_id, family=fam, name=name
     ).first()
     if exists:
-        abort(400, description="Model już istnieje")
+        abort(400, description="Model already exists")
     m = Model(config_id=config_id, family=fam, name=name)
     db.session.add(m)
     db.session.commit()
-    snapshot_version(config_id, note=f"Dodano model {name}")
+    snapshot_version(config_id, note=f"Added model {name}")
     return jsonify({"ok": True, "model_id": m.id})
 
 
 @app.post("/models/<int:model_id>/delete")
 def delete_model(model_id):
+    """Delete a model and record a new configuration version."""
     m = Model.query.get_or_404(model_id)
     cfg_id = m.config_id
     db.session.delete(m)
     db.session.commit()
-    snapshot_version(cfg_id, note="Usunięto model")
+    snapshot_version(cfg_id, note="Model deleted")
     return jsonify({"ok": True})
 
 
 @app.route("/models/<int:model_id>/providers/add", methods=["POST"])
 def add_provider(model_id: int):
+    """Add a new provider to a model."""
     m = Model.query.get_or_404(model_id)
     payload = request.get_json(silent=True) or {}
     max_order = (
@@ -387,15 +399,16 @@ def add_provider(model_id: int):
         order=max_order + 1,
     )
     if p.api_type not in {"vllm", "openai", "ollama"}:
-        abort(400, description="Nieobsługiwany api_type")
+        abort(400, description="Unsupported api_type")
     db.session.add(p)
     db.session.commit()
-    snapshot_version(m.config_id, note=f"Dodano providera do {m.name}")
+    snapshot_version(m.config_id, note=f"Added provider to {m.name}")
     return jsonify({"ok": True, "provider_id": p.id})
 
 
 @app.post("/models/<int:model_id>/providers/reorder")
 def reorder_providers(model_id):
+    """Reorder providers for a model based on a list of provider IDs."""
     m = Model.query.get_or_404(model_id)
     payload = request.json or {}
     ids = payload.get("order", [])
@@ -413,6 +426,7 @@ def reorder_providers(model_id):
 
 @app.post("/providers/<int:provider_id>/update")
 def update_provider(provider_id):
+    """Update fields of an existing provider."""
     p = Provider.query.get_or_404(provider_id)
     payload = request.json or {}
     for field in ["provider_id", "api_host", "api_token", "api_type", "model_path"]:
@@ -425,14 +439,13 @@ def update_provider(provider_id):
     if "enabled" in payload:
         p.enabled = bool(payload["enabled"])
     db.session.commit()
-    snapshot_version(
-        p.model.config_id, note=f"Aktualizacja providera {p.provider_id}"
-    )
+    snapshot_version(p.model.config_id, note=f"Updated provider {p.provider_id}")
     return jsonify({"ok": True})
 
 
 @app.post("/configs/<int:config_id>/activate")
 def set_active_config(config_id):
+    """Mark a configuration as the active one."""
     cfg = Config.query.get_or_404(config_id)
     Config.query.update({Config.is_active: False})
     cfg.is_active = True
@@ -442,6 +455,7 @@ def set_active_config(config_id):
 
 @app.get("/configs/<int:config_id>/versions")
 def list_versions(config_id):
+    """Return a list of configuration versions."""
     versions = (
         ConfigVersion.query.filter_by(config_id=config_id)
         .order_by(ConfigVersion.version.desc())
@@ -461,6 +475,7 @@ def list_versions(config_id):
 
 @app.post("/configs/<int:config_id>/versions/<int:version>/restore")
 def restore_version(config_id, version):
+    """Restore a configuration to a previous version."""
     cfg = Config.query.get_or_404(config_id)
     v = ConfigVersion.query.filter_by(
         config_id=config_id, version=version
@@ -495,18 +510,18 @@ def restore_version(config_id, version):
                 ActiveModel(config_id=cfg.id, family=fam, model_name=mname)
             )
     db.session.commit()
-    snapshot_version(cfg.id, note=f"Przywrócono v{version}")
+    snapshot_version(cfg.id, note=f"Restored version {version}")
     return jsonify({"ok": True})
 
 
 @app.post("/providers/<int:provider_id>/delete")
 def delete_provider(provider_id):
-    """Usuwa pojedynczy provider i zapisuje wersję konfiguracji."""
+    """Delete a provider and record a new configuration version."""
     p = Provider.query.get_or_404(provider_id)
     cfg_id = p.model.config_id
     db.session.delete(p)
     db.session.commit()
-    snapshot_version(cfg_id, note=f"Usunięto providera {p.provider_id}")
+    snapshot_version(cfg_id, note=f"Deleted provider {p.provider_id}")
     return jsonify({"ok": True})
 
 
