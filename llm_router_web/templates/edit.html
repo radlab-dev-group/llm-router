@@ -158,7 +158,7 @@
             <details>
                 <summary class="clickable" style="cursor:pointer;">&#x2795; Add model provider</summary>
                 <form class="add-model-form" style="width:100%" onsubmit="return addProvider{{ m.id }}(event)">
-                    <input type="text" placeholder="Provider ID" id="pid-{{ m.id }}" required>
+                    <label for="pid-{{ m.id }}"></label><input type="text" placeholder="Provider ID" id="pid-{{ m.id }}" required>
                     <input type="url" placeholder="API host (e.g. https://api.example.com)" id="phost-{{ m.id }}"
                            required>
                     <!-- Button to test if the host is reachable -->
@@ -174,7 +174,13 @@
                     <input type="text" placeholder="Model path (optional)" id="ppath-{{ m.id }}">
                     <input type="number" step="0.01" min="0" max="1" placeholder="Weight (0‑1)" id="pweight-{{ m.id }}"
                            value="1.0">
-                    <input type="text" placeholder="API token (optional)" id="ptoken-{{ m.id }}">
+                    <div class="token-field" x-data="{ masked: true }">
+                        <input :type="masked ? 'password' : 'text'" placeholder="API token (optional)"
+                               id="ptoken-{{ m.id }}">
+                        <button class="btn btn-small" type="button"
+                                @click="masked = !masked"
+                                x-text="masked ? 'Show' : 'Hide'"></button>
+                    </div>
                     <label class="chk"><input type="checkbox" id="penabled-{{ m.id }}" checked> enabled</label>
                     <button class="btn btn-small" type="submit">Add</button>
                 </form>
