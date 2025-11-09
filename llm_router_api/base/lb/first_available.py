@@ -205,10 +205,6 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                 model_name=model_name, providers=providers
             )
 
-            print("*" * 100)
-            print("_providers=", _providers)
-            print("*" * 100)
-
             if not len(_providers):
                 time.sleep(self.check_interval)
 
@@ -348,14 +344,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         active_providers = self._monitor.get_providers(
             model_name=model_name, only_active=True
         )
-
-        import json
-
-        print("A" * 100)
-        print(json.dumps(active_providers, indent=2))
-        print("A" * 100)
-
-        return providers
+        return active_providers
 
     def _get_redis_key(self, model_name: str) -> str:
         """
