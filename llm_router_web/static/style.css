@@ -224,11 +224,11 @@ textarea {
 }
 
 .col-id {
-    min-width: 220px
+    min-width: 120px
 }
 
 .col-host {
-    min-width: 260px
+    min-width: 150px
 }
 
 .col-api {
@@ -462,4 +462,10 @@ summary.clickable {
 
 summary.clickable:hover {
     opacity: 0.8;
+}
+
+[id^="ptype-"],
+[id^="psize-"],
+[id^="pweight-"] {
+    max-width: 80px;          /* same as table columns for API type, context size and weight */
 }
