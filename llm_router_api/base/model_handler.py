@@ -120,7 +120,9 @@ class ModelHandler:
         self.provider_chooser = provider_chooser
         self.api_model_config: ApiModelConfig = ApiModelConfig(models_config_path)
 
-    def get_model_provider(self, model_name: str) -> Optional[ApiModel]:
+    def get_model_provider(
+        self, model_name: str, options: Optional[Dict[str, Any]] = None
+    ) -> Optional[ApiModel]:
         """
         Return a model definition for the given name.
 
@@ -128,6 +130,8 @@ class ModelHandler:
         ----------
         model_name : str
             Model identifier present among active models.
+        options: Dict[str, Any] Default is None
+            Options passed to strategy
 
         Returns
         -------
@@ -138,7 +142,7 @@ class ModelHandler:
             "providers", []
         )
         model_host_cfg = self.provider_chooser.get_provider(
-            model_name=model_name, providers=providers
+            model_name=model_name, providers=providers, options=options
         )
 
         if model_host_cfg is None:
@@ -146,7 +150,12 @@ class ModelHandler:
 
         return ApiModel.from_config(model_name, model_host_cfg)
 
-    def put_model_provider(self, model_name: str, provider: dict) -> None:
+    def put_model_provider(
+        self,
+        model_name: str,
+        provider: dict,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """
         Set ``is_chosen`` flag of the given provider to ``False`` and update the
         stored providers list for the specified model.
@@ -159,13 +168,17 @@ class ModelHandler:
             Provider dictionary (as stored in the configuration) that should be
             un‑selected.  The dictionary must contain either an ``id`` key or a
             ``host`` key that uniquely identifies the provider.
+        options: Dict[str, Any] Default is None
+            Options passed to strategy
 
         Notes
         -----
         The operation is performed under a thread‑safe lock because multiple
         threads may read or modify the provider list concurrently.
         """
-        self.provider_chooser.put_provider(model_name=model_name, provider=provider)
+        self.provider_chooser.put_provider(
+            model_name=model_name, provider=provider, options=options
+        )
 
     def list_active_models(self) -> Dict[str, Any]:
         """
