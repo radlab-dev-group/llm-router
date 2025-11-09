@@ -17,6 +17,13 @@ class Config(db.Model):
         onupdate=datetime.utcnow,
         nullable=False,
     )
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False,
+        index=True,
+    )
+    # ------------------------------------------------------------------
     models = db.relationship("Model", backref="config", cascade="all, delete-orphan")
     actives = db.relationship(
         "ActiveModel", backref="config", cascade="all, delete-orphan"
@@ -83,6 +90,12 @@ class User(db.Model):
         default="user",  # possible values: "admin", "user"
     )
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    configs = db.relationship(
+        "Config",
+        backref="owner",  # access via cfg.owner
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<User {self.username} ({self.role})>"
