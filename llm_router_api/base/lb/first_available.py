@@ -22,8 +22,9 @@ Typical usage::
 
 """
 
-import random
 import time
+import logging
+import random
 
 try:
     import redis
@@ -36,6 +37,7 @@ from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
+from llm_router_api.base.lb.provider_monitor import RedisProviderMonitor
 
 
 class FirstAvailableStrategy(ChooseProviderStrategyI):
@@ -60,6 +62,8 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         redis_db: int = 0,
         timeout: int = 60,
         check_interval: float = 0.1,
+        clear_buffers: bool = True,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
         """
         Initialize the FirstAvailableStrategy.
@@ -80,11 +84,13 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         check_interval : float, optional
             Time to sleep between checks for available providers (in seconds).
             Default is ``0.1``.
+        clear_buffers:
+            Whether to clear all buffers when starting. Default is ``True``.
         """
         if not REDIS_IS_AVAILABLE:
             raise RuntimeError("Redis is not available. Please install it first.")
 
-        super().__init__(models_config_path=models_config_path)
+        super().__init__(models_config_path=models_config_path, logger=logger)
 
         self.redis_client = redis.Redis(
             host=redis_host, port=redis_port, db=redis_db, decode_responses=True
@@ -119,7 +125,16 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             """
         )
 
-        self._clear_buffers()
+        if clear_buffers:
+            self._clear_buffers()
+
+        # Start providers monitor
+        self._monitor = RedisProviderMonitor(
+            redis_client=self.redis_client,
+            check_interval=30,
+            clear_buffers=clear_buffers,
+            logger=self.logger,
+        )
 
     def get_provider(
         self,
@@ -173,6 +188,9 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         if not providers:
             return None
 
+        # Register providers for monitoring (only once per model)
+        self._monitor.add_providers(model_name, providers)
+
         redis_key = self._get_redis_key(model_name)
         start_time = time.time()
 
@@ -186,6 +204,13 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         is_random = options and options.get("random_choice", False)
 
         while True:
+            _providers = self._get_active_providers(
+                model_name=model_name, providers=providers
+            )
+
+            if not len(_providers):
+                time.sleep(self.check_interval)
+
             if time.time() - start_time > self.timeout:
                 raise TimeoutError(
                     f"No available provider found for model '{model_name}' "
@@ -194,12 +219,14 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
 
             if is_random:
                 provider = self._try_acquire_random_provider(
-                    redis_key=redis_key, providers=providers
+                    redis_key=redis_key, providers=_providers
                 )
                 if provider:
+                    provider_field = self._provider_field(provider)
+                    provider["__chosen_field"] = provider_field
                     return provider
             else:
-                for provider in providers:
+                for provider in _providers:
                     provider_field = self._provider_field(provider)
                     try:
                         ok = int(
@@ -211,9 +238,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                             provider["__chosen_field"] = provider_field
                             return provider
                     except Exception:
-                        time.sleep(self.check_interval)
-                        continue
-            # -------------------------------------------------------------
+                        pass
             time.sleep(self.check_interval)
 
     def put_provider(
@@ -314,11 +339,15 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                     return provider
             except Exception:
                 continue
+        return None
 
-        provider = providers[0]
-        provider_field = self._provider_field(provider)
-        provider["__chosen_field"] = provider_field
-        return provider
+    def _get_active_providers(
+        self, model_name: str, providers: List[Dict]
+    ) -> List[Dict]:
+        active_providers = self._monitor.get_providers(
+            model_name=model_name, only_active=True
+        )
+        return active_providers
 
     def _get_redis_key(self, model_name: str) -> str:
         """
