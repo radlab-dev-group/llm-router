@@ -136,11 +136,22 @@ textarea {
     color: var(--muted)
 }
 
-/* Panele w jednej kolumnie */
 .grid {
     display: flex;
     flex-direction: column;
     gap: 16px
+}
+
+/* Layout for Active Models – placed side by side */
+.grid.active-models {
+    flex-direction: row; /* arrange items horizontally */
+    flex-wrap: wrap; /* wrap to next line on small screens */
+    gap: 16px;
+}
+
+.grid.active-models .panel {
+    flex: 1 1 0; /* allow panels to grow/shrink equally */
+    min-width: 200px; /* minimum width for each select */
 }
 
 .panel {
