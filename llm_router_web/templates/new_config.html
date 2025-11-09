@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Nowy konfig</h2>
+<h2>New config from scratch</h2>
 <form method="post" class="form">
-    <label>Nazwa
+    <label>Name
         <input type="text" name="name" required>
     </label>
     <div class="form-actions">
-        <button class="btn" type="submit">Utwórz</button>
-        <a class="btn btn-secondary" href="{{ url_for('index') }}">Anuluj</a>
+        <button class="btn" type="submit">Create</button>
+        <a class="btn btn-secondary" href="{{ url_for('index') }}">Cancel</a>
     </div>
 </form>
 {% endblock %}

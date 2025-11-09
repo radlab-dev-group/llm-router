@@ -2,7 +2,7 @@
 <html lang="pl" x-data>
 <head>
     <meta charset="UTF-8"/>
-    <title>{{ title or "Model Configurator" }}</title>
+    <title>{{ title or "LLM-router Model Configurator" }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
@@ -10,11 +10,11 @@
 </head>
 <body>
 <header class="topbar">
-    <h1 class="logo"><a href="{{ url_for('index') }}">Model Configurator</a></h1>
+    <h1 class="logo"><a href="{{ url_for('index') }}">LLM-router Model Configurator</a></h1>
     <nav class="menu">
-        <a href="{{ url_for('new_config') }}">Nowy konfig</a>
-        <a href="{{ url_for('import_config') }}">Załaduj istniejący</a>
-        <a href="{{ url_for('list_configs') }}">Zdefiniowane konfigi</a>
+        <a href="{{ url_for('new_config') }}">New config (from scratch)</a>
+        <a href="{{ url_for('import_config') }}">Load existing config</a>
+        <a href="{{ url_for('list_configs') }}">All defined configs</a>
     </nav>
 </header>
 

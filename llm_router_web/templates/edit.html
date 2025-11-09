@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Edycja: {{ cfg.name }}</h2>
+<h2>Edited config name: {{ cfg.name }}</h2>
 
 <form method="post" class="form">
     <h3>Active Models</h3>
@@ -16,18 +16,18 @@
         </div>
         {% endfor %}
     </div>
-    <label>Opis zmian (opcjonalnie)
+    <label>Changelog (optional)
         <input type="text" name="note" placeholder="np. zmiana wag, dodanie providera">
     </label>
     <div class="form-actions">
-        <button class="btn" type="submit">Zapisz aktywne</button>
-        <a class="btn btn-secondary" href="{{ url_for('view_config', config_id=cfg.id) }}">Podgląd</a>
+        <button class="btn" type="submit">Save changes</button>
+        <a class="btn btn-secondary" href="{{ url_for('view_config', config_id=cfg.id) }}">Preview</a>
     </div>
 </form>
 
 <hr>
 
-<h3>Modele i Providerzy</h3>
+<h3>Models and providers</h3>
 
 <div class="grid">
     {% for fam, models in families.items() %}
@@ -37,8 +37,8 @@
             <form hx-post="{{ url_for('add_model', config_id=cfg.id) }}" hx-trigger="submit" hx-swap="none"
                   class="inline">
                 <input type="hidden" name="family" value="{{ fam }}">
-                <input type="text" name="name" placeholder="Nazwa modelu (np. google/gemma-3-12b-it)" required>
-                <button class="btn btn-small" type="submit">Dodaj model</button>
+                <input type="text" name="name" placeholder="Model name (f.e. google/gemma-3-12b-it)" required>
+                <button class="btn btn-small" type="submit">Add model</button>
             </form>
         </div>
         {% for m in models %}
@@ -48,7 +48,7 @@
                 <button class="btn btn-small danger"
                         hx-post="{{ url_for('delete_model', model_id=m.id) }}"
                         hx-swap="none"
-                        onclick="return confirm('Usunąć model {{ m.name }}?')">Usuń
+                        onclick="return confirm('Are you sure to delete {{ m.name }}?')">Delete
                 </button>
             </summary>
 
@@ -61,10 +61,10 @@
                         <th class="col-api">API</th>
                         <th class="col-input">Input</th>
                         <th class="col-path">Model path</th>
-                        <th class="col-weight">Waga</th>
+                        <th class="col-weight">Weight</th>
                         <th class="col-token">Token</th>
-                        <th class="col-enabled">Włączony</th>
-                        <th class="col-actions">Akcje</th>
+                        <th class="col-enabled">Is active</th>
+                        <th class="col-actions">Actions</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -118,7 +118,7 @@
                             body:JSON.stringify({api_token:$event.target.value})})">
                                 <button class="btn btn-small" type="button"
                                         @click="masked = !masked"
-                                        x-text="masked ? 'Pokaż' : 'Ukryj'">
+                                        x-text="masked ? 'Show' : 'Hide'">
                                 </button>
                             </div>
                         </td>
@@ -132,7 +132,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" class="muted">Brak providerów.</td>
+                        <td colspan="9" class="muted">No providers found.</td>
                     </tr>
                     {% endfor %}
                     </tbody>
@@ -140,7 +140,7 @@
             </div>
 
             <details>
-                <summary>Dodaj providera</summary>
+                <summary>Add model provider</summary>
                 <form class="form-inline" onsubmit="return addProvider{{ m.id }}(event)">
                     <input type="text" placeholder="id" id="pid-{{ m.id }}" required>
                     <input type="url" placeholder="api_host" id="phost-{{ m.id }}" required>
@@ -154,8 +154,8 @@
                     <input type="number" step="0.01" min="0" max="1" placeholder="weight" id="pweight-{{ m.id }}"
                            value="1.0">
                     <input type="text" placeholder="api_token" id="ptoken-{{ m.id }}">
-                    <label class="chk"><input type="checkbox" id="penabled-{{ m.id }}" checked> włączony</label>
-                    <button class="btn btn-small" type="submit">Dodaj</button>
+                    <label class="chk"><input type="checkbox" id="penabled-{{ m.id }}" checked> enabled</label>
+                    <button class="btn btn-small" type="submit">Add</button>
                 </form>
                 <script>
                     async function addProvider{{ m.id }}(e){
@@ -181,23 +181,22 @@
             </details>
         </details>
         {% else %}
-        <p class="muted">Brak modeli w tej rodzinie.</p>
+        <p class="muted">No models found.</p>
         {% endfor %}
     </section>
     {% endfor %}
 </div>
 
 <div class="actions">
-    <a class="btn" href="{{ url_for('export_config', config_id=cfg.id) }}">Eksport JSON</a>
-    <button class="btn" hx-post="{{ url_for('set_active_config', config_id=cfg.id) }}" hx-swap="none">Ustaw jako
-        aktywny
+    <a class="btn" href="{{ url_for('export_config', config_id=cfg.id) }}">Export config</a>
+    <button class="btn" hx-post="{{ url_for('set_active_config', config_id=cfg.id) }}" hx-swap="none">Set as default
     </button>
-    <a class="btn btn-secondary" href="{{ url_for('view_config', config_id=cfg.id) }}">Podgląd</a>
+    <a class="btn btn-secondary" href="{{ url_for('view_config', config_id=cfg.id) }}">Preview</a>
 </div>
 
 <hr>
 
-<h3>Historia wersji</h3>
+<h3>History</h3>
 <div hx-get="{{ url_for('list_versions', config_id=cfg.id) }}" hx-trigger="load" hx-target="#versions"
      hx-swap="innerHTML"></div>
 <table class="table" id="versions"></table>
@@ -214,7 +213,7 @@
                 <td>v${v.version}</td>
                 <td>${new Date(v.created_at).toLocaleString()}</td>
                 <td>${v.note || ''}</td>
-                <td><button class="btn btn-small" onclick="restoreV(${v.version})">Przywróć</button></td>
+                <td><button class="btn btn-small" onclick="restoreV(${v.version})">Restore</button></td>
               </tr>
             `).join('')}
             </tbody>`;
@@ -222,9 +221,9 @@
       }
     });
     async function restoreV(v){
-      if(!confirm('Przywrócić wersję v'+v+'?')) return;
+      if(!confirm('Restore v'+v+'?')) return;
       const res = await fetch('{{ url_for("restore_version", config_id=cfg.id, version=0) }}'.replace('/0/','/'+v+'/'), {method:'POST'});
-      if(res.ok){ location.reload(); } else { alert('Błąd przywracania'); }
+      if(res.ok){ location.reload(); } else { alert('Error while restoring'); }
     }
 </script>
 {% endblock %}
