@@ -271,11 +271,13 @@ textarea {
 }
 
 .pre {
-    background: #0b0f14;
-    border: 1px solid #30363d;
+    /* Jasne tło i delikatna ramka – używamy zmiennych, które już mają wartości
+       odpowiednie dla trybu jasnego (var(--card) ≈ #f6f8fa). */
+    background: var(--card);
+    border: 1px solid #d0d7de; /* jaśniejszy odcień niż w ciemnym motywie */
     padding: 10px;
     border-radius: 6px;
-    overflow: auto
+    overflow: auto;
 }
 
 /* Token + przycisk */
