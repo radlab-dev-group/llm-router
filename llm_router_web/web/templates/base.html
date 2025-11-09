@@ -13,6 +13,7 @@
 <header class="topbar">
     <h1 class="logo"><a href="{{ url_for('index') }}">LLM-router Model Configurator</a></h1>
     <nav class="menu">
+        {% if session.get('user_id') %}
         <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
            href="{{ url_for('new_config') }}">New config (from scratch)</a>
         <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
@@ -24,7 +25,7 @@
         <a id="add-user-btn" class="btn btn-small"
            href="{{ url_for('admin_users') }}" title="Add user">Manage users</a>
         {% endif %}
-
+        {% endif %}
 
         <span class="spacer"></span>
 
