@@ -20,9 +20,13 @@ raised during initialisation.
 
 from typing import List, Dict, Optional
 
+from rdl_ml_utils.utils.logger import prepare_logger
+
+from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.base.constants_base import BalanceStrategies
-from llm_router_api.base.lb.first_available import FirstAvailableStrategy
+
 from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
+from llm_router_api.base.lb.first_available import FirstAvailableStrategy
 
 from llm_router_api.base.lb.balanced import LoadBalancedStrategy
 from llm_router_api.base.lb.weighted import WeightedStrategy, DynamicWeightedStrategy
@@ -62,6 +66,8 @@ class ProviderChooser:
         models_config_path: str,
         strategy: Optional[ChooseProviderStrategyI] = None,
         strategy_name: Optional[str] = None,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
     ) -> None:
         """
         Initialize the chooser with either a concrete strategy instance or a
@@ -81,9 +87,16 @@ class ProviderChooser:
             If a ``strategy_name`` is given but does not correspond to any
             known strategy.
         """
+        self._logger = prepare_logger(
+            logger_name=__name__,
+            logger_file_name=logger_file_name,
+            log_level=logger_level,
+            use_default_config=True,
+        )
+
         self.strategy_name: Optional[str] = strategy_name
         self.strategy: ChooseProviderStrategyI = strategy or LoadBalancedStrategy(
-            models_config_path=models_config_path
+            models_config_path=models_config_path, logger=self._logger
         )
 
         if not strategy and self.strategy_name:
@@ -126,7 +139,7 @@ class ProviderChooser:
         if not _cls:
             raise RuntimeError(f"Strategy {strategy_name} not found!")
 
-        return _cls(models_config_path=models_config_path)
+        return _cls(models_config_path=models_config_path, logger=self._logger)
 
     def get_provider(
         self, model_name: str, providers: List[Dict], options: Optional[Dict] = None

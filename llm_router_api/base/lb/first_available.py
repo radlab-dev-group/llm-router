@@ -23,6 +23,7 @@ Typical usage::
 """
 
 import time
+import logging
 import random
 
 try:
@@ -62,6 +63,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         timeout: int = 60,
         check_interval: float = 0.1,
         clear_buffers: bool = True,
+        logger: Optional[logging.Logger] = None,
     ) -> None:
         """
         Initialize the FirstAvailableStrategy.
@@ -88,7 +90,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         if not REDIS_IS_AVAILABLE:
             raise RuntimeError("Redis is not available. Please install it first.")
 
-        super().__init__(models_config_path=models_config_path)
+        super().__init__(models_config_path=models_config_path, logger=logger)
 
         self.redis_client = redis.Redis(
             host=redis_host, port=redis_port, db=redis_db, decode_responses=True
@@ -129,8 +131,9 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         # Start providers monitor
         self._monitor = RedisProviderMonitor(
             redis_client=self.redis_client,
-            check_interval=5.0,
+            check_interval=30,
             clear_buffers=clear_buffers,
+            logger=self.logger,
         )
 
     def get_provider(
