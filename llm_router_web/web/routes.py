@@ -417,6 +417,22 @@ def export_config(config_id):
 def edit_config(config_id):
     cfg = _get_user_config(config_id)
     if request.method == "POST":
+        new_name = request.form.get("new_name")
+        if new_name is not None:
+            new_name = new_name.strip()
+            if new_name and new_name != cfg.name:
+                # Ensure the new name is unique for this user
+                if Config.query.filter_by(
+                    name=new_name, user_id=_current_user_id()
+                ).first():
+                    flash("Configuration name already taken.", "error")
+                else:
+                    cfg.name = new_name
+                    flash("Configuration renamed.", "success")
+                    db.session.commit()
+            # If only renaming, skip further processing
+            return redirect(url_for("web.edit_config", config_id=cfg.id))
+
         note = request.form.get("note", "")
         # Update active models
         for fam in ["google_models", "openai_models", "qwen_models"]:
@@ -477,8 +493,8 @@ def add_provider(model_id: int):
     m = Model.query.get_or_404(model_id)
     payload = request.get_json(silent=True) or {}
     max_order = (
-            db.session.query(func.max(Provider.order)).filter_by(model_id=m.id).scalar()
-            or 0
+        db.session.query(func.max(Provider.order)).filter_by(model_id=m.id).scalar()
+        or 0
     )
     p = Provider(
         model=m,
