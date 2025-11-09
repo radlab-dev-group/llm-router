@@ -46,7 +46,9 @@ a.btn {
 }
 
 .container {
-    max-width: 1200px;
+    /*max-width: 1200px;*/
+    max-width: none;
+    width: 100%;
     margin: 20px auto;
     padding: 0 16px
 }
@@ -317,7 +319,8 @@ summary button {
 /* Drobna responsywność: węższa treść na bardzo szerokich ekranach */
 @media (min-width: 1280px) {
     .container {
-        max-width: 960px
+        /*max-width: 960px;*/
+        max-width: none;
     }
 }
 
