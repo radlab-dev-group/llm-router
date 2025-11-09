@@ -3,19 +3,23 @@
 <div class="panel">
     <h2>Import existing configuration</h2>
     <form method="post" enctype="multipart/form-data" class="form">
-        <label>Name of imported config (optional)
-            <input type="text" name="name" placeholder="np. production-1">
-        </label>
-        <label>JSON File
-            <input type="file" name="file" accept="application/json">
-        </label>
-        <p class="muted">Or put JSON below:</p>
-        <label>JSON
-            <textarea name="json" rows="12" placeholder="{ ... }"></textarea>
-        </label>
-        <div class="form-actions">
-            <button class="btn" type="submit">Import</button>
-            <a class="btn btn-secondary" href="{{ url_for('index') }}">Cancel</a>
+        <div class="panel">
+            <label>Name of imported config (optional)
+                <input type="text" name="name" placeholder="np. production-1">
+            </label>
+        </div>
+        <div class="panel">
+            <label>JSON File
+                <input type="file" name="file" accept="application/json">
+            </label>
+            <p class="muted">Or put JSON below:</p>
+            <label>JSON
+                <textarea name="json" rows="12" placeholder="{ ... }"></textarea>
+            </label>
+            <div class="form-actions">
+                <button class="btn" type="submit">Import</button>
+                <a class="btn btn-secondary" href="{{ url_for('index') }}">Cancel</a>
+            </div>
         </div>
     </form>
 </div>
