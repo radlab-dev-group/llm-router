@@ -58,6 +58,20 @@ def admin_required(view):
     return wrapped_view
 
 
+def _current_user_id():
+    return session.get("user_id")
+
+
+# ----------------------------------------------------------------------
+# Utility: require authentication for actions that create configs
+# ----------------------------------------------------------------------
+def _require_user():
+    """Abort with 403 if no user is logged in."""
+    if not _current_user_id():
+        abort(403, description="User must be logged in to perform this action.")
+    return _current_user_id()
+
+
 # ----------------------------------------------------------------------
 # First‑run setup – force creation of an initial admin user
 # ----------------------------------------------------------------------
@@ -192,13 +206,23 @@ def admin_users():
 # ----------------------------------------------------------------------
 @bp.route("/", endpoint="index")
 def index():
-    configs = Config.query.order_by(Config.updated_at.desc()).all()
+    user_id = _current_user_id()
+    configs = (
+        Config.query.filter_by(user_id=user_id)
+        .order_by(Config.updated_at.desc())
+        .all()
+    )
     return render_template("index.html", configs=configs)
 
 
 @bp.route("/configs")
 def list_configs():
-    configs = Config.query.order_by(Config.updated_at.desc()).all()
+    user_id = _current_user_id()
+    configs = (
+        Config.query.filter_by(user_id=user_id)
+        .order_by(Config.updated_at.desc())
+        .all()
+    )
     return render_template("configs.html", configs=configs)
 
 
@@ -211,9 +235,9 @@ def new_config():
         name = request.form.get("name", "").strip()
         if not name:
             abort(400, description="Name is required.")
-        if Config.query.filter_by(name=name).first():
+        if Config.query.filter_by(name=name, user_id=_current_user_id()).first():
             abort(400, description="Configuration with this name already exists.")
-        cfg = Config(name=name)
+        cfg = Config(name=name, user_id=_current_user_id())
         db.session.add(cfg)
         db.session.commit()
         snapshot_version(cfg.id, note="Created empty config")
@@ -222,7 +246,11 @@ def new_config():
 
 
 @bp.route("/configs/import", methods=["GET", "POST"])
+@bp.route("/configs/import", methods=["GET", "POST"])
 def import_config():
+    # make sure a user is logged in before we touch the DB
+    user_id = _require_user()
+
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         raw = request.files.get("file")
@@ -233,17 +261,20 @@ def import_config():
             flash("Invalid JSON.", "error")
             return redirect(url_for("web.import_config"))
 
+        # generate a name if none supplied
         if not name:
             name = f"import-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
-        if Config.query.filter_by(name=name).first():
+        # ensure the name is unique for this user
+        if Config.query.filter_by(name=name, user_id=user_id).first():
             flash("Name already taken.", "error")
             return redirect(url_for("web.import_config"))
 
-        cfg = Config(name=name)
+        # ---- create the Config **with the owner id** ----
+        cfg = Config(name=name, user_id=user_id)
         db.session.add(cfg)
-        db.session.flush()
+        db.session.flush()  # obtain cfg.id before adding models/providers
 
-        # Load models & providers
+        # Load models & providers (unchanged)
         for fam in ["google_models", "openai_models", "qwen_models"]:
             for mname, mval in (data.get(fam) or {}).items():
                 m = Model(config_id=cfg.id, family=fam, name=mname)
@@ -263,7 +294,7 @@ def import_config():
                         )
                     )
 
-        # Active models
+        # Active models (unchanged)
         active = data.get("active_models") or {}
         for fam in ["google_models", "openai_models", "qwen_models"]:
             for mname in active.get(fam, []):
@@ -274,15 +305,23 @@ def import_config():
         db.session.commit()
         snapshot_version(cfg.id, note="Import JSON")
         return redirect(url_for("web.edit_config", config_id=cfg.id))
+
     return render_template("import.html")
 
 
 # ----------------------------------------------------------------------
 # View / export / edit
 # ----------------------------------------------------------------------
+def _get_user_config(config_id):
+    """Fetch a config belonging to the current user or abort 404."""
+    return Config.query.filter_by(
+        id=config_id, user_id=_current_user_id()
+    ).first_or_404()
+
+
 @bp.route("/configs/<int:config_id>")
 def view_config(config_id):
-    cfg = Config.query.get_or_404(config_id)
+    cfg = _get_user_config(config_id)
     data = to_json(cfg.id)
     versions = (
         ConfigVersion.query.filter_by(config_id=cfg.id)
@@ -310,12 +349,13 @@ def view_config(config_id):
 
 @bp.route("/configs/<int:config_id>/export")
 def export_config(config_id):
-    return export_config_to_file(config_id)
+    cfg = _get_user_config(config_id)
+    return export_config_to_file(cfg.id)
 
 
 @bp.route("/configs/<int:config_id>/edit", methods=["GET", "POST"])
 def edit_config(config_id):
-    cfg = Config.query.get_or_404(config_id)
+    cfg = _get_user_config(config_id)
     if request.method == "POST":
         note = request.form.get("note", "")
         # Update active models
@@ -345,22 +385,26 @@ def edit_config(config_id):
 # ----------------------------------------------------------------------
 @bp.route("/configs/<int:config_id>/models/add", methods=["POST"])
 def add_model(config_id: int):
+    cfg = _get_user_config(config_id)
     fam = request.form.get("family")
     name = request.form.get("name", "").strip()
     if fam not in VALID_FAMILIES or not name:
         abort(400, description="Invalid data")
-    if Model.query.filter_by(config_id=config_id, family=fam, name=name).first():
+    if Model.query.filter_by(config_id=cfg.id, family=fam, name=name).first():
         abort(400, description="Model already exists")
-    m = Model(config_id=config_id, family=fam, name=name)
+    m = Model(config_id=cfg.id, family=fam, name=name)
     db.session.add(m)
     db.session.commit()
-    snapshot_version(config_id, note=f"Added model {name}")
+    snapshot_version(cfg.id, note=f"Added model {name}")
     return jsonify({"ok": True, "model_id": m.id})
 
 
 @bp.post("/models/<int:model_id>/delete")
 def delete_model(model_id):
     m = Model.query.get_or_404(model_id)
+    # ensure the model belongs to the current user
+    if m.config.owner.id != _current_user_id():
+        abort(403)
     cfg_id = m.config_id
     db.session.delete(m)
     db.session.commit()
@@ -446,8 +490,10 @@ def delete_provider(provider_id):
 # ----------------------------------------------------------------------
 @bp.post("/configs/<int:config_id>/activate")
 def set_active_config(config_id):
-    cfg = Config.query.get_or_404(config_id)
-    Config.query.update({Config.is_active: False})
+    cfg = _get_user_config(config_id)
+    Config.query.filter_by(user_id=_current_user_id()).update(
+        {Config.is_active: False}
+    )
     cfg.is_active = True
     db.session.commit()
     return jsonify({"ok": True})
@@ -458,8 +504,9 @@ def set_active_config(config_id):
 # ----------------------------------------------------------------------
 @bp.get("/configs/<int:config_id>/versions")
 def list_versions(config_id):
+    cfg = _get_user_config(config_id)
     versions = (
-        ConfigVersion.query.filter_by(config_id=config_id)
+        ConfigVersion.query.filter_by(config_id=cfg.id)
         .order_by(ConfigVersion.version.desc())
         .all()
     )
@@ -477,7 +524,7 @@ def list_versions(config_id):
 
 @bp.post("/configs/<int:config_id>/versions/<int:version>/restore")
 def restore_version(config_id, version):
-    cfg = Config.query.get_or_404(config_id)
+    cfg = _get_user_config(config_id)
     v = ConfigVersion.query.filter_by(
         config_id=config_id, version=version
     ).first_or_404()
