@@ -6,6 +6,7 @@
     --card: #f6f8fa;
     --accent: #0366d6;
     --danger: #d73a49;
+    --danger-soft: #e57373;
     --ok: #28a745;
 }
 
@@ -42,10 +43,6 @@ a.btn {
 
 .logo a {
     color: #fff
-}
-
-.menu a {
-    margin-left: 12px
 }
 
 .container {
@@ -128,7 +125,7 @@ a.btn {
 .form label {
     display: flex;
     align-items: center;
-    gap: 8px;           /* space between label text and field */
+    gap: 8px; /* space between label text and field */
 }
 
 .form-inline {
@@ -467,16 +464,24 @@ hr.model-divider {
     transition: background 0.2s, color 0.2s;
 }
 
+.menu a.danger {
+    background: var(--danger-soft);
+    color: #fff;
+}
+
+/* Hover/active dla przycisku .danger – nie podmienia koloru na accent */
+.menu a.danger:hover,
+.menu a.danger.active {
+    background: var(--danger-soft);
+    color: #fff;
+}
+
+
 /* Hover / active states keep the same colour scheme */
 .menu a:hover,
 .menu a.active {
     background: var(--accent);
     color: #fff;
-}
-
-/* Remove the old margin‑left rule (no longer needed) */
-.menu a {
-    /* margin-left: 12px */
 }
 
 /* Added spacing between label text and its input field */
