@@ -1,3 +1,7 @@
+import io
+import json
+import requests
+
 from flask import (
     Flask,
     render_template,
@@ -11,8 +15,7 @@ from flask import (
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 from datetime import datetime
-import json
-import io
+
 
 app = Flask(__name__, static_url_path="/static", static_folder="static")
 app.config["SECRET_KEY"] = "change-me-local"
@@ -446,6 +449,29 @@ def delete_provider(provider_id):
     db.session.commit()
     snapshot_version(cfg_id, note=f"Usunięto providera {p.provider_id}")
     return jsonify({"ok": True})
+
+
+@app.post("/check_host")
+def check_host():
+    """
+    Receive a JSON payload with a ``url`` field, perform a GET request
+    from the server, and return the HTTP status code.
+    This avoids CORS problems that occur when checking the host directly
+    from the browser.
+    """
+    data = request.get_json() or {}
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "Missing url"}), 400
+
+    try:
+        # A short timeout keeps the UI responsive
+        resp = requests.get(url, timeout=5)
+        return jsonify({"status": resp.status_code})
+    except Exception as exc:  # pragma: no cover
+        # Return 500 with the error message – the front‑end will treat this
+        # as “unable to reach the host”.
+        return jsonify({"error": str(exc)}), 500
 
 
 if __name__ == "__main__":
