@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Zdefiniowane konfigi</h2>
+<h2>All defined configs</h2>
 <table class="table">
     <thead>
     <tr>
-        <th>Nazwa</th>
-        <th>Utworzono</th>
-        <th>Aktualizacja</th>
+        <th>Name</th>
+        <th>Created at</th>
+        <th>Last update</th>
         <th>Status</th>
-        <th>Akcje</th>
+        <th>Action</th>
     </tr>
     </thead>
     <tbody>
@@ -17,19 +17,19 @@
         <td>{{ c.name }}</td>
         <td>{{ c.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
         <td>{{ c.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
-        <td>{% if c.is_active %}<span class="badge">AKTYWNY</span>{% else %}-{% endif %}</td>
+        <td>{% if c.is_active %}<span class="badge">DEFAULT</span>{% else %}-{% endif %}</td>
         <td class="nowrap">
-            <a class="btn btn-small" href="{{ url_for('view_config', config_id=c.id) }}">Podgląd</a>
-            <a class="btn btn-small" href="{{ url_for('edit_config', config_id=c.id) }}">Edytuj</a>
-            <a class="btn btn-small" href="{{ url_for('export_config', config_id=c.id) }}">Eksport</a>
+            <a class="btn btn-small" href="{{ url_for('view_config', config_id=c.id) }}">View</a>
+            <a class="btn btn-small" href="{{ url_for('edit_config', config_id=c.id) }}">Edit</a>
+            <a class="btn btn-small" href="{{ url_for('export_config', config_id=c.id) }}">Export</a>
             <button class="btn btn-small" hx-post="{{ url_for('set_active_config', config_id=c.id) }}" hx-swap="none">
-                Aktywuj
+                Set as default
             </button>
         </td>
     </tr>
     {% else %}
     <tr>
-        <td colspan="5">Brak konfigów.</td>
+        <td colspan="5">No configs found.</td>
     </tr>
     {% endfor %}
     </tbody>
