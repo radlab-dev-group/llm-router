@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel">
+    <h2>Logowanie</h2>
+    <form method="post" class="form">
+        <label>Login
+            <input type="text" name="username" required>
+        </label>
+        <label>Hasło
+            <input type="password" name="password" required>
+        </label>
+        <div class="form-actions">
+            <button class="btn" type="submit">Zaloguj</button>
+        </div>
+    </form>
+</div>
+{% endblock %}
