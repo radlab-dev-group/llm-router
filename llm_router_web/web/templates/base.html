@@ -13,7 +13,6 @@
 <header class="topbar">
     <h1 class="logo"><a href="{{ url_for('index') }}">LLM-router Model Configurator</a></h1>
     <nav class="menu">
-        <!-- istniejące linki -->
         <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
            href="{{ url_for('new_config') }}">New config (from scratch)</a>
         <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
@@ -21,22 +20,22 @@
         <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
            href="{{ url_for('list_configs') }}">All defined configs</a>
 
-        <!-- przycisk przełącznika motywu -->
         <button id="theme-toggle" class="btn btn-small" title="Toggle dark/light mode">
             🌙
         </button>
 
-        {# ---- wylogowanie (widoczne po zalogowaniu) ---- #}
-        {% if session.get('user_id') %}
-        <a id="logout-btn" class="btn btn-small"
-           href="{{ url_for('logout') }}" title="Wyloguj">🚪</a>
-        {% endif %}
 
-        {# ---- przycisk „Dodaj użytkownika” – tylko dla admina ---- #}
         {% if session.get('role') == 'admin' %}
         <a id="add-user-btn" class="btn btn-small"
-           href="{{ url_for('admin_users') }}" title="Dodaj użytkownika">➕ Użytkownik</a>
+           href="{{ url_for('admin_users') }}" title="Add user">➕ User</a>
         {% endif %}
+
+        {% if session.get('user_id') %}
+        <a id="logout-btn" class="btn btn-small"
+           href="{{ url_for('logout') }}" title="Logout">🚪 Logout</a>
+        {% endif %}
+
+
     </nav>
 </header>
 
