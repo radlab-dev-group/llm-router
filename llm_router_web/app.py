@@ -126,10 +126,10 @@ def to_json(config_id: int) -> dict:
 def snapshot_version(config_id: int, note: str = ""):
     payload = to_json(config_id)
     last = (
-        db.session.query(func.max(ConfigVersion.version))
-        .filter_by(config_id=config_id)
-        .scalar()
-        or 0
+            db.session.query(func.max(ConfigVersion.version))
+            .filter_by(config_id=config_id)
+            .scalar()
+            or 0
     )
     v = ConfigVersion(
         config_id=config_id,
@@ -428,6 +428,17 @@ def restore_version(config_id, version):
             )
     db.session.commit()
     snapshot_version(cfg.id, note=f"Przywrócono v{version}")
+    return jsonify({"ok": True})
+
+
+@app.post("/providers/<int:provider_id>/delete")
+def delete_provider(provider_id):
+    """Usuwa pojedynczy provider i zapisuje wersję konfiguracji."""
+    p = Provider.query.get_or_404(provider_id)
+    cfg_id = p.model.config_id
+    db.session.delete(p)
+    db.session.commit()
+    snapshot_version(cfg_id, note=f"Usunięto providera {p.provider_id}")
     return jsonify({"ok": True})
 
 
