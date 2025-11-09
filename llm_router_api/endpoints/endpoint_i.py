@@ -395,7 +395,9 @@ class EndpointI(abc.ABC):
     # ------------------------------------------------------------------
     # Model‑related helpers (used by proxy endpoints)
     # ------------------------------------------------------------------
-    def get_model_provider(self, params: Dict[str, Any]) -> ApiModel:
+    def get_model_provider(
+        self, params: Dict[str, Any], options: Optional[Dict[str, Any]] = None
+    ) -> ApiModel:
         """
         Resolve the model identifier from *params* and store the matching
         :class:`ApiModel` instance.
@@ -409,6 +411,9 @@ class EndpointI(abc.ABC):
         params :
             Request payload from which the model name is extracted.
 
+        options: Default: ``None``
+            Options to use into the strategy
+
         Raises
         ------
         ValueError
@@ -418,13 +423,18 @@ class EndpointI(abc.ABC):
         # if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
         #     return
         model_name = self._model_name_from_params_or_model(params=params)
-        api_model = self._model_handler.get_model_provider(model_name=model_name)
+        api_model = self._model_handler.get_model_provider(
+            model_name=model_name, options=options
+        )
         if api_model is None:
             raise ValueError(f"Model '{model_name}' not found in configuration")
         return api_model
 
     def unset_model(
-        self, api_model_provider: ApiModel, params: Dict[str, Any]
+        self,
+        api_model_provider: ApiModel,
+        params: Dict[str, Any],
+        options: Optional[Dict[str, Any]] = None,
     ) -> None:
         if not api_model_provider:
             return
@@ -432,7 +442,9 @@ class EndpointI(abc.ABC):
             params=params, api_model_provider=api_model_provider
         )
         self._model_handler.put_model_provider(
-            model_name=model_name, provider=api_model_provider.as_dict()
+            model_name=model_name,
+            provider=api_model_provider.as_dict(),
+            options=options,
         )
 
     @staticmethod
@@ -520,6 +532,17 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
       :mod:`requests` library.
     """
 
+    class RetryResponse:
+        # Code - definition
+        #  * 400 - Raised by internal httprequest
+        #  * 404 - Not Found
+        #  * 503 - Service Unavailable
+        #  * 504 - Gateway Timeout
+        #  * > 500 - General error
+        RETRY_WHEN_STATUS = [400, 404, 429, 503, 504, 500]
+        TIME_TO_WAIT_SEC = 0.1
+        MAX_RECONNECTIONS = 10
+
     # ------------------------------------------------------------------
     # Construction
     # ------------------------------------------------------------------
@@ -591,7 +614,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     # Core execution flow
     # ------------------------------------------------------------------
     def run_ep(
-        self, params: Optional[Dict[str, Any]]
+        self,
+        params: Optional[Dict[str, Any]],
+        reconnect_number: Optional[int] = 0,
+        options: Optional[Dict] = None,
     ) -> Optional[Dict[str, Any] | Iterable[str | bytes]]:
         """
         Execute the endpoint logic for a request.
@@ -608,6 +634,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         params :
             Dictionary of request arguments extracted by the Flask registrar.
 
+        reconnect_number: Defaults to ``0``.
+            Number of times when the endpoint is trying to reconnect to the
+            external host chosen by the provider.
+
+        options: Defaults to ``None``.
+            Additional options which may be passed f.e. to strategy
+
         Returns
         -------
         dict | Iterator[bytes] | None
@@ -621,6 +654,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Propagates any unexpected error; the Flask registrar will
             translate it into a 500 response.
         """
+        orig_params = params.copy()
         api_model_provider = None
         clear_chosen_provider_finally = False
 
@@ -653,7 +687,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # When the endpoint does not declare required arguments, we treat
             # it as a proxy that forwards the request to the model's own
             # endpoint.
-            api_model_provider = self.get_model_provider(params=params)
+            api_model_provider = self.get_model_provider(
+                params=params, options=options
+            )
             if api_model_provider is None:
                 raise ValueError(f"API model not found in params {params}")
             clear_chosen_provider_finally = True
@@ -674,37 +710,23 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 prompt_str_postfix=prompt_str_postfix,
             )
 
-            if simple_proxy:
+            use_streaming = bool((params or {}).get("stream", False))
+
+            if simple_proxy and not use_streaming:
                 ep_pref = ""
                 if self.add_api_prefix and DEFAULT_API_PREFIX:
                     ep_pref = DEFAULT_API_PREFIX.strip()
                 ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
 
-                if bool((params or {}).get("stream", False)):
-                    clear_chosen_provider_finally = False
-                    return self._http_executor.stream_response(
-                        ep_url=ep_url,
-                        params=params,
-                        is_ollama=False,
-                        is_generic_to_ollama=False,
-                        api_model_provider=api_model_provider,
-                    )
-                response = self._http_executor.call_http_request(
-                    ep_url=ep_url,
-                    params=params,
-                    prompt_str=prompt_str,
+                return self._return_response_or_rerun(
                     api_model_provider=api_model_provider,
-                    call_for_each_user_msg=self._call_for_each_user_msg,
+                    ep_url=ep_url,
+                    prompt_str=prompt_str,
+                    orig_params=orig_params,
+                    params=params,
+                    options=options,
+                    reconnect_number=reconnect_number,
                 )
-                # self.logger.debug("=" * 100)
-                # self.logger.debug(response)
-                # self.logger.debug("=" * 100)
-
-                self.unset_model(
-                    params=params, api_model_provider=api_model_provider
-                )
-                clear_chosen_provider_finally = False
-                return response
 
             if prompt_name is not None:
                 self.logger.debug(f" -> prompt_name: {prompt_name}")
@@ -719,58 +741,45 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     api_type=api_model_provider.api_type, params=params
                 )
 
-            if bool((params or {}).get("stream", False)):
+            if use_streaming:
+                clear_chosen_provider_finally = False
                 if self._call_for_each_user_msg:
                     raise ValueError(
                         "Streaming is available only for single message"
                     )
 
-                clear_chosen_provider_finally = False
-                if api_model_provider.api_type in self._ep_types_str:
-                    return self._http_executor.stream_response(
-                        ep_url=ep_url,
-                        params=params,
-                        is_ollama=False,
-                        is_generic_to_ollama=False,
-                        api_model_provider=api_model_provider,
-                    )
+                is_generic_to_ollama = False
+                is_ollama_to_generic = False
+                is_ollama = (
+                    "ollama" in self._ep_types_str
+                    and "ollama" in api_model_provider.api_type
+                )
+                if not is_ollama:
+                    if "ollama" in self._ep_types_str:
+                        is_generic_to_ollama = True
 
-                if "ollama" in self._ep_types_str:
-                    return self._http_executor.stream_response(
-                        ep_url=ep_url,
-                        params=params,
-                        is_ollama=True,
-                        is_generic_to_ollama=False,
-                        api_model_provider=api_model_provider,
-                    )
-
-                if api_model_provider.api_type == "ollama":
-                    return self._http_executor.stream_response(
-                        ep_url=ep_url,
-                        params=params,
-                        is_ollama=False,
-                        is_generic_to_ollama=True,
-                        api_model_provider=api_model_provider,
-                    )
+                    if "ollama" in api_model_provider.api_type:
+                        is_ollama_to_generic = True
 
                 return self._http_executor.stream_response(
                     ep_url=ep_url,
                     params=params,
-                    is_ollama=False,
-                    is_generic_to_ollama=False,
+                    options=options,
+                    is_ollama=is_ollama,
+                    is_generic_to_ollama=is_generic_to_ollama,
+                    is_ollama_to_generic=is_ollama_to_generic,
                     api_model_provider=api_model_provider,
                 )
 
-            response = self._http_executor.call_http_request(
-                ep_url=ep_url,
-                params=params,
-                prompt_str=prompt_str,
+            return self._return_response_or_rerun(
                 api_model_provider=api_model_provider,
-                call_for_each_user_msg=self._call_for_each_user_msg,
+                ep_url=ep_url,
+                prompt_str=prompt_str,
+                orig_params=orig_params,
+                params=params,
+                options=options,
+                reconnect_number=reconnect_number,
             )
-            self.unset_model(api_model_provider=api_model_provider, params=params)
-            clear_chosen_provider_finally = False
-            return response
         except Exception as e:
             self.logger.exception(e)
             clear_chosen_provider_finally = True
@@ -778,8 +787,69 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         finally:
             if clear_chosen_provider_finally and api_model_provider is not None:
                 self.unset_model(
-                    api_model_provider=api_model_provider, params=params
+                    api_model_provider=api_model_provider,
+                    params=params,
+                    options=options,
                 )
+
+    def _return_response_or_rerun(
+        self,
+        api_model_provider,
+        ep_url: str,
+        prompt_str: str,
+        orig_params: Dict,
+        params: Dict,
+        options: Dict,
+        reconnect_number: int,
+    ):
+        response = None
+        status_code_force = None
+        try:
+            response = self._http_executor.call_http_request(
+                ep_url=ep_url,
+                params=params,
+                prompt_str=prompt_str,
+                api_model_provider=api_model_provider,
+                call_for_each_user_msg=self._call_for_each_user_msg,
+            )
+        except Exception as e:
+            status_code_force = 500
+
+        self.unset_model(
+            api_model_provider=api_model_provider, params=params, options=options
+        )
+
+        status_code = None or status_code_force
+        if response and type(response) not in [dict]:
+            status_code = response.status_code
+        elif not response:
+            status_code = 500
+        #
+        # print("====" * 20)
+        # print(response)
+        # print("status_code=", status_code)
+        # print("====" * 20)
+
+        if status_code and status_code in self.RetryResponse.RETRY_WHEN_STATUS:
+            self.logger.warning(
+                f" Provider {api_model_provider.id} responded with "
+                f"{status_code}. Retrying {reconnect_number + 1}/"
+                f"{self.RetryResponse.MAX_RECONNECTIONS}."
+            )
+
+            if reconnect_number < self.RetryResponse.MAX_RECONNECTIONS:
+                time.sleep(self.RetryResponse.TIME_TO_WAIT_SEC)
+                if not options:
+                    options = {}
+                options["random_choice"] = True
+
+                return self.run_ep(
+                    params=orig_params,
+                    reconnect_number=reconnect_number + 1,
+                    options=options,
+                )
+            self.logger.error(f"Max reconnections exceeded: {reconnect_number}!")
+        return response
 
     @staticmethod
     def _filter_params_to_acceptable(
@@ -830,12 +900,3 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         except json.JSONDecodeError as e:
             self.logger.exception(e)
             return {"raw_response": response.text}
-
-    # # ------------------------------------------------------------------
-    # def __dispatch_external_api_model(self, params: Dict[str, Any]) -> Optional[ApiModel]:
-    #     try:
-    #         model_name = self._model_name_from_params(params=params)
-    #         return self._model_handler.get_model_provider(model_name)
-    #     except (ValueError, Exception) as e:
-    #         self.logger.exception(e)
-    #         raise

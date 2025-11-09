@@ -1,12 +1,15 @@
 import os
 import json
 import requests
+import concurrent.futures
+
 from typing import Any, Dict
 
 from rdl_ml_utils.utils.env import bool_env_value
 
 
 DEBUG_ALL = bool_env_value("DEBUG_ALL")
+THREAD_COUNT = int(os.getenv("TEST_THREADS", "4"))
 BASE_URL = os.getenv("LLM_ROUTER_URL", "http://192.168.100.65:8080")
 
 
@@ -344,7 +347,7 @@ class Builtin:
 
 
 def run_all_tests() -> None:
-    """Execute all endpoint tests sequentially."""
+    """Execute all endpoint tests using a thread pool."""
     models = {
         "ollama20": "gpt-oss:20b",
         "ollama120": "gpt-oss:120b",
@@ -371,7 +374,9 @@ def run_all_tests() -> None:
         [Builtin.test_builtin_full_article, "vllm_model", False or DEBUG_ALL],
         [Builtin.test_builtin_generative_answer, "vllm_model", False or DEBUG_ALL],
     ]
-    for fn, model_name, debug in test_functions:
+
+    def _run_test(fn, model_name, debug):
+        print("=" * 100)
         try:
             print(f"Running {fn.__name__} ...")
             fn(models[model_name], debug)
@@ -379,7 +384,13 @@ def run_all_tests() -> None:
             print(f"❌ {fn.__name__} failed: {e}")
         else:
             print(f"✅ {fn.__name__} succeeded")
-        print("-" * 40)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=THREAD_COUNT) as executor:
+        futures = [
+            executor.submit(_run_test, fn, model_name, debug)
+            for fn, model_name, debug in test_functions
+        ]
+        concurrent.futures.wait(futures)
 
 
 if __name__ == "__main__":

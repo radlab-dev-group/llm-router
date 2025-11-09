@@ -19,6 +19,35 @@
           "input_size": 4096,
           "model_path": "",
           "weight": 1.0
+        }
+      ],
+      "providers_sleep": [
+        {
+          "id": "gemma3_12b-vllm-66:7000",
+          "api_host": "http://192.168.100.66:7000/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": "",
+          "weight": 0.1
+        },
+        {
+          "id": "gemma3_12b-vllm-66:7001",
+          "api_host": "http://192.168.100.66:7001/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": "",
+          "weight": 0.1
+        },
+        {
+          "id": "gemma3_12b-vllm-66:7002",
+          "api_host": "http://192.168.100.66:7002/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 4096,
+          "model_path": "",
+          "weight": 0.1
         },
         {
           "id": "gemma3_12b-vllm-70:7000",
@@ -46,35 +75,6 @@
           "input_size": 4096,
           "model_path": "",
           "weight": 1.0
-        }
-      ],
-      "providers_sleep": [
-        {
-          "id": "gemma3_12b-vllm-66:7000",
-          "api_host": "http://192.168.100.66:7000/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 0.0
-        },
-        {
-          "id": "gemma3_12b-vllm-66:7001",
-          "api_host": "http://192.168.100.66:7001/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 0.0
-        },
-        {
-          "id": "gemma3_12b-vllm-66:7002",
-          "api_host": "http://192.168.100.66:7002/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 0.0
         }
       ]
     },
@@ -119,6 +119,14 @@
     "gpt-oss:120b": {
       "providers": [
         {
+          "id": "gpt-oss-120b-ollama-70:11434",
+          "api_host": "http://192.168.100.70:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": ""
+        },
+        {
           "id": "gpt-oss-120b-ollama-66:11434",
           "api_host": "http://192.168.100.66:11434",
           "api_token": "",
@@ -126,6 +134,8 @@
           "input_size": 256000,
           "model_path": ""
         }
+      ],
+      "providers_sleep": [
       ]
     }
   },
@@ -151,6 +161,14 @@
           "api_type": "ollama",
           "input_size": 256000,
           "model_path": ""
+        },
+        {
+          "id": "qwen3-coder-30b-70:11434",
+          "api_host": "http://192.168.100.70:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": ""
         }
       ]
     }
@@ -166,7 +184,6 @@
       "gpt-oss:120b"
     ],
     "qwen_models": [
-      "qwen3:235b",
       "qwen3-coder:30b"
     ]
   }
