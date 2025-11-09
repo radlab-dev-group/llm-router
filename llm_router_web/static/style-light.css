@@ -1,0 +1,474 @@
+/* Light theme – defines the same CSS variables with light colours */
+:root {
+    --bg: #ffffff;
+    --fg: #24292f;
+    --muted: #586069;
+    --card: #f6f8fa;
+    --accent: #0366d6;
+    --danger: #d73a49;
+    --ok: #28a745;
+}
+
+/* The rest of the rules are identical to the dark theme – they reuse the variables above */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: Inter, system-ui, Segoe UI, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none
+}
+
+a.btn {
+    color: #fff
+}
+
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    padding: 0 16px;
+    background: #090d13;
+    border-bottom: 1px solid #21262d;
+}
+
+.logo a {
+    color: #fff
+}
+
+.menu a {
+    margin-left: 12px
+}
+
+.container {
+    /*max-width: 1200px;*/
+    max-width: none;
+    width: 100%;
+    margin: 20px auto;
+    padding: 0 16px
+}
+
+.btn {
+    background: var(--accent); /* niebieski w jasnym */
+    color: #fff; /* biały tekst – czytelny */
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.btn:hover {
+    opacity: .9
+}
+
+.btn-secondary {
+    background: #e1e4e8; /* jasnoszary */
+    color: var(--fg);
+}
+
+.btn-small {
+    padding: 4px 8px;
+    font-size: .9em
+}
+
+.danger {
+    background: var(--danger);
+    color: #fff;
+}
+
+.badge {
+    background: var(--ok);
+    color: #000;
+}
+
+.flash-container {
+    max-width: 1200px;
+    margin: 8px auto;
+    padding: 0 16px
+}
+
+.flash {
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin: 6px 0;
+    background: #20262d
+}
+
+.form {
+    display: grid;
+    gap: 12px;
+    max-width: 800px
+}
+
+.form-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 10px 0
+}
+
+.form-actions {
+    display: flex;
+    gap: 8px
+}
+
+/* ---- INPUT, SELECT, TEXTAREA w trybie jasnym ----------------------------------- */
+input, select, textarea {
+    width: 100%;
+    padding: 8px;
+    border-radius: 6px;
+    /* Light‑mode border i tło – jasno szary i biały */
+    border: 1px solid #d0d7de; /* zamiast #30363d */
+    background: #ffffff; /* zamiast #0b0f14 */
+    color: var(--fg); /* ciemny tekst */
+}
+
+
+/* Reduce width of fields that only need short text/numeric values */
+.col-api input,
+.col-api select {
+    max-width: 80px; /* API type (select) */
+}
+
+.col-input input {
+    max-width: 80px; /* Context size (numeric) */
+}
+
+.col-weight input {
+    max-width: 80px; /* Weight (numeric) */
+}
+
+/* Keep other inputs full‑width */
+.col-id input,
+.col-host input,
+.col-path input,
+.col-token input,
+.col-token textarea,
+.col-enabled input,
+.col-actions input {
+    width: 100%;
+}
+
+textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+}
+
+.muted {
+    color: var(--muted)
+}
+
+.grid {
+    display: flex;
+    flex-direction: column;
+    gap: 16px
+}
+
+/* Layout for Active Models – placed side by side */
+.grid.active-models {
+    flex-direction: row; /* arrange items horizontally */
+    flex-wrap: wrap; /* wrap to next line on small screens */
+    gap: 16px;
+}
+
+.grid.active-models .panel {
+    flex: 1 1 0; /* allow panels to grow/shrink equally */
+    min-width: 200px; /* minimum width for each select */
+}
+
+.panel {
+    background: var(--card);
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--muted);
+    min-width: 0;
+    margin-bottom: 16px;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between;
+    flex-wrap: wrap
+}
+
+/* Tabele */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid #21262d;
+    table-layout: auto;
+}
+
+
+.table th, .table td {
+    border-top: 1px solid #21262d;
+    padding: 8px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.table {
+    border: 1px solid #30363d;
+}
+
+.table th, .table td {
+    border-top: 1px solid #30363d;
+}
+
+.col-id {
+    min-width: 120px
+}
+
+.col-host {
+    min-width: 150px
+}
+
+.col-api {
+    min-width: 90px;
+    text-align: center
+}
+
+.col-input {
+    min-width: 90px
+}
+
+.col-path {
+    min-width: 160px
+}
+
+.col-weight {
+    min-width: 90px
+}
+
+.col-token {
+    min-width: 220px
+}
+
+.col-enabled {
+    min-width: 110px;
+    text-align: center
+}
+
+.col-actions {
+    min-width: 100px
+}
+
+/* Inputy w tabeli */
+.table input, .table select {
+    width: 100%;
+    min-width: 0
+}
+
+.pre {
+    background: #0b0f14;
+    border: 1px solid #30363d;
+    padding: 10px;
+    border-radius: 6px;
+    overflow: auto
+}
+
+/* Token + przycisk */
+.token-field {
+    display: flex;
+    gap: 6px;
+    align-items: center
+}
+
+.token-field input {
+    flex: 1 1 auto;
+    min-width: 100px
+}
+
+.token-field .btn {
+    white-space: nowrap
+}
+
+/* Details nagłówki */
+summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer
+}
+
+summary > strong {
+    flex: 1 1 auto;
+    min-width: 0
+}
+
+summary button {
+    flex: 0 0 auto
+}
+
+/* Scroll poziomy dla tabeli providerów (zachowuje thead) */
+.model {
+    margin-top: 8px
+}
+
+.model .scroll-wrap {
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: 6px;
+    margin: 16px 0;
+}
+
+.model .scroll-wrap table {
+    min-width: 1100px
+}
+
+/* Karty i listy */
+.card-list {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 12px
+}
+
+.card {
+    background: var(--card);
+    border: 1px solid #21262d;
+    border-radius: 8px;
+    padding: 12px
+}
+
+.card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: space-between
+}
+
+.card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap
+}
+
+/* Akcje */
+.actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+/* Drobna responsywność: węższa treść na bardzo szerokich ekranach */
+@media (min-width: 1280px) {
+    .container {
+        /*max-width: 960px;*/
+        max-width: none;
+    }
+}
+
+/* Misc */
+.nowrap {
+    white-space: nowrap
+}
+
+/* layout for the “Add model” form */
+.add-model-form {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin: 10px 0;
+    width: 50%; /* the whole form takes half of the container */
+}
+
+/* Input expands to fill the space left by the button */
+.add-model-form input[name="name"] {
+    flex: 1 1 auto; /* grow/shrink as needed */
+}
+
+/* Keep the button at its natural size */
+.add-model-form button {
+    flex: 0 0 auto;
+}
+
+/* Separator between the family header and the model list */
+.model-separator {
+    border-top: 1px solid var(--muted);
+    margin: 12px 0;
+}
+
+/* Divider between individual models – slightly darker */
+hr.model-divider {
+    border: none;
+    height: 1px;
+    background-color: #30363d;
+    margin: 12px 0;
+    opacity: 0.8;
+}
+
+/* większy odstęp od ostatniej pozycji w tabeli historii wersji */
+.history-toggle {
+    margin-top: 16px;
+}
+
+/* Menu container keeps its flex layout */
+.menu {
+    display: flex;
+    gap: 8px;
+    align-items: stretch; /* stretch children to full height */
+}
+
+/* Rich, tab‑like style – now the link occupies the whole bar height */
+.menu a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 48px; /* fill .topbar height */
+    padding: 0 16px; /* horizontal padding only */
+    border-radius: 0;
+    background: var(--card);
+    color: var(--fg);
+    text-decoration: none;
+    transition: background 0.2s, color 0.2s;
+}
+
+/* Hover / active states keep the same colour scheme */
+.menu a:hover,
+.menu a.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Remove the old margin‑left rule (no longer needed) */
+.menu a {
+    /* margin-left: 12px */
+}
+
+/* Added spacing between label text and its input field */
+.form label input {
+    margin-top: 12px;
+}
+
+/* Make summary elements with the .clickable class stand out as interactive */
+summary.clickable {
+    color: var(--accent);
+    font-weight: 600;
+    /* optional hover effect */
+    transition: opacity 0.2s;
+}
+
+summary.clickable:hover {
+    opacity: 0.8;
+}
+
+[id^="ptype-"],
+[id^="psize-"],
+[id^="pweight-"] {
+    max-width: 80px; /* same as table columns for API type, context size and weight */
+}
