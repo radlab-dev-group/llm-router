@@ -599,8 +599,19 @@ def delete_config(config_id):
     db.session.delete(cfg)
     db.session.commit()
     flash(f"Configuration '{cfg.name}' has been deleted.", "success")
-    # After deletion redirect to the list view
-    return redirect(url_for("list_configs"))
+    # --------------------------------------------------------------
+    # Determine where to send the user after deletion:
+    #   • If the request came from the configs list page, stay there.
+    #   • Otherwise (e.g., from the index page) go back to index.
+    # --------------------------------------------------------------
+    # `request.referrer` contains the full URL of the page that submitted the form.
+    # We compare it with the URL generated for the configs list view.
+    ref = request.referrer or ""
+    configs_url = url_for("list_configs", _external=True)
+    if ref.startswith(configs_url):
+        return redirect(url_for("list_configs"))
+    else:
+        return redirect(url_for("index"))
 
 
 # ----------------------------------------------------------------------
