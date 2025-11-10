@@ -25,8 +25,6 @@ RUN pip3 install --upgrade pip && pip3 install -r requirements.txt
 
 RUN pip3 install git+https://github.com/radlab-dev-group/ml-utils.git
 
-COPY entrypoint.sh /srv/llm-router/entrypoint.sh
-
 RUN chmod +x run-rest-api.sh && chmod +x entrypoint.sh
 
 ENTRYPOINT ["/srv/llm-router/entrypoint.sh"]

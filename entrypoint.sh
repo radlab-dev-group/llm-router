@@ -6,3 +6,4 @@ if [ "$1" = "SLEEP" ]; then
 else
   echo "Starting application..."
   exec ./run-rest-api.sh
+fi
