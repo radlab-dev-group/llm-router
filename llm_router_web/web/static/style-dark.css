@@ -25,6 +25,7 @@ code {
 .pre, pre {
     background: #0b0f14;
     border: 1px solid var(--border);
+    color: #f6f8fa;
 }
 
 /* Inputs */
@@ -34,79 +35,40 @@ input, select, textarea {
     color: var(--fg);
 }
 
+input::placeholder, textarea::placeholder {
+    color: #6e7681;
+}
+
+input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    background: #010409;
+}
+
 /* Buttons */
 .btn {
     background: var(--accent);
-    color: #fff
+    color: #fff;
 }
 
 .btn-secondary {
     background: #21262d;
     color: var(--fg);
-    border: 1px solid var(--border)
+    border: 1px solid var(--border);
 }
 
-.danger {
+.btn-secondary:hover {
+    background: #30363d;
+}
+
+.btn.danger {
     background: var(--danger);
-    color: #fff
+    color: #fff;
 }
 
-/* Topbar/menu tweaks */
+/* Topbar */
 .topbar {
     background: linear-gradient(180deg, rgba(0, 0, 0, .3), rgba(0, 0, 0, 0)), #0b0f14;
-    border-bottom: 1px solid var(--border)
-}
-
-.menu a {
-    background: var(--card);
-    color: var(--fg)
-}
-
-.menu a:hover, .menu a.active {
-    background: var(--accent);
-    color: #fff
-}
-
-/* Table */
-.table {
-    background: var(--card);
-    border-color: var(--border)
-}
-
-.table th, .table td {
-    border-top: 1px solid var(--border)
-}
-
-/* Flash readability */
-.flash {
-    background: #20262d;
-    color: var(--fg);
-    border-color: var(--border)
-}
-
-.flash.success {
-    background: rgba(63, 185, 80, .18);
-    color: #c8f7cd;
-    border-color: rgba(63, 185, 80, .35)
-}
-
-.flash.error {
-    background: rgba(248, 81, 73, .18);
-    color: #ffd3cf;
-    border-color: rgba(248, 81, 73, .35)
-}
-
-.flash.info {
-    background: rgba(88, 166, 255, .18);
-    color: #e6f1ff;
-    border-color: rgba(88, 166, 255, .35)
-}
-
-/* Theme select */
-#theme-select {
-    background: #161b22;
-    border-color: var(--border);
-    color: var(--fg)
+    border-bottom: 1px solid var(--border);
 }
 
 .logo a {
@@ -119,4 +81,112 @@ input, select, textarea {
 .logo a:hover {
     color: #f3f4f6;
     border-bottom-color: #58a6ff;
+}
+
+/* Menu */
+.menu a {
+    background: var(--card);
+    color: var(--fg);
+}
+
+.menu a:hover, .menu a.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Table */
+.table {
+    background: var(--card);
+    border-color: var(--border);
+}
+
+.table th {
+    background: rgba(0, 0, 0, .2);
+}
+
+.table th, .table td {
+    border-top: 1px solid var(--border);
+}
+
+.table tbody tr:hover {
+    background: rgba(0, 0, 0, .15);
+}
+
+/* Flash messages */
+.flash {
+    background: #20262d;
+    color: var(--fg);
+    border-color: var(--border);
+}
+
+.flash.success {
+    background: rgba(63, 185, 80, .18);
+    color: #c8f7cd;
+    border-color: rgba(63, 185, 80, .35);
+}
+
+.flash.error {
+    background: rgba(248, 81, 73, .18);
+    color: #ffd3cf;
+    border-color: rgba(248, 81, 73, .35);
+}
+
+.flash.info {
+    background: rgba(88, 166, 255, .18);
+    color: #e6f1ff;
+    border-color: rgba(88, 166, 255, .35);
+}
+
+/* Theme select */
+#theme-select {
+    background: #161b22;
+    border-color: var(--border);
+    color: var(--fg);
+}
+
+#theme-select:focus {
+    border-color: var(--accent);
+}
+
+/* Panel */
+.panel {
+    background: var(--card);
+    border-color: var(--border);
+}
+
+summary:hover {
+    background: rgba(255, 255, 255, .05);
+}
+
+details {
+    color: var(--fg);
+}
+
+/* Details summary styling */
+summary.clickable {
+    color: var(--accent);
+}
+
+summary.clickable:hover {
+    background: rgba(88, 166, 255, .1);
+}
+
+/* Utility hover states */
+a {
+    color: var(--accent);
+}
+
+a:hover {
+    color: #79c0ff;
+}
+
+/* Input focus styling */
+input:focus, select:focus, textarea:focus {
+    box-shadow: var(--focus-ring);
+}
+
+/* Badge styling for dark theme */
+.badge {
+    background: var(--ok);
+    color: #010409;
 }
