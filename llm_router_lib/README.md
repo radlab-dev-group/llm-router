@@ -1,32 +1,15 @@
-# llm‑router — Python client library
+# llm‑router-LIB — Python client library
 
-**llm‑router** is a lightweight Python client for interacting with the LLM‑Router API.  
+**llm‑router** is a lightweight Python client for interacting with the LLM‑Router API.
 It provides typed request models, convenient service wrappers, and robust error handling so you can focus on building
 LLM‑driven applications rather than dealing with raw HTTP calls.
 
 ---  
 
-## Table of Contents
-
-1. [Overview](#overview)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Quick start](#quick-start)
-5. [Core concepts](#core-concepts)
-    - [Client](#client)
-    - [Data models](#data-models)
-    - [Services](#services)
-    - [Utilities](#utilities)
-    - [Error handling](#error-handling)
-6. [Testing](#testing)
-7. [Contributing](#contributing)
-8. [License](#license)
-
----  
-
 ## Overview
 
-`llm_router_lib` is the official Python SDK for the **LLM‑Router** project <https://github.com/radlab-dev-group/llm-router>.
+`llm_router_lib` is the official Python SDK for the **LLM‑Router**
+project <https://github.com/radlab-dev-group/llm-router>.
 
 It abstracts the HTTP layer behind a small, well‑typed API:
 
@@ -70,7 +53,7 @@ If you prefer a regular installation from a wheel or source distribution, use:
 pip install .
 ```
 
-> **Note** – The project relies only on the packages listed in the repository’s `requirements.txt` 
+> **Note** – The project relies only on the packages listed in the repository’s `requirements.txt`
 > (pydantic, requests, etc.), all of which are installed automatically by `pip`.
 
 ---  
