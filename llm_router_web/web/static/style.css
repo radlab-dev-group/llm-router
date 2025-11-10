@@ -1,32 +1,70 @@
 /* ----- Common stylesheet (shared by both themes) ----- */
 :root {
-    --bg: #0d1117;
-    --fg: #c9d1d9;
-    --muted: #8b949e;
-    --card: #161b22;
-    --accent: #58a6ff;
-    --danger: #f85149;
-    --danger-soft: #e57373;
-    --ok: #3fb950;
+    /* Base scale (can be overridden by theme files) */
+    --bg: #0f1218;
+    --fg: #d4d8df;
+    --muted: #8a93a3;
+    --card: #171c24;
+    --accent: #5aa9ff;
+    --accent-600: #3f8ff0;
+    --accent-700: #2e79d6;
+    --danger: #ef4444;
+    --danger-soft: #f87171;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+
+    --border: #2a3140;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .24), 0 6px 24px rgba(0, 0, 0, .12);
+
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+
+    --font-sans: Inter, system-ui, Segoe UI, Arial, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    --focus-ring: 0 0 0 3px rgba(90, 169, 255, .35);
 }
 
-/* ----- Generic reset & layout ----- */
+/* ----- Reset & base ----- */
 * {
     box-sizing: border-box
 }
 
-/* ----- Body & typography ----- */
+html, body {
+    height: 100%
+}
+
 body {
     margin: 0;
-    font-family: Inter, system-ui, Segoe UI, Arial, sans-serif;
+    font-family: var(--font-sans);
     background: var(--bg);
-    color: var(--fg)
+    color: var(--fg);
+    line-height: 1.45;
+}
+
+h1 {
+    color: #7aa6b3;
+    margin: 0 0 12px;
+    font-weight: 800;
+    line-height: 1.1;
 }
 
 /* ----- Links ----- */
 a {
     color: var(--accent);
-    text-decoration: none
+    text-decoration: none;
+    transition: color .15s ease, opacity .15s ease;
+}
+
+a:hover {
+    opacity: .9
 }
 
 a.btn {
@@ -39,149 +77,177 @@ a.btn {
     align-items: center;
     justify-content: space-between;
     height: 64px;
-    padding: 0 16px;
-    background: #090d13;
-    border-bottom: 1px solid #21262d;
+    padding: 0 var(--space-4);
+    background: linear-gradient(180deg, rgba(0, 0, 0, .2), rgba(0, 0, 0, 0)), var(--card);
+    border-bottom: 1px solid var(--border);
 }
 
 .logo a {
-    color: #fff
+    color: #fff;
+    font-weight: 600
 }
 
 /* ----- Container ----- */
 .container {
-    max-width: none;
+    max-width: 1280px;
     width: 100%;
-    margin: 20px auto;
-    padding: 0 16px
+    margin: var(--space-4) auto;
+    padding: 0 var(--space-4);
 }
 
-/* ----- Buttons – common part (background comes from theme) ----- */
+/* ----- Buttons ----- */
 .btn {
     border: none;
-    padding: 8px 12px;
-    border-radius: 6px;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
     cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+    transition: transform .04s ease, box-shadow .15s ease, opacity .15s ease, background .15s ease;
+    box-shadow: var(--shadow);
 }
 
 .btn:hover {
-    opacity: .9
+    opacity: .95
+}
+
+.btn:active {
+    transform: translateY(1px)
+}
+
+.btn:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring)
 }
 
 .btn-small {
-    padding: 4px 8px;
-    font-size: .9em
+    padding: 4px 10px;
+    font-size: .9em;
 }
 
-/* ----- Secondary button (theme‑specific overrides live in theme files) ----- */
 .btn-secondary {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    box-shadow: none;
 }
 
-/* ----- Danger button (theme‑specific overrides live in theme files) ----- */
+.btn-secondary:hover {
+    background: rgba(128, 128, 128, .08)
+}
+
 .danger {
+    background: var(--danger);
+    color: #fff;
 }
 
 /* ----- Badges ----- */
 .badge {
     background: var(--ok);
-    color: #000;
+    color: #0b111a;
     padding: 2px 6px;
-    border-radius: 6px;
-    margin-left: 8px;
-    font-size: .8em
+    border-radius: var(--radius-sm);
+    margin-left: var(--space-2);
+    font-size: .8em;
+    font-weight: 600;
 }
 
 /* ----- Flash messages ----- */
 .flash-container {
     max-width: 1200px;
-    margin: 8px auto;
-    padding: 0 16px
+    margin: var(--space-2) auto;
+    padding: 0 var(--space-4);
 }
 
 .flash {
-    padding: 8px 12px;
-    border-radius: 6px;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
     margin: 6px 0;
     background: #20262d;
     color: var(--fg);
+    border: 1px solid var(--border);
 }
 
 .flash.success {
-    background: var(--ok);
-    color: #000;
+    background: rgba(34, 197, 94, .15);
+    color: #b7f7c9;
+    border-color: rgba(34, 197, 94, .35)
 }
 
 .flash.error {
-    background: var(--danger);
-    color: #fff;
+    background: rgba(239, 68, 68, .15);
+    color: #ffd1d1;
+    border-color: rgba(239, 68, 68, .35)
 }
 
 .flash.info {
-    background: var(--accent);
-    color: #fff;
+    background: rgba(90, 169, 255, .15);
+    color: #e0efff;
+    border-color: rgba(90, 169, 255, .35)
 }
 
 /* ----- Forms ----- */
 .form {
     display: grid;
-    gap: 12px;
+    gap: var(--space-3);
     max-width: 800px
 }
 
 .form label {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2)
 }
 
 .form-inline {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    gap: var(--space-2);
     align-items: center;
     margin: 10px 0
 }
 
 .form-actions {
     display: flex;
-    gap: 8px
+    gap: var(--space-2)
 }
 
-/* ----- Form controls – theme‑specific overrides live in theme files ----- */
 input, select, textarea {
-}
-
-/* ----- Reduce width of fields that only need short text/numeric values ----- */
-.col-api input,
-.col-api select {
-    max-width: 80px; /* API type (select) */
-}
-
-.col-input input {
-    max-width: 80px; /* Context size (numeric) */
-}
-
-.col-weight input {
-    max-width: 80px; /* Weight (numeric) */
-}
-
-/* ----- Keep other inputs full‑width ----- */
-.col-id input,
-.col-host input,
-.col-path input,
-.col-token input,
-.col-token textarea,
-.col-enabled input,
-.col-actions input {
     width: 100%;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--fg);
+    transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
 }
 
-/* ----- Textarea font ----- */
+input::placeholder, textarea::placeholder {
+    color: var(--muted)
+}
+
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: var(--focus-ring)
+}
+
+/* compact width helpers */
+.col-api input, .col-api select,
+.col-input input,
+.col-weight input {
+    max-width: 80px
+}
+
+.col-id input, .col-host input, .col-path input, .col-token input, .col-token textarea, .col-enabled input, .col-actions input {
+    width: 100%
+}
+
 textarea {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace
+    font-family: var(--font-mono)
 }
 
-/* ----- Misc helpers ----- */
+/* ----- Helpers ----- */
 .muted {
     color: var(--muted)
 }
@@ -190,107 +256,71 @@ textarea {
     white-space: nowrap
 }
 
-/* ----- Pre‑formatted blocks – theme‑specific overrides live in theme files ----- */
-pre {
-}
-
-/* ----- Inline code – theme‑specific overrides live in theme files ----- */
+/* ----- Code ----- */
 code {
+    background: rgba(90, 169, 255, .12);
+    color: inherit;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
 }
 
-/* ----- Table layout (common) ----- */
+.pre, pre {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 10px;
+    border-radius: var(--radius-sm);
+    overflow: auto;
+}
+
+/* ----- Table ----- */
 .table {
     width: 100%;
     border-collapse: collapse;
     background: var(--card);
-    border: 1px solid #21262d;
+    border: 1px solid var(--border);
     table-layout: auto;
 }
 
 .table th, .table td {
-    border-top: 1px solid #21262d;
+    border-top: 1px solid var(--border);
     padding: 8px;
     vertical-align: middle;
     white-space: nowrap;
 }
 
-.table {
-    border: 1px solid #30363d;
-}
-
-.table th, .table td {
-    border-top: 1px solid #30363d;
-}
-
-.col-id {
-    min-width: 120px
-}
-
-.col-host {
-    min-width: 150px
-}
-
-.col-api {
-    min-width: 90px;
-    text-align: center
-}
-
-.col-input {
-    min-width: 90px
-}
-
-.col-path {
-    min-width: 160px
-}
-
-.col-weight {
-    min-width: 90px
-}
-
-.col-token {
-    min-width: 220px
-}
-
-.col-enabled {
-    min-width: 110px;
-    text-align: center
-}
-
-.col-actions {
-    min-width: 100px
-}
-
-/* ----- Inputs inside tables ----- */
-.table input, .table select {
-    width: 100%;
-    min-width: 0
+.table th {
+    text-align: left;
+    color: var(--muted);
+    font-weight: 600
 }
 
 /* ----- Panels & grids ----- */
 .panel {
     background: var(--card);
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid var(--muted);
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
     min-width: 0;
-    margin-bottom: 16px;
+    margin-bottom: var(--space-4);
+    box-shadow: var(--shadow);
 }
 
 .grid {
     display: flex;
     flex-direction: column;
-    gap: 16px
+    gap: var(--space-4)
 }
 
 .grid.active-models {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 16px;
+    gap: var(--space-4)
 }
 
 .grid.active-models .panel {
     flex: 1 1 0;
-    min-width: 200px;
+    min-width: 200px
 }
 
 /* ----- Token field ----- */
@@ -309,11 +339,11 @@ code {
     white-space: nowrap
 }
 
-/* ----- Summary (details) ----- */
+/* ----- Summary/details ----- */
 summary {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     cursor: pointer
 }
 
@@ -326,172 +356,161 @@ summary button {
     flex: 0 0 auto
 }
 
+summary.clickable {
+    color: var(--accent);
+    font-weight: 600;
+    transition: opacity .2s;
+}
+
+summary.clickable:hover {
+    opacity: .85
+}
+
 /* ----- Model scroll wrapper ----- */
 .model {
-    margin-top: 8px
+    margin-top: var(--space-2)
 }
 
 .model .scroll-wrap {
     overflow-x: auto;
     overflow-y: hidden;
-    border-radius: 6px;
-    margin: 16px 0;
+    border-radius: var(--radius-sm);
+    margin: var(--space-4) 0;
 }
 
 .model .scroll-wrap table {
     min-width: 1100px
 }
 
-/* ----- Card list & cards ----- */
+/* ----- Cards ----- */
 .card-list {
     list-style: none;
     padding: 0;
     display: grid;
-    gap: 12px
+    gap: var(--space-3)
 }
 
 .card {
     background: var(--card);
-    border: 1px solid #21262d;
-    border-radius: 8px;
-    padding: 12px
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    box-shadow: var(--shadow);
 }
 
 .card-title {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     justify-content: space-between
 }
 
 .card-actions {
     display: flex;
-    gap: 8px;
-    margin-top: 8px;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
     flex-wrap: wrap
 }
 
 /* ----- Actions container ----- */
 .actions {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
     flex-wrap: wrap;
     margin-top: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 20px
 }
 
-/* ----- Responsive container max‑width ----- */
-@media (min-width: 1280px) {
+/* ----- Responsive container max-width ----- */
+@media (min-width: 1440px) {
     .container {
-        max-width: none;
+        max-width: 1320px;
     }
 }
 
 /* ----- Add‑model form ----- */
 .add-model-form {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
     align-items: center;
     margin: 10px 0;
-    width: 50%; /* the whole form takes half of the container */
+    width: 50%;
 }
 
 .add-model-form input[name="name"] {
-    flex: 1 1 auto; /* grow/shrink as needed */
+    flex: 1 1 auto
 }
 
 .add-model-form button {
-    flex: 0 0 auto;
+    flex: 0 0 auto
 }
 
-/* ----- Model separator & divider ----- */
+/* ----- Dividers ----- */
 .model-separator {
-    border-top: 1px solid var(--muted);
-    margin: 12px 0;
+    border-top: 1px solid var(--border);
+    margin: var(--space-3) 0
 }
 
 hr.model-divider {
     border: none;
     height: 1px;
-    background-color: #30363d;
-    margin: 12px 0;
-    opacity: 0.8;
-}
-
-/* ----- History toggle spacing ----- */
-.history-toggle {
-    margin-top: 16px;
+    background-color: var(--border);
+    margin: var(--space-3) 0;
+    opacity: 0.9;
 }
 
 /* ----- Menu ----- */
 .menu {
     display: flex;
-    gap: 8px;
-    align-items: stretch; /* stretch children to full height */
+    gap: var(--space-2);
+    align-items: stretch
 }
 
 .menu .spacer {
-    flex: 1;
+    flex: 1
 }
 
 .menu a {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 48px; /* fill .topbar height */
-    padding: 0 16px; /* horizontal padding only */
+    height: 48px;
+    padding: 0 var(--space-4);
     border-radius: 0;
     background: var(--card);
     color: var(--fg);
     text-decoration: none;
-    transition: background 0.2s, color 0.2s;
+    transition: background .15s, color .15s;
+    border-bottom: 2px solid transparent;
 }
 
-.menu a.danger {
-    background: var(--danger-soft);
-    color: #fff;
-}
-
-.menu a.danger:hover,
-.menu a.danger.active {
-    background: var(--danger-soft);
-    color: #fff;
-}
-
-.menu a:hover,
-.menu a.active {
+.menu a:hover, .menu a.active {
     background: var(--accent);
     color: #fff;
 }
 
+.menu a.danger {
+    background: var(--danger-soft);
+    color: #fff
+}
+
+.menu a.danger:hover, .menu a.danger.active {
+    background: var(--danger-soft);
+    color: #fff
+}
+
 /* ----- Form label input spacing ----- */
 .form label input {
-    margin-top: 12px;
+    margin-top: var(--space-3)
 }
 
-/* ----- Clickable summary ----- */
-summary.clickable {
-    color: var(--accent);
-    font-weight: 600;
-    transition: opacity 0.2s;
-}
-
-summary.clickable:hover {
-    opacity: 0.8;
-}
-
-/* ----- Inline code (theme‑specific overrides live in theme files) ----- */
-code {
-}
-
-
-/* ----- Theme selector (list) – wspólne dla wszystkich motywów ----- */
+/* ----- Theme selector (common) ----- */
 #theme-select {
     width: auto;
-    max-width: 120px;
+    max-width: 140px;
     padding: 4px 8px;
-    border-radius: 4px;
-    border: 1px solid var(--muted);
+    border-radius: 6px;
+    border: 1px solid var(--border);
     background: var(--card);
     color: var(--fg);
     font-family: inherit;
@@ -499,27 +518,30 @@ code {
     cursor: pointer;
 }
 
-/* usuń domyślne „strzałki” w niektórych przeglądarkach */
-#theme-select::-ms-expand {
-    display: none;
-}
-
-#theme-select::-webkit-inner-spin-button,
-#theme-select::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-
-/* Zadbaj o płynne podświetlenie przy focus */
 #theme-select:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 3px var(--accent);
+    box-shadow: var(--focus-ring)
 }
 
-/* ----- ID‑based width helpers ----- */
-[id^="ptype-"],
-[id^="psize-"],
-[id^="pweight-"] {
-    max-width: 80px; /* same as table columns for API type, context size and weight */
+#theme-select::-ms-expand {
+    display: none
+}
+
+#theme-select::-webkit-inner-spin-button, #theme-select::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0
+}
+
+/* ID width helpers */
+[id^="ptype-"], [id^="psize-"], [id^="pweight-"] {
+    max-width: 80px
+}
+
+/* ----- System preference helpers (optional) ----- */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+        animation: none !important;
+    }
 }

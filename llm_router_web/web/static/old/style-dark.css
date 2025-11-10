@@ -1,0 +1,62 @@
+/* ----- Dark‑theme overrides (only the parts that differ from the light theme) ----- */
+:root {
+    --bg: #0d1117;
+    --fg: #c9d1d9;
+    --muted: #8b949e;
+    --card: #161b22;
+    --accent: #58a6ff;
+    --danger: #f85149;
+    --danger-soft: #e57373;
+    --ok: #3fb950;
+}
+
+/* Inline code */
+code {
+    background: rgba(40, 167, 69, 0.1);
+    color: #f6f8fa;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
+/* Pre‑formatted blocks */
+.pre {
+    background: #0b0f14;
+    border: 1px solid #30363d;
+    padding: 10px;
+    border-radius: 6px;
+    overflow: auto;
+}
+
+/* Form controls */
+input, select, textarea {
+    width: 100%;
+    padding: 8px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    background: #0b0f14;
+    color: var(--fg);
+}
+
+/* Primary button – background is the same (accent) */
+.btn {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Secondary button */
+.btn-secondary {
+    background: #30363d;
+}
+
+/* Danger button */
+.danger {
+    background: var(--danger);
+    color: #fff;
+}
+
+/* ----- Dark‑theme – niewielka korekta listy wyboru ----- */
+#theme-select {
+    background: #161b22;
+    border-color: #30363d;
+    color: #c9d1d9;
+}

@@ -1,63 +1,123 @@
-/* ----- Light‑theme overrides (only the parts that differ from the dark theme) ----- */
+/* ----- Light theme overrides ----- */
 :root {
     --bg: #ffffff;
-    --fg: #24292f;
-    --muted: #586069;
-    --card: #f6f8fa;
-    --accent: #0366d6;
-    --danger: #d73a49;
-    --danger-soft: #e57373;
-    --ok: #28a745;
+    --fg: #1f2937; /* slate-800 */
+    --muted: #6b7280; /* slate-500 */
+    --card: #f8fafc; /* slate-50 */
+    --accent: #2563eb; /* blue-600 */
+    --accent-600: #1d4ed8; /* blue-700 */
+    --accent-700: #1e40af; /* blue-800 */
+    --danger: #dc2626; /* red-600 */
+    --danger-soft: #ef4444; /* red-500 */
+    --ok: #16a34a; /* green-600 */
+    --warn: #d97706; /* amber-600 */
+    --border: #e5e7eb; /* gray-200 */
+    --focus-ring: 0 0 0 3px rgba(37, 99, 235, .35);
 }
 
 /* Inline code */
 code {
-    background: rgba(40, 167, 69, 0.1);
-    color: #000;
-    padding: 2px 4px;
-    border-radius: 4px;
+    background: rgba(37, 99, 235, .10);
+    color: #111827;
 }
 
-/* Pre‑formatted blocks */
-.pre {
+/* Pre blocks */
+.pre, pre {
     background: var(--card);
-    border: 1px solid #d0d7de;
-    padding: 10px;
-    border-radius: 6px;
-    overflow: auto;
+    border: 1px solid var(--border);
 }
 
-/* Form controls */
+/* Inputs */
 input, select, textarea {
-    width: 100%;
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid #d0d7de;
     background: #ffffff;
+    border: 1px solid var(--border);
     color: var(--fg);
 }
 
-/* Primary button – background is the same (accent), only colour contrast may differ */
+/* Buttons */
 .btn {
     background: var(--accent);
-    color: #fff;
+    color: #fff
 }
 
-/* Secondary button */
 .btn-secondary {
-    background: #e1e4e8;
+    background: #eef2f7;
     color: var(--fg);
+    border: 1px solid var(--border)
 }
 
-/* Danger button */
 .danger {
     background: var(--danger);
-    color: #fff;
+    color: #fff
 }
 
-/* ----- Light‑theme – korekta listy wyboru ----- */
+/* Topbar/menu tweaks */
+.topbar {
+    background: linear-gradient(180deg, rgba(0, 0, 0, .02), rgba(0, 0, 0, 0)), #ffffff;
+    border-bottom: 1px solid var(--border)
+}
+
+.menu a {
+    background: var(--card);
+    color: var(--fg)
+}
+
+.menu a:hover, .menu a.active {
+    background: var(--accent);
+    color: #fff
+}
+
+/* Table */
+.table {
+    background: var(--card);
+    border-color: var(--border)
+}
+
+.table th, .table td {
+    border-top: 1px solid var(--border)
+}
+
+/* Flash readability */
+.flash {
+    background: #f3f4f6;
+    color: var(--fg);
+    border-color: var(--border)
+}
+
+.flash.success {
+    background: #e7f6ec;
+    color: #065f46;
+    border-color: #bbf7d0
+}
+
+.flash.error {
+    background: #fde2e2;
+    color: #7f1d1d;
+    border-color: #fecaca
+}
+
+.flash.info {
+    background: #e1effe;
+    color: #1e3a8a;
+    border-color: #bfdbfe
+}
+
+/* Theme select */
 #theme-select {
-    background: #f6f8fa;
-    border-color: #d0d7de;
-    color: #24292f;
+    background: #f3f4f6;
+    border-color: var(--border);
+    color: var(--fg)
+}
+
+
+.logo a {
+    color: #1f2937;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, .6);
+    border-bottom: 2px solid #e5e7eb;
+    padding-bottom: 6px;
+}
+
+.logo a:hover {
+    color: #0f172a;
+    border-bottom-color: #bfdbfe;
 }
