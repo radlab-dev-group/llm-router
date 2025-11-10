@@ -17,7 +17,7 @@ class VllmType(ApiTypesI):
         return "POST"
 
     def completions_ep(self) -> str:
-        return "/v1/completions"
+        return self.chat_ep()
 
     def completions_method(self) -> str:
         return "POST"
