@@ -237,7 +237,6 @@ class HttpRequestExecutor:
         method = (self._endpoint.method or "POST").upper()
         headers = {
             "Content-Type": "application/json",
-            "Accept": "application/json",
         }
         token = api_model_provider.api_token
         if token:
@@ -486,7 +485,7 @@ class HttpRequestExecutor:
         receive the standard Server-Sent Events format.
         """
         # Ensure we accept SSE format
-        headers.setdefault("Accept", "text/event-stream")
+        headers["Accept"] = "text/event-stream"
 
         def _iter() -> Iterator[bytes]:
             try:
