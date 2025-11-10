@@ -669,6 +669,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 map_prompt = params.pop("map_prompt", {})
                 prompt_str_force = params.pop("prompt_str_force", "")
                 prompt_str_postfix = params.pop("prompt_str_postfix", "")
+                params.pop("response_time", "")
 
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
@@ -809,6 +810,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 call_for_each_user_msg=self._call_for_each_user_msg,
             )
         except Exception as e:
+            self.logger.error(e)
             status_code_force = 500
 
         self.unset_model(
