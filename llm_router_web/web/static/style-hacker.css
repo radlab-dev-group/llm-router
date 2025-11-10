@@ -1,0 +1,170 @@
+/* style-hacker.css – raw hacker theme */
+:root {
+    /* Core palette */
+    --bg: #0a0a0a; /* deep black */
+    --fg: #33ff33; /* bright green text */
+    --muted: #555555; /* dim gray for borders, muted text */
+    --card: #111111; /* slightly lighter panels */
+    --accent: #00ff00; /* accent color for links, hover */
+    --danger: #ff3333; /* danger (red) */
+    --danger-soft: #ff7777; /* soft danger background */
+    --ok: #33ff33; /* success (green) */
+}
+
+/* ----- Body & typography ----- */
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Courier New", "Lucida Console", monospace;
+    line-height: 1.4;
+    margin: 0;
+}
+
+/* ----- Links ----- */
+a {
+    color: var(--accent);
+    text-decoration: underline;
+}
+
+a:hover {
+    opacity: 0.8;
+}
+
+/* ----- Buttons ----- */
+.btn {
+    background: var(--accent);
+    color: var(--bg);
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: background 0.2s, opacity 0.2s;
+}
+
+.btn:hover {
+    background: var(--ok);
+}
+
+.btn:active {
+    background: var(--danger);
+}
+
+/* Secondary & state buttons */
+.btn-secondary {
+    background: var(--card);
+    color: var(--fg);
+}
+
+.danger {
+    background: var(--danger-soft);
+    color: var(--bg);
+}
+
+.success {
+    background: var(--ok);
+    color: var(--bg);
+}
+
+/* ----- Form controls ----- */
+input,
+select,
+textarea {
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    padding: 4px 6px;
+    font-family: inherit;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 4px var(--accent);
+}
+
+/* ----- Tables ----- */
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--card);
+    border: 1px solid var(--muted);
+}
+
+.table th,
+.table td {
+    border: 1px solid var(--muted);
+    padding: 4px 6px;
+    text-align: left;
+}
+
+.table th {
+    background: var(--bg);
+    color: var(--accent);
+}
+
+/* ----- Preformatted blocks & code ----- */
+pre,
+.pre {
+    background: var(--bg);
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    padding: 8px;
+    overflow: auto;
+    font-family: "Courier New", monospace;
+    color: var(--fg);
+}
+
+code {
+    background: rgba(0, 255, 0, 0.1);
+    color: var(--accent);
+    padding: 2px 4px;
+    border-radius: 2px;
+    font-family: "Courier New", monospace;
+}
+
+/* ----- Flash messages ----- */
+.flash {
+    padding: 6px 10px;
+    border-radius: 2px;
+    margin: 4px 0;
+}
+
+.flash.success {
+    background: var(--ok);
+    color: var(--bg);
+}
+
+.flash.error {
+    background: var(--danger);
+    color: var(--bg);
+}
+
+.flash.info {
+    background: var(--accent);
+    color: var(--bg);
+}
+
+/* ----- Top bar (optional) ----- */
+.topbar {
+    background: var(--bg);
+    color: var(--fg);
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--muted);
+}
+
+/* ----- Misc helpers ----- */
+.muted {
+    color: var(--muted);
+}
+
+.nowrap {
+    white-space: nowrap;
+}

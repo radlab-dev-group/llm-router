@@ -53,3 +53,10 @@ input, select, textarea {
     background: var(--danger);
     color: #fff;
 }
+
+/* ----- Dark‑theme – niewielka korekta listy wyboru ----- */
+#theme-select {
+    background: #161b22;
+    border-color: #30363d;
+    color: #c9d1d9;
+}
