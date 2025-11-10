@@ -32,9 +32,12 @@
 
         <span class="spacer"></span>
 
-        <button id="theme-toggle" class="btn btn-small" title="Toggle dark/light mode">
-            🌙
-        </button>
+        <select id="theme-select" class="btn btn-small" title="Wybierz motyw">
+            <option value="dark">🌙 Dark</option>
+            <option value="light">☀️ Light</option>
+            <option value="hacker">💻 Hacker</option>
+            <option value="ancient">📜 Ancient</option>
+        </select>
 
         <span class="spacer"></span>
 
@@ -62,9 +65,8 @@
 <script>
     (function () {
         const themeLink = document.getElementById('theme-link');
-        const toggleBtn = document.getElementById('theme-toggle');
+        const themeSelect = document.getElementById('theme-select');
 
-        // Determine initial theme: saved preference > system preference > default (dark)
         const savedTheme = localStorage.getItem('theme');
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         let currentTheme = savedTheme || (prefersDark ? 'dark' : 'light');
@@ -72,24 +74,24 @@
         const setTheme = (theme) => {
             if (theme === 'dark') {
                 themeLink.href = "{{ url_for('static', filename='style-dark.css') }}";
-                toggleBtn.textContent = '🌙';
-            } else {
+            } else if (theme === 'light') {
                 themeLink.href = "{{ url_for('static', filename='style-light.css') }}";
-                toggleBtn.textContent = '☀️';
+            } else if (theme === 'ancient') {
+                themeLink.href = "{{ url_for('static', filename='style-ancient.css') }}";
+            } else if (theme === 'hacker') {
+                themeLink.href = "{{ url_for('static', filename='style-hacker.css') }}";
             }
             localStorage.setItem('theme', theme);
             currentTheme = theme;
+            themeSelect.value = theme;
         };
 
-        // Apply the initial theme
         setTheme(currentTheme);
 
-        // Toggle on button click
-        toggleBtn.addEventListener('click', () => {
-            setTheme(currentTheme === 'dark' ? 'light' : 'dark');
+        themeSelect.addEventListener('change', (e) => {
+            setTheme(e.target.value);
         });
 
-        // React to system‑level changes (optional)
         window.matchMedia('(prefers-color-scheme: dark)')
             .addEventListener('change', e => {
                 if (!localStorage.getItem('theme')) {
