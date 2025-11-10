@@ -1,12 +1,12 @@
 ## llm‑router
 
-A lightweight, extensible gateway that exposes a clean **REST** API for interacting with 
-multiple Large Language Model (LLM) providers (OpenAI, Ollama, vLLM, etc.). 
-It centralises request validation, prompt management, model configuration and logging, 
+A lightweight, extensible gateway that exposes a clean **REST** API for interacting with
+multiple Large Language Model (LLM) providers (OpenAI, Ollama, vLLM, etc.).
+It centralises request validation, prompt management, model configuration and logging,
 allowing your application to talk to any supported LLM through a single, consistent interface.
 
-This project provides a robust solution for managing and routing requests to various LLM backends. 
-It simplifies the integration of LLMs into your applications by offering a unified API 
+This project provides a robust solution for managing and routing requests to various LLM backends.
+It simplifies the integration of LLMs into your applications by offering a unified API
 and advanced features like load balancing strategies.
 
 ---
