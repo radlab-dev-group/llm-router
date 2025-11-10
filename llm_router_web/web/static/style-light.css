@@ -54,3 +54,10 @@ input, select, textarea {
     background: var(--danger);
     color: #fff;
 }
+
+/* ----- Light‑theme – korekta listy wyboru ----- */
+#theme-select {
+    background: #f6f8fa;
+    border-color: #d0d7de;
+    color: #24292f;
+}

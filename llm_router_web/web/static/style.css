@@ -484,6 +484,39 @@ summary.clickable:hover {
 code {
 }
 
+
+/* ----- Theme selector (list) – wspólne dla wszystkich motywów ----- */
+#theme-select {
+    width: auto;
+    max-width: 120px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--muted);
+    background: var(--card);
+    color: var(--fg);
+    font-family: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+/* usuń domyślne „strzałki” w niektórych przeglądarkach */
+#theme-select::-ms-expand {
+    display: none;
+}
+
+#theme-select::-webkit-inner-spin-button,
+#theme-select::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Zadbaj o płynne podświetlenie przy focus */
+#theme-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 3px var(--accent);
+}
+
 /* ----- ID‑based width helpers ----- */
 [id^="ptype-"],
 [id^="psize-"],
