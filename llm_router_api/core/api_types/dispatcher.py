@@ -103,6 +103,13 @@ class ApiTypesDispatcher:
             )
         return impl()
 
+    def get_proper_endpoint(self, api_type: str, endpoint_url: str) -> str:
+        endpoint_url = endpoint_url.strip("/")
+        if endpoint_url in ["chat/completions", "api/chat/completions"]:
+            return self.chat_ep(api_type=api_type)
+
+        return self.completions_ep(api_type=api_type)
+
     @classmethod
     def chat_ep(cls, api_type: str) -> str:
         """
