@@ -4,18 +4,6 @@
 ** project.  
 It provides a Flask‑based UI for managing LLM model configurations, users, and version history.
 
-## Table of Contents
-
-- [Features](#features)
-- [Installation](#installation)
-- [Running the Application](#running-the-application)
-- [Configuration](#configuration)
-- [Endpoints Overview](#endpoints-overview)
-- [Development](#development)
-- [License](#license)
-
----
-
 ## Features
 
 - **User Management** – Admins can create, edit, block/unblock users and assign roles (`admin` / `user`).

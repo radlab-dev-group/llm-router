@@ -8,21 +8,6 @@ and offers a unified REST interface with built‑in load‑balancing, health‑c
 
 ---
 
-## Table of Contents
-
-1. [Features](#features)
-2. [Installation](#installation)
-3. [Configuration](#configuration)
-4. [Running the Server](#running-the-server)
-5. [REST API Overview](#rest-api-overview)
-6. [Load‑Balancing Strategies](#load‑balancing-strategies)
-7. [Extending the Router](#extending-the-router)
-8. [Monitoring & Metrics](#monitoring--metrics)
-9. [Development & Testing](#development--testing)
-10. [License](#license)
-
----
-
 ## Features
 
 - **Unified API** – One REST surface (`/api/...`) that proxies calls to any supported LLM back‑end.
