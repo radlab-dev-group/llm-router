@@ -669,6 +669,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 map_prompt = params.pop("map_prompt", {})
                 prompt_str_force = params.pop("prompt_str_force", "")
                 prompt_str_postfix = params.pop("prompt_str_postfix", "")
+                params.pop("response_time", "")
 
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
@@ -712,12 +713,12 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
             use_streaming = bool((params or {}).get("stream", False))
 
-            if simple_proxy and not use_streaming:
-                ep_pref = ""
-                if self.add_api_prefix and DEFAULT_API_PREFIX:
-                    ep_pref = DEFAULT_API_PREFIX.strip()
-                ep_url = ep_pref.strip("/") + "/" + self.name.lstrip("/")
+            # Prepare proper endpoint url
+            ep_url = self._api_type_dispatcher.get_proper_endpoint(
+                api_type=api_model_provider.api_type, endpoint_url=self.name
+            )
 
+            if simple_proxy and not use_streaming:
                 return self._return_response_or_rerun(
                     api_model_provider=api_model_provider,
                     ep_url=ep_url,
@@ -731,10 +732,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             if prompt_name is not None:
                 self.logger.debug(f" -> prompt_name: {prompt_name}")
                 self.logger.debug(f" -> prompt_str: {str(prompt_str)[:40]}...")
-
-            ep_url = self._api_type_dispatcher.chat_ep(
-                api_type=api_model_provider.api_type
-            )
 
             if api_model_provider.api_type in ["openai"]:
                 params = self._filter_params_to_acceptable(
@@ -813,6 +810,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 call_for_each_user_msg=self._call_for_each_user_msg,
             )
         except Exception as e:
+            self.logger.error(e)
             status_code_force = 500
 
         self.unset_model(

@@ -80,7 +80,7 @@ class OpenAICompletionHandlerWOApi(PassthroughI):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=True,
-            api_types=["openai", "lmstudio", "vllm"],
+            api_types=["openai", "lmstudio"],
             direct_return=direct_return,
             method="POST",
         )
