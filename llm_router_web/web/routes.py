@@ -234,7 +234,15 @@ def edit_user(user_id):
 
     # ----- password change -----
     new_password = request.form.get("new_password")
+    confirm_password = request.form.get("confirm_password")
     if new_password:
+        # verify confirmation
+        if not confirm_password:
+            flash("Please repeat the new password.", "error")
+            return redirect(url_for("admin_users"))
+        if new_password != confirm_password:
+            flash("New passwords do not match.", "error")
+            return redirect(url_for("admin_users"))
         # securely update the stored password hash
         user.password_hash = generate_password_hash(new_password)
         flash(f"Password for {user.username} updated.", "success")
