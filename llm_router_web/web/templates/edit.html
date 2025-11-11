@@ -1,18 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
-<!-- Rename button placed next to the config name, with inline editing using Alpine.js -->
-<div x-data="{ editing: false, name: '{{ cfg.name }}' }" class="form-inline"
-     style="align-items:center; gap:8px; margin-bottom:16px;">
+<div x-data="{ editing: false, name: '{{ cfg.name }}' }" class="form-inline edit-header">
     <template x-if="!editing">
-        <div style="display:flex; align-items:center; gap:8px;">
-            <h2 style="margin:0;">You are editing config: <code x-text="name"></code></h2>
+        <div class="form-inline edit-header">
+            <h2>You are editing config: <code x-text="name"></code></h2>
             <button type="button" class="btn btn-small" @click="editing = true">Rename</button>
         </div>
     </template>
     <template x-if="editing">
-        <form method="post" class="form" style="display:flex; align-items:center; gap:8px;">
-            <input type="text" name="new_name" x-model="name" required
-                   style="flex:1 1 auto; padding:6px 10px; border-radius:4px; border:1px solid #30363d;">
+        <form method="post" class="form-inline edit-header">
+            <input type="text" name="new_name" x-model="name" required class="col-input">
             <button class="btn btn-small" type="submit">Save</button>
             <button type="button" class="btn btn-small btn-secondary" @click="editing = false">Cancel</button>
         </form>
@@ -24,17 +21,17 @@
     <div class="grid active-models">
         {% for fam, models in families.items() %}
         <div class="panel">
-            <h4>{{ fam }}</h4
-            ><select name="{{ fam }}[]" multiple size="6" class="w100">
-            {% for m in models %}
-            <option value="{{ m.name }}" {% if m.name in actives[fam] %}selected{% endif %}>{{ m.name }}</option>
-            {% endfor %}
-        </select>
+            <h4>{{ fam }}</h4>
+            <select name="{{ fam }}[]" multiple size="6" class="w100">
+                {% for m in models %}
+                <option value="{{ m.name }}" {% if m.name in actives[fam] %}selected{% endif %}>{{ m.name }}</option>
+                {% endfor %}
+            </select>
         </div>
         {% endfor %}
     </div>
     <label>Changelog (optional)
-        <input type="text" name="note" placeholder="np. zmiana wag, dodanie providera">
+        <input type="text" name="note" placeholder="e.g. weight changes, provider added">
     </label>
     <div class="form-actions">
         <button class="btn" type="submit">Save changes</button>
@@ -42,7 +39,7 @@
     </div>
 </form>
 
-<hr>
+<hr class="model-divider">
 
 <h3>Models and providers</h3>
 
@@ -51,17 +48,18 @@
     <section class="panel">
         <div class="panel-header">
             <h4>{{ fam }}</h4>
-            <form hx-post="{{ url_for('add_model', config_id=cfg.id) }}" hx-trigger="submit"
-                  hx-swap="none"
-                  hx-on="htmx:afterRequest: location.reload()"
-                  class="add-model-form">
-                <input type="hidden" name="family" value="{{ fam }}">
-                <input type="text" name="name"
-                       placeholder="Model name (f.e. google/gemma-3-12b-it)" required>
-                <button class="btn btn-small" type="submit">Add model</button>
-            </form>
         </div>
+        <form hx-post="{{ url_for('add_model', config_id=cfg.id) }}" hx-trigger="submit"
+              hx-swap="none"
+              hx-on="htmx:afterRequest: location.reload()"
+              class="add-model-form">
+            <input type="hidden" name="family" value="{{ fam }}">
+            <input type="text" name="name" placeholder="Model name (e.g. google/gemma-3-12b-it)" required>
+            <button class="btn btn-small" type="submit">Add model</button>
+        </form>
+
         <hr class="model-separator">
+
         {% for m in models %}
         <details class="model">
             <summary>
@@ -75,21 +73,20 @@
             </summary>
 
             <div class="scroll-wrap">
-                <table class="table compact">
+                <table class="table">
                     <thead>
                     <tr>
                         <th class="col-id">ID</th>
                         <th class="col-host">Host</th>
-                        <th class="col-api">API</th>
+                        <th class="col-api">Provider</th>
                         <th class="col-input">Input</th>
-                        <th class="col-path">Model path</th>
+                        <th>Model path/name</th>
                         <th class="col-weight">Weight</th>
-                        <th class="col-token">Token</th>
-                        <th class="col-enabled">Is active</th>
-                        <th class="col-actions">Actions</th>
+                        <th>Token</th>
+                        <th class="col-enabled">Active</th>
+                        <th>Actions</th>
                     </tr>
                     </thead>
-                    <!-- tbody is marked with data-model-id for the drag‑and‑drop script -->
                     <tbody data-model-id="{{ m.id }}">
                     {% for p in m.providers|sort(attribute='order') %}
                     <tr x-data="{ masked: true }"
@@ -110,9 +107,9 @@
                         <td class="col-api">
                             <select
                                     @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                            {method:'POST',headers:{'Content-Type':'application/json'},
-                             body:JSON.stringify({api_type:$event.target.value})})">
-                                {% for t in ['vllm','openai','ollama'] %}
+                                {method:'POST',headers:{'Content-Type':'application/json'},
+                                 body:JSON.stringify({api_type:$event.target.value})})">
+                                {% for t in ['vllm','openai','ollama', 'llmstudio'] %}
                                 <option value="{{ t }}" {% if p.api_type== t %}selected{% endif %}>{{ t }}</option>
                                 {% endfor %}
                             </select>
@@ -120,27 +117,27 @@
                         <td class="col-input">
                             <input type="number" min="1" value="{{ p.input_size }}"
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                             {method:'POST',headers:{'Content-Type':'application/json'},
-                              body:JSON.stringify({input_size:parseInt($event.target.value)})})">
+                                 {method:'POST',headers:{'Content-Type':'application/json'},
+                                  body:JSON.stringify({input_size:parseInt($event.target.value)})})">
                         </td>
-                        <td class="col-path">
+                        <td>
                             <input value="{{ p.model_path or '' }}"
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                             {method:'POST',headers:{'Content-Type':'application/json'},
-                              body:JSON.stringify({model_path:$event.target.value})})">
+                                 {method:'POST',headers:{'Content-Type':'application/json'},
+                                  body:JSON.stringify({model_path:$event.target.value})})">
                         </td>
                         <td class="col-weight">
                             <input type="number" step="0.01" min="0" max="1" value="{{ '%.2f'|format(p.weight) }}"
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                             {method:'POST',headers:{'Content-Type':'application/json'},
-                              body:JSON.stringify({weight:parseFloat($event.target.value)})})">
+                                 {method:'POST',headers:{'Content-Type':'application/json'},
+                                  body:JSON.stringify({weight:parseFloat($event.target.value)})})">
                         </td>
-                        <td class="col-token">
+                        <td>
                             <div class="token-field">
                                 <input :type="masked ? 'password' : 'text'" value="{{ p.api_token }}"
                                        @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                                 {method:'POST',headers:{'Content-Type':'application/json'},
-                                  body:JSON.stringify({api_token:$event.target.value})})">
+                                     {method:'POST',headers:{'Content-Type':'application/json'},
+                                      body:JSON.stringify({api_token:$event.target.value})})">
                                 <button class="btn btn-small" type="button"
                                         @click="masked = !masked"
                                         x-text="masked ? 'Show' : 'Hide'">
@@ -150,10 +147,10 @@
                         <td class="col-enabled">
                             <input type="checkbox" {% if p.enabled %}checked{% endif %}
                                    @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
-                             {method:'POST',headers:{'Content-Type':'application/json'},
-                              body:JSON.stringify({enabled:$event.target.checked})})">
+                                 {method:'POST',headers:{'Content-Type':'application/json'},
+                                  body:JSON.stringify({enabled:$event.target.checked})})">
                         </td>
-                        <td class="col-actions nowrap">
+                        <td class="nowrap">
                             <button class="btn btn-small danger"
                                     hx-post="{{ url_for('delete_provider', provider_id=p.id) }}"
                                     hx-swap="none"
@@ -173,34 +170,62 @@
             </div>
 
             <details>
-                <summary class="clickable" style="cursor:pointer;">&#x2795; Add model provider</summary>
-                <form class="add-model-form" style="width:100%" onsubmit="return addProvider{{ m.id }}(event)">
-                    <label for="pid-{{ m.id }}"></label><input type="text" placeholder="Provider ID" id="pid-{{ m.id }}"
-                                                               required>
-                    <input type="url" placeholder="API host (e.g. https://api.example.com)" id="phost-{{ m.id }}"
-                           required>
-                    <!-- Button to test if the host is reachable -->
-                    <button type="button" class="btn btn-small" onclick="checkHost{{ m.id }}()">Check</button>
-                    <!-- Inline status message -->
-                    <span id="host-status-{{ m.id }}" class="muted" style="margin-left:8px;"></span>
-                    <select id="ptype-{{ m.id }}">
-                        <option value="vllm">vllm</option>
-                        <option value="openai">openai</option>
-                        <option value="ollama">ollama</option>
-                    </select>
-                    <input type="number" placeholder="Input size" id="psize-{{ m.id }}" value="4096" min="1">
-                    <input type="text" placeholder="Model path (optional)" id="ppath-{{ m.id }}">
-                    <label for="pweight-{{ m.id }}">weight:</label>
-                    <input type="number" step="0.01" min="0" max="1" placeholder="Weight (0‑1)" id="pweight-{{ m.id }}"
-                           value="1.0">
-                    <div class="token-field" x-data="{ masked: true }">
-                        <input :type="masked ? 'password' : 'text'" placeholder="API token (optional)"
-                               id="ptoken-{{ m.id }}">
-                        <button class="btn btn-small" type="button"
-                                @click="masked = !masked"
-                                x-text="masked ? 'Show' : 'Hide'"></button>
+                <summary class="clickable">➕ Add model provider</summary>
+                <form class="provider-form" onsubmit="return addProvider{{ m.id }}(event)">
+                    <div class="panel">
+                        <div class="token-field">
+                            <label for="ptype-{{ m.id }}" class="chk">Provider:</label>
+                            <select id="ptype-{{ m.id }}" class="col-api">
+                                <option value="vllm">vllm</option>
+                                <option value="openai">openai</option>
+                                <option value="ollama">ollama</option>
+                                <option value="ollama">llmstudio</option>
+                            </select>
+                            <input type="text" placeholder="Unique ID of provider for {{ m.name }}" id="pid-{{ m.id }}"
+                                   required class="col-input">
+                        </div>
+
+                        <div class="token-field">
+                            <input type="url" placeholder="API host (e.g. https://api.example.com)"
+                                   id="phost-{{ m.id }}"
+                                   required>
+                            <select id="phostpreset-{{ m.id }}" class="col-api" onchange="setHost{{ m.id }}()">
+                                <option value="">Custom</option>
+                                <option value="https://api.openai.com">OpenAI</option>
+                                <option value="https://generativelanguage.googleapis.com/v1beta2">Google OpenAI
+                                    Compatible
+                                </option>
+                            </select>
+                            <button type="button" class="btn btn-small" onclick="checkHost{{ m.id }}()">Check</button>
+                        </div>
+
+                        <span id="host-status-{{ m.id }}" class="muted"></span>
+
+                        <div class="token-field" x-data="{ masked: true }">
+                            <input :type="masked ? 'password' : 'text'"
+                                   placeholder="API token (needed only when provider requires the API Key)"
+                                   id="ptoken-{{ m.id }}" class="col-input">
+                            <button class="btn btn-small" type="button" @click="masked = !masked"
+                                    x-text="masked ? 'Show' : 'Hide'"></button>
+                        </div>
+
+                        <input type="text"
+                               placeholder="Model path or name (optional - used to redirect to this model name)"
+                               id="ppath-{{ m.id }}" class="col-input">
+
+                        <label for="psize-{{ m.id }}" class="chk">input size:</label>
+                        <input type="number" placeholder="Input size" id="psize-{{ m.id }}" value="4096" min="1"
+                               class="col-input">
+
+
+                        <label for="pweight-{{ m.id }}" class="chk">weight:</label>
+                        <input type="number" step="0.01" min="0" max="1" placeholder="Weight (0‑1)"
+                               id="pweight-{{ m.id }}" value="1.0" class="col-weight">
+
+                        <label class="chk"><input type="checkbox" id="penabled-{{ m.id }}" checked> enabled</label>
+
+
                     </div>
-                    <label class="chk"><input type="checkbox" id="penabled-{{ m.id }}" checked> enabled</label>
                     <button class="btn btn-small" type="submit">Add</button>
                 </form>
                 <script>
@@ -224,9 +249,13 @@
                       if(res.ok){ location.reload(); } else { alert("Error while adding provider"); }
                     }
 
-                    // ---------------------------------
-                    // Check host availability via server‑side proxy.
-                    // ---------------------------------
+                    // New helper – ustawia wartość hosta na podstawie wybranego preset’u
+                    function setHost{{ m.id }}(){
+                        const preset = document.getElementById('phostpreset-{{ m.id }}');
+                        const hostInput = document.getElementById('phost-{{ m.id }}');
+                        hostInput.value = preset.value;
+                    }
+
                     async function checkHost{{ m.id }}(){
                         const host = document.getElementById('phost-{{ m.id }}').value;
                         const statusEl = document.getElementById('host-status-{{ m.id }}');
@@ -249,24 +278,13 @@
 
                             const data = await resp.json();
 
-                            // The proxy returns {status: xxx} on success
-                            if (resp.ok && typeof data.status === 'number') {
-                                const code = data.status;
-                                if (code >= 500) {
-                                    statusEl.textContent = `${code}`;
-                                    statusEl.style.color = 'var(--ok)';
-                                } else if (code === 404) {
-                                    statusEl.textContent = `${code}`;
-                                    statusEl.style.color = 'var(--danger)';
-                                } else if (code >= 200 && code < 400) {
-                                    statusEl.textContent = `OK!`;
-                                    statusEl.style.color = 'var(--ok)';
-                                } else {
-                                    statusEl.textContent = `Host responded with status ${code}.`;
-                                    statusEl.style.color = 'var(--danger)';
-                                }
+                            // If the request succeeded (i.e., the host responded), show OK.
+                            // Any network error will be caught by the catch block below.
+                            if (resp.ok || typeof data.status === 'number') {
+                                statusEl.textContent = 'OK! Host is available!';
+                                statusEl.style.color = 'var(--ok)';
                             } else {
-                                // Any error from the proxy (e.g., network timeout)
+                                // Unexpected situation – treat as error.
                                 const errMsg = data.error || 'Unable to reach the host.';
                                 statusEl.textContent = errMsg;
                                 statusEl.style.color = 'var(--danger)';
@@ -295,12 +313,11 @@
     <a class="btn btn-secondary" href="{{ url_for('view_config', config_id=cfg.id) }}">Preview</a>
 </div>
 
-<hr>
+<hr class="model-divider">
 
 <h3>History</h3>
 
 <div id="history-wrapper">
-    <!-- HTMX fetches the JSON list of versions -->
     <div hx-get="{{ url_for('list_versions', config_id=cfg.id) }}"
          hx-trigger="load"
          hx-target="#versions"
@@ -309,17 +326,14 @@
     <table class="table" id="versions"></table>
 </div>
 
-<button class="btn btn-small history-toggle" id="toggle-history" style="display:none;">
+<button class="btn btn-small" id="toggle-history" style="display:none;">
     Show full history
 </button>
 
 <script>
-    /* After HTMX loads the JSON, build a table, then hide all rows except the newest.
-       The toggle button shows / hides the rest of the history. */
     document.body.addEventListener('htmx:afterOnLoad', function (e) {
         if (!e.detail.target || e.detail.target.id !== 'versions') return;
 
-        // 1️⃣ Parse JSON returned by /configs/<id>/versions
         let data;
         try {
             data = JSON.parse(e.detail.xhr.responseText);
@@ -328,10 +342,8 @@
             return;
         }
 
-        // make config id available in the JS template strings
         const configId = {{ cfg.id }};
 
-        // 2️⃣ Build the table markup
         const rows = data.map(v => `
             <tr>
                 <td>v${v.version}</td>
@@ -357,12 +369,10 @@
             </thead>
             <tbody>${rows}</tbody>`;
 
-        // Ensure newly added HTMX attributes (hx-post, hx-trigger, etc.) are processed
         if (typeof htmx !== 'undefined') {
             htmx.process(e.detail.target);
         }
 
-        // 3️⃣ Hide all rows except the first (newest)
         const tbody = e.detail.target.querySelector('tbody');
         const trList = tbody.querySelectorAll('tr');
 
@@ -373,16 +383,13 @@
             return;
         }
 
-        // hide older rows
         for (let i = 1; i < trList.length; i++) {
             trList[i].style.display = 'none';
         }
 
-        // show the toggle button
         btn.style.display = 'inline-block';
         btn.textContent = 'Show full history';
 
-        // toggle handler
         btn.onclick = function () {
             const showAll = btn.textContent.startsWith('Show');
             for (let i = 1; i < trList.length; i++) {
@@ -392,9 +399,6 @@
         };
     });
 
-    // -------------------------------------------------
-    // Drag‑and‑drop handling for providers
-    // -------------------------------------------------
     document.addEventListener('DOMContentLoaded', function () {
         function enableDnD(tbody) {
             let dragSrc = null;
@@ -408,7 +412,7 @@
             });
 
             tbody.addEventListener('dragover', function (e) {
-                e.preventDefault();                 // allow drop
+                e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
             });
 
@@ -417,18 +421,15 @@
                 const targetTr = e.target.closest('tr[data-provider-id]');
                 if (!targetTr || targetTr === dragSrc) return;
 
-                // Insert dragged row before or after target row
                 if (dragSrc.rowIndex < targetTr.rowIndex) {
                     targetTr.after(dragSrc);
                 } else {
                     targetTr.before(dragSrc);
                 }
 
-                // Build new order array
                 const rows = Array.from(tbody.querySelectorAll('tr[data-provider-id]'));
                 const newOrder = rows.map(r => parseInt(r.dataset.providerId));
 
-                // Send to backend
                 const modelId = tbody.dataset.modelId;
                 fetch(`/models/${modelId}/providers/reorder`, {
                     method: 'POST',

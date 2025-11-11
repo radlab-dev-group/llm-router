@@ -1,62 +1,192 @@
-/* ----- Dark‑theme overrides (only the parts that differ from the light theme) ----- */
+/* ----- Dark theme overrides ----- */
 :root {
     --bg: #0d1117;
     --fg: #c9d1d9;
     --muted: #8b949e;
     --card: #161b22;
     --accent: #58a6ff;
+    --accent-600: #3d8bfd;
+    --accent-700: #2f6ad9;
     --danger: #f85149;
     --danger-soft: #e57373;
     --ok: #3fb950;
+    --warn: #eab308;
+    --border: #30363d;
+    --focus-ring: 0 0 0 3px rgba(88, 166, 255, .35);
 }
 
 /* Inline code */
 code {
-    background: rgba(40, 167, 69, 0.1);
+    background: rgba(88, 166, 255, .12);
     color: #f6f8fa;
-    padding: 2px 4px;
-    border-radius: 4px;
 }
 
-/* Pre‑formatted blocks */
-.pre {
+/* Pre blocks */
+.pre, pre {
     background: #0b0f14;
-    border: 1px solid #30363d;
-    padding: 10px;
-    border-radius: 6px;
-    overflow: auto;
+    border: 1px solid var(--border);
+    color: #f6f8fa;
 }
 
-/* Form controls */
+/* Inputs */
 input, select, textarea {
-    width: 100%;
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid #30363d;
     background: #0b0f14;
+    border: 1px solid var(--border);
     color: var(--fg);
 }
 
-/* Primary button – background is the same (accent) */
+input::placeholder, textarea::placeholder {
+    color: #6e7681;
+}
+
+input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    background: #010409;
+}
+
+/* Buttons */
 .btn {
     background: var(--accent);
     color: #fff;
 }
 
-/* Secondary button */
 .btn-secondary {
+    background: #21262d;
+    color: var(--fg);
+    border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
     background: #30363d;
 }
 
-/* Danger button */
-.danger {
+.btn.danger {
     background: var(--danger);
     color: #fff;
 }
 
-/* ----- Dark‑theme – niewielka korekta listy wyboru ----- */
+/* Topbar */
+.topbar {
+    background: linear-gradient(180deg, rgba(0, 0, 0, .3), rgba(0, 0, 0, 0)), #0b0f14;
+    border-bottom: 1px solid var(--border);
+}
+
+.logo a {
+    color: #e5e7eb;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, .4);
+    border-bottom: 2px solid #30363d;
+    padding-bottom: 6px;
+}
+
+.logo a:hover {
+    color: #f3f4f6;
+    border-bottom-color: #58a6ff;
+}
+
+/* Menu */
+.menu a {
+    background: var(--card);
+    color: var(--fg);
+}
+
+.menu a:hover, .menu a.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Table */
+.table {
+    background: var(--card);
+    border-color: var(--border);
+}
+
+.table th {
+    background: rgba(0, 0, 0, .2);
+}
+
+.table th, .table td {
+    border-top: 1px solid var(--border);
+}
+
+.table tbody tr:hover {
+    background: rgba(0, 0, 0, .15);
+}
+
+/* Flash messages */
+.flash {
+    background: #20262d;
+    color: var(--fg);
+    border-color: var(--border);
+}
+
+.flash.success {
+    background: rgba(63, 185, 80, .18);
+    color: #c8f7cd;
+    border-color: rgba(63, 185, 80, .35);
+}
+
+.flash.error {
+    background: rgba(248, 81, 73, .18);
+    color: #ffd3cf;
+    border-color: rgba(248, 81, 73, .35);
+}
+
+.flash.info {
+    background: rgba(88, 166, 255, .18);
+    color: #e6f1ff;
+    border-color: rgba(88, 166, 255, .35);
+}
+
+/* Theme select */
 #theme-select {
     background: #161b22;
-    border-color: #30363d;
-    color: #c9d1d9;
+    border-color: var(--border);
+    color: var(--fg);
+}
+
+#theme-select:focus {
+    border-color: var(--accent);
+}
+
+/* Panel */
+.panel {
+    background: var(--card);
+    border-color: var(--border);
+}
+
+summary:hover {
+    background: rgba(255, 255, 255, .05);
+}
+
+details {
+    color: var(--fg);
+}
+
+/* Details summary styling */
+summary.clickable {
+    color: var(--accent);
+}
+
+summary.clickable:hover {
+    background: rgba(88, 166, 255, .1);
+}
+
+/* Utility hover states */
+a {
+    color: var(--accent);
+}
+
+a:hover {
+    color: #79c0ff;
+}
+
+/* Input focus styling */
+input:focus, select:focus, textarea:focus {
+    box-shadow: var(--focus-ring);
+}
+
+/* Badge styling for dark theme */
+.badge {
+    background: var(--ok);
+    color: #010409;
 }

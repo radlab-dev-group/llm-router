@@ -1,170 +1,152 @@
-/* style-hacker.css – raw hacker theme */
+/* Dark – Neon Grid (cyber routing) */
 :root {
-    /* Core palette */
-    --bg: #0a0a0a; /* deep black */
-    --fg: #33ff33; /* bright green text */
-    --muted: #555555; /* dim gray for borders, muted text */
-    --card: #111111; /* slightly lighter panels */
-    --accent: #00ff00; /* accent color for links, hover */
-    --danger: #ff3333; /* danger (red) */
-    --danger-soft: #ff7777; /* soft danger background */
-    --ok: #33ff33; /* success (green) */
+    --bg: #05060a; /* bardzo ciemne tło */
+    --fg: #e5f7ff; /* jasny cyjan */
+    --muted: #7aa6b3; /* przygaszony cyjan */
+    --card: #0a0f14; /* karty */
+    --accent: #00e5ff; /* neon cyjan – “połączenia” */
+    --accent-600: #00c2e0;
+    --accent-700: #00a0bf;
+    --danger: #ff3b6b; /* drop/timeout */
+    --danger-soft: #ff6f91;
+    --ok: #39ff88; /* healthy route */
+    --warn: #ffc842; /* throttling */
+    --border: #10303a; /* siatka */
+    --focus-ring: 0 0 0 3px rgba(0, 229, 255, .35);
 }
 
-/* ----- Body & typography ----- */
+/* Tło z delikatną siatką – nawiązuje do “gridu routingu” */
 body {
-    background: var(--bg);
-    color: var(--fg);
-    font-family: "Courier New", "Lucida Console", monospace;
-    line-height: 1.4;
-    margin: 0;
+    background: radial-gradient(1200px 600px at 80% -10%, rgba(0, 229, 255, .06), transparent 60%),
+    radial-gradient(1200px 600px at -10% 100%, rgba(57, 255, 136, .05), transparent 60%),
+    linear-gradient(transparent 0 0),
+    var(--bg);
+    background-image: radial-gradient(1200px 600px at 80% -10%, rgba(0, 229, 255, .06), transparent 60%),
+    radial-gradient(1200px 600px at -10% 100%, rgba(57, 255, 136, .05), transparent 60%),
+    linear-gradient(transparent 0 0);
 }
 
-/* ----- Links ----- */
+/* Dekoracyjna siatka na kontenerach kart/paneli */
+.panel, .card, .table {
+    background: linear-gradient(0deg, rgba(0, 229, 255, .06), rgba(0, 229, 255, .06)) padding-box,
+    repeating-linear-gradient(0deg, transparent, transparent 22px, rgba(0, 229, 255, .06) 23px) border-box,
+    var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 0 0 1px rgba(0, 229, 255, .08), 0 8px 30px rgba(0, 0, 0, .35);
+}
+
+/* Linki i przyciski – neonowa poświata */
 a {
-    color: var(--accent);
-    text-decoration: underline;
+    color: var(--accent)
 }
 
 a:hover {
-    opacity: 0.8;
+    text-shadow: 0 0 6px rgba(0, 229, 255, .6)
 }
 
-/* ----- Buttons ----- */
 .btn {
-    background: var(--accent);
-    color: var(--bg);
-    border: 1px solid var(--muted);
-    border-radius: 2px;
-    padding: 4px 8px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 0.95rem;
-    transition: background 0.2s, opacity 0.2s;
+    background: linear-gradient(180deg, var(--accent), var(--accent-600));
+    color: #001318;
+    border: 1px solid rgba(0, 229, 255, .5);
+    box-shadow: 0 0 12px rgba(0, 229, 255, .45), inset 0 -2px 8px rgba(0, 0, 0, .25);
 }
 
 .btn:hover {
-    background: var(--ok);
+    filter: brightness(1.05)
 }
 
-.btn:active {
-    background: var(--danger);
-}
-
-/* Secondary & state buttons */
 .btn-secondary {
-    background: var(--card);
+    background: #0c1319;
     color: var(--fg);
+    border: 1px solid var(--border);
 }
 
 .danger {
-    background: var(--danger-soft);
-    color: var(--bg);
+    background: linear-gradient(180deg, var(--danger), #d41648);
+    color: #fff;
+    border: 1px solid rgba(255, 59, 107, .5);
+    box-shadow: 0 0 12px rgba(255, 59, 107, .35);
 }
 
-.success {
-    background: var(--ok);
-    color: var(--bg);
-}
-
-/* ----- Form controls ----- */
-input,
-select,
-textarea {
-    background: var(--card);
+/* Formularze – wskaźniki ścieżek (accent) */
+input, select, textarea {
+    background: #070a0f;
+    border: 1px solid #12303a;
     color: var(--fg);
-    border: 1px solid var(--muted);
-    border-radius: 2px;
-    padding: 4px 6px;
-    font-family: inherit;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
+input:focus, select:focus, textarea:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 4px var(--accent);
+    box-shadow: 0 0 0 3px rgba(0, 229, 255, .25), 0 0 10px rgba(0, 229, 255, .25);
 }
 
-/* ----- Tables ----- */
-.table {
-    width: 100%;
-    border-collapse: collapse;
-    background: var(--card);
-    border: 1px solid var(--muted);
-}
-
-.table th,
-.table td {
-    border: 1px solid var(--muted);
-    padding: 4px 6px;
-    text-align: left;
-}
-
-.table th {
-    background: var(--bg);
-    color: var(--accent);
-}
-
-/* ----- Preformatted blocks & code ----- */
-pre,
-.pre {
-    background: var(--bg);
-    border: 1px solid var(--muted);
-    border-radius: 2px;
-    padding: 8px;
-    overflow: auto;
-    font-family: "Courier New", monospace;
-    color: var(--fg);
-}
-
+/* Kod i pre – terminal sieci */
 code {
-    background: rgba(0, 255, 0, 0.1);
-    color: var(--accent);
-    padding: 2px 4px;
-    border-radius: 2px;
-    font-family: "Courier New", monospace;
+    background: rgba(0, 229, 255, .10);
+    color: #d6fffb;
 }
 
-/* ----- Flash messages ----- */
+.pre, pre {
+    background: #050a0f;
+    border: 1px solid #12303a;
+}
+
+/* Topbar i menu – ścieżki aktywne */
+.topbar {
+    background: linear-gradient(180deg, rgba(0, 229, 255, .12), rgba(0, 0, 0, 0)), #060a0e;
+    border-bottom: 1px solid var(--border);
+}
+
+.menu a {
+    background: #0a0f14;
+    color: var(--fg);
+    border-bottom: 2px solid transparent;
+}
+
+.menu a:hover, .menu a.active {
+    background: rgba(0, 229, 255, .15);
+    color: var(--fg);
+    border-bottom-color: var(--accent);
+}
+
+/* Flash – semantyka ruchu */
 .flash {
-    padding: 6px 10px;
-    border-radius: 2px;
-    margin: 4px 0;
+    background: rgba(0, 229, 255, .06);
+    color: var(--fg);
+    border-color: #12303a
 }
 
 .flash.success {
-    background: var(--ok);
-    color: var(--bg);
+    background: rgba(57, 255, 136, .10);
+    color: #d8ffe6;
+    border-color: rgba(57, 255, 136, .35)
 }
 
 .flash.error {
-    background: var(--danger);
-    color: var(--bg);
+    background: rgba(255, 59, 107, .12);
+    color: #ffe0e7;
+    border-color: rgba(255, 59, 107, .35)
 }
 
 .flash.info {
-    background: var(--accent);
-    color: var(--bg);
+    background: rgba(0, 229, 255, .12);
+    color: #e0fdff;
+    border-color: rgba(0, 229, 255, .35)
 }
 
-/* ----- Top bar (optional) ----- */
-.topbar {
-    background: var(--bg);
+/* Tabele */
+.table {
+    border-color: var(--border)
+}
+
+.table th, .table td {
+    border-top: 1px solid var(--border)
+}
+
+/* Selektor motywu */
+#theme-select {
+    background: #0c1319;
+    border-color: var(--border);
     color: var(--fg);
-    height: 48px;
-    display: flex;
-    align-items: center;
-    padding: 0 12px;
-    border-bottom: 1px solid var(--muted);
-}
-
-/* ----- Misc helpers ----- */
-.muted {
-    color: var(--muted);
-}
-
-.nowrap {
-    white-space: nowrap;
 }
