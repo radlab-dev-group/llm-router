@@ -49,16 +49,17 @@
                         <option value="admin" {% if u.role==
                         'admin' %}selected{% endif %}>Admin</option>
                     </select>
-                    <!-- Added margin-right to create a larger gap before the Block/Unblock button -->
                     <button class="btn btn-small" type="submit" style="margin-right:12px;">Change role</button>
                 </form>
 
                 <!-- Password change form -->
                 <form method="post"
                       action="{{ url_for('edit_user', user_id=u.id) }}"
-                      style="display:inline; margin-right:12px;">
+                      style="display:inline;">
                     <input type="password" name="new_password" placeholder="Nowe hasło"
                            style="max-width:120px; padding:4px 8px; border-radius:4px;">
+                    <input type="password" name="confirm_password" placeholder="Powtórz hasło"
+                           style="max-width:120px; padding:4px 8px; border-radius:4px; margin-left:4px;">
                     <button class="btn btn-small" type="submit">Change password</button>
                 </form>
 
