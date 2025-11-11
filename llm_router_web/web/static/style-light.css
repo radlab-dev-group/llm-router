@@ -1,63 +1,194 @@
-/* ----- Light‑theme overrides (only the parts that differ from the dark theme) ----- */
+/* ----- Light theme overrides ----- */
 :root {
     --bg: #ffffff;
-    --fg: #24292f;
-    --muted: #586069;
-    --card: #f6f8fa;
-    --accent: #0366d6;
-    --danger: #d73a49;
-    --danger-soft: #e57373;
-    --ok: #28a745;
+    --fg: #1f2937;
+    --muted: #6b7280;
+    --card: #f8fafc;
+    --accent: #2563eb;
+    --accent-600: #1d4ed8;
+    --accent-700: #1e40af;
+    --danger: #dc2626;
+    --danger-soft: #ef4444;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --border: #e5e7eb;
+    --focus-ring: 0 0 0 3px rgba(37, 99, 235, .35);
 }
 
 /* Inline code */
 code {
-    background: rgba(40, 167, 69, 0.1);
-    color: #000;
-    padding: 2px 4px;
-    border-radius: 4px;
+    background: rgba(37, 99, 235, .10);
+    color: #111827;
 }
 
-/* Pre‑formatted blocks */
-.pre {
-    background: var(--card);
-    border: 1px solid #d0d7de;
-    padding: 10px;
-    border-radius: 6px;
-    overflow: auto;
+/* Pre blocks */
+.pre, pre {
+    background: #f9fafb;
+    border: 1px solid var(--border);
+    color: #111827;
 }
 
-/* Form controls */
+/* Inputs */
 input, select, textarea {
-    width: 100%;
-    padding: 8px;
-    border-radius: 6px;
-    border: 1px solid #d0d7de;
     background: #ffffff;
+    border: 1px solid var(--border);
     color: var(--fg);
 }
 
-/* Primary button – background is the same (accent), only colour contrast may differ */
+input::placeholder, textarea::placeholder {
+    color: #9ca3af;
+}
+
+input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    background: #ffffff;
+}
+
+/* Buttons */
 .btn {
     background: var(--accent);
     color: #fff;
 }
 
-/* Secondary button */
 .btn-secondary {
-    background: #e1e4e8;
+    background: #eef2f7;
     color: var(--fg);
+    border: 1px solid var(--border);
 }
 
-/* Danger button */
-.danger {
+.btn-secondary:hover {
+    background: #e5e7eb;
+}
+
+.btn.danger {
     background: var(--danger);
     color: #fff;
 }
 
-/* ----- Light‑theme – korekta listy wyboru ----- */
+/* Topbar */
+.topbar {
+    background: linear-gradient(180deg, rgba(0, 0, 0, .02), rgba(0, 0, 0, 0)), #ffffff;
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .05);
+}
+
+.logo a {
+    color: #1f2937;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, .6);
+    border-bottom: 2px solid #e5e7eb;
+    padding-bottom: 6px;
+}
+
+.logo a:hover {
+    color: #0f172a;
+    border-bottom-color: #bfdbfe;
+}
+
+/* Menu */
+.menu a {
+    background: var(--card);
+    color: var(--fg);
+}
+
+.menu a:hover, .menu a.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Table */
+.table {
+    background: #ffffff;
+    border-color: var(--border);
+}
+
+.table th {
+    background: #f9fafb;
+    color: var(--muted);
+}
+
+.table th, .table td {
+    border-top: 1px solid var(--border);
+}
+
+.table tbody tr:hover {
+    background: #f9fafb;
+}
+
+/* Flash messages */
+.flash {
+    background: #f3f4f6;
+    color: var(--fg);
+    border-color: var(--border);
+}
+
+.flash.success {
+    background: #e7f6ec;
+    color: #065f46;
+    border-color: #bbf7d0;
+}
+
+.flash.error {
+    background: #fde2e2;
+    color: #7f1d1d;
+    border-color: #fecaca;
+}
+
+.flash.info {
+    background: #e1effe;
+    color: #1e3a8a;
+    border-color: #bfdbfe;
+}
+
+/* Theme select */
 #theme-select {
-    background: #f6f8fa;
-    border-color: #d0d7de;
-    color: #24292f;
+    background: #f3f4f6;
+    border-color: var(--border);
+    color: var(--fg);
+}
+
+#theme-select:focus {
+    border-color: var(--accent);
+}
+
+/* Panel */
+.panel {
+    background: #ffffff;
+    border-color: var(--border);
+}
+
+summary:hover {
+    background: rgba(0, 0, 0, .02);
+}
+
+details {
+    color: var(--fg);
+}
+
+/* Details summary styling */
+summary.clickable {
+    color: var(--accent);
+}
+
+summary.clickable:hover {
+    background: rgba(37, 99, 235, .05);
+}
+
+/* Links */
+a {
+    color: var(--accent);
+}
+
+a:hover {
+    color: var(--accent-600);
+}
+
+/* Input focus styling */
+input:focus, select:focus, textarea:focus {
+    box-shadow: var(--focus-ring);
+}
+
+/* Badge styling for light theme */
+.badge {
+    background: var(--ok);
+    color: #ffffff;
 }

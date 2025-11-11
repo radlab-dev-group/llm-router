@@ -36,7 +36,6 @@
             <option value="dark">🌙 Dark</option>
             <option value="light">☀️ Light</option>
             <option value="hacker">💻 Hacker</option>
-            <option value="ancient">📜 Ancient</option>
         </select>
 
         <span class="spacer"></span>
@@ -76,8 +75,6 @@
                 themeLink.href = "{{ url_for('static', filename='style-dark.css') }}";
             } else if (theme === 'light') {
                 themeLink.href = "{{ url_for('static', filename='style-light.css') }}";
-            } else if (theme === 'ancient') {
-                themeLink.href = "{{ url_for('static', filename='style-ancient.css') }}";
             } else if (theme === 'hacker') {
                 themeLink.href = "{{ url_for('static', filename='style-hacker.css') }}";
             }
