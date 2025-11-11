@@ -292,17 +292,9 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         """
         Acquire a provider for *model_name*.
 
-        The method respects the ``random_choice`` flag in *options*; when set to
-        ``True`` a shuffled provider list is used.  Host‑level locks are applied
-        automatically if the provider payload contains a ``host`` or ``server``
-        key.
-
-        Returns
-        -------
-        dict | None
-            The chosen provider enriched with ``"__chosen_field"`` and,
-            optionally, ``"__host_key"`` entries.  ``None`` is returned when the
-            *providers* list is empty.
+        The method now remembers the last host that successfully served the
+        model.  On subsequent calls it first tries to reuse that host if it is
+        still available and healthy.
         """
         if not providers:
             return None
@@ -312,17 +304,44 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
 
         redis_key = self._redis_key(model_name)
 
-        # self._print_provider_status(redis_key=redis_key, providers=providers)
-
-        start = time.time()
-
         # Ensure the hash and its fields exist – idempotent initialisation
         if not self.redis_client.exists(redis_key):
             for p in providers:
                 self.redis_client.hset(redis_key, self._provider_field(p), "false")
 
+        # --------------------------------------------------------------
+        # Try to reuse the last host that served this model
+        # --------------------------------------------------------------
+        last_host = self._get_last_host(redis_key)
+        if last_host:
+            # Find a provider that matches the stored host name
+            candidate = next(
+                (
+                    p
+                    for p in providers
+                    if p.get("host") == last_host or p.get("server") == last_host
+                ),
+                None,
+            )
+            if candidate:
+                # Verify that the candidate is still considered active
+                active = self.monitor.get_providers(
+                    model_name=model_name, only_active=True
+                )
+                if candidate in active:
+                    field = self._provider_field(candidate)
+                    if self.lock_manager.acquire_provider(redis_key, field):
+                        if self._acquire_host_if_needed(candidate):
+                            candidate["__chosen_field"] = field
+                            # Remember this host for the next call
+                            self._set_last_host(redis_key, last_host)
+                            return candidate
+                        # Host lock failed – release provider lock
+                        self.lock_manager.release_provider(redis_key, field)
+
         is_random = bool(options and options.get("random_choice", False))
 
+        start = time.time()
         while True:
             active = self.monitor.get_providers(
                 model_name=model_name, only_active=True
@@ -340,10 +359,17 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             if is_random:
                 chosen = self._try_acquire_random(redis_key, active)
                 if chosen:
+                    # Remember the host that just served the model
+                    host_name = chosen.get("host") or chosen.get("server")
+                    if host_name:
+                        self._set_last_host(redis_key, host_name)
                     return chosen
             else:
                 chosen = self._try_acquire_deterministic(redis_key, active)
                 if chosen:
+                    host_name = chosen.get("host") or chosen.get("server")
+                    if host_name:
+                        self._set_last_host(redis_key, host_name)
                     return chosen
 
             # Back‑off before the next attempt
@@ -392,16 +418,9 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         shuffled = providers[:]
         random.shuffle(shuffled)
 
-        for provider in shuffled:
-            field = self._provider_field(provider)
-            if self.lock_manager.acquire_provider(redis_key, field):
-                if self._acquire_host_if_needed(provider):
-                    provider["__chosen_field"] = field
-                    return provider
-                # Host lock failed – release provider lock and continue
-                self.lock_manager.release_provider(redis_key, field)
-
-        return None
+        return self._try_acquire_deterministic(
+            redis_key=redis_key, providers=shuffled
+        )
 
     def _try_acquire_deterministic(
         self, redis_key: str, providers: List[Dict]
@@ -436,6 +455,22 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             provider["__host_key"] = host_key
             return True
         return False
+
+    # --------------------------------------------------------------
+    # Helper methods for persisting the last‑used host
+    # --------------------------------------------------------------
+    @staticmethod
+    def _last_host_key(redis_key: str) -> str:
+        """Redis key used to store the last host that served a model."""
+        return f"{redis_key}:last_host"
+
+    def _get_last_host(self, redis_key: str) -> Optional[str]:
+        """Retrieve the previously stored host name for *redis_key*."""
+        return self.redis_client.get(self._last_host_key(redis_key))
+
+    def _set_last_host(self, redis_key: str, host_name: str) -> None:
+        """Persist *host_name* as the last host for *redis_key*."""
+        self.redis_client.set(self._last_host_key(redis_key), host_name)
 
     # ------------------------------------------------------------------- #
     # Redis key helpers
