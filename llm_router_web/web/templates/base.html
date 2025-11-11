@@ -19,7 +19,7 @@
         {% if session.get('user_id') %}
         <div class="dropdown" x-data="{ open: false }" style="position:relative;">
             <button type="button"
-                    class="btn btn-small"
+                    class="btn btn-tile"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
                 Project: {{ current_project_name }}
@@ -27,8 +27,7 @@
 
             <div class="dropdown-content"
                  x-show="open"
-                 @click.outside="open = false"
-                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:200px;z-index:1000;">
+                 @click.outside="open = false">
 
                 <div class="panel">
                     <div class="label">Choose project</div>
@@ -54,7 +53,7 @@
 
         <div class="dropdown" x-data="{ open: false }" style="position:relative;">
             <button type="button"
-                    class="btn btn-small{% if config_active %} active{% endif %}"
+                    class="btn btn-tile{% if config_active %} active{% endif %}"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
                 Manage configs
@@ -62,8 +61,7 @@
 
             <div class="dropdown-content"
                  x-show="open"
-                 @click.outside="open = false"
-                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:180px;z-index:1000;">
+                 @click.outside="open = false">
                 <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
                    href="{{ url_for('new_config') }}"
                    style="display:block;width:100%;margin-bottom:8px;">New config (from scratch)</a>
@@ -81,7 +79,7 @@
         {% if session.get('role') == 'admin' %}
         <div class="dropdown" x-data="{ open: false }" style="position:relative;">
             <button type="button"
-                    class="btn btn-small"
+                    class="btn btn-tile"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
                 Manage users
@@ -89,8 +87,7 @@
 
             <div class="dropdown-content"
                  x-show="open"
-                 @click.outside="open = false"
-                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:180px;z-index:1000;">
+                 @click.outside="open = false">
                 <a class="btn btn-small"
                    href="{{ url_for('admin_users') }}"
                    style="display:block;width:100%;">Manage users</a>
@@ -102,15 +99,14 @@
 
         <!-- Settings dropdown -->
         <div class="dropdown" x-data="{ open: false }" style="position:relative;">
-            <button type="button" class="btn btn-small"
+            <button type="button" class="btn btn-tile"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
                 <span aria-hidden="true">⚙️</span> Settings
             </button>
             <div class="dropdown-content"
                  x-show="open"
-                 @click.outside="open = false"
-                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:180px;z-index:1000;">
+                 @click.outside="open = false">
 
                 <div class="panel">
                     <label>Theme</label>
