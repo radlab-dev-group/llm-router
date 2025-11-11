@@ -6,6 +6,31 @@ from sqlalchemy import func
 db = SQLAlchemy()
 
 
+# --------------------------------------------------------------
+# Project – groups configs per user
+# --------------------------------------------------------------
+class Project(db.Model):
+    __tablename__ = "project"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False,
+        index=True,
+    )
+    # A project can be marked as the user's default
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+
+    # One‑to‑many relationship: a project owns many configs
+    configs = db.relationship(
+        "Config", backref="project", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self):
+        return f"<Project {self.name} (user_id={self.user_id})>"
+
+
 class Config(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(160), unique=True, nullable=False)
@@ -20,6 +45,12 @@ class Config(db.Model):
     user_id = db.Column(
         db.Integer,
         db.ForeignKey("user.id"),
+        nullable=False,
+        index=True,
+    )
+    project_id = db.Column(
+        db.Integer,
+        db.ForeignKey("project.id"),
         nullable=False,
         index=True,
     )
@@ -95,6 +126,12 @@ class User(db.Model):
         default=True,  # active by default
     )
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    projects = db.relationship(
+        "Project",
+        backref="owner",
+        cascade="all, delete-orphan",
+    )
 
     configs = db.relationship(
         "Config",

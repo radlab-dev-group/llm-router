@@ -19,6 +19,34 @@
         {% if session.get('user_id') %}
         <div class="dropdown" x-data="{ open: false }" style="position:relative;">
             <button type="button"
+                    class="btn btn-small"
+                    @click="open = !open"
+                    @keydown.escape.window="open = false">
+                Project: {{ current_project_name }}
+            </button>
+
+            <div class="dropdown-content"
+                 x-show="open"
+                 @click.outside="open = false"
+                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:200px;z-index:1000;">
+                {% for proj in user_projects %}
+                <form method="post" action="{{ url_for('select_project', project_id=proj.id) }}" style="margin:0;">
+                    <button type="submit"
+                            class="btn btn-small{% if proj.id == session.get('project_id') %} active{% endif %}"
+                            style="display:block;width:100%;text-align:left;margin-bottom:4px;">
+                        {{ proj.name }}
+                    </button>
+                </form>
+                {% endfor %}
+                <a class="btn btn-small" href="{{ url_for('manage_projects') }}"
+                   style="display:block;width:100%;margin-top:8px;">Manage projects</a>
+            </div>
+        </div>
+
+        <span class="spacer"></span>
+
+        <div class="dropdown" x-data="{ open: false }" style="position:relative;">
+            <button type="button"
                     class="btn btn-small{% if config_active %} active{% endif %}"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
