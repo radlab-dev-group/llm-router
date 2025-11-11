@@ -589,7 +589,7 @@ summary.clickable:hover {
 /* ----- Menu ----- */
 .menu {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--space-3);
     align-items: stretch;
     flex-wrap: wrap;
 }
@@ -602,31 +602,79 @@ summary.clickable:hover {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 48px;
-    padding: 0 var(--space-4);
-    border-radius: 0;
-    background: var(--card);
+    min-height: 56px;
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    background: linear-gradient(145deg, var(--card), rgba(0, 0, 0, .15));
     color: var(--fg);
     text-decoration: none;
-    transition: background .15s, color .15s;
-    border-bottom: 2px solid transparent;
-    font-weight: 500;
+    transition: all .2s ease;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .15),
+    0 4px 12px rgba(0, 0, 0, .08),
+    inset 0 1px 0 rgba(255, 255, 255, .05);
+    font-weight: 600;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
 }
 
-.menu a:hover, .menu a.active {
-    background: var(--accent);
+.menu a::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0;
+    transition: opacity .2s ease;
+}
+
+.menu a:hover {
+    background: linear-gradient(145deg, var(--accent), var(--accent-600));
     color: #fff;
-    border-bottom-color: #fff;
+    border-color: var(--accent);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, .2),
+    0 8px 20px rgba(0, 0, 0, .15),
+    inset 0 1px 0 rgba(255, 255, 255, .1);
+}
+
+.menu a:hover::before {
+    opacity: 1;
+}
+
+.menu a.active {
+    background: linear-gradient(145deg, var(--accent), var(--accent-700));
+    color: #fff;
+    border-color: var(--accent-600);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .2),
+    inset 0 2px 4px rgba(0, 0, 0, .15),
+    inset 0 -1px 0 rgba(255, 255, 255, .1);
+}
+
+.menu a.active::before {
+    opacity: 1;
+    background: rgba(255, 255, 255, .3);
+}
+
+.menu a:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .2),
+    inset 0 2px 6px rgba(0, 0, 0, .2);
 }
 
 .menu a.danger {
-    background: var(--danger-soft);
+    background: linear-gradient(145deg, var(--danger-soft), rgba(220, 38, 38, .8));
     color: #fff;
+    border-color: var(--danger);
 }
 
 .menu a.danger:hover, .menu a.danger.active {
-    background: var(--danger);
+    background: linear-gradient(145deg, var(--danger), #b91c1c);
     color: #fff;
+    border-color: #991b1b;
 }
 
 /* ----- Theme Selector ----- */
