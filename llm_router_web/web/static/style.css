@@ -267,11 +267,18 @@ input[type="number"] {
 }
 
 /* Compact column widths */
-.col-api input, .col-api select,
-.col-input input,
-.col-weight input,
-.col-id input {
+.col-api input,
+.col-api select,
+.col-input input {
     max-width: 100px;
+}
+
+.col-weight {
+    max-width: 100px;
+}
+
+.col-id {
+    max-width: 200px;
 }
 
 .col-enabled input {
@@ -530,7 +537,7 @@ summary.clickable:hover {
 
 .provider-form {
     display: flex;
-    max-width: 800px;
+    max-width: 70%;
     flex-direction: column;
     align-items: normal;
     margin: var(--space-3) 0;

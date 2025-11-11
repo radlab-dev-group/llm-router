@@ -78,9 +78,9 @@
                     <tr>
                         <th class="col-id">ID</th>
                         <th class="col-host">Host</th>
-                        <th class="col-api">API</th>
+                        <th class="col-api">Provider</th>
                         <th class="col-input">Input</th>
-                        <th>Model path</th>
+                        <th>Model path/name</th>
                         <th class="col-weight">Weight</th>
                         <th>Token</th>
                         <th class="col-enabled">Active</th>
@@ -109,7 +109,7 @@
                                     @change="fetch('{{ url_for('update_provider', provider_id=p.id) }}',
                                 {method:'POST',headers:{'Content-Type':'application/json'},
                                  body:JSON.stringify({api_type:$event.target.value})})">
-                                {% for t in ['vllm','openai','ollama'] %}
+                                {% for t in ['vllm','openai','ollama', 'llmstudio'] %}
                                 <option value="{{ t }}" {% if p.api_type== t %}selected{% endif %}>{{ t }}</option>
                                 {% endfor %}
                             </select>
@@ -174,12 +174,15 @@
                 <form class="provider-form" onsubmit="return addProvider{{ m.id }}(event)">
                     <div class="panel">
                         <div class="token-field">
+                            <label for="ptype-{{ m.id }}" class="chk">Provider:</label>
                             <select id="ptype-{{ m.id }}" class="col-api">
                                 <option value="vllm">vllm</option>
                                 <option value="openai">openai</option>
                                 <option value="ollama">ollama</option>
+                                <option value="ollama">llmstudio</option>
                             </select>
-                            <input type="text" placeholder="Provider ID" id="pid-{{ m.id }}" required class="col-input">
+                            <input type="text" placeholder="Unique ID of provider for {{ m.name }}" id="pid-{{ m.id }}"
+                                   required class="col-input">
                         </div>
 
                         <div class="token-field">
@@ -199,13 +202,16 @@
                         <span id="host-status-{{ m.id }}" class="muted"></span>
 
                         <div class="token-field" x-data="{ masked: true }">
-                            <input :type="masked ? 'password' : 'text'" placeholder="API token (optional)"
+                            <input :type="masked ? 'password' : 'text'"
+                                   placeholder="API token (needed only when provider requires the API Key)"
                                    id="ptoken-{{ m.id }}" class="col-input">
                             <button class="btn btn-small" type="button" @click="masked = !masked"
                                     x-text="masked ? 'Show' : 'Hide'"></button>
                         </div>
 
-                        <input type="text" placeholder="Model path (optional)" id="ppath-{{ m.id }}" class="col-input">
+                        <input type="text"
+                               placeholder="Model path or name (optional - used to redirect to this model name)"
+                               id="ppath-{{ m.id }}" class="col-input">
 
                         <label for="psize-{{ m.id }}" class="chk">input size:</label>
                         <input type="number" placeholder="Input size" id="psize-{{ m.id }}" value="4096" min="1"
