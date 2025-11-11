@@ -65,10 +65,8 @@ LLM_ROUTER_WEB_DEBUG=true \
 * `LLM_ROUTER_WEB_DEBUG` – any truthy value (`true`, `1`, `yes`, `on`) enables Flask debug mode
   (default: `true`).
 
-The script will automatically create a virtual environment (if missing), install
-the required dependencies (including **gunicorn**), and start the application
-with four gunicorn workers. Adjust the number of workers or other gunicorn
-options inside `run.sh` as needed.
+The script will automatically start the application with four gunicorn workers.
+Adjust the number of workers or other gunicorn options inside `run.sh` as needed.
 
 ### Additional Flask environment variables
 
