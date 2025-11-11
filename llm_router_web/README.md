@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 ## Running the Application
 
-```shell script
+``` shell script
 # Start the Flask development server
 python app.py
 ```
@@ -48,7 +48,29 @@ python app.py
 The UI will be available at `http://localhost:8081`.  
 The first run will redirect you to a **setup** page where you must create an initial admin user.
 
-### Environment variables
+### Running with **gunicorn** (recommended for production)
+
+The project now includes a small launch script that reads the host, port and debug
+mode from environment variables prefixed with `LLM_ROUTER_WEB_`.
+
+``` bash
+LLM_ROUTER_WEB_HOST=0.0.0.0 \
+LLM_ROUTER_WEB_PORT=8081 \
+LLM_ROUTER_WEB_DEBUG=true \
+./run-llm-router-web.sh
+```
+
+* `LLM_ROUTER_WEB_HOST` – address to bind (default: `0.0.0.0`).
+* `LLM_ROUTER_WEB_PORT` – numeric port (default: `8081`).
+* `LLM_ROUTER_WEB_DEBUG` – any truthy value (`true`, `1`, `yes`, `on`) enables Flask debug mode
+  (default: `true`).
+
+The script will automatically create a virtual environment (if missing), install
+the required dependencies (including **gunicorn**), and start the application
+with four gunicorn workers. Adjust the number of workers or other gunicorn
+options inside `run.sh` as needed.
+
+### Additional Flask environment variables
 
 | Variable           | Description                                   | Default                |
 |--------------------|-----------------------------------------------|------------------------|
