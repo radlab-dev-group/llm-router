@@ -278,22 +278,13 @@
 
                             const data = await resp.json();
 
-                            if (resp.ok && typeof data.status === 'number') {
-                                const code = data.status;
-                                if (code >= 500) {
-                                    statusEl.textContent = `${code}`;
-                                    statusEl.style.color = 'var(--ok)';
-                                } else if (code === 404) {
-                                    statusEl.textContent = `${code}`;
-                                    statusEl.style.color = 'var(--danger)';
-                                } else if (code >= 200 && code < 400) {
-                                    statusEl.textContent = `OK!`;
-                                    statusEl.style.color = 'var(--ok)';
-                                } else {
-                                    statusEl.textContent = `Host responded with status ${code}.`;
-                                    statusEl.style.color = 'var(--danger)';
-                                }
+                            // If the request succeeded (i.e., the host responded), show OK.
+                            // Any network error will be caught by the catch block below.
+                            if (resp.ok || typeof data.status === 'number') {
+                                statusEl.textContent = 'OK! Host is available!';
+                                statusEl.style.color = 'var(--ok)';
                             } else {
+                                // Unexpected situation – treat as error.
                                 const errMsg = data.error || 'Unable to reach the host.';
                                 statusEl.textContent = errMsg;
                                 statusEl.style.color = 'var(--danger)';
