@@ -510,17 +510,23 @@ def import_config():
         # generate a name if none supplied
         if not name:
             name = f"import-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+
         # ensure the name is unique for this user
         if Config.query.filter_by(name=name, user_id=user_id).first():
             flash("Name already taken.", "error")
             return redirect(url_for("web.import_config"))
 
-        # ---- create the Config **with the owner id** ----
-        cfg = Config(name=name, user_id=user_id)
+        proj_id = _current_project_id()
+        cfg = Config(name=name, user_id=user_id, project_id=proj_id)
+
+        # ------------------------------------------------------------------------------
+
         db.session.add(cfg)
         db.session.flush()  # obtain cfg.id before adding models/providers
 
-        # Load models & providers (unchanged)
+        # ----------------------------------------------------------------------
+        # Load models & providers (unchanged logic)
+        # ----------------------------------------------------------------------
         for fam in ["google_models", "openai_models", "qwen_models"]:
             for mname, mval in (data.get(fam) or {}).items():
                 m = Model(config_id=cfg.id, family=fam, name=mname)
@@ -540,7 +546,9 @@ def import_config():
                         )
                     )
 
+        # ----------------------------------------------------------------------
         # Active models (unchanged)
+        # ----------------------------------------------------------------------
         active = data.get("active_models") or {}
         for fam in ["google_models", "openai_models", "qwen_models"]:
             for mname in active.get(fam, []):
