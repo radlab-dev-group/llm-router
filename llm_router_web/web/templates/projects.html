@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Projects</h2>
+
+<div class="panel">
+    <h3>Create new project</h3>
+    <form method="post" class="form">
+        <label>Name
+            <input type="text" name="name" required placeholder="Project name">
+        </label>
+        <!-- NEW: optional description -->
+        <label>Project description (optional)
+            <textarea name="description" rows="2"
+                      placeholder="Put description here...."></textarea>
+        </label>
+        <div class="form-actions">
+            <button class="btn" type="submit">Add</button>
+        </div>
+    </form>
+</div>
+
+<div class="panel">
+    <h3>All projects</h3>
+    <table class="table">
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>Description</th>
+            <th>Default</th>
+            <th>Action</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for proj in user_projects %}
+        <tr>
+            <td>{{ proj.name }}</td>
+            <td class="muted">{{ proj.description }}</td>   <!-- NEW -->
+            <td>{% if proj.is_default %}<span class="badge">DEFAULT</span>{% endif %}</td>
+            <td class="nowrap">
+                <!-- Rename -->
+                <form method="post" action="{{ url_for('rename_project', project_id=proj.id) }}"
+                      style="display:inline;">
+                    <input type="text" name="new_name" placeholder="New name" required
+                           style="width:120px;margin-right:4px;">
+                    <button class="btn btn-small" type="submit">Rename</button>
+                </form>
+
+                <!-- Delete (only if not default and empty) -->
+                {% if not proj.is_default %}
+                <form method="post" action="{{ url_for('delete_project', project_id=proj.id) }}"
+                      style="display:inline;">
+                    <button class="btn btn-small danger"
+                            type="submit"
+                            onclick="return confirm('Delete project {{ proj.name }}?');">
+                        Delete
+                    </button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="4" class="muted">No projects found.</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

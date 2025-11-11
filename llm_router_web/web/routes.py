@@ -19,7 +19,16 @@ from sqlalchemy import func
 
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from .models import db, Config, ConfigVersion, Model, Provider, ActiveModel, User
+from .models import (
+    db,
+    Config,
+    ConfigVersion,
+    Model,
+    Provider,
+    ActiveModel,
+    User,
+    Project,
+)
 from .utils import (
     to_json,
     snapshot_version,
@@ -71,6 +80,16 @@ def _require_user():
     if not _current_user_id():
         abort(403, description="User must be logged in to perform this action.")
     return _current_user_id()
+
+
+def _create_default_project_for_user(user: User):
+    """Utility – called after a new User row is persisted."""
+    default_proj = Project(name="default_project", user_id=user.id, is_default=True)
+    db.session.add(default_proj)
+    db.session.commit()
+    # store in session if the newly created user is the one logging in now
+    if session.get("user_id") == user.id:
+        session["project_id"] = default_proj.id
 
 
 # ----------------------------------------------------------------------
@@ -187,6 +206,7 @@ def setup():
         )
         db.session.add(admin_user)
         db.session.commit()
+        _create_default_project_for_user(admin_user)
         flash("Initial admin user created – you can now log in.", "success")
         return redirect(url_for("login"))
 
@@ -196,6 +216,8 @@ def setup():
 # ----------------------------------------------------------------------
 # Admin panel – user management
 # ----------------------------------------------------------------------
+
+
 @bp.route("/admin/users", methods=["GET", "POST"])
 @admin_required
 def admin_users():
@@ -215,6 +237,7 @@ def admin_users():
             )
             db.session.add(new_user)
             db.session.commit()
+            _create_default_project_for_user(new_user)
             flash(f"User {username} added.", "success")
         return redirect(url_for("admin_users"))
 
@@ -234,7 +257,15 @@ def edit_user(user_id):
 
     # ----- password change -----
     new_password = request.form.get("new_password")
+    confirm_password = request.form.get("confirm_password")
     if new_password:
+        # verify confirmation
+        if not confirm_password:
+            flash("Please repeat the new password.", "error")
+            return redirect(url_for("admin_users"))
+        if new_password != confirm_password:
+            flash("New passwords do not match.", "error")
+            return redirect(url_for("admin_users"))
         # securely update the stored password hash
         user.password_hash = generate_password_hash(new_password)
         flash(f"Password for {user.username} updated.", "success")
@@ -282,12 +313,154 @@ def toggle_block_user(user_id):
 @bp.route("/", endpoint="index")
 def index():
     user_id = _current_user_id()
+    proj_id = _current_project_id()
     configs = (
-        Config.query.filter_by(user_id=user_id)
+        Config.query.filter_by(user_id=user_id, project_id=proj_id)
         .order_by(Config.updated_at.desc())
         .all()
     )
     return render_template("index.html", configs=configs)
+
+
+@bp.route("/change_password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    """Allow the logged‑in user to change their own password."""
+    if request.method == "POST":
+        current_pw = request.form.get("current_password", "")
+        new_pw = request.form.get("new_password", "")
+        confirm_pw = request.form.get("confirm_password", "")
+
+        user = User.query.get_or_404(session["user_id"])
+
+        # Verify current password
+        if not check_password_hash(user.password_hash, current_pw):
+            flash("Current password is incorrect.", "error")
+            return redirect(url_for("change_password"))
+
+        # Verify new passwords match
+        if new_pw != confirm_pw:
+            flash("New passwords do not match.", "error")
+            return redirect(url_for("change_password"))
+
+        # Update password hash
+        user.password_hash = generate_password_hash(new_pw)
+        db.session.commit()
+        flash("Password updated successfully.", "success")
+        return redirect(url_for("index"))
+
+    # GET request – render the password change form
+    return render_template("change_password.html")
+
+
+# ----------------------------------------------------------------------
+# Helper: retrieve the currently selected project (fallback to default)
+# ----------------------------------------------------------------------
+def _current_project_id():
+    """Return the project ID stored in session or the user's default project."""
+    proj_id = session.get("project_id")
+    if proj_id:
+        return proj_id
+    # fallback: look for a default project belonging to the user
+    user_id = _current_user_id()
+    default_proj = Project.query.filter_by(user_id=user_id, is_default=True).first()
+    if default_proj:
+        session["project_id"] = default_proj.id
+        return default_proj.id
+    # if no project exists (should not happen), create one on‑the‑fly
+    new_proj = Project(name="default_project", user_id=user_id, is_default=True)
+    db.session.add(new_proj)
+    db.session.commit()
+    session["project_id"] = new_proj.id
+    return new_proj.id
+
+
+# ----------------------------------------------------------------------
+# Project selection endpoint (used by the dropdown in the top‑bar)
+# ----------------------------------------------------------------------
+@bp.post("/projects/select/<int:project_id>")
+@login_required
+def select_project(project_id):
+    """Switch the active project for the current session."""
+    user_id = _current_user_id()
+    proj = Project.query.filter_by(id=project_id, user_id=user_id).first_or_404()
+    session["project_id"] = proj.id
+    flash(f"Project “{proj.name}” selected.", "success")
+    # Redirect to the list of configs instead of the previous referrer or index
+    return redirect(url_for("list_configs"))
+
+
+# ----------------------------------------------------------------------
+# Project management UI (list / create / rename)
+# ----------------------------------------------------------------------
+@bp.route("/projects", methods=["GET", "POST"])
+@login_required
+def manage_projects():
+    user_id = _current_user_id()
+    if request.method == "POST":
+        # Create a new project – name supplied via form field ``name``
+        name = request.form.get("name", "").strip()
+        # NEW: read optional description
+        description = request.form.get("description", "").strip()
+        if not name:
+            flash("Project name is required.", "error")
+        else:
+            # Ensure uniqueness per user
+            if Project.query.filter_by(user_id=user_id, name=name).first():
+                flash("You already have a project with that name.", "error")
+            else:
+                new_proj = Project(
+                    name=name,
+                    description=description,  # <-- store description
+                    user_id=user_id,
+                    is_default=False,
+                )
+                db.session.add(new_proj)
+                db.session.commit()
+                flash(f"Project “{name}” created.", "success")
+        return redirect(url_for("manage_projects"))
+
+    projects = Project.query.filter_by(user_id=user_id).order_by(Project.name).all()
+    return render_template("projects.html", projects=projects)
+
+
+@bp.post("/projects/<int:project_id>/rename")
+@login_required
+def rename_project(project_id):
+    user_id = _current_user_id()
+    proj = Project.query.filter_by(id=project_id, user_id=user_id).first_or_404()
+    new_name = request.form.get("new_name", "").strip()
+    if not new_name:
+        flash("New name cannot be empty.", "error")
+    else:
+        # check for duplicate
+        if Project.query.filter_by(user_id=user_id, name=new_name).first():
+            flash("Another project already uses this name.", "error")
+        else:
+            proj.name = new_name
+            db.session.commit()
+            flash("Project renamed.", "success")
+    return redirect(url_for("manage_projects"))
+
+
+@bp.post("/projects/<int:project_id>/delete")
+@login_required
+def delete_project(project_id):
+    user_id = _current_user_id()
+    proj = Project.query.filter_by(id=project_id, user_id=user_id).first_or_404()
+    if proj.is_default:
+        flash("The default project cannot be deleted.", "error")
+        return redirect(url_for("manage_projects"))
+    if proj.configs:
+        flash("Cannot delete a project that contains configs.", "error")
+        return redirect(url_for("manage_projects"))
+    db.session.delete(proj)
+    db.session.commit()
+    # if the deleted project was the active one, clear session entry
+    if session.get("project_id") == project_id:
+        session.pop("project_id")
+    flash("Project deleted.", "success")
+    return redirect(url_for("manage_projects"))
 
 
 # ----------------------------------------------------------------------
@@ -296,8 +469,9 @@ def index():
 @bp.route("/configs")
 def list_configs():
     user_id = _current_user_id()
+    proj_id = _current_project_id()
     configs = (
-        Config.query.filter_by(user_id=user_id)
+        Config.query.filter_by(user_id=user_id, project_id=proj_id)
         .order_by(Config.updated_at.desc())
         .all()
     )
@@ -308,11 +482,22 @@ def list_configs():
 def new_config():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
+        # NEW: optional description for the config
+        description = request.form.get("description", "").strip()
         if not name:
             abort(400, description="Name is required.")
-        if Config.query.filter_by(name=name, user_id=_current_user_id()).first():
-            abort(400, description="Configuration with this name already exists.")
-        cfg = Config(name=name, user_id=_current_user_id())
+        proj_id = _current_project_id()
+        if Config.query.filter_by(name=name, project_id=proj_id).first():
+            abort(
+                400,
+                description="Configuration with this name already exists in the project.",
+            )
+        cfg = Config(
+            name=name,
+            description=description,
+            user_id=_current_user_id(),
+            project_id=proj_id,
+        )
         db.session.add(cfg)
         db.session.commit()
         snapshot_version(cfg.id, note="Created empty config")
@@ -322,33 +507,54 @@ def new_config():
 
 @bp.route("/configs/import", methods=["GET", "POST"])
 def import_config():
-    # make sure a user is logged in before we touch the DB
+    """
+    Import a configuration from a JSON file or raw JSON text.
+
+    The form now also accepts an optional ``description`` (Notatka/Opis) which
+    is stored on the newly created ``Config`` object.
+    """
+    # Ensure the user is authenticated before touching the DB
     user_id = _require_user()
 
     if request.method == "POST":
+        # ---- 1️⃣  Basic fields -------------------------------------------------
         name = request.form.get("name", "").strip()
+        # NEW: optional description for the imported config
+        description = request.form.get("description", "").strip()
+
         raw = request.files.get("file")
         text = request.form.get("json")
+
+        # ---- 2️⃣  Parse JSON ---------------------------------------------------
         try:
             data = json.load(raw) if raw else json.loads(text or "")
         except Exception:
             flash("Invalid JSON.", "error")
             return redirect(url_for("web.import_config"))
 
-        # generate a name if none supplied
+        # ---- 3️⃣  Derive a name if none was supplied -------------------------
         if not name:
             name = f"import-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
-        # ensure the name is unique for this user
+
+        # ---- 4️⃣  Validate uniqueness -----------------------------------------
         if Config.query.filter_by(name=name, user_id=user_id).first():
             flash("Name already taken.", "error")
             return redirect(url_for("web.import_config"))
 
-        # ---- create the Config **with the owner id** ----
-        cfg = Config(name=name, user_id=user_id)
+        # ---- 5️⃣  Determine the target project --------------------------------
+        proj_id = _current_project_id()
+
+        # ---- 6️⃣  Create the Config row (now with description) ---------------
+        cfg = Config(
+            name=name,
+            description=description,  # <-- store description
+            user_id=user_id,
+            project_id=proj_id,
+        )
         db.session.add(cfg)
         db.session.flush()  # obtain cfg.id before adding models/providers
 
-        # Load models & providers (unchanged)
+        # ---- 7️⃣  Load models & providers (unchanged logic) -------------------
         for fam in ["google_models", "openai_models", "qwen_models"]:
             for mname, mval in (data.get(fam) or {}).items():
                 m = Model(config_id=cfg.id, family=fam, name=mname)
@@ -368,7 +574,7 @@ def import_config():
                         )
                     )
 
-        # Active models (unchanged)
+        # ---- 8️⃣  Active models (unchanged) ----------------------------------
         active = data.get("active_models") or {}
         for fam in ["google_models", "openai_models", "qwen_models"]:
             for mname in active.get(fam, []):
@@ -376,10 +582,14 @@ def import_config():
                     ActiveModel(config_id=cfg.id, family=fam, model_name=mname)
                 )
 
+        # ---- 9️⃣  Commit everything & snapshot version -----------------------
         db.session.commit()
         snapshot_version(cfg.id, note="Import JSON")
+
+        # ---- 🔟  Redirect to the edit page for further tweaks ----------------
         return redirect(url_for("web.edit_config", config_id=cfg.id))
 
+    # ---- GET request – render the import form ---------------------------------
     return render_template("import.html")
 
 
@@ -432,10 +642,11 @@ def edit_config(config_id):
     cfg = _get_user_config(config_id)
     if request.method == "POST":
         new_name = request.form.get("new_name")
+        # NEW: handle description update
+        new_description = request.form.get("description")
         if new_name is not None:
             new_name = new_name.strip()
             if new_name and new_name != cfg.name:
-                # Ensure the new name is unique for this user
                 if Config.query.filter_by(
                     name=new_name, user_id=_current_user_id()
                 ).first():
@@ -447,8 +658,14 @@ def edit_config(config_id):
             # If only renaming, skip further processing
             return redirect(url_for("web.edit_config", config_id=cfg.id))
 
+        # Update description (if the field is present)
+        if new_description is not None:
+            cfg.description = new_description.strip()
+            db.session.commit()
+            flash("Configuration description updated.", "success")
+
         note = request.form.get("note", "")
-        # Update active models
+        # Update active models (unchanged)
         for fam in ["google_models", "openai_models", "qwen_models"]:
             ActiveModel.query.filter_by(config_id=cfg.id, family=fam).delete()
             for mname in request.form.getlist(f"{fam}[]"):
@@ -467,7 +684,12 @@ def edit_config(config_id):
         fam: [a.model_name for a in cfg.actives if a.family == fam]
         for fam in ["google_models", "openai_models", "qwen_models"]
     }
-    return render_template("edit.html", cfg=cfg, families=families, actives=actives)
+    return render_template(
+        "edit.html",
+        cfg=cfg,
+        families=families,
+        actives=actives,
+    )
 
 
 # ----------------------------------------------------------------------
