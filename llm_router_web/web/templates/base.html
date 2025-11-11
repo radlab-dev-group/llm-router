@@ -29,15 +29,18 @@
                  x-show="open"
                  @click.outside="open = false"
                  style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:200px;z-index:1000;">
-                {% for proj in user_projects %}
-                <form method="post" action="{{ url_for('select_project', project_id=proj.id) }}" style="margin:0;">
-                    <button type="submit"
-                            class="btn btn-small{% if proj.id == session.get('project_id') %} active{% endif %}"
-                            style="display:block;width:100%;text-align:left;margin-bottom:4px;">
-                        {{ proj.name }}
-                    </button>
-                </form>
-                {% endfor %}
+
+                <div class="panel">
+                    {% for proj in user_projects %}
+                    <form method="post" action="{{ url_for('select_project', project_id=proj.id) }}" style="margin:0;">
+                        <button type="submit"
+                                class="btn btn-small{% if proj.id == session.get('project_id') %} active{% endif %}"
+                                style="display:block;width:100%;text-align:left;margin-bottom:4px;">
+                            {{ proj.name }}
+                        </button>
+                    </form>
+                    {% endfor %}
+                </div>
                 <a class="btn btn-small" href="{{ url_for('manage_projects') }}"
                    style="display:block;width:100%;margin-top:8px;">Manage projects</a>
             </div>
