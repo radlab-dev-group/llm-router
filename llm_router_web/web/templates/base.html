@@ -17,19 +17,52 @@
     <h1 class="logo"><a href="{{ url_for('index') }}">LLM-router Model Configurator</a></h1>
     <nav class="menu">
         {% if session.get('user_id') %}
-        <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
-           href="{{ url_for('new_config') }}">New config (from scratch)</a>
-        <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
-           href="{{ url_for('import_config') }}">Load config (from JSON)</a>
-        <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
-           href="{{ url_for('list_configs') }}">Show all defined configs</a>
+        <div class="dropdown" x-data="{ open: false }" style="position:relative;">
+            <button type="button"
+                    class="btn btn-small{% if config_active %} active{% endif %}"
+                    @click="open = !open"
+                    @keydown.escape.window="open = false">
+                Manage configs
+            </button>
+
+            <div class="dropdown-content"
+                 x-show="open"
+                 @click.outside="open = false"
+                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:180px;z-index:1000;">
+                <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
+                   href="{{ url_for('new_config') }}"
+                   style="display:block;width:100%;margin-bottom:8px;">New config (from scratch)</a>
+
+                <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
+                   href="{{ url_for('import_config') }}"
+                   style="display:block;width:100%;margin-bottom:8px;">Load config (from JSON)</a>
+
+                <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
+                   href="{{ url_for('list_configs') }}"
+                   style="display:block;width:100%;">Show all defined configs</a>
+            </div>
+        </div>
 
         {% if session.get('role') == 'admin' %}
-        <a id="add-user-btn" class="btn btn-small"
-           href="{{ url_for('admin_users') }}" title="Add user">Manage users</a>
+        <div class="dropdown" x-data="{ open: false }" style="position:relative;">
+            <button type="button"
+                    class="btn btn-small"
+                    @click="open = !open"
+                    @keydown.escape.window="open = false">
+                Manage users
+            </button>
+
+            <div class="dropdown-content"
+                 x-show="open"
+                 @click.outside="open = false"
+                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:180px;z-index:1000;">
+                <a class="btn btn-small"
+                   href="{{ url_for('admin_users') }}"
+                   style="display:block;width:100%;">Manage users</a>
+            </div>
+        </div>
         {% endif %}
 
-        <span class="spacer"></span>
         <span class="spacer"></span>
 
         <!-- Settings dropdown -->
@@ -70,19 +103,7 @@
         </div>
 
         <span class="spacer"></span>
-        <!--        <select id="theme-select" class="btn btn-small" title="Wybierz motyw">-->
-        <!--            <option value="dark">🌙 Dark</option>-->
-        <!--            <option value="light">☀️ Light</option>-->
-        <!--            <option value="hacker">💻 Hacker</option>-->
-        <!--        </select>-->
 
-        <!--        <span class="spacer"></span>-->
-
-        <!--        <a class="btn btn-small{% if request.endpoint == 'change_password' %} active{% endif %}"-->
-        <!--           href="{{ url_for('change_password') }}">Change password</a>-->
-
-        <!--        <a id="logout-btn" class="btn btn-small danger"-->
-        <!--           href="{{ url_for('logout') }}" title="Logout">{{ session.get('username') }} – Logout 🚪</a>-->
         {% endif %}
     </nav>
 </header>
