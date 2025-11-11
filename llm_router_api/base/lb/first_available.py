@@ -125,6 +125,29 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             """
         )
 
+        # ---------- Host‑level lock scripts ----------
+        # Acquire a host lock (one host can serve only one provider at a time)
+        self._acquire_host_script = self.redis_client.register_script(
+            """
+                local host_key = KEYS[1]
+                local v = redis.call('GET', host_key)
+                if v == false or v == 'false' then
+                    redis.call('SET', host_key, 'true')
+                    return 1
+                end
+                return 0
+            """
+        )
+        # Release a host lock
+        self._release_host_script = self.redis_client.register_script(
+            """
+                local host_key = KEYS[1]
+                redis.call('DEL', host_key)
+                return 1
+            """
+        )
+        # --------------------------------------------
+
         if clear_buffers:
             self._clear_buffers()
 
@@ -136,6 +159,9 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
             logger=self.logger,
         )
 
+    # ----------------------------------------------------------------------
+    # Public API
+    # ----------------------------------------------------------------------
     def get_provider(
         self,
         model_name: str,
@@ -222,9 +248,30 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                     redis_key=redis_key, providers=_providers
                 )
                 if provider:
-                    provider_field = self._provider_field(provider)
-                    provider["__chosen_field"] = provider_field
-                    return provider
+                    # ----- Host lock for random choice -----
+                    host_name = provider.get("host") or provider.get("server")
+                    if host_name:
+                        host_key = self._host_key(host_name)
+                        ok_host = int(
+                            self._acquire_host_script(keys=[host_key], args=[])
+                        )
+                        if ok_host == 1:
+                            provider["__chosen_field"] = self._provider_field(
+                                provider
+                            )
+                            provider["__host_key"] = host_key
+                            return provider
+                        else:
+                            # Host already taken – release provider lock and continue
+                            self._release_script(
+                                keys=[redis_key],
+                                args=[self._provider_field(provider)],
+                            )
+                            continue
+                    else:
+                        provider["__chosen_field"] = self._provider_field(provider)
+                        return provider
+            # ----------------------------------------
             else:
                 for provider in _providers:
                     provider_field = self._provider_field(provider)
@@ -235,8 +282,30 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
                             )
                         )
                         if ok == 1:
-                            provider["__chosen_field"] = provider_field
-                            return provider
+                            # ----- Host lock for deterministic choice -----
+                            host_name = provider.get("host") or provider.get(
+                                "server"
+                            )
+                            if host_name:
+                                host_key = self._host_key(host_name)
+                                ok_host = int(
+                                    self._acquire_host_script(
+                                        keys=[host_key], args=[]
+                                    )
+                                )
+                                if ok_host == 1:
+                                    provider["__chosen_field"] = provider_field
+                                    provider["__host_key"] = host_key
+                                    return provider
+                                else:
+                                    # Host already occupied – release provider lock
+                                    self._release_script(
+                                        keys=[redis_key], args=[provider_field]
+                                    )
+                                    continue
+                            else:
+                                provider["__chosen_field"] = provider_field
+                                return provider
                     except Exception:
                         pass
             time.sleep(self.check_interval)
@@ -267,12 +336,21 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         redis_key = self._get_redis_key(model_name)
         provider_field = self._provider_field(provider)
         try:
+            # Release provider lock
             self.redis_client.hdel(redis_key, provider_field)
+            # Release host lock if it was acquired
+            host_key = provider.get("__host_key")
+            if host_key:
+                self._release_host_script(keys=[host_key], args=[])
         except Exception:
             raise
 
         provider.pop("__chosen_field", None)
+        provider.pop("__host_key", None)
 
+    # ----------------------------------------------------------------------
+    # Helper methods
+    # ----------------------------------------------------------------------
     def _try_acquire_random_provider(
         self, redis_key: str, providers: List[Dict]
     ) -> Optional[Dict]:
@@ -468,8 +546,8 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         Print the lock status of each provider stored in the Redis hash
         ``redis_key``.  Uses emojis for a quick visual cue:
 
-        * 🟢 – provider is free (`'false'` or missing)
-        * 🔴 – provider is currently taken (`'true'`)
+        *  – provider is free (`'false'` or missing)
+        *  – provider is currently taken (`'true'`)
 
         The output is formatted in a table‑like layout for readability.
         """
@@ -485,8 +563,29 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         for provider in providers:
             field = self._provider_field(provider)
             status = hash_data.get(field, "false")
-            icon = "🔴" if status == "true" else "🟢"
+            icon = "" if status == "true" else ""
             # Show a short identifier for the provider (fallback to field)
             provider_id = provider.get("id") or provider.get("name") or field
             print(f"{icon}  {provider_id:<30} [{field}]")
         print("-" * 40)
+
+    # ----------------------------------------------------------------------
+    # Host‑level locking helpers
+    # ----------------------------------------------------------------------
+    @staticmethod
+    def _host_key(host_name: str) -> str:
+        """
+        Build a Redis key used to lock a host (server) so that only one
+        provider on that host can be active at a time.
+
+        Parameters
+        ----------
+        host_name : str
+            Identifier of the host (e.g., ``"A"``, ``"B"``, ``"server-1"``).
+
+        Returns
+        -------
+        str
+            Redis key in the format ``host:<host_name>``.
+        """
+        return f"host:{host_name}"
