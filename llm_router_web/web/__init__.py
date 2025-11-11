@@ -1,7 +1,7 @@
 # web/__init__.py
 import os
-from flask import Flask
-from .models import db
+from flask import Flask, session, request, flash, redirect, url_for
+from .models import db, Project, User
 from .routes import bp as web_bp
 from .utils import _ensure_provider_order_column
 
@@ -40,14 +40,41 @@ def create_app() -> Flask:
     # ---- Register blueprint ---------------------------------------------
     app.register_blueprint(web_bp)
 
-    # --------------------------------------------------------------------
-    # **Create plain‑name aliases for every blueprint endpoint**
+    # ---- Context processor – makes project data available to all templates
+    @app.context_processor
+    def inject_project_data():
+        """
+        Provides:
+          * Project – the SQLAlchemy model (so templates can query it if needed)
+          * user_projects – list of Project objects belonging to the logged‑in user
+          * current_project_name – name of the project stored in the session
+        """
+        user_id = session.get("user_id")
+        proj_id = session.get("project_id")
+        user_projects = []
+        current_name = "—"
+
+        if user_id:
+            user_projects = (
+                Project.query.filter_by(user_id=user_id).order_by(Project.name).all()
+            )
+            if proj_id:
+                cur = next((p for p in user_projects if p.id == proj_id), None)
+                if cur:
+                    current_name = cur.name
+
+        return {
+            "Project": Project,
+            "user_projects": user_projects,
+            "current_project_name": current_name,
+        }
+
+    # ---- Plain‑name aliases for every blueprint endpoint ----------------
     # After the blueprint is registered Flask knows the full endpoint name
     # (e.g. "web.new_config") and the corresponding URL rule.
     # We iterate over the map and register the same view function under the
     # short name ("new_config") so templates can keep using the original
     # `url_for('new_config')` syntax.
-    # --------------------------------------------------------------------
     for rule in list(app.url_map.iter_rules()):
         # Only handle endpoints that belong to the "web" blueprint
         if rule.endpoint.startswith("web."):

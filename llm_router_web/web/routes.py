@@ -19,7 +19,16 @@ from sqlalchemy import func
 
 from werkzeug.security import generate_password_hash, check_password_hash
 
-from .models import db, Config, ConfigVersion, Model, Provider, ActiveModel, User
+from .models import (
+    db,
+    Config,
+    ConfigVersion,
+    Model,
+    Provider,
+    ActiveModel,
+    User,
+    Project,
+)
 from .utils import (
     to_json,
     snapshot_version,
@@ -71,6 +80,16 @@ def _require_user():
     if not _current_user_id():
         abort(403, description="User must be logged in to perform this action.")
     return _current_user_id()
+
+
+def _create_default_project_for_user(user: User):
+    """Utility – called after a new User row is persisted."""
+    default_proj = Project(name="default_project", user_id=user.id, is_default=True)
+    db.session.add(default_proj)
+    db.session.commit()
+    # store in session if the newly created user is the one logging in now
+    if session.get("user_id") == user.id:
+        session["project_id"] = default_proj.id
 
 
 # ----------------------------------------------------------------------
@@ -187,6 +206,7 @@ def setup():
         )
         db.session.add(admin_user)
         db.session.commit()
+        _create_default_project_for_user(admin_user)
         flash("Initial admin user created – you can now log in.", "success")
         return redirect(url_for("login"))
 
@@ -196,6 +216,8 @@ def setup():
 # ----------------------------------------------------------------------
 # Admin panel – user management
 # ----------------------------------------------------------------------
+
+
 @bp.route("/admin/users", methods=["GET", "POST"])
 @admin_required
 def admin_users():
@@ -215,6 +237,7 @@ def admin_users():
             )
             db.session.add(new_user)
             db.session.commit()
+            _create_default_project_for_user(new_user)
             flash(f"User {username} added.", "success")
         return redirect(url_for("admin_users"))
 
@@ -290,8 +313,9 @@ def toggle_block_user(user_id):
 @bp.route("/", endpoint="index")
 def index():
     user_id = _current_user_id()
+    proj_id = _current_project_id()
     configs = (
-        Config.query.filter_by(user_id=user_id)
+        Config.query.filter_by(user_id=user_id, project_id=proj_id)
         .order_by(Config.updated_at.desc())
         .all()
     )
@@ -330,13 +354,117 @@ def change_password():
 
 
 # ----------------------------------------------------------------------
+# Helper: retrieve the currently selected project (fallback to default)
+# ----------------------------------------------------------------------
+def _current_project_id():
+    """Return the project ID stored in session or the user's default project."""
+    proj_id = session.get("project_id")
+    if proj_id:
+        return proj_id
+    # fallback: look for a default project belonging to the user
+    user_id = _current_user_id()
+    default_proj = Project.query.filter_by(user_id=user_id, is_default=True).first()
+    if default_proj:
+        session["project_id"] = default_proj.id
+        return default_proj.id
+    # if no project exists (should not happen), create one on‑the‑fly
+    new_proj = Project(name="default_project", user_id=user_id, is_default=True)
+    db.session.add(new_proj)
+    db.session.commit()
+    session["project_id"] = new_proj.id
+    return new_proj.id
+
+
+# ----------------------------------------------------------------------
+# Project selection endpoint (used by the dropdown in the top‑bar)
+# ----------------------------------------------------------------------
+@bp.post("/projects/select/<int:project_id>")
+@login_required
+def select_project(project_id):
+    """Switch the active project for the current session."""
+    user_id = _current_user_id()
+    proj = Project.query.filter_by(id=project_id, user_id=user_id).first_or_404()
+    session["project_id"] = proj.id
+    flash(f"Project “{proj.name}” selected.", "success")
+    # redirect back to the page the user was on
+    return redirect(request.referrer or url_for("index"))
+
+
+# ----------------------------------------------------------------------
+# Project management UI (list / create / rename)
+# ----------------------------------------------------------------------
+@bp.route("/projects", methods=["GET", "POST"])
+@login_required
+def manage_projects():
+    user_id = _current_user_id()
+    if request.method == "POST":
+        # Create a new project – name supplied via form field ``name``
+        name = request.form.get("name", "").strip()
+        if not name:
+            flash("Project name is required.", "error")
+        else:
+            # Ensure uniqueness per user
+            if Project.query.filter_by(user_id=user_id, name=name).first():
+                flash("You already have a project with that name.", "error")
+            else:
+                new_proj = Project(name=name, user_id=user_id, is_default=False)
+                db.session.add(new_proj)
+                db.session.commit()
+                flash(f"Project “{name}” created.", "success")
+        return redirect(url_for("manage_projects"))
+
+    projects = Project.query.filter_by(user_id=user_id).order_by(Project.name).all()
+    return render_template("projects.html", projects=projects)
+
+
+@bp.post("/projects/<int:project_id>/rename")
+@login_required
+def rename_project(project_id):
+    user_id = _current_user_id()
+    proj = Project.query.filter_by(id=project_id, user_id=user_id).first_or_404()
+    new_name = request.form.get("new_name", "").strip()
+    if not new_name:
+        flash("New name cannot be empty.", "error")
+    else:
+        # check for duplicate
+        if Project.query.filter_by(user_id=user_id, name=new_name).first():
+            flash("Another project already uses this name.", "error")
+        else:
+            proj.name = new_name
+            db.session.commit()
+            flash("Project renamed.", "success")
+    return redirect(url_for("manage_projects"))
+
+
+@bp.post("/projects/<int:project_id>/delete")
+@login_required
+def delete_project(project_id):
+    user_id = _current_user_id()
+    proj = Project.query.filter_by(id=project_id, user_id=user_id).first_or_404()
+    if proj.is_default:
+        flash("The default project cannot be deleted.", "error")
+        return redirect(url_for("manage_projects"))
+    if proj.configs:
+        flash("Cannot delete a project that contains configs.", "error")
+        return redirect(url_for("manage_projects"))
+    db.session.delete(proj)
+    db.session.commit()
+    # if the deleted project was the active one, clear session entry
+    if session.get("project_id") == project_id:
+        session.pop("project_id")
+    flash("Project deleted.", "success")
+    return redirect(url_for("manage_projects"))
+
+
+# ----------------------------------------------------------------------
 # Configs Create / import
 # ----------------------------------------------------------------------
 @bp.route("/configs")
 def list_configs():
     user_id = _current_user_id()
+    proj_id = _current_project_id()
     configs = (
-        Config.query.filter_by(user_id=user_id)
+        Config.query.filter_by(user_id=user_id, project_id=proj_id)
         .order_by(Config.updated_at.desc())
         .all()
     )
@@ -349,9 +477,14 @@ def new_config():
         name = request.form.get("name", "").strip()
         if not name:
             abort(400, description="Name is required.")
-        if Config.query.filter_by(name=name, user_id=_current_user_id()).first():
-            abort(400, description="Configuration with this name already exists.")
-        cfg = Config(name=name, user_id=_current_user_id())
+        # Use the current project instead of raw user_id only
+        proj_id = _current_project_id()
+        if Config.query.filter_by(name=name, project_id=proj_id).first():
+            abort(
+                400,
+                description="Configuration with this name already exists in the project.",
+            )
+        cfg = Config(name=name, user_id=_current_user_id(), project_id=proj_id)
         db.session.add(cfg)
         db.session.commit()
         snapshot_version(cfg.id, note="Created empty config")
