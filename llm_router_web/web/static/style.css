@@ -528,6 +528,15 @@ summary.clickable:hover {
     width: 100%;
 }
 
+.provider-form {
+    display: flex;
+    max-width: 800px;
+    flex-direction: column;
+    align-items: normal;
+    margin: var(--space-3) 0;
+    flex-wrap: wrap;
+}
+
 .add-model-form input[name="name"] {
     flex: 1 1 auto;
     min-width: 200px;
@@ -542,8 +551,8 @@ summary.clickable:hover {
     max-width: 200px;
 }
 
-.add-model-form input[type="number"],
-.add-model-form select {
+.provider-form input[type="number"],
+.provider-form select {
     max-width: 100px;
 }
 
