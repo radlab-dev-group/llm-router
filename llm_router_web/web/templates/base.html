@@ -28,7 +28,6 @@
         <a id="add-user-btn" class="btn btn-small"
            href="{{ url_for('admin_users') }}" title="Add user">Manage users</a>
         {% endif %}
-        {% endif %}
 
         <span class="spacer"></span>
 
@@ -39,8 +38,6 @@
         </select>
 
         <span class="spacer"></span>
-
-        {% if session.get('user_id') %}
 
         <a class="btn btn-small{% if request.endpoint == 'change_password' %} active{% endif %}"
            href="{{ url_for('change_password') }}">Change password</a>
