@@ -1,59 +1,221 @@
 """
-This module implements the :class:`~FirstAvailableStrategy`, a concrete
-strategy for selecting the first available provider for a given model.  The
-strategy coordinates provider selection across multiple processes using
-Redis hashes as lightweight distributed locks.
+Implementation of a *first‑available* provider selection strategy that coordinates
+access across multiple processes using Redis.  The code is split into small,
+focused classes to improve readability, testability and maintainability.
 
-The implementation relies on two Lua scripts registered with Redis:
+Typical usage
+-------------
 
-* ``_acquire_script`` – atomically marks a provider as chosen if it is not
-  currently taken.
-* ``_release_script`` – releases the lock by deleting the provider field.
+>>> strategy = FirstAvailableStrategy(models_config_path='dir/models-config.json')
+>>> provider = strategy.get_provider('my-model', providers)
+>>> # … use the provider …
+>>> strategy.put_provider('my-model', provider)
 
-Both scripts treat a missing field or a field set to ``'false'`` as an
-available provider.
-
-Typical usage::
-
-    strategy = FirstAvailableStrategy(models_config_path='dir/models-config.json')
-    provider = strategy.get_provider('model-name', providers_list)
-    # ... use the provider ...
-    strategy.put_provider('model-name', provider)
-
+The public API is provided by :class:`FirstAvailableStrategy`.  Internally the
+strategy delegates the low‑level Redis operations to :class:`RedisLockManager`
+and the monitoring of provider health to :class:`ProviderMonitorWrapper`.
 """
 
-import time
+from __future__ import annotations
+
 import logging
 import random
+import time
+from typing import Any, Dict, List, Optional
 
+# --------------------------------------------------------------------------- #
+# Optional Redis import – the strategy raises a clear error if Redis is not
+# available at runtime.
+# --------------------------------------------------------------------------- #
 try:
     import redis
 
-    REDIS_IS_AVAILABLE = True
+    _REDIS_AVAILABLE = True
 except ImportError:
-    REDIS_IS_AVAILABLE = False
+    _REDIS_AVAILABLE = False
 
-from typing import List, Dict, Optional, Any
-
-from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
+from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
 from llm_router_api.base.lb.provider_monitor import RedisProviderMonitor
+from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
 
 
+# --------------------------------------------------------------------------- #
+# Helper class – low‑level Redis lock handling
+# --------------------------------------------------------------------------- #
+class RedisLockManager:
+    """
+    Encapsulates all Redis‑based locking primitives used by the strategy.
+
+    The manager registers four Lua scripts:
+
+    * ``_acquire_script`` – atomically acquire a provider lock.
+    * ``_release_script`` – release a provider lock.
+    * ``_acquire_host_script`` – acquire a host‑wide lock (only one provider per
+      host may be active at a time).
+    * ``_release_host_script`` – release a host lock.
+
+    All scripts work on simple string values (``'true'`` = locked,
+    ``'false'`` = free).  Missing fields are treated as free.
+    """
+
+    def __init__(self, client: redis.Redis) -> None:
+        """
+        Parameters
+        ----------
+        client:
+            An instantiated :class:`redis.Redis` connection with
+            ``decode_responses=True``.
+        """
+        self.client = client
+        self._register_scripts()
+
+    # ------------------------------------------------------------------- #
+    # Lua script registration
+    # ------------------------------------------------------------------- #
+    def _register_scripts(self) -> None:
+        """Register the four Lua scripts used for locking."""
+        # Provider acquire – treat missing or "false" as free
+        self.acquire_script = self.client.register_script(
+            """
+            local redis_key = KEYS[1]
+            local field = ARGV[1]
+            local v = redis.call('HGET', redis_key, field)
+            if v == false or v == 'false' then
+                redis.call('HSET', redis_key, field, 'true')
+                return 1
+            end
+            return 0
+            """
+        )
+        # Provider release – delete the field
+        self.release_script = self.client.register_script(
+            """
+            local redis_key = KEYS[1]
+            local field = ARGV[1]
+            redis.call('HDEL', redis_key, field)
+            return 1
+            """
+        )
+        # Host acquire – a simple key, not a hash
+        self.acquire_host_script = self.client.register_script(
+            """
+            local host_key = KEYS[1]
+            local v = redis.call('GET', host_key)
+            if v == false or v == 'false' then
+                redis.call('SET', host_key, 'true')
+                return 1
+            end
+            return 0
+            """
+        )
+        # Host release – delete the key
+        self.release_host_script = self.client.register_script(
+            """
+            local host_key = KEYS[1]
+            redis.call('DEL', host_key)
+            return 1
+            """
+        )
+
+    # ------------------------------------------------------------------- #
+    # Public locking helpers
+    # ------------------------------------------------------------------- #
+    def acquire_provider(self, redis_key: str, field: str) -> bool:
+        """
+        Try to lock a provider.
+
+        Returns ``True`` if the lock was obtained, ``False`` otherwise.
+        """
+        result = int(self.acquire_script(keys=[redis_key], args=[field]))
+        return result == 1
+
+    def release_provider(self, redis_key: str, field: str) -> None:
+        """Release a previously acquired provider lock."""
+        self.release_script(keys=[redis_key], args=[field])
+
+    def acquire_host(self, host_key: str) -> bool:
+        """
+        Acquire a lock that guarantees only one provider on the given host
+        is active at a time.
+        """
+        result = int(self.acquire_host_script(keys=[host_key], args=[]))
+        return result == 1
+
+    def release_host(self, host_key: str) -> None:
+        """Release a host‑wide lock."""
+        self.release_host_script(keys=[host_key], args=[])
+
+
+# --------------------------------------------------------------------------- #
+# Wrapper around the existing RedisProviderMonitor
+# --------------------------------------------------------------------------- #
+class ProviderMonitorWrapper:
+    """
+    Thin wrapper around
+    :class:`llm_router_api.base.lb.provider_monitor.RedisProviderMonitor`
+    that isolates the strategy from the concrete monitor implementation.
+    """
+
+    def __init__(
+        self,
+        redis_client: redis.Redis,
+        check_interval: int = 30,
+        clear_buffers: bool = True,
+        logger: Optional[logging.Logger] = None,
+    ) -> None:
+        self._monitor = RedisProviderMonitor(
+            redis_client=redis_client,
+            check_interval=check_interval,
+            clear_buffers=clear_buffers,
+            logger=logger,
+        )
+
+    # ------------------------------------------------------------------- #
+    # Delegated methods
+    # ------------------------------------------------------------------- #
+    def add_providers(self, model_name: str, providers: List[Dict]) -> None:
+        """Register a list of providers for a given model."""
+        self._monitor.add_providers(model_name, providers)
+
+    def get_providers(
+        self, model_name: str, only_active: bool = False
+    ) -> List[Dict]:
+        """
+        Retrieve the provider list for *model_name*.
+
+        Parameters
+        ----------
+        only_active:
+            If ``True`` return only providers that are currently considered
+            healthy/active by the monitor.
+        """
+        return self._monitor.get_providers(
+            model_name=model_name, only_active=only_active
+        )
+
+
+# --------------------------------------------------------------------------- #
+# Main strategy class – public entry point
+# --------------------------------------------------------------------------- #
 class FirstAvailableStrategy(ChooseProviderStrategyI):
     """
-    Strategy that selects the first free provider for a model using Redis.
+    Strategy that selects the first free provider for a model using Redis‑based
+    coordination.
 
-    The class inherits from
-    :class:`~llm_router_api.base.lb.strategy.ChooseProviderStrategyI`
-    and adds Redis‑based coordination.  It ensures that at most one consumer
-    holds a particular provider at any time, even when multiple workers run
-    concurrently on different hosts.
+    The class implements the abstract :class:`ChooseProviderStrategyI` interface
+    and adds the following responsibilities:
 
-    Parameters are forwarded to the base class where appropriate, and Redis
-    connection details can be customised via the constructor arguments.
+    * **Provider locking** – ensures that at most one worker holds a particular
+      provider at any time, even across different hosts.
+    * **Host‑level locking** – guarantees that a single host never serves more
+      than one provider concurrently (optional, based on the provider payload).
+    * **Health monitoring** – delegates to :class:`ProviderMonitorWrapper` to
+      keep the list of active providers up‑to‑date.
     """
 
+    # ------------------------------------------------------------------- #
+    # Construction
+    # ------------------------------------------------------------------- #
     def __init__(
         self,
         models_config_path: str,
@@ -66,179 +228,151 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """
-        Initialize the FirstAvailableStrategy.
-
         Parameters
         ----------
-        models_config_path : str
-            Path to the models configuration file.
-        redis_host : str, optional
-            Redis server host. Default is ``"192.168.100.67"``.
-        redis_port : int, optional
-            Redis server port. Default is ``6379``.
-        redis_db : int, optional
-            Redis database number. Default is ``0``.
-        timeout : int, optional
-            Maximum time (in seconds) to wait for an available provider.
-            Default is ``60``.
-        check_interval : float, optional
-            Time to sleep between checks for available providers (in seconds).
-            Default is ``0.1``.
+        models_config_path:
+            Path to the JSON file that contains model‑to‑provider mappings.
+        redis_host, redis_port, redis_db:
+            Connection details for the Redis server.
+        timeout:
+            Maximum number of seconds to wait for a free provider before raising
+            :class:`TimeoutError`.
+        check_interval:
+            Sleep interval (seconds) between successive attempts to acquire a
+            provider.
         clear_buffers:
-            Whether to clear all buffers when starting. Default is ``True``.
+            If ``True`` the Redis state is cleared at start‑up, ensuring a clean
+            slate.
+        logger:
+            Optional custom logger.  If omitted a module‑level logger is used.
         """
-        if not REDIS_IS_AVAILABLE:
-            raise RuntimeError("Redis is not available. Please install it first.")
+        if not _REDIS_AVAILABLE:  # pragma: no cover
+            raise RuntimeError(
+                "Redis is not installed. Install the `redis` package to use "
+                "FirstAvailableStrategy."
+            )
 
         super().__init__(models_config_path=models_config_path, logger=logger)
 
+        # -----------------------------------------------------------------
+        # Redis client & helper objects
+        # -----------------------------------------------------------------
         self.redis_client = redis.Redis(
-            host=redis_host, port=redis_port, db=redis_db, decode_responses=True
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            decode_responses=True,
         )
-        self.timeout = timeout
-        self.check_interval = check_interval
-
-        # Atomic acquire script – treat missing field as “available”
-        self._acquire_script = self.redis_client.register_script(
-            """
-                local redis_key = KEYS[1]
-                local field = ARGV[1]
-                local v = redis.call('HGET', redis_key, field)
-                -- v == false  -> field does not exist (nil)
-                -- v == 'false' -> explicitly marked as free
-                if v == false or v == 'false' then
-                    redis.call('HSET', redis_key, field, 'true')
-                    return 1
-                end
-                return 0
-            """
-        )
-
-        # Atomic release script – simply delete the field (no race condition)
-        self._release_script = self.redis_client.register_script(
-            """
-                local redis_key = KEYS[1]
-                local field = ARGV[1]
-                -- Delete the field; returns 1 if field existed, 0 otherwise
-                redis.call('HDEL', redis_key, field)
-                return 1
-            """
-        )
-
-        if clear_buffers:
-            self._clear_buffers()
-
-        # Start providers monitor
-        self._monitor = RedisProviderMonitor(
+        self.lock_manager = RedisLockManager(self.redis_client)
+        self.monitor = ProviderMonitorWrapper(
             redis_client=self.redis_client,
             check_interval=30,
             clear_buffers=clear_buffers,
             logger=self.logger,
         )
 
+        # -----------------------------------------------------------------
+        # Configuration
+        # -----------------------------------------------------------------
+        self.timeout = timeout
+        self.check_interval = check_interval
+
+        if clear_buffers:
+            self._clear_buffers()
+
+    # ------------------------------------------------------------------- #
+    # Public API – provider acquisition / release
+    # ------------------------------------------------------------------- #
     def get_provider(
         self,
         model_name: str,
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
-    ) -> Dict | None:
+    ) -> Optional[Dict]:
         """
-        Acquire a provider for *model_name* from the supplied ``providers`` list.
+        Acquire a provider for *model_name*.
 
-        The method attempts to lock a provider using a Redis‑backed
-        atomic Lua script.  If ``options`` contains ``{\"random_choice\": True}``,
-        the selection is performed on a shuffled copy of ``providers``; otherwise
-        providers are examined in the order they appear in the list.
-
-        Parameters
-        ----------
-        model_name : str
-            Identifier of the model for which a provider is required.
-        providers : List[Dict]
-            A list of provider configuration dictionaries.  Each dictionary must
-            contain the information required by :meth:`_provider_field` to build a
-            unique Redis hash field name.
-        options : dict, optional
-            Additional flags that influence the acquisition strategy.  Currently
-            supported keys:
-            ``random_choice`` (bool) – when ``True`` the provider is chosen at
-            random; defaults to ``False``.
-
-        Returns
-        -------
-        dict | None
-            The chosen provider dictionary with an extra ``"__chosen_field"``
-            entry indicating the Redis hash field that was locked.  Returns
-            ``None`` if ``providers`` is empty.
-
-        Raises
-        ------
-        TimeoutError
-            Raised when no provider can be locked within the ``timeout`` period
-            configured for the strategy instance.
-
-        Notes
-        -----
-        * The method creates the Redis hash (``model:<model_name>``) and initial
-          ``false`` fields if they do not already exist.
-        * The lock is represented by the value ``'true'`` in the hash field.
-        * Call :meth:`put_provider` to release the lock once the provider is no
-          longer needed.
+        The method now remembers the last host that successfully served the
+        model.  On subsequent calls it first tries to reuse that host if it is
+        still available and healthy.
         """
         if not providers:
             return None
 
-        # Register providers for monitoring (only once per model)
-        self._monitor.add_providers(model_name, providers)
+        # Register providers for health monitoring (idempotent)
+        self.monitor.add_providers(model_name, providers)
 
-        redis_key = self._get_redis_key(model_name)
-        start_time = time.time()
+        redis_key = self._redis_key(model_name)
 
-        # Ensure fields exist; if someone removed the hash, recreate it
+        # Ensure the hash and its fields exist – idempotent initialisation
         if not self.redis_client.exists(redis_key):
             for p in providers:
                 self.redis_client.hset(redis_key, self._provider_field(p), "false")
 
-        # self._print_provider_status(redis_key, providers)
-
-        is_random = options and options.get("random_choice", False)
-
-        while True:
-            _providers = self._get_active_providers(
-                model_name=model_name, providers=providers
+        # --------------------------------------------------------------
+        # Try to reuse the last host that served this model
+        # --------------------------------------------------------------
+        last_host = self._get_last_host(redis_key)
+        if last_host:
+            # Find a provider that matches the stored host name
+            candidate = next(
+                (
+                    p
+                    for p in providers
+                    if p.get("host") == last_host or p.get("server") == last_host
+                ),
+                None,
             )
+            if candidate:
+                # Verify that the candidate is still considered active
+                active = self.monitor.get_providers(
+                    model_name=model_name, only_active=True
+                )
+                if candidate in active:
+                    field = self._provider_field(candidate)
+                    if self.lock_manager.acquire_provider(redis_key, field):
+                        if self._acquire_host_if_needed(candidate):
+                            candidate["__chosen_field"] = field
+                            # Remember this host for the next call
+                            self._set_last_host(redis_key, last_host)
+                            return candidate
+                        # Host lock failed – release provider lock
+                        self.lock_manager.release_provider(redis_key, field)
 
-            if not len(_providers):
+        is_random = bool(options and options.get("random_choice", False))
+
+        start = time.time()
+        while True:
+            active = self.monitor.get_providers(
+                model_name=model_name, only_active=True
+            )
+            if not active:
+                # No active providers – wait a bit and retry
                 time.sleep(self.check_interval)
 
-            if time.time() - start_time > self.timeout:
+            if time.time() - start > self.timeout:
                 raise TimeoutError(
-                    f"No available provider found for model '{model_name}' "
-                    f"within {self.timeout} seconds"
+                    f"No available provider for model '{model_name}' after "
+                    f"{self.timeout} seconds."
                 )
 
             if is_random:
-                provider = self._try_acquire_random_provider(
-                    redis_key=redis_key, providers=_providers
-                )
-                if provider:
-                    provider_field = self._provider_field(provider)
-                    provider["__chosen_field"] = provider_field
-                    return provider
+                chosen = self._try_acquire_random(redis_key, active)
+                if chosen:
+                    # Remember the host that just served the model
+                    host_name = chosen.get("host") or chosen.get("server")
+                    if host_name:
+                        self._set_last_host(redis_key, host_name)
+                    return chosen
             else:
-                for provider in _providers:
-                    provider_field = self._provider_field(provider)
-                    try:
-                        ok = int(
-                            self._acquire_script(
-                                keys=[redis_key], args=[provider_field]
-                            )
-                        )
-                        if ok == 1:
-                            provider["__chosen_field"] = provider_field
-                            return provider
-                    except Exception:
-                        pass
+                chosen = self._try_acquire_deterministic(redis_key, active)
+                if chosen:
+                    host_name = chosen.get("host") or chosen.get("server")
+                    if host_name:
+                        self._set_last_host(redis_key, host_name)
+                    return chosen
+
+            # Back‑off before the next attempt
             time.sleep(self.check_interval)
 
     def put_provider(
@@ -248,228 +382,185 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         options: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
-        Release a previously acquired provider back to the pool.
+        Release a previously acquired *provider*.
 
-        The method removes the lock field from the Redis hash, making the
-        provider available for subsequent ``get_provider`` calls.  It also
-        cleans up the temporary ``"__chosen_field"`` entry from the provider
-        dictionary.
-
-        Parameters
-        ----------
-        model_name : str
-            The model name associated with the provider.
-        provider : Dict
-            The provider dictionary that was returned by :meth:`get_provider`.
-        options: Dict[str, Any], default: None
-            Additional options passed to the chosen provider.
+        The method removes the provider lock from Redis and, if a host lock was
+        obtained, releases that as well.  Temporary helper fields (``__chosen_field``,
+        ``__host_key``) are stripped from the dictionary.
         """
-        redis_key = self._get_redis_key(model_name)
-        provider_field = self._provider_field(provider)
-        try:
-            self.redis_client.hdel(redis_key, provider_field)
-        except Exception:
-            raise
+        redis_key = self._redis_key(model_name)
+        field = self._provider_field(provider)
 
+        # Release provider lock
+        self.lock_manager.release_provider(redis_key, field)
+
+        # Release host lock if it exists
+        host_key = provider.get("__host_key")
+        if host_key:
+            self.lock_manager.release_host(host_key)
+
+        # Clean helper entries from the caller‑provided dict
         provider.pop("__chosen_field", None)
+        provider.pop("__host_key", None)
 
-    def _try_acquire_random_provider(
+    # ------------------------------------------------------------------- #
+    # Private helper methods
+    # ------------------------------------------------------------------- #
+    def _try_acquire_random(
         self, redis_key: str, providers: List[Dict]
     ) -> Optional[Dict]:
         """
         Attempt to lock a provider chosen at random.
 
-        The method works in three stages:
-
-        1. **Shuffle** – a shallow copy of ``providers`` is shuffled so that each
-           provider has an equal probability of being tried first.  The original
-           list is left untouched.
-        2. **Atomic acquisition** – each shuffled provider is passed to the
-           ``_acquire_script`` Lua script which atomically sets the corresponding
-           Redis hash field to ``'true'`` *only if* it is currently ``'false'`` or
-           missing.  The first provider for which the script returns ``1`` is
-           considered successfully acquired.
-        3. **Fallback** – if none of the providers can be locked (e.g., all are
-           currently in use), the method falls back to the *first* provider in the
-           original ``providers`` list, marks its ``"__chosen_field"`` for
-           consistency, and returns it.  This fallback mirrors the behaviour of
-           the non‑random acquisition path and ensures the caller always receives
-           a provider dictionary (or ``None`` when ``providers`` is empty).
-
-        Parameters
-        ----------
-        redis_key : str
-            The Redis hash key associated with the model (e.g., ``model:<name>``).
-        providers : List[Dict]
-            A list of provider configuration dictionaries.  Each dictionary must
-            contain sufficient information for :meth:`_provider_field` to generate
-            a unique field name within the Redis hash.
-
-        Returns
-        -------
-        Optional[Dict]
-            The selected provider dictionary with an additional ``"__chosen_field"``
-            entry indicating the Redis hash field that was locked.  Returns ``None``
-            only when the input ``providers`` list is empty.
-
-        Raises
-        ------
-        Exception
-            Propagates any unexpected exceptions raised by the Lua script execution;
-            callers may catch these to implement retry or logging logic.
-
-        Notes
-        -----
-        * The random selection is *non‑deterministic* on each call; however, the
-          fallback to the first provider ensures deterministic behaviour when
-          all providers are currently busy.
-        * The method does **not** block; it returns immediately after trying all
-          shuffled providers.
+        Returns the provider dict with helper fields added, or ``None`` when no
+        provider could be locked.
         """
         shuffled = providers[:]
         random.shuffle(shuffled)
-        for provider in shuffled:
-            provider_field = self._provider_field(provider)
-            try:
-                ok = int(
-                    self._acquire_script(keys=[redis_key], args=[provider_field])
-                )
-                if ok == 1:
-                    provider["__chosen_field"] = provider_field
+
+        return self._try_acquire_deterministic(
+            redis_key=redis_key, providers=shuffled
+        )
+
+    def _try_acquire_deterministic(
+        self, redis_key: str, providers: List[Dict]
+    ) -> Optional[Dict]:
+        """
+        Iterate over *providers* in order and acquire the first free one.
+        """
+        for provider in providers:
+            field = self._provider_field(provider)
+            if self.lock_manager.acquire_provider(redis_key, field):
+                if self._acquire_host_if_needed(provider):
+                    provider["__chosen_field"] = field
                     return provider
-            except Exception:
-                continue
+                # Host lock failed – release provider lock and continue
+                self.lock_manager.release_provider(redis_key, field)
+
         return None
 
-    def _get_active_providers(
-        self, model_name: str, providers: List[Dict]
-    ) -> List[Dict]:
-        active_providers = self._monitor.get_providers(
-            model_name=model_name, only_active=True
-        )
-        return active_providers
-
-    def _get_redis_key(self, model_name: str) -> str:
+    def _acquire_host_if_needed(self, provider: Dict) -> bool:
         """
-        Return Redis key prefix for a given model.
+        Acquire a host‑wide lock if the provider payload specifies a host.
+
+        Returns ``True`` when either no host is defined or the host lock was
+        successfully obtained.
         """
-        for ch in self.REPLACE_PROVIDER_KEY:
-            model_name = model_name.replace(ch, "_")
-        return f"model:{model_name}"
+        host_name = provider.get("host") or provider.get("server")
+        if not host_name:
+            return True
 
-    def _provider_field(self, provider: dict) -> str:
+        host_key = self._host_key(host_name)
+        if self.lock_manager.acquire_host(host_key):
+            provider["__host_key"] = host_key
+            return True
+        return False
+
+    # --------------------------------------------------------------
+    # Helper methods for persisting the last‑used host
+    # --------------------------------------------------------------
+    @staticmethod
+    def _last_host_key(redis_key: str) -> str:
+        """Redis key used to store the last host that served a model."""
+        return f"{redis_key}:last_host"
+
+    def _get_last_host(self, redis_key: str) -> Optional[str]:
+        """Retrieve the previously stored host name for *redis_key*."""
+        return self.redis_client.get(self._last_host_key(redis_key))
+
+    def _set_last_host(self, redis_key: str, host_name: str) -> None:
+        """Persist *host_name* as the last host for *redis_key*."""
+        self.redis_client.set(self._last_host_key(redis_key), host_name)
+
+    # ------------------------------------------------------------------- #
+    # Redis key helpers
+    # ------------------------------------------------------------------- #
+    @staticmethod
+    def _host_key(host_name: str) -> str:
+        """Redis key used for host‑level locking."""
+        return f"host:{host_name}"
+
+    @staticmethod
+    def _replace_provider_key_chars(name: str) -> str:
+        """Replace characters that are not safe for Redis keys."""
+        # ``ChooseProviderStrategyI`` defines ``REPLACE_PROVIDER_KEY`` – we
+        # replicate its behaviour here to avoid a direct dependency.
+        for ch in [" ", "/", "\\", "."]:
+            name = name.replace(ch, "_")
+        return name
+
+    def _redis_key(self, model_name: str) -> str:
         """
-        Build the Redis hash field name that stores the chosen flag
-        for a given provider.
+        Construct the Redis hash key that stores provider lock fields for a
+        particular model.
+        """
+        safe_name = self._replace_provider_key_chars(model_name)
+        return f"model:{safe_name}"
 
-        Parameters
-        ----------
-        provider : dict
-            Provider configuration dictionary.
-
-        Returns
-        -------
-        str
-            Field name in the format ``{provider_id}:is_chosen``.
+    def _provider_field(self, provider: Dict) -> str:
+        """
+        Build the field name used inside the model hash to represent the lock
+        status of *provider*.
         """
         provider_id = self._provider_key(provider)
         return f"{provider_id}:is_chosen"
 
-    def _init_flag(self, model_name: str) -> str:
-        """
-        Build the Redis key used as an initialization flag for a model.
-
-        Parameters
-        ----------
-        model_name : str
-            Name of the model.
-
-        Returns
-        -------
-        str
-            Flag key in the format ``model:{model_name}:initialized``.
-        """
-        return f"{self._get_redis_key(model_name)}:initialized"
-
-    def _initialize_providers(self, model_name: str, providers: List[Dict]) -> None:
-        """
-        Ensure that the provider lock fields for *model_name* exist in Redis.
-
-        This method is idempotent – it will create the hash fields only if the
-        model has not been initialized before.  An auxiliary flag key
-        ``model:{model_name}:initialized`` is used to guard against repeated
-        initialization, which could otherwise overwrite the current lock state
-        of providers that are already in use.
-
-        Parameters
-        ----------
-        model_name : str
-            The name of the model whose providers are being prepared.
-        providers : List[Dict]
-            A list of provider configuration dictionaries.  Each dictionary must
-            contain enough information for :meth:`_provider_field` to generate a
-            unique field name.
-
-        Notes
-        -----
-        * The provider fields are stored in a Redis hash whose key is
-          ``model:{model_name}``.  Each field is set to the string ``'false'``
-          to indicate that the provider is currently free.
-        * The initialization flag is a simple Redis key with value ``'1'``.
-          Its existence signals that the hash has already been populated.
-        """
-        redis_key = self._get_redis_key(model_name)
-
-        # Check if already initialized using a flag
-        init_flag = self._init_flag(model_name)
-        if self.redis_client.exists(init_flag):
-            return
-
-        # Initialize all providers as available
-        for provider in providers:
-            provider_field = self._provider_field(provider)
-            self.redis_client.hset(redis_key, provider_field, "false")
-
-        # Set initialization flag
-        self.redis_client.set(init_flag, "1")
-
+    # ------------------------------------------------------------------- #
+    # Buffer / initialisation utilities
+    # ------------------------------------------------------------------- #
     def _clear_buffers(self) -> None:
         """
-        Reset the Redis state for all active models.
+        Reset Redis state for all models known to the API configuration.
 
-        This method removes any existing initialization flags and provider
-        lock fields, then re‑initialises the providers as available.  It is
-        typically invoked during strategy start‑up to ensure a clean slate.
+        The method deletes any existing initialisation flags and provider lock
+        fields, then re‑creates the hash with all providers marked as free.
         """
         active_models = self._api_model_config.active_models
-        models_configs = self._api_model_config.models_configs
-        for _, models_names in active_models.items():
-            for model_name in models_names:
-                redis_key = self._get_redis_key(model_name)
-                providers = models_configs[model_name]["providers"]
-                if len(providers) > 0:
-                    model_path = providers[0].get("model_path", "").strip()
-                    if model_path:
-                        model_name = model_path
+        models_cfg = self._api_model_config.models_configs
 
-                init_flag = self._init_flag(model_name)
+        for _, model_names in active_models.items():
+            for model_name in model_names:
+                redis_key = self._redis_key(model_name)
+                providers = models_cfg[model_name]["providers"]
+
+                # Remove old initialisation flag (if any)
+                init_flag = f"{redis_key}:initialized"
                 self.redis_client.delete(init_flag)
 
-                for provider in providers:
-                    provider_field = self._provider_field(provider)
-                    self.redis_client.hset(redis_key, provider_field, "false")
+                # Reset all provider fields to "false"
+                for p in providers:
+                    field = self._provider_field(p)
+                    self.redis_client.hset(redis_key, field, "false")
 
-                self._initialize_providers(
-                    model_name=model_name, providers=providers
-                )
+                # Re‑set the flag so that future calls treat the model as
+                # initialised.
+                self.redis_client.set(init_flag, "1")
+
+    # ------------------------------------------------------------------- #
+    # Compatibility shim – required by the original abstract base class
+    # ------------------------------------------------------------------- #
+    def _provider_key(self, provider: Dict) -> str:
+        """
+        Return a deterministic identifier for a provider.
+
+        The original implementation expected a ``_provider_key`` method in the
+        abstract base class; we keep the same contract here.
+        """
+        # Prefer an explicit ``id`` field, otherwise fall back to ``name``.
+        return str(
+            provider.get("id")
+            or provider.get("name")
+            or provider.get("host")
+            or "unknown"
+        )
 
     def _print_provider_status(self, redis_key: str, providers: List[Dict]) -> None:
         """
         Print the lock status of each provider stored in the Redis hash
         ``redis_key``.  Uses emojis for a quick visual cue:
 
-        * 🟢 – provider is free (`'false'` or missing)
-        * 🔴 – provider is currently taken (`'true'`)
+        *  – provider is free (`'false'` or missing)
+        *  – provider is currently taken (`'true'`)
 
         The output is formatted in a table‑like layout for readability.
         """
@@ -485,7 +576,7 @@ class FirstAvailableStrategy(ChooseProviderStrategyI):
         for provider in providers:
             field = self._provider_field(provider)
             status = hash_data.get(field, "false")
-            icon = "🔴" if status == "true" else "🟢"
+            icon = "" if status == "true" else ""
             # Show a short identifier for the provider (fallback to field)
             provider_id = provider.get("id") or provider.get("name") or field
             print(f"{icon}  {provider_id:<30} [{field}]")
