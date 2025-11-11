@@ -386,8 +386,8 @@ def select_project(project_id):
     proj = Project.query.filter_by(id=project_id, user_id=user_id).first_or_404()
     session["project_id"] = proj.id
     flash(f"Project “{proj.name}” selected.", "success")
-    # redirect back to the page the user was on
-    return redirect(request.referrer or url_for("index"))
+    # Redirect to the list of configs instead of the previous referrer or index
+    return redirect(url_for("list_configs"))
 
 
 # ----------------------------------------------------------------------
