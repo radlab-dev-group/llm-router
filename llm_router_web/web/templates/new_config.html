@@ -6,6 +6,10 @@
         <label>Name
             <input type="text" name="name" required>
         </label>
+        <label>Additional config info (optional)
+            <textarea name="description" rows="3"
+                      placeholder="Put config description here..."></textarea>
+        </label>
         <div class="form-actions">
             <button class="btn" type="submit">Create</button>
             <a class="btn btn-secondary" href="{{ url_for('index') }}">Cancel</a>

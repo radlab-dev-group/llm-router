@@ -400,6 +400,8 @@ def manage_projects():
     if request.method == "POST":
         # Create a new project – name supplied via form field ``name``
         name = request.form.get("name", "").strip()
+        # NEW: read optional description
+        description = request.form.get("description", "").strip()
         if not name:
             flash("Project name is required.", "error")
         else:
@@ -407,7 +409,12 @@ def manage_projects():
             if Project.query.filter_by(user_id=user_id, name=name).first():
                 flash("You already have a project with that name.", "error")
             else:
-                new_proj = Project(name=name, user_id=user_id, is_default=False)
+                new_proj = Project(
+                    name=name,
+                    description=description,  # <-- store description
+                    user_id=user_id,
+                    is_default=False,
+                )
                 db.session.add(new_proj)
                 db.session.commit()
                 flash(f"Project “{name}” created.", "success")
@@ -475,16 +482,22 @@ def list_configs():
 def new_config():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
+        # NEW: optional description for the config
+        description = request.form.get("description", "").strip()
         if not name:
             abort(400, description="Name is required.")
-        # Use the current project instead of raw user_id only
         proj_id = _current_project_id()
         if Config.query.filter_by(name=name, project_id=proj_id).first():
             abort(
                 400,
                 description="Configuration with this name already exists in the project.",
             )
-        cfg = Config(name=name, user_id=_current_user_id(), project_id=proj_id)
+        cfg = Config(
+            name=name,
+            description=description,
+            user_id=_current_user_id(),
+            project_id=proj_id,
+        )
         db.session.add(cfg)
         db.session.commit()
         snapshot_version(cfg.id, note="Created empty config")
@@ -494,39 +507,54 @@ def new_config():
 
 @bp.route("/configs/import", methods=["GET", "POST"])
 def import_config():
-    # make sure a user is logged in before we touch the DB
+    """
+    Import a configuration from a JSON file or raw JSON text.
+
+    The form now also accepts an optional ``description`` (Notatka/Opis) which
+    is stored on the newly created ``Config`` object.
+    """
+    # Ensure the user is authenticated before touching the DB
     user_id = _require_user()
 
     if request.method == "POST":
+        # ---- 1️⃣  Basic fields -------------------------------------------------
         name = request.form.get("name", "").strip()
+        # NEW: optional description for the imported config
+        description = request.form.get("description", "").strip()
+
         raw = request.files.get("file")
         text = request.form.get("json")
+
+        # ---- 2️⃣  Parse JSON ---------------------------------------------------
         try:
             data = json.load(raw) if raw else json.loads(text or "")
         except Exception:
             flash("Invalid JSON.", "error")
             return redirect(url_for("web.import_config"))
 
-        # generate a name if none supplied
+        # ---- 3️⃣  Derive a name if none was supplied -------------------------
         if not name:
             name = f"import-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
 
-        # ensure the name is unique for this user
+        # ---- 4️⃣  Validate uniqueness -----------------------------------------
         if Config.query.filter_by(name=name, user_id=user_id).first():
             flash("Name already taken.", "error")
             return redirect(url_for("web.import_config"))
 
+        # ---- 5️⃣  Determine the target project --------------------------------
         proj_id = _current_project_id()
-        cfg = Config(name=name, user_id=user_id, project_id=proj_id)
 
-        # ------------------------------------------------------------------------------
-
+        # ---- 6️⃣  Create the Config row (now with description) ---------------
+        cfg = Config(
+            name=name,
+            description=description,  # <-- store description
+            user_id=user_id,
+            project_id=proj_id,
+        )
         db.session.add(cfg)
         db.session.flush()  # obtain cfg.id before adding models/providers
 
-        # ----------------------------------------------------------------------
-        # Load models & providers (unchanged logic)
-        # ----------------------------------------------------------------------
+        # ---- 7️⃣  Load models & providers (unchanged logic) -------------------
         for fam in ["google_models", "openai_models", "qwen_models"]:
             for mname, mval in (data.get(fam) or {}).items():
                 m = Model(config_id=cfg.id, family=fam, name=mname)
@@ -546,9 +574,7 @@ def import_config():
                         )
                     )
 
-        # ----------------------------------------------------------------------
-        # Active models (unchanged)
-        # ----------------------------------------------------------------------
+        # ---- 8️⃣  Active models (unchanged) ----------------------------------
         active = data.get("active_models") or {}
         for fam in ["google_models", "openai_models", "qwen_models"]:
             for mname in active.get(fam, []):
@@ -556,10 +582,14 @@ def import_config():
                     ActiveModel(config_id=cfg.id, family=fam, model_name=mname)
                 )
 
+        # ---- 9️⃣  Commit everything & snapshot version -----------------------
         db.session.commit()
         snapshot_version(cfg.id, note="Import JSON")
+
+        # ---- 🔟  Redirect to the edit page for further tweaks ----------------
         return redirect(url_for("web.edit_config", config_id=cfg.id))
 
+    # ---- GET request – render the import form ---------------------------------
     return render_template("import.html")
 
 
@@ -612,10 +642,11 @@ def edit_config(config_id):
     cfg = _get_user_config(config_id)
     if request.method == "POST":
         new_name = request.form.get("new_name")
+        # NEW: handle description update
+        new_description = request.form.get("description")
         if new_name is not None:
             new_name = new_name.strip()
             if new_name and new_name != cfg.name:
-                # Ensure the new name is unique for this user
                 if Config.query.filter_by(
                     name=new_name, user_id=_current_user_id()
                 ).first():
@@ -627,8 +658,14 @@ def edit_config(config_id):
             # If only renaming, skip further processing
             return redirect(url_for("web.edit_config", config_id=cfg.id))
 
+        # Update description (if the field is present)
+        if new_description is not None:
+            cfg.description = new_description.strip()
+            db.session.commit()
+            flash("Configuration description updated.", "success")
+
         note = request.form.get("note", "")
-        # Update active models
+        # Update active models (unchanged)
         for fam in ["google_models", "openai_models", "qwen_models"]:
             ActiveModel.query.filter_by(config_id=cfg.id, family=fam).delete()
             for mname in request.form.getlist(f"{fam}[]"):
@@ -647,7 +684,12 @@ def edit_config(config_id):
         fam: [a.model_name for a in cfg.actives if a.family == fam]
         for fam in ["google_models", "openai_models", "qwen_models"]
     }
-    return render_template("edit.html", cfg=cfg, families=families, actives=actives)
+    return render_template(
+        "edit.html",
+        cfg=cfg,
+        families=families,
+        actives=actives,
+    )
 
 
 # ----------------------------------------------------------------------

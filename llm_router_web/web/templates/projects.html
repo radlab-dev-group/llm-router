@@ -8,6 +8,11 @@
         <label>Name
             <input type="text" name="name" required placeholder="Project name">
         </label>
+        <!-- NEW: optional description -->
+        <label>Project description (optional)
+            <textarea name="description" rows="2"
+                      placeholder="Put description here...."></textarea>
+        </label>
         <div class="form-actions">
             <button class="btn" type="submit">Add</button>
         </div>
@@ -20,6 +25,7 @@
         <thead>
         <tr>
             <th>Name</th>
+            <th>Description</th>
             <th>Default</th>
             <th>Action</th>
         </tr>
@@ -28,6 +34,7 @@
         {% for proj in user_projects %}
         <tr>
             <td>{{ proj.name }}</td>
+            <td class="muted">{{ proj.description }}</td>   <!-- NEW -->
             <td>{% if proj.is_default %}<span class="badge">DEFAULT</span>{% endif %}</td>
             <td class="nowrap">
                 <!-- Rename -->
@@ -53,7 +60,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="3" class="muted">No projects found.</td>
+            <td colspan="4" class="muted">No projects found.</td>
         </tr>
         {% endfor %}
         </tbody>

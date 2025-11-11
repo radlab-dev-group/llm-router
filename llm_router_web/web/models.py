@@ -22,6 +22,9 @@ class Project(db.Model):
     # A project can be marked as the user's default
     is_default = db.Column(db.Boolean, default=False, nullable=False)
 
+    # free‑text description for the project
+    description = db.Column(db.String(500), nullable=False, default="")
+
     # One‑to‑many relationship: a project owns many configs
     configs = db.relationship(
         "Config", backref="project", cascade="all, delete-orphan"
@@ -54,6 +57,10 @@ class Config(db.Model):
         nullable=False,
         index=True,
     )
+
+    # Free‑text description for the configuration
+    description = db.Column(db.String(500), nullable=False, default="")
+
     # ------------------------------------------------------------------
     models = db.relationship("Model", backref="config", cascade="all, delete-orphan")
     actives = db.relationship(
