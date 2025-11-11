@@ -538,10 +538,13 @@ summary.clickable:hover {
 }
 
 .add-model-form input[type="text"],
-.add-model-form input[type="url"],
+.add-model-form input[type="url"] {
+    max-width: 200px;
+}
+
 .add-model-form input[type="number"],
 .add-model-form select {
-    max-width: 200px;
+    max-width: 100px;
 }
 
 .add-model-form label {
