@@ -28,4 +28,4 @@ export LLM_ROUTER_WEB_DEBUG="$DEBUG"
 #   -w 4           – number of worker processes (adjust as needed)
 #   -b host:port   – bind address/port taken from the env vars above
 # -------------------------------------------------------------------------
-gunicorn -w 4 -b "${HOST}:${PORT}" app:app
+gunicorn -w 1 -b "${HOST}:${PORT}" app:app
