@@ -2,6 +2,13 @@
 {% block content %}
 <h2>Preview: {{ cfg.name }} {% if cfg.is_active %}<span class="badge">ACTIVE</span>{% endif %}</h2>
 
+{% if cfg.description %}
+<div class="panel">
+    <strong>Notatka / Opis:</strong>
+    <p class="muted">{{ cfg.description }}</p>
+</div>
+{% endif %}
+
 <div class="actions">
     <a class="btn" href="{{ url_for('edit_config', config_id=cfg.id) }}">Edit</a>
     <a class="btn" href="{{ url_for('export_config', config_id=cfg.id) }}">Export JSON</a>

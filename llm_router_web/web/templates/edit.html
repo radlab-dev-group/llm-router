@@ -16,7 +16,15 @@
     </template>
 </div>
 
+<!-- -------------------------------------------------
+     New: optional description (Notatka/Opis) for the config
+--------------------------------------------------- -->
 <form method="post" class="form">
+    <label>Notatka / Opis (opcjonalnie)
+        <textarea name="description" rows="3"
+                  placeholder="Krótki opis konfiguracji...">{{ cfg.description }}</textarea>
+    </label>
+
     <h3>Active Models</h3>
     <div class="grid active-models">
         {% for fam, models in families.items() %}
@@ -30,9 +38,11 @@
         </div>
         {% endfor %}
     </div>
+
     <label>Changelog (optional)
         <input type="text" name="note" placeholder="e.g. weight changes, provider added">
     </label>
+
     <div class="form-actions">
         <button class="btn" type="submit">Save changes</button>
         <a class="btn btn-secondary" href="{{ url_for('view_config', config_id=cfg.id) }}">Preview</a>
@@ -440,7 +450,6 @@
                 } else {
                     targetTr.before(dragSrc);
                 }
-
                 const rows = Array.from(tbody.querySelectorAll('tr[data-provider-id]'));
                 const newOrder = rows.map(r => parseInt(r.dataset.providerId));
 
