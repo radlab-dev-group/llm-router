@@ -6,9 +6,37 @@ from sqlalchemy import func
 db = SQLAlchemy()
 
 
+# --------------------------------------------------------------
+# Project – groups configs per user
+# --------------------------------------------------------------
+class Project(db.Model):
+    __tablename__ = "project"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False)
+    user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("user.id"),
+        nullable=False,
+        index=True,
+    )
+    # A project can be marked as the user's default
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+
+    # free‑text description for the project
+    description = db.Column(db.String(500), nullable=False, default="")
+
+    # One‑to‑many relationship: a project owns many configs
+    configs = db.relationship(
+        "Config", backref="project", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self):
+        return f"<Project {self.name} (user_id={self.user_id})>"
+
+
 class Config(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(160), unique=True, nullable=False)
+    name = db.Column(db.String(160), nullable=False)
     is_active = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
@@ -23,6 +51,16 @@ class Config(db.Model):
         nullable=False,
         index=True,
     )
+    project_id = db.Column(
+        db.Integer,
+        db.ForeignKey("project.id"),
+        nullable=False,
+        index=True,
+    )
+
+    # Free‑text description for the configuration
+    description = db.Column(db.String(500), nullable=False, default="")
+
     # ------------------------------------------------------------------
     models = db.relationship("Model", backref="config", cascade="all, delete-orphan")
     actives = db.relationship(
@@ -95,6 +133,12 @@ class User(db.Model):
         default=True,  # active by default
     )
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    projects = db.relationship(
+        "Project",
+        backref="owner",
+        cascade="all, delete-orphan",
+    )
 
     configs = db.relationship(
         "Config",
