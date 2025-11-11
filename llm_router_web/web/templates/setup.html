@@ -7,10 +7,16 @@
             <input type="text" name="username" required>
         </label>
         <label>Password
-            <input type="password" name="password" required>
+            <div class="password-container">
+                <input type="password" name="password" id="password" required>
+                <span class="toggle-password" data-target="password">👁️</span>
+            </div>
         </label>
         <label>Confirm password
-            <input type="password" name="password_confirm" required>
+            <div class="password-container">
+                <input type="password" name="password_confirm" id="password_confirm" required>
+                <span class="toggle-password" data-target="password_confirm">👁️</span>
+            </div>
         </label>
 
         <div class="form-actions">
@@ -18,4 +24,20 @@
         </div>
     </form>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggleButtons = document.querySelectorAll('.toggle-password');
+
+        toggleButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const targetId = this.getAttribute('data-target');
+                const input = document.getElementById(targetId);
+                const type = input.getAttribute('type') === 'password' ? 'text' : 'password';
+                input.setAttribute('type', type);
+                this.textContent = type === 'password' ? '👁️' : '🔒';
+            });
+        });
+    });
+</script>
 {% endblock %}
