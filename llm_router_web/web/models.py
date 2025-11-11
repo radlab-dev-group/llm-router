@@ -36,7 +36,7 @@ class Project(db.Model):
 
 class Config(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(160), unique=True, nullable=False)
+    name = db.Column(db.String(160), nullable=False)
     is_active = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
