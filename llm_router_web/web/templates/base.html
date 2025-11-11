@@ -17,9 +17,9 @@
     <h1 class="logo"><a href="{{ url_for('index') }}">LLM-router Model Configurator</a></h1>
     <nav class="menu">
         {% if session.get('user_id') %}
-        <div class="dropdown" x-data="{ open: false }" style="position:relative;">
+        <div class="dropdown" x-data="{ open: false }">
             <button type="button"
-                    class="btn btn-small"
+                    class="btn btn-tile"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
                 Project: {{ current_project_name }}
@@ -27,34 +27,29 @@
 
             <div class="dropdown-content"
                  x-show="open"
-                 @click.outside="open = false"
-                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:200px;z-index:1000;">
+                 @click.outside="open = false">
 
                 <div class="panel">
                     <div class="label">Choose project</div>
 
-                    <span class="spacer"></span>
-
                     {% for proj in user_projects %}
                     <form method="post" action="{{ url_for('select_project', project_id=proj.id) }}" style="margin:0;">
                         <button type="submit"
-                                class="btn btn-small{% if proj.id == session.get('project_id') %} active{% endif %}"
-                                style="display:block;width:100%;text-align:left;margin-bottom:4px;">
+                                class="btn btn-small{% if proj.id == session.get('project_id') %} active{% endif %}">
                             {{ proj.name }}
                         </button>
                     </form>
                     {% endfor %}
                 </div>
-                <a class="btn btn-small" href="{{ url_for('manage_projects') }}"
-                   style="display:block;width:100%;margin-top:8px;">Manage projects</a>
+                <a class="btn btn-small" href="{{ url_for('manage_projects') }}">Manage projects</a>
             </div>
         </div>
 
         <span class="spacer"></span>
 
-        <div class="dropdown" x-data="{ open: false }" style="position:relative;">
+        <div class="dropdown" x-data="{ open: false }">
             <button type="button"
-                    class="btn btn-small{% if config_active %} active{% endif %}"
+                    class="btn btn-tile{% if config_active %} active{% endif %}"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
                 Manage configs
@@ -62,26 +57,22 @@
 
             <div class="dropdown-content"
                  x-show="open"
-                 @click.outside="open = false"
-                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:180px;z-index:1000;">
+                 @click.outside="open = false">
                 <a class="btn btn-small{% if request.endpoint == 'new_config' %} active{% endif %}"
-                   href="{{ url_for('new_config') }}"
-                   style="display:block;width:100%;margin-bottom:8px;">New config (from scratch)</a>
+                   href="{{ url_for('new_config') }}">New config (from scratch)</a>
 
                 <a class="btn btn-small{% if request.endpoint == 'import_config' %} active{% endif %}"
-                   href="{{ url_for('import_config') }}"
-                   style="display:block;width:100%;margin-bottom:8px;">Load config (from JSON)</a>
+                   href="{{ url_for('import_config') }}">Load config (from JSON)</a>
 
                 <a class="btn btn-small{% if request.endpoint == 'list_configs' %} active{% endif %}"
-                   href="{{ url_for('list_configs') }}"
-                   style="display:block;width:100%;">Show all defined configs</a>
+                   href="{{ url_for('list_configs') }}">Show all defined configs</a>
             </div>
         </div>
 
         {% if session.get('role') == 'admin' %}
-        <div class="dropdown" x-data="{ open: false }" style="position:relative;">
+        <div class="dropdown" x-data="{ open: false }">
             <button type="button"
-                    class="btn btn-small"
+                    class="btn btn-tile"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
                 Manage users
@@ -89,11 +80,9 @@
 
             <div class="dropdown-content"
                  x-show="open"
-                 @click.outside="open = false"
-                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:180px;z-index:1000;">
+                 @click.outside="open = false">
                 <a class="btn btn-small"
-                   href="{{ url_for('admin_users') }}"
-                   style="display:block;width:100%;">Manage users</a>
+                   href="{{ url_for('admin_users') }}">Manage users</a>
             </div>
         </div>
         {% endif %}
@@ -101,21 +90,19 @@
         <span class="spacer"></span>
 
         <!-- Settings dropdown -->
-        <div class="dropdown" x-data="{ open: false }" style="position:relative;">
-            <button type="button" class="btn btn-small"
+        <div class="dropdown" x-data="{ open: false }">
+            <button type="button" class="btn btn-tile"
                     @click="open = !open"
                     @keydown.escape.window="open = false">
                 <span aria-hidden="true">⚙️</span> Settings
             </button>
             <div class="dropdown-content"
                  x-show="open"
-                 @click.outside="open = false"
-                 style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:180px;z-index:1000;">
+                 @click.outside="open = false">
 
                 <div class="panel">
                     <label>Theme</label>
-                    <select id="theme-select" class="btn btn-small" title="Wybierz motyw"
-                            style="width:100%;margin-bottom:8px;">
+                    <select id="theme-select" title="Wybierz motyw">
                         <option value="dark">🌙 Dark</option>
                         <option value="light">☀️ Light</option>
                         <option value="hacker">💻 Hacker</option>
@@ -126,13 +113,12 @@
                     <label>User</label>
 
                     <a class="btn btn-small" href="{{ url_for('change_password') }}"
-                       style="display:block;width:100%;margin-bottom:8px;background:var(--ok);color:#fff;">
+                       style="background:var(--ok);color:#fff;">
                         <span aria-hidden="true" style="margin-right:4px;">🔒</span>Change password
                     </a>
 
                     <a id="logout-btn" class="btn btn-small danger"
-                       href="{{ url_for('logout') }}" title="Logout"
-                       style="display:block;width:100%;">🚪 Logout user {{ session.get('username') }}r</a>
+                       href="{{ url_for('logout') }}" title="Logout">🚪 Logout user {{ session.get('username') }}</a>
                 </div>
             </div>
         </div>
