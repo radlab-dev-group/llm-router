@@ -290,6 +290,37 @@ def index():
     return render_template("index.html", configs=configs)
 
 
+@bp.route("/change_password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    """Allow the logged‑in user to change their own password."""
+    if request.method == "POST":
+        current_pw = request.form.get("current_password", "")
+        new_pw = request.form.get("new_password", "")
+        confirm_pw = request.form.get("confirm_password", "")
+
+        user = User.query.get_or_404(session["user_id"])
+
+        # Verify current password
+        if not check_password_hash(user.password_hash, current_pw):
+            flash("Current password is incorrect.", "error")
+            return redirect(url_for("change_password"))
+
+        # Verify new passwords match
+        if new_pw != confirm_pw:
+            flash("New passwords do not match.", "error")
+            return redirect(url_for("change_password"))
+
+        # Update password hash
+        user.password_hash = generate_password_hash(new_pw)
+        db.session.commit()
+        flash("Password updated successfully.", "success")
+        return redirect(url_for("index"))
+
+    # GET request – render the password change form
+    return render_template("change_password.html")
+
+
 # ----------------------------------------------------------------------
 # Configs Create / import
 # ----------------------------------------------------------------------
