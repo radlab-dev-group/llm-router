@@ -182,12 +182,12 @@
                                 <option value="ollama">llmstudio</option>
                             </select>
                             <input type="text" placeholder="Unique ID of provider for {{ m.name }}" id="pid-{{ m.id }}"
-                                   required class="col-input">
+                                   class="col-input">
                         </div>
 
                         <div class="token-field">
                             <input type="url" placeholder="API host (e.g. https://api.example.com)"
-                                   id="phost-{{ m.id }}"
+                                   id="phost-{{ m.id }}" onchange="generateIdIfMissing{{ m.id }}()"
                                    required>
                             <select id="phostpreset-{{ m.id }}" class="col-api" onchange="setHost{{ m.id }}()">
                                 <option value="">Custom</option>
@@ -249,11 +249,25 @@
                       if(res.ok){ location.reload(); } else { alert("Error while adding provider"); }
                     }
 
+                    // Generates a provider ID from model name + host if ID field is empty
+                    function generateIdIfMissing{{ m.id }}(){
+                        const hostInput = document.getElementById('phost-{{ m.id }}');
+                        const idInput = document.getElementById('pid-{{ m.id }}');
+                        if (!idInput.value.trim()){
+                            const modelName = "{{ m.name }}".replace(/[^a-zA-Z0-9]/g, '');
+                            const hostPart = hostInput.value.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9]/g, '');
+                            if (modelName && hostPart){
+                                idInput.value = `${modelName}_${hostPart}`;
+                            }
+                        }
+                    }
+
                     // New helper – ustawia wartość hosta na podstawie wybranego preset’u
                     function setHost{{ m.id }}(){
                         const preset = document.getElementById('phostpreset-{{ m.id }}');
                         const hostInput = document.getElementById('phost-{{ m.id }}');
                         hostInput.value = preset.value;
+                        generateIdIfMissing{{ m.id }}();
                     }
 
                     async function checkHost{{ m.id }}(){
