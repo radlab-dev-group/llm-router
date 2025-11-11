@@ -31,6 +31,10 @@
                  style="position:absolute;right:0;top:100%;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px;min-width:200px;z-index:1000;">
 
                 <div class="panel">
+                    <div class="label">Choose project</div>
+
+                    <span class="spacer"></span>
+
                     {% for proj in user_projects %}
                     <form method="post" action="{{ url_for('select_project', project_id=proj.id) }}" style="margin:0;">
                         <button type="submit"
