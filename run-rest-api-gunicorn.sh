@@ -1,7 +1,7 @@
 #!/bin/bash
   set -e
 
-  # balanced  weighted  dynamic_weighted  first_available
+# balanced  weighted  dynamic_weighted  first_available first_available_optim
 
   export LLM_ROUTER_IN_DEBUG=${LLM_ROUTER_IN_DEBUG:-1}
   export LLM_ROUTER_MINIMUM=${LLM_ROUTER_MINIMUM:-1}
