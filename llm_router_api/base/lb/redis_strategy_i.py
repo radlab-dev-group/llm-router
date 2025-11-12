@@ -206,7 +206,7 @@ class RedisBasedStrategyI(ChooseProviderStrategyI, abc.ABC):
         Returns ``True`` when either no host is defined or the host lock was
         successfully obtained.
         """
-        host_name = provider.get("host") or provider.get("server")
+        host_name = self._provider_key(provider)
         if not host_name:
             return True
 
@@ -307,8 +307,8 @@ class RedisBasedStrategyI(ChooseProviderStrategyI, abc.ABC):
         # Prefer an explicit ``id`` field, otherwise fall back to ``name``.
         return str(
             provider.get("id")
+            or provider.get("api_host")
             or provider.get("name")
-            or provider.get("host")
             or "unknown"
         )
 
@@ -336,6 +336,6 @@ class RedisBasedStrategyI(ChooseProviderStrategyI, abc.ABC):
             status = hash_data.get(field, "false")
             icon = "🔴" if status == "true" else "🟢"
             # Show a short identifier for the provider (fallback to field)
-            provider_id = provider.get("id") or provider.get("name") or field
+            provider_id = self._provider_key(provider)
             print(f"{icon}  {provider_id:<30} [{field}]")
         print("-" * 40)
