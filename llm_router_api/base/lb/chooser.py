@@ -114,6 +114,8 @@ class ProviderChooser:
         if not self.strategy:
             raise RuntimeError(f"Strategy {self.strategy_name} not found!")
 
+        self._logger.info(f"[Load balancing] Strategy {self.strategy}")
+
     def __strategy_from_name(
         self, strategy_name: str, models_config_path: str
     ) -> Optional[ChooseProviderStrategyI]:
