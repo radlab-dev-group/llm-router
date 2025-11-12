@@ -78,6 +78,27 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         if not redis_key:
             return None
 
+        # 1. Try to reuse the last host that served this model
+        last_host = self._try_to_return_last_used(redis_key, model_name, providers)
+        if last_host:
+            return last_host
+
+        # Additional steps...
+
+        # 2. Standard FA strategy is used
+        return self._run_fa(
+            model_name=model_name,
+            redis_key=redis_key,
+            is_random=is_random,
+            set_last_host=True,
+        )
+
+    def _try_to_return_last_used(
+        self,
+        redis_key: str,
+        model_name: str,
+        providers: List[Dict],
+    ):
         # --------------------------------------------------------------
         # Try to reuse the last host that served this model
         # --------------------------------------------------------------
@@ -107,10 +128,4 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                             return candidate
                         # Host lock failed – release provider lock
                         self.lock_manager.release_provider(redis_key, field)
-
-        return self._run_fa(
-            model_name=model_name,
-            redis_key=redis_key,
-            is_random=is_random,
-            set_last_host=True,
-        )
+        return None
