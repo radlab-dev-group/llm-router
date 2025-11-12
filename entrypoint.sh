@@ -1,9 +1,13 @@
 #!/bin/bash
+set -e
 
 if [ "$1" = "SLEEP" ]; then
-  echo "Debug mode"
+  echo "[Entrypoint] Debug mode: sleeping indefinitely..."
   sleep infinity
-else
-  echo "Starting application..."
-  exec ./run-rest-api.sh
 fi
+
+echo "[Entrypoint] Creating supervisord.conf ..."
+envsubst < docker/supervisord.conf.template > /etc/supervisor/conf.d/supervisord.conf
+
+echo "[Entrypoint] Starting supervisord..."
+supervisord
