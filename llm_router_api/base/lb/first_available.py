@@ -63,6 +63,7 @@ class FirstAvailableStrategy(RedisBasedStrategyI):
         check_interval: float = 0.1,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
+        redis_keys_prefix: Optional[str] = "fa_",
     ) -> None:
         """
         Initialize the FirstAvailableStrategy.
@@ -96,7 +97,7 @@ class FirstAvailableStrategy(RedisBasedStrategyI):
             check_interval=check_interval,
             clear_buffers=clear_buffers,
             logger=logger,
-            redis_keys_prefix="fa_",
+            redis_keys_prefix=redis_keys_prefix or "fa_",
         )
 
     def get_provider(
@@ -156,41 +157,48 @@ class FirstAvailableStrategy(RedisBasedStrategyI):
 
         # self._print_provider_status(redis_key, providers)
 
-        start_time = time.time()
+        return self._run_fa(
+            model_name=model_name,
+            redis_key=redis_key,
+            is_random=is_random,
+            set_last_host=False,
+        )
+
+    def _run_fa(
+        self, model_name: str, redis_key: str, is_random: bool, set_last_host: bool
+    ):
+        start = time.time()
         while True:
-            _providers = self.monitor.get_providers(
+            active = self.monitor.get_providers(
                 model_name=model_name, only_active=True
             )
-
-            if not len(_providers):
+            if not active:
+                # No active providers – wait a bit and retry
                 time.sleep(self.check_interval)
 
-            if time.time() - start_time > self.timeout:
+            if time.time() - start > self.timeout:
                 raise TimeoutError(
-                    f"No available provider found for model '{model_name}' "
-                    f"within {self.timeout} seconds"
+                    f"No available provider for model '{model_name}' after "
+                    f"{self.timeout} seconds."
                 )
 
             if is_random:
-                provider = self._try_acquire_random(
-                    redis_key=redis_key, providers=_providers
-                )
-                if provider:
-                    provider_field = self._provider_field(provider)
-                    provider["__chosen_field"] = provider_field
-                    return provider
+                chosen = self._try_acquire_random(redis_key, active)
+                if chosen:
+                    # Remember the host that just served the model
+                    if set_last_host:
+                        host_name = chosen.get("host") or chosen.get("server")
+                        if host_name:
+                            self._set_last_host(redis_key, host_name)
+                    return chosen
             else:
-                for provider in _providers:
-                    provider_field = self._provider_field(provider)
-                    try:
-                        ok = int(
-                            self.lock_manager.acquire_script(
-                                keys=[redis_key], args=[provider_field]
-                            )
-                        )
-                        if ok == 1:
-                            provider["__chosen_field"] = provider_field
-                            return provider
-                    except Exception:
-                        pass
+                chosen = self._try_acquire_deterministic(redis_key, active)
+                if chosen:
+                    if set_last_host:
+                        host_name = chosen.get("host") or chosen.get("server")
+                        if host_name:
+                            self._set_last_host(redis_key, host_name)
+                    return chosen
+
+            # Back‑off before the next attempt
             time.sleep(self.check_interval)
