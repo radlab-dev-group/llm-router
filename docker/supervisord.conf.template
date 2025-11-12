@@ -1,0 +1,32 @@
+[supervisord]
+#pidfile=/tmp/supervisord.pid
+logfile=/var/log/supervisord.log
+logfile_maxbytes=50MB
+logfile_backups=3
+loglevel=info
+nodaemon=true
+
+[program:llm-router]
+directory=/srv/llm-router/
+command=/bin/bash -c "bash run-rest-api-gunicorn.sh 2>&1 | tee -a /var/log/llm-router.log"
+autostart=$ENABLE_LLM_API
+autorestart=true
+startretries=3
+redirect_stderr=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
+
+[program:llm-router-web]
+directory=/srv/llm-router/llm_router_web
+command=/bin/bash -c "bash run.sh 2>&1 | tee -a /var/log/llm-router-web.log"
+#command=/bin/bash -c "bash run.sh"
+autostart=$ENABLE_LLM_WEB
+autorestart=true
+startretries=3
+redirect_stderr=true
+stdout_logfile=/dev/stdout
+stdout_logfile_maxbytes=0
+stderr_logfile=/dev/stderr
+stderr_logfile_maxbytes=0
