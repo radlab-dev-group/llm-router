@@ -16,6 +16,7 @@ class BalanceStrategies:
     WEIGHTED = "weighted"
     DYNAMIC_WEIGHTED = "dynamic_weighted"
     FIRST_AVAILABLE = "first_available"
+    FIRST_AVAILABLE_OPTIM = "first_available_optim"
 
 
 POSSIBLE_BALANCE_STRATEGIES = [
@@ -23,4 +24,5 @@ POSSIBLE_BALANCE_STRATEGIES = [
     BalanceStrategies.WEIGHTED,
     BalanceStrategies.DYNAMIC_WEIGHTED,
     BalanceStrategies.FIRST_AVAILABLE,
+    BalanceStrategies.FIRST_AVAILABLE_OPTIM,
 ]
