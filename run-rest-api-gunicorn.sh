@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# balanced  weighted  dynamic_weighted  first_available
+# balanced  weighted  dynamic_weighted  first_available first_available_optim
 
 LLM_ROUTER_IN_DEBUG=1 \
   LLM_ROUTER_MINIMUM=1 \
@@ -12,7 +12,7 @@ LLM_ROUTER_IN_DEBUG=1 \
   LLM_ROUTER_SERVER_TYPE=gunicorn \
   LLM_ROUTER_SERVER_PORT=8080 \
   LLM_ROUTER_SERVER_HOST="0.0.0.0" \
-  LLM_ROUTER_BALANCE_STRATEGY="first_available" \
+  LLM_ROUTER_BALANCE_STRATEGY="first_available_optim" \
   LLM_ROUTER_REDIS_HOST="192.168.100.67" \
   LLM_ROUTER_REDIS_PORT=6379 \
   LLM_ROUTER_SERVER_WORKERS_COUNT=4 \
