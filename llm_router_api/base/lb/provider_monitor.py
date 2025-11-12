@@ -213,3 +213,50 @@ class RedisProviderMonitor:
             self._redis_client.hset(avail_key, provider_id, status)
         except Exception:
             pass
+
+
+# --------------------------------------------------------------------------- #
+# Wrapper around the existing RedisProviderMonitor
+# --------------------------------------------------------------------------- #
+class ProviderMonitorWrapper:
+    """
+    Thin wrapper around: class:`RedisProviderMonitor`
+    that isolates the strategy from the concrete monitor implementation.
+    """
+
+    def __init__(
+        self,
+        redis_client: redis.Redis,
+        check_interval: int = 30,
+        clear_buffers: bool = True,
+        logger: Optional[logging.Logger] = None,
+    ) -> None:
+        self._monitor = RedisProviderMonitor(
+            redis_client=redis_client,
+            check_interval=check_interval,
+            clear_buffers=clear_buffers,
+            logger=logger,
+        )
+
+    # ------------------------------------------------------------------- #
+    # Delegated methods
+    # ------------------------------------------------------------------- #
+    def add_providers(self, model_name: str, providers: List[Dict]) -> None:
+        """Register a list of providers for a given model."""
+        self._monitor.add_providers(model_name, providers)
+
+    def get_providers(
+        self, model_name: str, only_active: bool = False
+    ) -> List[Dict]:
+        """
+        Retrieve the provider list for *model_name*.
+
+        Parameters
+        ----------
+        only_active:
+            If ``True`` return only providers that are currently considered
+            healthy/active by the monitor.
+        """
+        return self._monitor.get_providers(
+            model_name=model_name, only_active=only_active
+        )
