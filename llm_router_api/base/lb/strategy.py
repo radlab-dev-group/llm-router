@@ -25,6 +25,9 @@ class ChooseProviderStrategyI(ABC):
         )
         self.logger = logger
 
+    def __str__(self):
+        return str(self.__class__.__name__)
+
     def _provider_key(self, provider_cfg: Dict) -> str:
         """
         Return a unique identifier for a provider configuration.
