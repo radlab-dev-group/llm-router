@@ -200,7 +200,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategyI):
                 )
                 if provider:
                     # ----- Host lock for random choice -----
-                    host_name = provider.get("host") or provider.get("server")
+                    host_name = provider.get("id") or provider.get("api_host")
                     if host_name:
                         host_key = self._host_key(host_name)
                         ok_host = int(
@@ -234,8 +234,8 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategyI):
                         )
                         if ok == 1:
                             # ----- Host lock for deterministic choice -----
-                            host_name = provider.get("host") or provider.get(
-                                "server"
+                            host_name = provider.get("id") or provider.get(
+                                "api_host"
                             )
                             if host_name:
                                 host_key = self._host_key(host_name)
@@ -290,7 +290,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategyI):
             # Release provider lock
             self.redis_client.hdel(redis_key, provider_field)
             # Release host lock if it was acquired
-            host_key = provider.get("__host_key")
+            host_key = provider.get("id") or provider.get("api_host")
             if host_key:
                 self._release_host_script(keys=[host_key], args=[])
         except Exception:
@@ -298,82 +298,3 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategyI):
 
         provider.pop("__chosen_field", None)
         provider.pop("__host_key", None)
-
-    # ----------------------------------------------------------------------
-    # Helper methods
-    # ----------------------------------------------------------------------
-    def _try_acquire_random_provider(
-        self, redis_key: str, providers: List[Dict]
-    ) -> Optional[Dict]:
-        """
-        Attempt to lock a provider chosen at random.
-
-        The method works in three stages:
-
-        1. **Shuffle** – a shallow copy of ``providers`` is shuffled so that each
-           provider has an equal probability of being tried first.  The original
-           list is left untouched.
-        2. **Atomic acquisition** – each shuffled provider is passed to the
-           ``_acquire_script`` Lua script which atomically sets the corresponding
-           Redis hash field to ``'true'`` *only if* it is currently ``'false'`` or
-           missing.  The first provider for which the script returns ``1`` is
-           considered successfully acquired.
-        3. **Fallback** – if none of the providers can be locked (e.g., all are
-           currently in use), the method falls back to the *first* provider in the
-           original ``providers`` list, marks its ``"__chosen_field"`` for
-           consistency, and returns it.  This fallback mirrors the behaviour of
-           the non‑random acquisition path and ensures the caller always receives
-           a provider dictionary (or ``None`` when ``providers`` is empty).
-
-        Parameters
-        ----------
-        redis_key : str
-            The Redis hash key associated with the model (e.g., ``model:<name>``).
-        providers : List[Dict]
-            A list of provider configuration dictionaries.  Each dictionary must
-            contain sufficient information for :meth:`_provider_field` to generate
-            a unique field name within the Redis hash.
-
-        Returns
-        -------
-        Optional[Dict]
-            The selected provider dictionary with an additional ``"__chosen_field"``
-            entry indicating the Redis hash field that was locked.  Returns ``None``
-            only when the input ``providers`` list is empty.
-
-        Raises
-        ------
-        Exception
-            Propagates any unexpected exceptions raised by the Lua script execution;
-            callers may catch these to implement retry or logging logic.
-
-        Notes
-        -----
-        * The random selection is *non‑deterministic* on each call; however, the
-          fallback to the first provider ensures deterministic behaviour when
-          all providers are currently busy.
-        * The method does **not** block; it returns immediately after trying all
-          shuffled providers.
-        """
-        shuffled = providers[:]
-        random.shuffle(shuffled)
-        for provider in shuffled:
-            provider_field = self._provider_field(provider)
-            try:
-                ok = int(
-                    self._acquire_script(keys=[redis_key], args=[provider_field])
-                )
-                if ok == 1:
-                    provider["__chosen_field"] = provider_field
-                    return provider
-            except Exception:
-                continue
-        return None
-
-    def _get_active_providers(
-        self, model_name: str, providers: List[Dict]
-    ) -> List[Dict]:
-        active_providers = self._monitor.get_providers(
-            model_name=model_name, only_active=True
-        )
-        return active_providers
