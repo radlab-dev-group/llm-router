@@ -31,6 +31,7 @@ from llm_router_lib.anonymizer.rules import (
     PostalCodeRule,
     MoneyRule,
     BankAccountRule,
+    RegonRule,
 )
 
 
@@ -61,6 +62,7 @@ class Anonymizer:
         PostalCodeRule(),
         MoneyRule(),
         BankAccountRule(),
+        RegonRule(),
         PhoneRule(),
     ]
 

@@ -88,3 +88,40 @@ def is_valid_krs(raw_krs: str) -> bool:
         return False
 
     return control_digit == int(digits[9])
+
+
+def is_valid_regon(raw_regon: str) -> bool:
+    """
+    Validate a Polish REGON number.
+
+    * 9‑digit REGON – checksum weights: [8, 9, 2, 3, 4, 5, 6, 7]
+    * 14‑digit REGON – first 9 digits are validated as above,
+      then digits 1‑13 (including the 9‑digit checksum) are validated
+      with weights: [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5, 6]
+
+    The checksum is ``sum % 11``; if the result is 10 the checksum digit
+    becomes 0.
+    """
+    # Remove any whitespace that may be present
+    digits = re.sub(r"\s+", "", raw_regon)
+
+    if not re.fullmatch(r"\d{9}|\d{14}", digits):
+        return False
+
+    def checksum(value: str, weights: list[int]) -> int:
+        s = sum(int(d) * w for d, w in zip(value, weights))
+        r = s % 11
+        return 0 if r == 10 else r
+
+    # ----- 9‑digit validation -----
+    w9 = [8, 9, 2, 3, 4, 5, 6, 7]
+    if len(digits) == 9:
+        return checksum(digits[:8], w9) == int(digits[8])
+
+    # ----- 14‑digit validation -----
+    # first part (first 9 digits) must be correct
+    if checksum(digits[:8], w9) != int(digits[8]):
+        return False
+
+    w14 = [2, 3, 4, 5, 6, 7, 8, 9, 2, 3, 4, 5, 6]
+    return checksum(digits[:13], w14) == int(digits[13])
