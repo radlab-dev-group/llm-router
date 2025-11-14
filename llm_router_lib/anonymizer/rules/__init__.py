@@ -7,3 +7,5 @@ from llm_router_lib.anonymizer.rules.url_rule import UrlRule
 from llm_router_lib.anonymizer.rules.phone_rule import PhoneRule
 from llm_router_lib.anonymizer.rules.pesel_rule import PeselRule
 from llm_router_lib.anonymizer.rules.email_rule import EmailRule
+from llm_router_lib.anonymizer.rules.krs_rule import KrsRule
+from llm_router_lib.anonymizer.rules.nip_rule import NipRule
