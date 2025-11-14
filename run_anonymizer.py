@@ -108,16 +108,21 @@ def main() -> None:
 
     # Build the rule list respecting the disable flags
     rules = []
-    if not args.disable_phone:
-        rules.append(PhoneRule())
-    if not args.disable_url:
-        rules.append(UrlRule())
-    if not args.disable_ip:
-        rules.append(IpRule())
+
     if not args.disable_pesel:
         rules.append(PeselRule())
+
     if not args.disable_email:
         rules.append(EmailRule())
+
+    if not args.disable_ip:
+        rules.append(IpRule())
+
+    if not args.disable_url:
+        rules.append(UrlRule())
+
+    if not args.disable_phone:
+        rules.append(PhoneRule())
 
     anonymizer = Anonymizer(rules)
 
