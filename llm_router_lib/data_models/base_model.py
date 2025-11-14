@@ -22,4 +22,5 @@ class BaseModelOptions(BaseModel):
         downstream logic is executed.  The default value ``False`` disables
         anonymisation.
     """
+
     anonymize: bool = False

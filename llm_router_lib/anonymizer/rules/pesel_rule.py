@@ -13,8 +13,7 @@ class PeselRule(BaseRule):
     Detects 11‑digit PESEL numbers, validates the checksum and replaces only
     the valid ones with ``{{PESEL}}``.
     """
-
-    REGEX = r"\b\d{11}\b"
+    REGEX = r"(?<!\w)(?:[_*]+)?(?P<pesel>\d{11})(?:[_*]+)?(?!\w)"
 
     _ANONYMIZATION_TAG_PLACEHOLDER = "{{PESEL}}"
 
@@ -34,7 +33,8 @@ class PeselRule(BaseRule):
         """
 
         def replacer(match: re.Match) -> str:
-            pesel = match.group(0)
+
+            pesel = match.group("pesel")
             return (
                 self._ANONYMIZATION_TAG_PLACEHOLDER
                 if is_valid_pesel(pesel)
