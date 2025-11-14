@@ -28,6 +28,7 @@ from llm_router_lib.anonymizer.rules import (
     EmailRule,
     NipRule,
     KrsRule,
+    PostalCodeRule,
 )
 
 
@@ -55,6 +56,7 @@ class Anonymizer:
         PeselRule(),
         NipRule(),
         KrsRule(),
+        PostalCodeRule(),
         PhoneRule(),
     ]
 
