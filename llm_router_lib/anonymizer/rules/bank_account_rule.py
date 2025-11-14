@@ -42,20 +42,20 @@ class BankAccountRule(BaseRule):
     _GROUP = r"(?:[0-9X]{4})"
 
     # Full pattern:
-    #   - country code
+    #   - optional country code (or masked)
     #   - optional whitespace
     #   - check digits
     #   - exactly six groups of four characters, each optionally preceded by
     #     whitespace (including the possibility of no whitespace at all)
     #   - word boundaries on both sides to avoid partial matches
     _FULL_PATTERN = rf"""
-        \b                      # start of word
-        {_CC}                   # country code (or masked)
-        \s*                     # optional whitespace
-        {_CHECK}                # check digits (or masked)
-        (?:\s*{_GROUP}){{6}}   # six groups of 4 chars, whitespace optional
-        \b                      # end of word
-    """
+                \b                      # start of word
+                (?:{_CC})?              # optional country code (or masked)
+                \s*                     # optional whitespace
+                {_CHECK}                # check digits (or masked)
+                (?:\s*{_GROUP}){{6}}   # six groups of 4 chars, whitespace optional
+                \b                      # end of word
+            """
 
     _REGEX = _FULL_PATTERN
 
