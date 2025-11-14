@@ -960,6 +960,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
         except Exception as e:
             self.logger.error(e)
+            self.logger.error(response.text)
             status_code_force = 500
 
         self.unset_model(
@@ -980,7 +981,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if status_code and status_code in self.RetryResponse.RETRY_WHEN_STATUS:
             self.logger.warning(
                 f" Provider {api_model_provider.id} responded with "
-                f"{status_code}. Retrying {reconnect_number + 1}/"
+                f"{status_code}. Retrying {reconnect_number}/"
                 f"{self.RetryResponse.MAX_RECONNECTIONS}."
             )
 
