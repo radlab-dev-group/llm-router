@@ -1,7 +1,14 @@
 #!/bin/bash
   set -e
 
-# balanced  weighted  dynamic_weighted  first_available first_available_optim
+# ---------------------------------------------------------
+# Possible strategies:
+# ---------------------------------------------------------
+#   balanced
+#   weighted
+#   first_available
+#   first_available_optim
+# ---------------------------------------------------------
 
   export LLM_ROUTER_IN_DEBUG=${LLM_ROUTER_IN_DEBUG:-1}
   export LLM_ROUTER_MINIMUM=${LLM_ROUTER_MINIMUM:-1}
@@ -13,7 +20,7 @@
   export LLM_ROUTER_SERVER_TYPE=${LLM_ROUTER_SERVER_TYPE:-gunicorn}
   export LLM_ROUTER_SERVER_PORT=${LLM_ROUTER_SERVER_PORT:-8080}
   export LLM_ROUTER_SERVER_HOST=${LLM_ROUTER_SERVER_HOST:-"0.0.0.0"}
-  export LLM_ROUTER_BALANCE_STRATEGY=${LLM_ROUTER_BALANCE_STRATEGY:-"first_available_optim"}
+  export LLM_ROUTER_BALANCE_STRATEGY=${LLM_ROUTER_BALANCE_STRATEGY:-"first_available"}
   export LLM_ROUTER_REDIS_HOST=${LLM_ROUTER_REDIS_HOST:-"192.168.100.67"}
   export LLM_ROUTER_REDIS_PORT=${LLM_ROUTER_REDIS_PORT:-6379}
   export LLM_ROUTER_SERVER_WORKERS_COUNT=${LLM_ROUTER_SERVER_WORKERS_COUNT:-4}
