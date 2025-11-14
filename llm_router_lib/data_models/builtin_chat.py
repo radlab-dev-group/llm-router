@@ -1,7 +1,7 @@
-from pydantic import BaseModel
 from typing import List, Dict, Optional
 
 from llm_router_api.base.constants_base import DEFAULT_EP_LANGUAGE
+from llm_router_lib.data_models.base_model import BaseModelOptions
 from llm_router_lib.data_models.constants import (
     LANGUAGE_PARAM,
     MODEL_NAME_PARAM,
@@ -9,7 +9,7 @@ from llm_router_lib.data_models.constants import (
 )
 
 
-class _GenerativeOptions(BaseModel):
+class _GenerativeOptions(BaseModelOptions):
     temperature: float = 0.75
     max_new_tokens: int = 256
 

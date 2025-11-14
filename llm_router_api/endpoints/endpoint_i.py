@@ -37,7 +37,6 @@ from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     EXTERNAL_API_TIMEOUT,
-    DEFAULT_API_PREFIX,
 )
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
@@ -669,13 +668,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 map_prompt = params.pop("map_prompt", {})
                 prompt_str_force = params.pop("prompt_str_force", "")
                 prompt_str_postfix = params.pop("prompt_str_postfix", "")
-                params.pop("response_time", "")
+                params = self._clear_payload(payload=params)
 
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
-            if type(params) is dict:
-                if not params.get("status", True):
-                    return params
+            # Testing: possible part to remove
+            # if type(params) is dict:
+            #     if not params.get("status", True):
+            #         return params
 
             if self.direct_return:
                 return params
@@ -788,6 +788,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     params=params,
                     options=options,
                 )
+
+    @staticmethod
+    def _clear_payload(payload: Dict[str, Any]):
+        for k in ["anonymize", "response_time"]:
+            payload.pop(k, "")
+        payload.pop("response_time", "")
+        return payload
 
     def _return_response_or_rerun(
         self,
