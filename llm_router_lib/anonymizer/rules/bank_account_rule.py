@@ -1,19 +1,23 @@
 """
 Rule that anonymizes Polish bank account numbers (IBAN format).
 
-Polish IBAN example (full, un‑masked):
-    PL56 1234 5678 9012 3456 7890 1234
+Polish IBAN (28 characters, without spaces):
+    PL58105012981000009062923173
+
+Polish IBAN with spaces:
+    PL58 1050 1298 1000 0090 6292 3173
 
 The rule also recognises **partially masked** accounts where any group of
-digits may be replaced with the literal string ``X`` (or a mixture of ``X``
-and digits).  Example of a masked account that must be detected:
+four characters may be replaced with the literal character ``X`` (or a
+mixture of ``X`` and digits), e.g.:
 
-    XX 34 5678 9012 3456 1234 5678 9
+    PL58 10XX 1298 1XXX XXXX 6292 31X3
+    XX 10XX 1298 1XXX XXXX 6292 31X3
 
-In addition, the rule accepts the numeric part **without the country code**
-(e.g. ``22 34 5678 9012 3456 1234 5678 9``).  Whitespace between groups
-(spaces, tabs or new‑lines) is tolerated.  The placeholder used for
-anonymisation is ``{{BANK_ACCOUNT}}``.
+Only strings that have the exact length of a Polish IBAN (28 alphanumeric
+characters, ignoring whitespace) are matched – short numbers such as
+``64001000152`` are **not** treated as bank accounts.  The placeholder used
+for anonymisation is ``{{BANK_ACCOUNT}}``.
 """
 
 import re
@@ -24,39 +28,33 @@ from llm_router_lib.anonymizer.rules.base_rule import BaseRule
 
 class BankAccountRule(BaseRule):
     """
-    Detects Polish IBAN numbers, allowing optional masking with the literal
-    ``X`` characters and also allowing the IBAN to be written without the
-    leading country code (as sometimes seen in informal texts).
+    Detects Polish IBAN numbers (full 28‑character length), allowing optional
+    masking with ``X`` characters and optional whitespace between groups.
     """
 
-    # Country code – either two uppercase letters (e.g. PL) or a masked ``XX``.
-    # This part is optional because some texts omit it.
-    _CC = r"(?:[A-Z]{2}|XX)?"
+    # Country code – two letters (e.g. PL) or masked ``XX`` (must be present)
+    _CC = r"(?:[A-Z]{2}|XX)"
 
-    # Two check digits – either two digits or a masked ``XX``.
-    # Also optional for the same reason as the country code.
-    _CHECK = r"(?:\d{2}|XX)?"
+    # Two check digits – either two digits or masked ``XX`` (must be present)
+    _CHECK = r"(?:\d{2}|XX)"
 
-    # One group of the account number.  In a normal IBAN it is 4 digits,
-    # but we also accept:
-    #   * 1‑4 digits (the last group may be shorter)
-    #   * a masked group consisting of X's (e.g. XXXX or XX)
-    #   * a mixed mask like X1X2 (any combination of digits and X)
-    _GROUP = r"(?:[0-9X]{1,4})"
+    # One group of four characters – digits, X or any mixture (e.g. X1X2)
+    _GROUP = r"(?:[0-9X]{4})"
 
-    # The full pattern:
-    #   optional country code, optional check digits, followed by
-    #   5‑8 groups of 1‑4 characters (digits / X).  This covers:
-    #     • the normal 6 groups of 4 digits (28 characters total)
-    #     • partially masked forms where some groups are replaced by Xs
-    #     • the short form without the country code (e.g. "22 34 …")
+    # Full pattern:
+    #   - country code
+    #   - optional whitespace
+    #   - check digits
+    #   - exactly six groups of four characters, each optionally preceded by
+    #     whitespace (including the possibility of no whitespace at all)
+    #   - word boundaries on both sides to avoid partial matches
     _FULL_PATTERN = rf"""
-        \b                      # word boundary – start of the IBAN
-        {_CC}                   # optional country code (or masked)
+        \b                      # start of word
+        {_CC}                   # country code (or masked)
         \s*                     # optional whitespace
-        {_CHECK}                # optional check digits (or masked)
-        (?:\s+{_GROUP}){{5,8}} # 5‑8 groups of 1‑4 chars (digits / X)
-        \b                      # word boundary – end of the IBAN
+        {_CHECK}                # check digits (or masked)
+        (?:\s*{_GROUP}){{6}}   # six groups of 4 chars, whitespace optional
+        \b                      # end of word
     """
 
     _REGEX = _FULL_PATTERN
@@ -69,7 +67,7 @@ class BankAccountRule(BaseRule):
             placeholder=self._PLACEHOLDER,
             flags=re.IGNORECASE | re.VERBOSE,
         )
-        # Compile once for performance.
+        # Pre‑compile for fast reuse.
         self._compiled_regex = re.compile(
             self._REGEX, flags=re.IGNORECASE | re.VERBOSE
         )
@@ -81,8 +79,9 @@ class BankAccountRule(BaseRule):
         """
 
         def _replacer(match: Match) -> str:
-            # No further validation is performed – the regex already ensures a
-            # plausible Polish IBAN or a masked variant.
+            # No further validation is required – the regex guarantees the
+            # exact 28‑character IBAN structure (with optional masking) and
+            # therefore will not match shorter numbers like ``64001000152``.
             return self._PLACEHOLDER
 
         return self._compiled_regex.sub(_replacer, text)
