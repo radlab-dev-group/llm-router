@@ -12,3 +12,4 @@ from llm_router_lib.anonymizer.rules.nip_rule import NipRule
 from llm_router_lib.anonymizer.rules.money_rule import MoneyRule
 from llm_router_lib.anonymizer.rules.postal_code_rule import PostalCodeRule
 from llm_router_lib.anonymizer.rules.bank_account_rule import BankAccountRule
+from llm_router_lib.anonymizer.rules.regon_rule import RegonRule
