@@ -14,12 +14,12 @@ class EmailRule(BaseRule):
     # Simple e‑mail regex (local‑part + @ + domain). It is deliberately
     # permissive but avoids matching stray @ symbols inside words.
     _EMAIL_REGEX = r"""
-        \b
+        _?                     # optional leading underscore (markdown emphasis)
         [A-Za-z0-9._%+-]+      # local part
         @
         [A-Za-z0-9.-]+         # domain part
         \.[A-Za-z]{2,}         # TLD
-        \b
+        _?                     # optional trailing underscore (markdown emphasis)
     """
 
     def __init__(self):
