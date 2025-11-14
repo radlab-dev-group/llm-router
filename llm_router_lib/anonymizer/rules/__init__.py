@@ -15,3 +15,4 @@ from llm_router_lib.anonymizer.rules.bank_account_rule import BankAccountRule
 from llm_router_lib.anonymizer.rules.date_number_rule import DateNumberRule
 from llm_router_lib.anonymizer.rules.date_word_rule import DateWordRule
 from llm_router_lib.anonymizer.rules.regon_rule import RegonRule
+from llm_router_lib.anonymizer.rules.street_rule import StreetNameRule
