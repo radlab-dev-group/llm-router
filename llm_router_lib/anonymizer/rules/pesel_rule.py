@@ -13,6 +13,7 @@ class PeselRule(BaseRule):
     Detects 11‑digit PESEL numbers, validates the checksum and replaces only
     the valid ones with ``{{PESEL}}``.
     """
+
     REGEX = r"(?<!\w)(?:[_*]+)?(?P<pesel>\d{11})(?:[_*]+)?(?!\w)"
 
     _ANONYMIZATION_TAG_PLACEHOLDER = "{{PESEL}}"
