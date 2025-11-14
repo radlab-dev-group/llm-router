@@ -34,6 +34,7 @@ from llm_router_lib.anonymizer.rules import (
     RegonRule,
     DateNumberRule,
     DateWordRule,
+    StreetNameRule,
 )
 
 
@@ -58,6 +59,7 @@ class Anonymizer:
         EmailRule(),
         UrlRule(),
         IpRule(),
+        StreetNameRule(),
         PeselRule(),
         NipRule(),
         KrsRule(),
