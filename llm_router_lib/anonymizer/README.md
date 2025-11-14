@@ -42,8 +42,7 @@ Additional validators can be added to `anonymizer/utils/validators.py` as needed
 
 ### 1. Using a file (the safest)
 
-```
-shell
+``` shell
 python run_anonymizer.py examples/input.txt -o examples/output.txt
 ```
 
@@ -51,8 +50,7 @@ python run_anonymizer.py examples/input.txt -o examples/output.txt
 
 ### 2. Piping data (no interactive EOF needed)
 
-```
-shell
+``` shell
 cat examples/input.txt | python run_anonymizer.py > anonymized.txt
 # or
 echo "My phone is +48 123 456 789" | python run_anonymizer.py
@@ -60,8 +58,7 @@ echo "My phone is +48 123 456 789" | python run_anonymizer.py
 
 ### 3. Interactive mode (manual typing)
 
-```
-shell
+``` shell
 python run_anonymizer.py
 ```
 
