@@ -9,3 +9,4 @@ from llm_router_lib.anonymizer.rules.pesel_rule import PeselRule
 from llm_router_lib.anonymizer.rules.email_rule import EmailRule
 from llm_router_lib.anonymizer.rules.krs_rule import KrsRule
 from llm_router_lib.anonymizer.rules.nip_rule import NipRule
+from llm_router_lib.anonymizer.rules.postal_code_rule import PostalCodeRule
