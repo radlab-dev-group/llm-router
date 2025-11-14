@@ -52,6 +52,11 @@ DEFAULT_API_PREFIX = os.environ.get(
 # Run service as a proxy only
 SERVICE_AS_PROXY = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM")
 
+# If set to True, then each user request will be anonymised before provider call
+FORCE_ANONYMISATION = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_ANONYMISATION"
+)
+
 # Type of server, default is flask {flask, gunicorn, waitress}
 SERVER_TYPE = (
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_TYPE", "flask")
