@@ -180,7 +180,7 @@ class EndpointI(abc.ABC):
         self._start_time = None
 
         # Api anonymizer
-        self._anonymizer: Optional[FastMasker] = None
+        self._fast_masker: Optional[FastMasker] = None
         if FORCE_ANONYMISATION:
             self._prepare_anonymizer()
 
@@ -360,9 +360,9 @@ class EndpointI(abc.ABC):
          - GENAI_MASKER
         :return:
         """
-        if self._anonymizer:
+        if self._fast_masker:
             return
-        self._anonymizer = FastMasker()
+        self._fast_masker = FastMasker()
         self.logger.debug("llm-router is running in force anonymization mode")
 
     # ------------------------------------------------------------------
@@ -850,9 +850,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         The routine extracts a potential ``anonymize`` flag (or falls back to
         the global ``FORCE_ANONYMISATION`` setting), removes housekeeping
-        fields such as ``response_time``, and optionally runs the
-        :class:`~llm_router_lib.anonymizer.core.Anonymizer` on the cleaned
-        payload.
+        fields such as ``response_time``, and optionally runs
+        the method to clean payload.
 
         Parameters
         ----------
@@ -915,7 +914,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             The anonymized representation of *payload*.
         """
         self._prepare_anonymizer()
-        _p = self._anonymizer.mask_payload_fast(payload=payload)
+        _p = self._fast_masker.mask_payload_fast(payload=payload)
         return _p
 
     def _return_response_or_rerun(
