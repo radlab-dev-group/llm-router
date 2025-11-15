@@ -1,5 +1,5 @@
 """
-Rule that anonymizes Polish postal codes.
+Rule that masks Polish postal codes.
 
 Polish postal codes have the form ``dd-ddd`` (two digits, a hyphen,
 three digits).  In informal text the hyphen is sometimes omitted
@@ -12,7 +12,7 @@ Valid matches are replaced with the placeholder ``{{POSTAL_CODE}}``.
 import re
 from typing import Match
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
 
 
 class PostalCodeRule(BaseRule):

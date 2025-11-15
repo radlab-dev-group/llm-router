@@ -1,5 +1,6 @@
 """
-Rule that anonymizes monetary amounts **only when a currency identifier is present**.
+Rule that masks monetary amounts **only when a currency identifier is present**.
+
 Supported currency indicators:
 
 * Symbolic: $, €, £, ¥, ₽, ₹
@@ -12,7 +13,7 @@ Supported currency indicators:
   rubel, rubla, rubli, rublami
 
 The rule recognises a wide variety of numeric formats (spaces, commas,
-dots or non‑breaking spaces as thousand separators, optional decimal part)
+dots or non‑breaking spaces as a thousand separators, optional decimal part)
 and optional markdown emphasis markers (`_` or `*`).  Any matched amount is
 replaced with the placeholder ``{{MONEY}}``.
 """
@@ -20,7 +21,7 @@ replaced with the placeholder ``{{MONEY}}``.
 import re
 from typing import Match
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
 
 
 class MoneyRule(BaseRule):
