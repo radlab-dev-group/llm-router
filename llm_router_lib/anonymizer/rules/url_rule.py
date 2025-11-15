@@ -23,6 +23,7 @@ class UrlRule(BaseRule):
     _URL_REGEX = r"""
         \b
         (?:https?://)?               # optional http/https scheme
+        (?!m\.in\b)                  # forbid the literal “m.in”
         (?:[A-Za-z0-9-]+\.)+         # one or more sub‑domains / domain labels
         [A-Za-z]{2,}                 # top‑level domain (at least 2 letters)
         (?:[/:][^\s]*)?              # optional path, query or fragment
