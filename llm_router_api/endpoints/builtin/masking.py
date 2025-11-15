@@ -1,9 +1,9 @@
 """
-AnonymizeText endpoint.
+FastTextMasking endpoint.
 
-This module defines the :class:`AnonymizeText` Flask‑compatible endpoint
+This module defines the :class:`FastTextMasking` Flask‑compatible endpoint
 that receives a JSON payload containing a ``text`` field, applies the full
-set of built‑in anonymisation rules, and returns the anonymised text.
+set of built‑in masking rules, and returns the masked text.
 The endpoint inherits from
 :class:`~llm_router_api.endpoints.endpoint_i.EndpointWithHttpRequestI`,
 leveraging the generic request‑handling logic while disabling most of the
@@ -11,7 +11,7 @@ proxy‑related behaviour (``direct_return=True``).
 
 Typical usage (via the ``@EP`` decorator)::
 
-    POST /anonymize_text
+    POST /fast_text_mask
     {
         "text": "User's phone is 555‑123‑4567 and email john@example.com"
     }
@@ -19,28 +19,27 @@ Typical usage (via the ``@EP`` decorator)::
 Response::
 
     {
-        "anonymized_text": "User's phone is <PHONE> and email <EMAIL>"
+        "text": "User's phone is <PHONE> and email <EMAIL>"
     }
 """
 
 from typing import Optional, Dict, Any
 
 
-from llm_router_lib.anonymizer.core import Anonymizer
-
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_api.core.decorators import EP
 from llm_router_api.base.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
-
-from llm_router_lib.data_models.anonymizer import AnonymizerModel
 from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI
 
+from llm_router_lib.data_models.masker import FastMaskerModel
+from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
 
-class AnonymizeText(EndpointWithHttpRequestI):
+
+class FastTextMasking(EndpointWithHttpRequestI):
     """
-    Endpoint that anonymises a plain‑text string using the library's default
+    Endpoint that masks a plain‑text string using the library's default
     rule set.
 
     The endpoint does **not** require any specific request parameters
@@ -59,10 +58,10 @@ class AnonymizeText(EndpointWithHttpRequestI):
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
-        ep_name: str = "anonymize_text",
+        ep_name: str = "fast_text_mask",
     ):
         """
-        Initialise the ``anonymize_text`` endpoint.
+        Initialise the ``fast_text_mask`` endpoint.
 
         Parameters
         ----------
@@ -78,7 +77,7 @@ class AnonymizeText(EndpointWithHttpRequestI):
             Not used by this endpoint but required by the base class.
         ep_name : str, optional
             URL fragment that identifies the endpoint; defaults to
-            ``"anonymize_text"``.
+            ``"fast_text_mask"``.
         """
         super().__init__(
             ep_name=ep_name,
@@ -92,8 +91,7 @@ class AnonymizeText(EndpointWithHttpRequestI):
             direct_return=True,
         )
 
-        # Initialise a dedicated Anonymizer instance with the full rule set.
-        self._anonymizer = Anonymizer(rules=Anonymizer.ALL_ANONYMIZER_RULES)
+        self._fast_masker = FastMasker(rules=FastMasker.ALL_MASKER_RULES)
 
     @EP.require_params
     def prepare_payload(
@@ -104,9 +102,9 @@ class AnonymizeText(EndpointWithHttpRequestI):
 
         The ``@EP.require_params`` decorator ensures that the request body is
         parsed into a dictionary before this method runs.  The method wraps
-        the raw ``text`` value in an :class:`AnonymizerModel` (which provides
+        the raw ``text`` value in an :class:`FastMaskerModel` (which provides
         type‑checking) and then returns a dictionary containing the
-        anonymised result under the key ``"anonymized_text"``.
+        masked result under the key ``"text"``.
 
         Parameters
         ----------
@@ -118,19 +116,19 @@ class AnonymizeText(EndpointWithHttpRequestI):
         Returns
         -------
         dict
-            ``{"anonymized_text": <result>}`` where ``<result>`` is the
-            anonymised version of the input text.
+            ``{"text": <result>}`` where ``<result>`` is the
+            masked version of the input text.
         """
-        options = AnonymizerModel(**params)
-        return {"anonymized_text": self._do_text_anonymization(text=options.text)}
+        options = FastMaskerModel(**params)
+        return {"text": self._do_text_masking(text=options.text)}
 
-    def _do_text_anonymization(self, text: str) -> str:
+    def _do_text_masking(self, text: str) -> str:
         """
-        Apply the configured anonymisation rules to *text*.
+        Apply the configured masking rules to *text*.
 
         This thin wrapper exists to keep the public ``prepare_payload`` method
         focused on request handling while delegating the actual text processing
-        to the :class:`Anonymizer` instance created during construction.
+        to the :class:`FastMasker` instance created during construction.
 
         Parameters
         ----------
@@ -140,7 +138,7 @@ class AnonymizeText(EndpointWithHttpRequestI):
         Returns
         -------
         str
-            The anonymised text, with any detected personal data replaced
+            The masked text, with any detected personal data replaced
             by placeholder tokens defined by the active rule set.
         """
-        return self._anonymizer.anonymize(text=text)
+        return self._fast_masker.mask_text(text=text)
