@@ -1,6 +1,7 @@
 # llm_router_web
 
-**llm_router_web** is the web interface component of the **[llm-router](https://github.com/radlab-dev-group/llm-router)
+**llm_router_web: configs manager** is the web interface component of
+the **[llm-router](https://github.com/radlab-dev-group/llm-router)
 ** project.  
 It provides a Flask‑based UI for managing LLM model configurations, users, and version history.
 
