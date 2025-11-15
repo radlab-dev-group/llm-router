@@ -36,10 +36,6 @@ class PeselRule(BaseRule):
         def replacer(match: re.Match) -> str:
 
             pesel = match.group("pesel")
-            return (
-                self._MASK_TAG_PLACEHOLDER
-                if is_valid_pesel(pesel)
-                else pesel
-            )
+            return self._MASK_TAG_PLACEHOLDER if is_valid_pesel(pesel) else pesel
 
         return self._PESEL_REGEX.sub(replacer, text)
