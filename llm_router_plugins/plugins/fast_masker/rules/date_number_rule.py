@@ -1,6 +1,6 @@
 import re
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
 
 
 class DateNumberRule(BaseRule):
@@ -36,14 +36,14 @@ class DateNumberRule(BaseRule):
         r"(?!\d)"  # not followed by a digit
     )
 
-    _ANONYMIZATION_TAG_PLACEHOLDER = "{{DATE_NUM}}"
+    _MASKING_TAG_PLACEHOLDER = "{{DATE_NUM}}"
 
     _DATE_REGEX = re.compile(REGEX)
 
     def __init__(self):
         super().__init__(
             regex=DateNumberRule.REGEX,
-            placeholder=DateNumberRule._ANONYMIZATION_TAG_PLACEHOLDER,
+            placeholder=DateNumberRule._MASKING_TAG_PLACEHOLDER,
         )
 
     def apply(self, text: str) -> str:
@@ -51,4 +51,4 @@ class DateNumberRule(BaseRule):
         Replace every detected date (any of the supported formats) with the
         placeholder.
         """
-        return self._DATE_REGEX.sub(self._ANONYMIZATION_TAG_PLACEHOLDER, text)
+        return self._DATE_REGEX.sub(self._MASKING_TAG_PLACEHOLDER, text)
