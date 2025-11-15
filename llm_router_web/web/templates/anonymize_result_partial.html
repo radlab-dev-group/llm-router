@@ -1,0 +1,9 @@
+<!-- File: web/anonymize/templates/anonymize_result_partial.html -->
+<div id="result-container" class="card" style="margin-top: 1rem;">
+    <h3>✅ Zanonimizowany tekst</h3>
+    {% if result %}
+    <pre class="w100" style="white-space: pre-wrap;">{{ result }}</pre>
+    {% else %}
+    <p class="muted">Wynik pojawi się po anonimizacji.</p>
+    {% endif %}
+</div>

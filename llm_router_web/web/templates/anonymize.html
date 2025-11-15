@@ -1,0 +1,42 @@
+{% extends "base_anonymizer.html" %}
+{% block content %}
+<div class="card">
+    <h2>🔒 Anonimizacja tekstu</h2>
+
+    <form id="anonymize-form"
+          hx-post="{{ url_for('anonymize_web.process_text') }}"
+          hx-target="#result-container"
+          hx-swap="innerHTML"
+          hx-trigger="submit"
+          hx-indicator="#loading-spinner"
+          class="form">
+
+        <label for="input-text">Wklej tekst do anonimizacji:</label>
+        <textarea id="input-text" name="text" rows="6"
+                  placeholder="Wpisz lub wklej tekst…" required
+                  class="w100"></textarea>
+
+        <div class="form-actions">
+            <button type="submit" class="btn primary">🚀 Anonimizuj</button>
+            <span id="loading-spinner" class="spinner hidden"></span>
+        </div>
+    </form>
+</div>
+
+<!-- 1️⃣  Stały panel z wynikiem (pierwotny placeholder) -->
+<div id="result-container" class="card" style="margin-top: 1rem;">
+    <h3>✅ Zanonimizowany tekst</h3>
+    <p class="muted">Wynik pojawi się po anonimizacji.</p>
+</div>
+
+<script>
+    // Prosty spinner
+    document.body.addEventListener('htmx:request', () => {
+        document.getElementById('loading-spinner').classList.remove('hidden');
+    });
+    document.body.addEventListener('htmx:afterRequest', () => {
+        document.getElementById('loading-spinner').classList.add('hidden');
+    });
+</script>
+
+{% endblock %}
