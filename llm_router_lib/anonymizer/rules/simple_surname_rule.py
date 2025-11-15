@@ -40,12 +40,78 @@ def _load_surnames() -> Set[str]:
     for file_name in csv_files:
         file_path = base_dir / file_name
         with file_path.open(newline="", encoding="utf-8") as f:
+            header = True
             for row in csv.reader(f):
+                if header:
+                    header = False
+                    continue
+
                 if row:
                     surname = row[0].strip()
+                    count = int(row[1])
+
+                    if count < 400:
+                        continue
+
+                    print(f"Adding {surname} with count {count}")
                     if surname:
-                        surnames.add(surname.lower())
+                        base = surname.lower()
+                        # forma podstawowa
+                        surnames.add(base)
+                        # wstrzyknięcie prostych, odmienionych form
+                        surnames.update(_generate_inflected_forms(base))
     return surnames
+
+
+def _generate_inflected_forms(base: str) -> Set[str]:
+    """
+    Generuje proste, heurystyczne formy odmienione nazwiska w oparciu o formę podstawową.
+
+    Uwaga: to nie jest pełny model fleksji, tylko zestaw najczęstszych końcówek,
+    żeby złapać typowe przypadki typu:
+    - Nowak -> Nowaka, Nowakiem, Nowakowi, Nowaków, Nowakom, Nowakami, Nowaku, Nowakiem, Nowaku itd.
+    - Kowalski -> Kowalskiego, Kowalskiemu, Kowalskim, Kowalskich, Kowalskimi, Kowalska, Kowalską, Kowalskiej, Kowalscy...
+    """
+    forms: Set[str] = set()
+    b = base
+
+    # Najczęstsze końcówki przypadków dla nazwisk w mianowniku męskim
+    common_suffixes = [
+        "a",
+        "u",
+        "owi",
+        "iem",
+        "iemu",
+        "iem",
+        "om",
+        "ów",
+        "ami",
+        "ach",
+        "y",
+        "ie",
+        "ą",
+        "ę",
+        "owie",
+    ]
+    for suf in common_suffixes:
+        forms.add(b + suf)
+
+    # Bardzo prosta obsługa nazwisk na -ski/-cki/-dzki (żeńskie odpowiedniki)
+    if b.endswith("ski") or b.endswith("cki") or b.endswith("dzki"):
+        # ski -> ska, cki -> cka, dzki -> dzka (obcięcie końcowego "i")
+        fem = b[:-1] + "a"
+        forms.add(fem)
+        fem_suffixes = [
+            "ą",
+            "ie",
+            "iej",
+            "ą",
+            "ę",
+        ]  # Kowalską, Kowalskiej, Kowalską, Kowalskę
+        for suf in fem_suffixes:
+            forms.add(fem + suf)
+
+    return forms
 
 
 _SURNAME_SET = _load_surnames()
@@ -54,6 +120,8 @@ _SURNAME_SET = _load_surnames()
 # ----------------------------------------------------------------------
 # Rule implementation
 # ----------------------------------------------------------------------
+
+
 class SimpleSurnameRule(BaseRule):
     """
     Detects Polish surnames and replaces them with ``{{SURNAME}}``.
@@ -91,7 +159,6 @@ class SimpleSurnameRule(BaseRule):
 
         def _replacer(match: re.Match) -> str:
             token = match.group(0)
-            # ``_SURNAME_SET`` stores lower‑cased surnames → case‑insensitive check
             if token.lower() in _SURNAME_SET:
                 return self.placeholder
             return token
