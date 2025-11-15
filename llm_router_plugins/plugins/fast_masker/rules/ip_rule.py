@@ -1,17 +1,17 @@
 """
-Rule that anonymizes IPv4 and IPv6 addresses.
+Rule that mask IPv4 and IPv6 addresses.
 """
 
 import re
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
 
 
 class IpRule(BaseRule):
     """
     Detects IPv4, IPv6 addresses **and** the special hostname ``localhost``.
     If a port is present after a colon (e.g. ``localhost:1211`` or
-    ``0.0.0.0:2131``) the address and the port are anonymised **separately**,
+    ``0.0.0.0:2131``) the address and the port are masked **separately**,
     yielding ``{{IP}}:{{PORT}}``.
     """
 
