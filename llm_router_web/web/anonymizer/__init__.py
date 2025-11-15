@@ -1,44 +1,43 @@
-# Python
 import os
 from flask import Flask, redirect, url_for
 
-# Blueprint znajduje się w tym samym pakiecie
+# Blueprint is located in the same package
 from .routes import anonymize_bp
 
 
 def create_anonymize_app() -> Flask:
     """
-    Lekką aplikację Flask, której jedynym zadaniem jest obsługa
-    endpointu /anonymize.
+    A lightweight Flask application whose sole purpose is to handle
+    the /anonymize endpoint.
     """
     app = Flask(
         __name__,
-        # współdzielimy zasoby statyczne z główną aplikacją
+        # Share static resources with the main application
         static_folder=os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "static")
         ),
-        # szablony znajdują się w web/anonymize/templates
+        # Templates are located in web/anonymize/templates
         template_folder=os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "templates")
+            os.path.join(os.path.dirname(__file__), "templates")
         ),
     )
 
-    # ---- Konfiguracja (zmienne środowiskowe) ----
+    # ---- Configuration (environment variables) ----
     app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "change-me-anonymizer")
-    # Adres zewnętrznego serwisu anonimizującego
+    # Address of the external anonymizing service
     app.config["LLM_ROUTER_HOST"] = os.getenv(
         "LLM_ROUTER_HOST", "http://localhost:8000"
     )
 
-    # ---- Rejestracja Blueprintu ----
+    # ---- Blueprint registration ----
     app.register_blueprint(anonymize_bp)
 
     @app.route("/", endpoint="index")
     def root():
-        # możesz przekierować do formularza lub wyświetlić krótką stronę
+        # You can redirect to a form or display a short page
         return redirect(url_for("anonymize_web.show_form"))
 
-    # ---- Proste error‑handlery (zwracają JSON) ----
+    # ---- Simple error handlers (return JSON) ----
     @app.errorhandler(400)
     def handle_400(error):
         return {"error": error.description or "Bad request"}, 400

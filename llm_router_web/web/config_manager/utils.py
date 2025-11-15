@@ -1,11 +1,11 @@
-# web/utils.py
 import io
 import json
+
+from flask import send_file
 from datetime import datetime
 from sqlalchemy import func, inspect, text
-from flask import jsonify, send_file, request
-from .models import db, Config, ConfigVersion, Model, Provider, ActiveModel
-from .constants import VALID_FAMILIES
+
+from .models import db, Config, ConfigVersion, Model
 
 
 def to_json(config_id: int) -> dict:
