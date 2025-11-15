@@ -1,5 +1,5 @@
 """
-Utility validators for the anonymizer library.
+Utility validators for the masker plugin.
 """
 
 import re
