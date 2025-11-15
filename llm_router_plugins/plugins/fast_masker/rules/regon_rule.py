@@ -1,5 +1,5 @@
 """
-Rule that anonymizes Polish REGON numbers.
+Rule that masks Polish REGON numbers.
 
 REGON (Rejestr Gospodarki Narodowej) may consist of:
 
@@ -14,7 +14,7 @@ Both forms contain a checksum digit.  The rule:
 2. Validates the checksum according to the official algorithm.
 3. Replaces only **valid** REGON numbers with the placeholder ``{{REGON}}``.
 
-The implementation follows the same pattern as the other anonymisation
+The implementation follows the same pattern as the other masking
 rules in the project (inherits from ``BaseRule`` and pre‑compiles the
 regular expression for speed).
 """
@@ -22,8 +22,8 @@ regular expression for speed).
 import re
 from typing import Match
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
-from llm_router_lib.anonymizer.utils.validators import is_valid_regon
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.utils.validators import is_valid_regon
 
 
 class RegonRule(BaseRule):

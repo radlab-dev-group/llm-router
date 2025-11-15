@@ -1,11 +1,11 @@
 """
-Rule that anonymizes valid Polish PESEL numbers.
+Rule that masks valid Polish PESEL numbers.
 """
 
 import re
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
-from llm_router_lib.anonymizer.utils.validators import is_valid_pesel
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.utils.validators import is_valid_pesel
 
 
 class PeselRule(BaseRule):
@@ -16,14 +16,14 @@ class PeselRule(BaseRule):
 
     REGEX = r"(?<!\w)(?:[_*]+)?(?P<pesel>\d{11})(?:[_*]+)?(?!\w)"
 
-    _ANONYMIZATION_TAG_PLACEHOLDER = "{{PESEL}}"
+    _MASK_TAG_PLACEHOLDER = "{{PESEL}}"
 
     _PESEL_REGEX = re.compile(REGEX)
 
     def __init__(self):
         super().__init__(
             regex=PeselRule.REGEX,
-            placeholder=PeselRule._ANONYMIZATION_TAG_PLACEHOLDER,
+            placeholder=PeselRule._MASK_TAG_PLACEHOLDER,
         )
 
     def apply(self, text: str) -> str:
@@ -37,7 +37,7 @@ class PeselRule(BaseRule):
 
             pesel = match.group("pesel")
             return (
-                self._ANONYMIZATION_TAG_PLACEHOLDER
+                self._MASK_TAG_PLACEHOLDER
                 if is_valid_pesel(pesel)
                 else pesel
             )
