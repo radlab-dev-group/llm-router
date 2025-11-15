@@ -1,7 +1,7 @@
 {% extends "base_anonymizer.html" %}
 {% block content %}
 <div class="card">
-    <h2>🔒 Anonimizacja tekstu</h2>
+    <h2>🔒 Text Anonymization</h2>
 
     <form id="anonymize-form"
           hx-post="{{ url_for('anonymize_web.process_text') }}"
@@ -11,32 +11,46 @@
           hx-indicator="#loading-spinner"
           class="form">
 
-        <label for="input-text">Wklej tekst do anonimizacji:</label>
+        <label for="input-text">Paste text to anonymize:</label>
         <textarea id="input-text" name="text" rows="6"
-                  placeholder="Wpisz lub wklej tekst…" required
+                  placeholder="Enter or paste text…" required
                   class="w100"></textarea>
 
         <div class="form-actions">
-            <button type="submit" class="btn primary">🚀 Anonimizuj</button>
+            <button type="submit" class="btn primary">🚀 Anonymize</button>
             <span id="loading-spinner" class="spinner hidden"></span>
         </div>
     </form>
 </div>
 
-<!-- 1️⃣  Stały panel z wynikiem (pierwotny placeholder) -->
+<!-- 1️⃣  Fixed result panel (original placeholder) -->
 <div id="result-container" class="card" style="margin-top: 1rem;">
-    <h3>✅ Zanonimizowany tekst</h3>
-    <p class="muted">Wynik pojawi się po anonimizacji.</p>
+    <h3>✅ Anonymized Text</h3>
+    <p class="muted">The result will appear after anonymization.</p>
 </div>
 
+{% raw %}
 <script>
-    // Prosty spinner
+    // Simple spinner
     document.body.addEventListener('htmx:request', () => {
         document.getElementById('loading-spinner').classList.remove('hidden');
     });
     document.body.addEventListener('htmx:afterRequest', () => {
         document.getElementById('loading-spinner').classList.add('hidden');
+        highlightTags();  // highlight tags after receiving the result
     });
+
+    // Function that highlights all {{TAG}} occurrences in the returned text
+    function highlightTags() {
+        const pre = document.getElementById('anonymized-result');
+        if (!pre) return;   // no result has been returned yet
+
+        // Replace every {{...}} with <span class="tag-highlight">{{...}}</span>
+        const html = pre.innerHTML.replace(/(\{\{[^}]+\}\})/g,
+            '<span class="tag-highlight">$1</span>');
+        pre.innerHTML = html;
+    }
 </script>
+{% endraw %}
 
 {% endblock %}
