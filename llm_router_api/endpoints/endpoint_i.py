@@ -28,7 +28,7 @@ from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 
-from llm_router_lib.anonymizer.core import Anonymizer
+from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
 
 from llm_router_lib.data_models.constants import (
     MODEL_NAME_PARAMS,
@@ -180,10 +180,9 @@ class EndpointI(abc.ABC):
         self._start_time = None
 
         # Api anonymizer
-        self._anonymizer: Optional[Anonymizer] = None
+        self._anonymizer: Optional[FastMasker] = None
         if FORCE_ANONYMISATION:
-            self._anonymizer = Anonymizer()
-            self.logger.debug("llm-router is running in force anonymization mode")
+            self._prepare_anonymizer()
 
     # ------------------------------------------------------------------
     # Public read‑only properties
@@ -349,6 +348,22 @@ class EndpointI(abc.ABC):
             assistant_response = choices[0].get("message", {}).get("content")
 
         return j_response, choices, assistant_response
+
+    def _prepare_anonymizer(self):
+        """
+        Actually as default FAST_MASKER is used.
+
+        TODO: In the future:
+        Check what type of anonymization should be used:
+         - FAST_MASKER
+         - PRIV_MASKER
+         - GENAI_MASKER
+        :return:
+        """
+        if self._anonymizer:
+            return
+        self._anonymizer = FastMasker()
+        self.logger.debug("llm-router is running in force anonymization mode")
 
     # ------------------------------------------------------------------
     # Parameter validation helpers
@@ -899,9 +914,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Dict[Any, Any]
             The anonymized representation of *payload*.
         """
-        if not self._anonymizer:
-            self._anonymizer = Anonymizer()
-        _p = self._anonymizer.anonymize_payload(payload=payload)
+        self._prepare_anonymizer()
+        _p = self._anonymizer.mask_payload_fast(payload=payload)
         return _p
 
     def _return_response_or_rerun(
