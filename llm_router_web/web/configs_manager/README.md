@@ -55,15 +55,15 @@ The project now includes a small launch script that reads the host, port and deb
 mode from environment variables prefixed with `LLM_ROUTER_WEB_`.
 
 ``` bash
-LLM_ROUTER_WEB_HOST=0.0.0.0 \
-LLM_ROUTER_WEB_PORT=8081 \
-LLM_ROUTER_WEB_DEBUG=true \
+LLM_ROUTER_WEB_CFG_HOST=0.0.0.0 \
+LLM_ROUTER_WEB_CFG_PORT=8081 \
+LLM_ROUTER_WEB_CFG_DEBUG=true \
 ./run-llm-router-web.sh
 ```
 
-* `LLM_ROUTER_WEB_HOST` – address to bind (default: `0.0.0.0`).
-* `LLM_ROUTER_WEB_PORT` – numeric port (default: `8081`).
-* `LLM_ROUTER_WEB_DEBUG` – any truthy value (`true`, `1`, `yes`, `on`) enables Flask debug mode
+* `LLM_ROUTER_WEB_CFG_HOST` – address to bind (default: `0.0.0.0`).
+* `LLM_ROUTER_WEB_CFG_PORT` – numeric port (default: `8081`).
+* `LLM_ROUTER_WEB_CFG_DEBUG` – any truthy value (`true`, `1`, `yes`, `on`) enables Flask debug mode
   (default: `true`).
 
 The script will automatically start the application with four gunicorn workers.
@@ -146,23 +146,15 @@ llm_router_web/
 
 ### Adding new features
 
-1. **Routes** – Add view functions to `web/routes.py` and register them on the `bp` blueprint.
-2. **Templates** – Place new Jinja2 files in `web/templates/`.
+1. **Routes** – Add view functions to `web/configs_manager/routes.py` and register them on the `bp` blueprint.
+2. **Templates** – Place new Jinja2 files in `web/configs_manager/templates/`.
 3. **Static assets** – Add CSS/JS files to `web/static/` and reference them via `url_for('static', filename='…')`.
 4. **Database changes** – Extend `web/models.py` and, if needed, modify `_ensure_provider_order_column()` to handle
    migrations for SQLite.
-
-### Testing
-
-The repository includes `pytest` in the installed packages. Write unit tests under a `tests/` directory and run:
-
-```shell script
-pytest
-```
 
 ---
 
 ## License
 
-`llm_router_web` is released under the same license as the parent **llm-router** project (see the repository’s LICENSE
-file).
+`llm_router_web` with all modules are released under the same license as the parent **llm-router** project
+(see the repository’s LICENSE file).
