@@ -6,10 +6,10 @@ import abc
 import re
 from typing import Pattern
 
-from llm_router_lib.anonymizer.core.rule_interface import AnonymizeRuleI
+from llm_router_plugins.plugins.fast_masker.core.rule_interface import MaskerRuleI
 
 
-class BaseRule(AnonymizeRuleI, abc.ABC):
+class BaseRule(MaskerRuleI, abc.ABC):
     """
     Simple base class that stores a compiled regular expression and a
     replacement placeholder. Sub‑classes only need to provide the pattern
