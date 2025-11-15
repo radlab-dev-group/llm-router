@@ -1,9 +1,9 @@
 """
-Rule that anonymizes e‑mail addresses.
+Rule that mask e‑mail addresses.
 """
 
 import re
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
 
 
 class EmailRule(BaseRule):
