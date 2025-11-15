@@ -60,7 +60,7 @@ class Anonymizer:
         EmailRule(),
         UrlRule(),
         IpRule(),
-        StreetNameRule(),
+        # StreetNameRule(),
         PeselRule(),
         NipRule(),
         KrsRule(),

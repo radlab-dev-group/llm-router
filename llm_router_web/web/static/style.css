@@ -977,3 +977,9 @@ summary.clickable:hover {
         animation: none !important;
     }
 }
+
+.tag-highlight {
+    background-color: #ffeb3b;
+    color: #000;
+    font-weight: bold;
+}
