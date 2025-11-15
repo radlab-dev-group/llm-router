@@ -1,10 +1,9 @@
-# Python
 """
-Rule that anonymizes Polish surnames.
+Rule that masking Polish surnames.
 
 The surnames are stored in two CSV files:
-`resources/anonymizer/pl_surnames_male.csv` and
-`resources/anonymizer/pl_surnames_female.csv`.
+`resources/masker/pl_surnames_male.csv` and
+`resources/masker/pl_surnames_female.csv`.
 
 All surnames are loaded once (at import time) into a ``set`` of
 lower‑cased strings, giving O(1) lookup per token.
@@ -17,7 +16,7 @@ import re
 from pathlib import Path
 from typing import Set
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
 
 
 # ----------------------------------------------------------------------
@@ -33,7 +32,7 @@ def _load_surnames() -> Set[str]:
     Set[str]
         All surnames from both files.
     """
-    base_dir = Path(__file__).resolve().parents[3] / "resources" / "anonymizer"
+    base_dir = Path(__file__).resolve().parents[3] / "resources" / "masker"
     csv_files = ["pl_surnames_male.csv", "pl_surnames_female.csv"]
     surnames: Set[str] = set()
 
@@ -49,16 +48,13 @@ def _load_surnames() -> Set[str]:
                 if row:
                     surname = row[0].strip()
                     count = int(row[1])
-
-                    if count < 400:
+                    if count < 150:
                         continue
 
-                    print(f"Adding {surname} with count {count}")
+                    # print(f" -> adding {surname} with count {count}")
                     if surname:
                         base = surname.lower()
-                        # forma podstawowa
                         surnames.add(base)
-                        # wstrzyknięcie prostych, odmienionych form
                         surnames.update(_generate_inflected_forms(base))
     return surnames
 
@@ -77,19 +73,18 @@ def _generate_inflected_forms(base: str) -> Set[str]:
     forms: Set[str] = set()
     b = base
 
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # Helper: add a form if it looks plausible (non‑empty, alphabetic)
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     def _add(form: str) -> None:
         if form and form.isalpha():
             forms.add(form)
 
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # 1. Very common masculine endings: -ski, -cki, -dzki, -owski, -ewski
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     masc_suffixes = ("ski", "cki", "dzki", "owski", "ewski")
     if any(b.endswith(suf) for suf in masc_suffixes):
-        # Base masculine form (nominative)
         _add(b)
 
         # Feminine counterpart: replace trailing “i” with “a”
@@ -97,63 +92,104 @@ def _generate_inflected_forms(base: str) -> Set[str]:
         _add(fem)
 
         # Masculine case suffixes (genitive, dative, instrumental, locative)
+        # For these patterns the correct forms keep the trailing “i”
+        # before the case ending.
         masc_cases = {
-            "gen": "ego",  # Kowalskiego
-            "dat": "emu",  # Kowalskiemu
-            "inst": "im",  # Kowalskim
-            "loc": "im",  # Kowalskim (locative often same as instrumental)
-            "voc": "",  # vocative rarely changes for these surnames
-            "pl": "owie",  # plural nominative (Kowalscy → Kowalscy, but we keep a simple form)
+            "gen": "ego",
+            "dat": "emu",
+            "inst": "em",
+            "loc": "em",
+            "voc": "",
+            "pl": "owie",
         }
         for case, suffix in masc_cases.items():
-            _add(b[:-1] + suffix)  # drop trailing “i”, add case suffix
-            _add(fem + suffix)  # same suffix for feminine when applicable
+            _add(b + suffix)
+            _add(fem + suffix)
 
-        # Feminine case suffixes
+        # Feminine case suffixes (these do NOT keep the “i”)
         fem_cases = {
-            "gen": "iej",  # Kowalskiej
-            "dat": "iej",  # Kowalskiej
-            "acc": "ą",  # Kowalską
-            "inst": "ą",  # Kowalską
-            "loc": "iej",  # Kowalskiej
-            "voc": "",  # unchanged
+            "gen": "iej",
+            "dat": "iej",
+            "acc": "ą",
+            "inst": "ą",
+            "loc": "iej",
+            "voc": "",
         }
         for case, suffix in fem_cases.items():
             _add(fem + suffix)
 
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # 2. Surnames ending with -owicz / -ewicz (typical patronymics)
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     elif b.endswith("owicz") or b.endswith("ewicz"):
         _add(b)  # nominative
-        _add(b + "a")  # genitive (e.g., Nowakowicza)
+        _add(b + "a")  # genitive
         _add(b + "owi")  # dative
         _add(b + "em")  # instrumental
         _add(b + "u")  # locative
         _add(b + "owie")  # plural
 
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     # 3. Surnames ending with -ak, -ek, -ik, -yk (common masculine forms)
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
     elif any(b.endswith(suf) for suf in ("ak", "ek", "ik", "yk")):
-        # Basic masculine declension
-        _add(b)  # nom.
-        _add(b + "a")  # gen.
-        _add(b + "owi")  # dat.
-        _add(b + "a")  # acc. (same as gen. for animate)
-        _add(b + "iem")  # inst.
-        _add(b + "u")  # loc.
+        _add(b)  # nominative
+        _add(b + "a")  # genitive
+        _add(b + "owi")  # dative
+        _add(b + "a")  # accusative
+        _add(b + "iem")  # instrumental
+        _add(b + "u")  # locative
         _add(b + "owie")  # plural
 
         # Feminine version (if surname already ends with -a)
         if b.endswith("a"):
-            _add(b)  # nom.
-            _add(b + "ej")  # gen./dat./loc.
-            _add(b + "ą")  # acc./inst.
+            _add(b)  # nominative
+            _add(b + "ej")  # genitive / dative / locative
+            _add(b + "ą")  # accusative / instrumental
 
-    # ------------------------------------------------------------------
-    # 4. Fallback: attach a set of generic suffixes that catch most cases
-    # ------------------------------------------------------------------
+    # ----------------------------------------------------------------------
+    # 4. Masculine surnames that end with -a
+    # ----------------------------------------------------------------------
+    elif b.endswith("a"):
+        stem = b[:-1]
+        _add(stem)
+        _add(stem + "ą")
+        _add(stem + "u")
+        _add(stem + "ą")
+        _add(stem + "e")
+        _add(stem + "owie")
+
+    # ----------------------------------------------------------------------
+    # 5. Surnames ending with -ko
+    # ----------------------------------------------------------------------
+    if b.endswith("ko"):
+        stem = b[:-2]
+        _add(b)
+        _add(stem + "ki")
+        _add(stem + "ce")
+        _add(stem + "ką")
+
+    # ----------------------------------------------------------------------
+    # 5. Surnames ending with -ec / -iec
+    # ----------------------------------------------------------------------
+    elif b.endswith("iec") or b.endswith("ec"):
+        if b.endswith("iec"):
+            stem = b[:-4]
+        else:
+            stem = b[:-3]
+        stem += "ń"
+
+        _add(b)
+        _add(stem + "ca")
+        _add(stem + "cowi")
+        _add(stem + "cem")
+        _add(stem + "ńcem")
+        _add(stem + "cu")
+        _add(stem + "cowie")
+
+    # ----------------------------------------------------------------------
+    # 6. Fallback: attach a set of generic suffixes that catch most cases
+    # ----------------------------------------------------------------------
     else:
         generic_suffixes = [
             "a",
@@ -185,44 +221,35 @@ _SURNAME_SET = _load_surnames()
 # ----------------------------------------------------------------------
 
 
-class SimpleSurnameRule(BaseRule):
-    """
-    Detects Polish surnames and replaces them with ``{{SURNAME}}``.
-
-    The detection is case‑insensitive and works on word boundaries.
-    """
-
-    # Match any word token; the actual replacement logic decides whether it
-    # is a surname.
+class SimplePersonalDataRule(BaseRule):
+    # Match any word token;
+    # The actual replacement logic decides whether it is a surname.
     _WORD_REGEX = r"\b\w+\b"
 
     def __init__(self):
         super().__init__(
             regex=self._WORD_REGEX,
-            placeholder="{{SURNAME_SIMPLE}}",
+            placeholder="{{MASKED}}",
             flags=re.IGNORECASE,
         )
-        # Compile the regex once for the ``apply`` method.
+        # Compile the regex at once for the ``apply`` method.
         self._compiled_regex = re.compile(self._WORD_REGEX, flags=re.IGNORECASE)
 
     def apply(self, text: str) -> str:
         """
-        Replace each surname found in *text* with ``{{SURNAME}}``.
-
-        Parameters
-        ----------
-        text : str
-            Input text to be anonymized.
-
-        Returns
-        -------
-        str
-            Text with surnames replaced by the placeholder.
+        Replace each surname found in *text* with ``{{SURNAME_SIMPLE}}``.
+        The rule now substitutes only when the token starts with an
+        uppercase letter (e.g., ``Maj``) and leaves a lower‑case
+        occurrence (e.g., ``maj``) untouched.
         """
 
         def _replacer(match: re.Match) -> str:
             token = match.group(0)
-            if token.lower() in _SURNAME_SET:
+            lowered = token.lower()
+            # Replace only if the token is
+            #  - a known surname
+            #  - *and* begins with an uppercase character.
+            if lowered in _SURNAME_SET and token[:1].isupper() and len(token) > 2:
                 return self.placeholder
             return token
 
