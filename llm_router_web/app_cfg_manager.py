@@ -1,6 +1,6 @@
 import os
 
-from web import create_app
+from web.config_manager import create_config_manager_app
 
 # ----------------------------------------------------------------------
 # Configuration – read from environment variables with the prefix
@@ -14,7 +14,7 @@ _debug_val = os.getenv("LLM_ROUTER_WEB_DEBUG", "true").lower()
 DEBUG = _debug_val in {"1", "true", "yes", "on"}
 
 # Expose the Flask app as a module‑level variable for gunicorn.
-app = create_app()
+app = create_config_manager_app()
 
 if __name__ == "__main__":
     # When run directly, start the built‑in development server using the
