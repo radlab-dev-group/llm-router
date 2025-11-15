@@ -1,0 +1,3 @@
+import os
+
+GENAI_MODEL_ANON = os.getenv("LLM_ROUTER_GENAI_MODEL_ANONYMISATION", None)
