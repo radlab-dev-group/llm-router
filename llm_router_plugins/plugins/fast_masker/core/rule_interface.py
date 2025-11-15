@@ -1,13 +1,13 @@
 """
-Definition of the rule interface that every anonymization rule must implement.
+Definition of the rule interface that every masking rule must implement.
 """
 
 from abc import ABC, abstractmethod
 
 
-class AnonymizeRuleI(ABC):
+class MaskerRuleI(ABC):
     """
-    Abstract base class for all anonymization rules.
+    Abstract base class for all masking rules.
 
     Sub‑classes must implement the :meth:`apply` method, which receives a
     string and returns a new string where the rule‑specific patterns have been
