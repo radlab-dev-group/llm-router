@@ -9,8 +9,12 @@ Provides two endpoints:
   service and displays the result.
 """
 
-from flask import Blueprint, current_app, request, render_template
 import requests
+
+from flask import Blueprint, current_app, request, render_template
+
+
+from .constants import GENAI_MODEL_ANON
 
 
 # Blueprint configuration
@@ -42,25 +46,54 @@ def show_form():
 def process_text():
     """
     Send the submitted text to the external anonymization API and render the result.
-
-    Returns:
-        * 400 – if the request does not contain any text.
-        * 502 – if there is a problem communicating with the external service.
-        * 200 – with the rendered result page on success.
     """
     raw_text = request.form.get("text", "")
     if not raw_text:
         return "⚠️ No text provided.", 400
 
+    # New: get selected algorithm (default to fast)
+    algorithm = request.form.get("algorithm", "fast")
+
+    # Map algorithm to the corresponding endpoint path
+    endpoint_map = {
+        "fast": "/api/fast_text_mask",
+        "genai": "/api/anonymize_text_genai",
+        "priv": "/api/anonymize_text_priv_masker",
+    }
+
+    if algorithm == "genai":
+        if not GENAI_MODEL_ANON:
+            return render_template(
+                "anonymize_result_partial.html",
+                api_host=current_app.config["LLM_ROUTER_HOST"],
+                result={"error": "genai model is not set"},
+            )
+    elif algorithm == "priv":
+        return render_template(
+            "anonymize_result_partial.html",
+            api_host=current_app.config["LLM_ROUTER_HOST"],
+            result={"error": "priv_masker is not available yet"},
+        )
+    elif algorithm == "fast":
+        pass
+    else:
+        return render_template(
+            "anonymize_result_partial.html",
+            api_host=current_app.config["LLM_ROUTER_HOST"],
+            result={
+                "error": f"Not supported method {algorithm}.\nSupported: [fast, genai, priv]"
+            },
+        )
+
+    endpoint = endpoint_map[algorithm]
+
     # Build the external service URL (ensure no duplicate slash)
-    external_url = (
-        f"{current_app.config['LLM_ROUTER_HOST'].rstrip('/')}/api/fast_text_mask"
-    )
+    external_url = f"{current_app.config['LLM_ROUTER_HOST'].rstrip('/')}{endpoint}"
 
     try:
         resp = requests.post(
             external_url,
-            json={"text": raw_text},
+            json={"text": raw_text, "model_name": "gpt-oss:120b"},
             timeout=10,
         )
         resp.raise_for_status()

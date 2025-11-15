@@ -16,6 +16,22 @@
                   placeholder="Enter or paste text…" required
                   class="w100"></textarea>
 
+        <fieldset class="algorithm-selector" style="margin-top:1rem;">
+            <legend>Choose anonymization algorithm:</legend>
+            <label style="margin-right:1rem;">
+                <input type="radio" name="algorithm" value="fast" checked>
+                Fast Masking
+            </label>
+            <label style="margin-right:1rem;">
+                <input type="radio" name="algorithm" value="genai">
+                GenAI Anonymisation
+            </label>
+            <label>
+                <input type="radio" name="algorithm" value="priv">
+                Priv Masker
+            </label>
+        </fieldset>
+
         <div class="form-actions">
             <button type="submit" class="btn primary">🚀 Anonymize</button>
             <span id="loading-spinner" class="spinner hidden"></span>
