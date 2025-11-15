@@ -34,7 +34,7 @@
 
         <div class="form-actions">
             <button type="submit" class="btn primary">🚀 Anonymize</button>
-            <span id="loading-spinner" class="spinner hidden"></span>
+            <span id="loading-spinner" class="spinner" aria-live="polite"></span>
         </div>
     </form>
 </div>
@@ -47,25 +47,28 @@
 
 {% raw %}
 <script>
-    // Simple spinner
-    document.body.addEventListener('htmx:request', () => {
-        document.getElementById('loading-spinner').classList.remove('hidden');
-    });
-    document.body.addEventListener('htmx:afterRequest', () => {
-        document.getElementById('loading-spinner').classList.add('hidden');
-        highlightTags();  // highlight tags after receiving the result
-    });
-
-    // Function that highlights all {{TAG}} occurrences in the returned text
+    // --------------------------------------------------------
+    // Highlight {{TAG}} occurrences in the returned text
+    // --------------------------------------------------------
     function highlightTags() {
         const pre = document.getElementById('anonymized-result');
-        if (!pre) return;   // no result has been returned yet
-
-        // Replace every {{...}} with <span class="tag-highlight">{{...}}</span>
-        const html = pre.innerHTML.replace(/(\{\{[^}]+\}\})/g,
-            '<span class="tag-highlight">$1</span>');
-        pre.innerHTML = html;
+        if (!pre) return;               // nie ma wyniku – nic nie robimy
+        const highlighted = pre.innerHTML.replace(
+            /(\{\{[^}]+\}\})/g,
+            '<span class="tag-highlight">$1</span>'
+        );
+        pre.innerHTML = highlighted;
     }
+
+    // --------------------------------------------------------
+    // Run highlightTags() after htmx swaps the result panel
+    // --------------------------------------------------------
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+        // The result panel is rendered into #result-container
+        if (e.detail && e.detail.target && e.detail.target.id === 'result-container') {
+            highlightTags();
+        }
+    });
 </script>
 {% endraw %}
 
