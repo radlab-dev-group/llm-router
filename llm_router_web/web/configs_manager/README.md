@@ -1,4 +1,4 @@
-# llm_router_web
+# llm_router_web.configs_manager
 
 **llm_router_web: configs manager** is the web interface component of
 the **[llm-router](https://github.com/radlab-dev-group/llm-router)
@@ -156,5 +156,5 @@ llm_router_web/
 
 ## License
 
-`llm_router_web` with all modules are released under the same license as the parent **llm-router** project
-(see the repository’s LICENSE file).
+`llm_router_web.configs_manager` is part of the **llm-router** project and is released under the same license
+as the parent repository. See the repository’s `LICENSE` file for details.
