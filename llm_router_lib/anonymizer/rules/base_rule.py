@@ -1,6 +1,7 @@
 """
 Optional helper base class for rules that share common behaviour.
 """
+
 import abc
 import re
 from typing import Pattern
