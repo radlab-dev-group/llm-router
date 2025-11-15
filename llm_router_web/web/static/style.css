@@ -1049,3 +1049,50 @@ summary.clickable:hover {
 .w100 {
     width: 100%;
 }
+
+
+/* =================================================== */
+/* ----- Layout ----- */
+/* =================================================== */
+.layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ----- Sidebar menu ----- */
+.sidebar {
+    width: 200px;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: var(--space-4);
+    box-sizing: border-box;
+}
+
+/* Menu links */
+.sidebar a {
+    display: block;
+    margin-bottom: var(--space-2);
+    padding: var(--space-2);
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    transition: background .15s ease, color .15s ease;
+}
+
+/* Hover state */
+.sidebar a:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Active state */
+.sidebar a.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Adjust the main container when inside the flex layout */
+.layout .container {
+    flex: 1;
+    margin: 0;
+}
