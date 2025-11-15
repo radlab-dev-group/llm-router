@@ -987,7 +987,6 @@ summary.clickable:hover {
     font-weight: bold;
 }
 
-
 /* Card container – a simple panel with subtle shadow and padding */
 .card {
     background: var(--card);
@@ -1017,15 +1016,21 @@ summary.clickable:hover {
     display: none !important;
 }
 
-/* Simple spinner (can be replaced with any animation you prefer) */
+/* Simple spinner  */
 .spinner {
-    display: inline-block;
+    display: none !important;
     width: 1rem;
     height: 1rem;
+    margin-left: var(--space-2);
+    vertical-align: middle;
     border: 2px solid var(--muted);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
+}
+
+#loading-spinner.htmx-request {
+    display: inline-block !important;
 }
 
 /* Spinner animation */
