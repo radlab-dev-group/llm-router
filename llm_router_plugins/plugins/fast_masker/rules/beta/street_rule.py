@@ -9,13 +9,13 @@ Typical forms that are recognised (case‑insensitive, diacritics supported):
     plac Grunwaldzki 1
     przy Skwerze 3
 
-The placeholder used for anonymisation is ``{{STREET}}``.
+The placeholder used for masking is ``{{STREET}}``.
 """
 
 import re
 from typing import Match
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
 
 
 class StreetNameRule(BaseRule):
