@@ -1,6 +1,6 @@
 import os
 
-from web.config_manager import create_config_manager_app
+from web.configs_manager import create_config_manager_app
 
 # ----------------------------------------------------------------------
 # Configuration – read from environment variables with the prefix
