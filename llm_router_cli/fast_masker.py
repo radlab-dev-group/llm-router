@@ -48,8 +48,8 @@ The script will finish and display the anonymised output.
 import argparse
 import sys
 
-from llm_router_lib.anonymizer.core import Anonymizer
-from llm_router_lib.anonymizer.rules import (
+from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
+from llm_router_plugins.plugins.fast_masker.core.masker import (
     PhoneRule,
     UrlRule,
     IpRule,
@@ -124,10 +124,10 @@ def main() -> None:
     if not args.disable_phone:
         rules.append(PhoneRule())
 
-    anonymizer = Anonymizer(rules)
+    anonymizer = FastMasker(rules)
 
     input_text = args.input.read()
-    result = anonymizer.anonymize(input_text)
+    result = anonymizer.mask_text(input_text)
     args.output.write(result)
 
 
