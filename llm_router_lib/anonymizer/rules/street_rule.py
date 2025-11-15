@@ -26,7 +26,7 @@ class StreetNameRule(BaseRule):
 
     # Common street type prefixes (full word or abbreviation)
     _TYPE = r"""
-        (?:ul\.?|ulica|al\.?|aleja|pl\.?|plac|skwer|przy|przyjazna|
+        (?:ul\.?|ulica|al\.?|aleja|pl\.?|plac|skwer|
             os\.?|osiedle|rondo|droga|dr\.?|trakt|t\.?|ścieżka|ś\.?)
     """
 
