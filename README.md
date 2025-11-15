@@ -1,13 +1,20 @@
 ## llm‑router
 
-A lightweight, extensible gateway that exposes a clean **REST** API for interacting with
-multiple Large Language Model (LLM) providers (OpenAI, Ollama, vLLM, etc.).
-It centralises request validation, prompt management, model configuration and logging,
-allowing your application to talk to any supported LLM through a single, consistent interface.
+**llm‑router** – a lightweight, modular ecosystem for building and interacting with Large Language Model (LLM) services.
 
-This project provides a robust solution for managing and routing requests to various LLM backends.
-It simplifies the integration of LLMs into your applications by offering a unified API
-and advanced features like load balancing strategies.
+- **llm_router_api** provides a unified REST proxy that can route requests to any supported LLM backend (
+  OpenAI‑compatible, Ollama, vLLM, LM Studio, etc.), with built‑in load‑balancing, health checks, streaming responses
+  and optional Prometheus metrics.
+- **llm_router_lib** is a Python SDK that wraps the API with typed request/response models, automatic retries, token
+  handling and a rich exception hierarchy, letting developers focus on application logic rather than raw HTTP calls.
+- **llm_router_web** offers ready‑to‑use Flask UIs – an anonymizer UI that masks sensitive data and a configuration
+  manager for model/user settings – demonstrating how to consume the router from a browser.
+- **Plugins** (e.g., the **fast_masker** plugin) deliver a rule‑based text anonymisation engine with a comprehensive set
+  of Polish‑specific masking rules (emails, IPs, URLs, phone numbers, PESEL, NIP, KRS, REGON, monetary amounts, dates,
+  etc.) and an extensible architecture for custom rules and validators.
+
+All components run on Python 3.10+ using `virtualenv` and require only the listed dependencies, making the suite easy to
+install, extend, and deploy in both development and production environments.
 
 ---
 
