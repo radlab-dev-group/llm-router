@@ -1,8 +1,12 @@
 from pydantic import BaseModel
 
 
-class AnonymizerModel(BaseModel):
+class BaseMaskerModel(BaseModel):
     text: str
 
 
-class FastMaskerModel(AnonymizerModel): ...
+class FastMaskerModel(BaseMaskerModel): ...
+
+
+class GenAIAnonymizerModel(BaseMaskerModel):
+    model_name: str
