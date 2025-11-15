@@ -57,7 +57,6 @@ class Anonymizer:
     """
 
     ALL_ANONYMIZER_RULES = [
-        SimpleSurnameRule(),
         EmailRule(),
         UrlRule(),
         IpRule(),
@@ -72,6 +71,7 @@ class Anonymizer:
         DateWordRule(),
         DateNumberRule(),
         PhoneRule(),
+        # SimpleSurnameRule(),
     ]
 
     def __init__(self, rules: Optional[List[AnonymizeRuleI]] = None):
