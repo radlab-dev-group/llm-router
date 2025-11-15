@@ -1,5 +1,5 @@
 """
-Rule that anonymizes Polish bank account numbers (IBAN format).
+Rule that mask Polish bank account numbers (IBAN format).
 
 Polish IBAN (28 characters, without spaces):
     PL58105012981000009062923173
@@ -17,13 +17,13 @@ mixture of ``X`` and digits), e.g.:
 Only strings that have the exact length of a Polish IBAN (28 alphanumeric
 characters, ignoring whitespace) are matched – short numbers such as
 ``64001000152`` are **not** treated as bank accounts.  The placeholder used
-for anonymisation is ``{{BANK_ACCOUNT}}``.
+for masking is ``{{BANK_ACCOUNT}}``.
 """
 
 import re
 from typing import Match
 
-from llm_router_lib.anonymizer.rules.base_rule import BaseRule
+from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
 
 
 class BankAccountRule(BaseRule):
