@@ -120,25 +120,4 @@ class FastTextMasking(EndpointWithHttpRequestI):
             masked version of the input text.
         """
         options = FastMaskerModel(**params)
-        return {"text": self._do_text_masking(text=options.text)}
-
-    def _do_text_masking(self, text: str) -> str:
-        """
-        Apply the configured masking rules to *text*.
-
-        This thin wrapper exists to keep the public ``prepare_payload`` method
-        focused on request handling while delegating the actual text processing
-        to the :class:`FastMasker` instance created during construction.
-
-        Parameters
-        ----------
-        text : str
-            The raw input string supplied by the client.
-
-        Returns
-        -------
-        str
-            The masked text, with any detected personal data replaced
-            by placeholder tokens defined by the active rule set.
-        """
-        return self._fast_masker.mask_text(text=text)
+        return {"text": self._fast_masker.mask_text(text=options.text)}
