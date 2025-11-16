@@ -124,8 +124,13 @@ def chat_message():
             chat="❌ GenAI selected but no model provided. Please select a model.",
         )
 
+    print("algorithm=", algorithm)
+    print("algorithm=", algorithm)
+    print("algorithm=", algorithm)
+
     payload = {
         "stream": False,
+        "anonymize": algorithm != "no_anno",
         "model": model_name or "google/gemma-3-12b-it",
         "messages": [{"role": "user", "content": user_msg}],
     }

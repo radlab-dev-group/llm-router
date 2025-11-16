@@ -49,7 +49,7 @@ export LLM_ROUTER_REDIS_PORT=${LLM_ROUTER_REDIS_PORT:-6379}
 # ==================================================================================
 # Data protection (additional endpoints will be available)
 export LLM_ROUTER_FORCE_ANONYMISATION=${LLM_ROUTER_FORCE_ANONYMISATION:-0}
-export LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP=${LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP:-0}
+export LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP=${LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP:-1}
 
 
 # ==================================================================================
