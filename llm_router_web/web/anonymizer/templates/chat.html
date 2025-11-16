@@ -9,7 +9,7 @@
           hx-target="#chat-container"
           hx-swap="innerHTML"
           hx-trigger="submit"
-          hx-indicator="#chat-spinner"
+          hx-indicator="#loading-spinner"
           class="form">
 
         <label for="chat-input">Your message:</label>
@@ -35,7 +35,7 @@
             </select>
 
             <button type="submit" class="btn primary">📤 Send</button>
-            <span id="chat-spinner" class="spinner" aria-live="polite"></span>
+            <span id="loading-spinner" class="spinner" aria-live="polite"></span>
         </div>
     </form>
 
