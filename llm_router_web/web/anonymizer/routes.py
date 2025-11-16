@@ -3,15 +3,15 @@
 """
 Flask blueprint for the text anonymization web interface.
 
-Provides two endpoints:
-* GET  /anonymize/ – renders the input form.
-* POST /anonymize/ – sends the supplied text to the external anonymization
-  service and displays the result.
+Provides endpoints for:
+* anonymization form
+* anonymization processing
+* chat UI
+* model catalogue (proxy to the LLM‑Router `/models` endpoint)
 """
 
 import requests
-
-from flask import Blueprint, current_app, request, render_template
+from flask import Blueprint, current_app, request, render_template, jsonify
 
 from .constants import GENAI_MODEL_ANON
 
@@ -26,13 +26,7 @@ anonymize_bp = Blueprint(
 
 @anonymize_bp.route("/", methods=["GET"])
 def show_form():
-    """
-    Render the form (anonymize.html).
-
-    The template receives:
-    * api_host – base URL of the LLM router service.
-    * result   – initially ``None`` (no result to display yet).
-    """
+    """Render the anonymization form."""
     return render_template(
         "anonymize.html",
         api_host=current_app.config["LLM_ROUTER_HOST"],
@@ -42,39 +36,31 @@ def show_form():
 
 @anonymize_bp.route("/", methods=["POST"])
 def process_text():
-    """
-    Send the submitted text to the external anonymization API and render the result.
-    """
+    """Send text to the external anonymization service and render the result."""
     raw_text = request.form.get("text", "")
     if not raw_text:
         return "⚠️ No text provided.", 400
 
-    # New: get selected algorithm (default to fast)
     algorithm = request.form.get("algorithm", "fast")
-
-    # Map algorithm to the corresponding endpoint path
     endpoint_map = {
         "fast": "/api/fast_text_mask",
         "genai": "/api/anonymize_text_genai",
         "priv": "/api/anonymize_text_priv_masker",
     }
 
-    if algorithm == "genai":
-        if not GENAI_MODEL_ANON:
-            return render_template(
-                "anonymize_result_partial.html",
-                api_host=current_app.config["LLM_ROUTER_HOST"],
-                result={"error": "genai model is not set"},
-            )
-    elif algorithm == "priv":
+    if algorithm == "genai" and not GENAI_MODEL_ANON:
+        return render_template(
+            "anonymize_result_partial.html",
+            api_host=current_app.config["LLM_ROUTER_HOST"],
+            result={"error": "genai model is not set"},
+        )
+    if algorithm == "priv":
         return render_template(
             "anonymize_result_partial.html",
             api_host=current_app.config["LLM_ROUTER_HOST"],
             result={"error": "priv_masker is not available yet"},
         )
-    elif algorithm == "fast":
-        pass
-    else:
+    if algorithm not in endpoint_map:
         return render_template(
             "anonymize_result_partial.html",
             api_host=current_app.config["LLM_ROUTER_HOST"],
@@ -84,8 +70,6 @@ def process_text():
         )
 
     endpoint = endpoint_map[algorithm]
-
-    # Build the external service URL (ensure no duplicate slash)
     external_url = f"{current_app.config['LLM_ROUTER_HOST'].rstrip('/')}{endpoint}"
 
     try:
@@ -98,14 +82,12 @@ def process_text():
     except requests.RequestException as exc:
         return f"❌ Connection error with the anonymization service: {exc}", 502
 
-    # The response may be JSON or plain text
     try:
         data = resp.json()
         result = data.get("text", resp.text)
     except ValueError:
         result = resp.text
 
-    # Render the same template, now with the result filled in
     return render_template(
         "anonymize_result_partial.html",
         api_host=current_app.config["LLM_ROUTER_HOST"],
@@ -114,39 +96,41 @@ def process_text():
 
 
 # ----------------------------------------------------------------------
-# NEW: Show the standalone chat page (GET)
+# Chat UI
 # ----------------------------------------------------------------------
 @anonymize_bp.route("/chat", methods=["GET"])
 def show_chat():
-    """
-    Render the dedicated chat page (chat.html).
-    """
-    return render_template("chat.html")
+    """Render the dedicated chat page."""
+    return render_template(
+        "chat.html",
+        api_host=current_app.config["LLM_ROUTER_HOST"],
+    )
 
 
-# ----------------------------------------------------------------------
-# Process a chat message (POST) – OpenAI‑compatible request
-# ----------------------------------------------------------------------
 @anonymize_bp.route("/chat/message", methods=["POST"])
 def chat_message():
-    """
-    Forward a user message to the external LLM‑Router chat endpoint
-    (OpenAI‑compatible) and render the assistant’s reply.
-    """
+    """Forward a chat message to the LLM‑Router and render the reply."""
     user_msg = request.form.get("message", "")
     if not user_msg:
         return "⚠️ No message provided.", 400
 
-    # Build OpenAI‑compatible payload
+    algorithm = request.form.get("algorithm", "fast")
+    model_name = request.form.get("model_name", "").strip()
+
+    # If GenAI was chosen but no model supplied, inform the user.
+    if algorithm == "genai" and not model_name:
+        return render_template(
+            "chat_partial.html",
+            chat="❌ GenAI selected but no model provided. Please select a model.",
+        )
+
     payload = {
-        "model": "google/gemma-3-12b-it",
+        "model": model_name or "google/gemma-3-12b-it",
         "messages": [{"role": "user", "content": user_msg}],
     }
 
-    # LLM‑Router chat endpoint (OpenAI‑compatible)
     external_url = (
-        f"{current_app.config['LLM_ROUTER_HOST'].rstrip('/')}"
-        "/v1/chat/completions"
+        f"{current_app.config['LLM_ROUTER_HOST'].rstrip('/')}" "/v1/chat/completions"
     )
 
     try:
@@ -159,19 +143,49 @@ def chat_message():
     except requests.RequestException as exc:
         return f"❌ Chat service error: {exc}", 502
 
-    # Extract the assistant’s reply (OpenAI response format)
     try:
         data = resp.json()
+        # print("*" * 100)
+        # print(data)
         chat_reply = (
-            data.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
+            data.get("choices", [{}])[0].get("message", {}).get("content", "")
         )
+        # print("chat_reply:", chat_reply)
+        # print("*" * 100)
     except (ValueError, AttributeError):
-        chat_reply = resp.text
+        chat_reply = ""
 
-    # Render a partial that will replace #chat‑container
     return render_template(
         "chat_partial.html",
         chat=chat_reply,
     )
+
+
+# ----------------------------------------------------------------------
+# Model catalogue – proxy to the router’s `/models` endpoint
+# ----------------------------------------------------------------------
+@anonymize_bp.route("/models", methods=["GET"])
+def models():
+    """
+    Retrieve the list of available models from the external LLM‑Router.
+    The frontend calls this endpoint (e.g. via `fetch`) to fill the model dropdown.
+    """
+    external_url = f"{current_app.config['LLM_ROUTER_HOST'].rstrip('/')}" "/models"
+    try:
+        resp = requests.get(external_url, timeout=10)
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        # Return an empty list with a 500 status so the client can handle it.
+        current_app.logger.error(f"Failed to fetch models: {exc}")
+        return jsonify({"models": []}), 500
+
+    try:
+        data = resp.json()
+    except ValueError:
+        # Non‑JSON response – treat as empty list.
+        current_app.logger.error("Models endpoint returned non‑JSON.")
+        return jsonify({"models": []}), 500
+
+    # The router may return either {"data": [...]} or {"models": [...]}
+    models = data.get("models") or data.get("data") or []
+    return jsonify({"models": models})
