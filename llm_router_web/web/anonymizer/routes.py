@@ -13,9 +13,7 @@ import requests
 
 from flask import Blueprint, current_app, request, render_template
 
-
 from .constants import GENAI_MODEL_ANON
-
 
 # Blueprint configuration
 anonymize_bp = Blueprint(
@@ -112,4 +110,68 @@ def process_text():
         "anonymize_result_partial.html",
         api_host=current_app.config["LLM_ROUTER_HOST"],
         result=result,
+    )
+
+
+# ----------------------------------------------------------------------
+# NEW: Show the standalone chat page (GET)
+# ----------------------------------------------------------------------
+@anonymize_bp.route("/chat", methods=["GET"])
+def show_chat():
+    """
+    Render the dedicated chat page (chat.html).
+    """
+    return render_template("chat.html")
+
+
+# ----------------------------------------------------------------------
+# Process a chat message (POST) – OpenAI‑compatible request
+# ----------------------------------------------------------------------
+@anonymize_bp.route("/chat/message", methods=["POST"])
+def chat_message():
+    """
+    Forward a user message to the external LLM‑Router chat endpoint
+    (OpenAI‑compatible) and render the assistant’s reply.
+    """
+    user_msg = request.form.get("message", "")
+    if not user_msg:
+        return "⚠️ No message provided.", 400
+
+    # Build OpenAI‑compatible payload
+    payload = {
+        "model": "google/gemma-3-12b-it",
+        "messages": [{"role": "user", "content": user_msg}],
+    }
+
+    # LLM‑Router chat endpoint (OpenAI‑compatible)
+    external_url = (
+        f"{current_app.config['LLM_ROUTER_HOST'].rstrip('/')}"
+        "/v1/chat/completions"
+    )
+
+    try:
+        resp = requests.post(
+            external_url,
+            json=payload,
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as exc:
+        return f"❌ Chat service error: {exc}", 502
+
+    # Extract the assistant’s reply (OpenAI response format)
+    try:
+        data = resp.json()
+        chat_reply = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
+    except (ValueError, AttributeError):
+        chat_reply = resp.text
+
+    # Render a partial that will replace #chat‑container
+    return render_template(
+        "chat_partial.html",
+        chat=chat_reply,
     )

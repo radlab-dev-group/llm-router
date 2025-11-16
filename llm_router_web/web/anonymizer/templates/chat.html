@@ -1,0 +1,29 @@
+{% extends "base_anonymizer.html" %}
+{% block content %}
+<div class="card">
+    <h2>💬 LLM‑Router Chat</h2>
+
+    <!-- Chat message form -->
+    <form id="chat-form"
+          hx-post="{{ url_for('anonymize_web.chat_message') }}"
+          hx-target="#chat-container"
+          hx-swap="innerHTML"
+          hx-trigger="submit"
+          hx-indicator="#chat-spinner"
+          class="form">
+
+        <label for="chat-input">Your message:</label>
+        <textarea id="chat-input" name="message" rows="3"
+                  placeholder="Type a message…" required
+                  class="w100"></textarea>
+
+        <div class="form-actions" style="display:flex; align-items:center; gap:var(--space-2); margin-top:1rem;">
+            <button type="submit" class="btn primary">📤 Send</button>
+            <span id="chat-spinner" class="spinner" aria-live="polite"></span>
+        </div>
+    </form>
+
+    <!-- Container where the assistant’s reply will appear -->
+    <div id="chat-container"></div>
+</div>
+{% endblock %}
