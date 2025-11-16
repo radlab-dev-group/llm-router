@@ -29,7 +29,8 @@
     <nav class="sidebar">
         <a href="{{ url_for('anonymize_web.show_form') }}"
            class="{% if request.endpoint == 'anonymize_web.show_form' %}active{% endif %}">Anonymize</a>
-        <!-- Future menu items can be added here -->
+        <a href="{{ url_for('anonymize_web.show_chat') }}"
+           class="{% if request.endpoint == 'anonymize_web.show_chat' %}active{% endif %}">Chat</a>
     </nav>
 
     <main class="container">
