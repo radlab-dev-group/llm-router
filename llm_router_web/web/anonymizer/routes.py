@@ -125,6 +125,7 @@ def chat_message():
         )
 
     payload = {
+        "stream": False,
         "model": model_name or "google/gemma-3-12b-it",
         "messages": [{"role": "user", "content": user_msg}],
     }
@@ -145,13 +146,11 @@ def chat_message():
 
     try:
         data = resp.json()
-        # print("*" * 100)
-        # print(data)
         chat_reply = (
             data.get("choices", [{}])[0].get("message", {}).get("content", "")
         )
-        # print("chat_reply:", chat_reply)
-        # print("*" * 100)
+        if not chat_reply:
+            chat_reply = data.get("message", {}).get("content", "")
     except (ValueError, AttributeError):
         chat_reply = ""
 
