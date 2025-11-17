@@ -7,18 +7,30 @@ The module defines a base chat endpoint (:class:`OpenAIChat`) and two
 derived classes for completions and model listing.
 """
 
+import abc
 import datetime
+
 from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_api.core.decorators import EP
+from llm_router_api.core.api_types.openai import OpenAIConverters
 from llm_router_api.base.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.endpoints.passthrough import PassthroughI
 
 
-class OpenAICompletionHandler(PassthroughI):
+class OpenAIResponseHandler(PassthroughI, abc.ABC):
+    @staticmethod
+    def prepare_response_function(response):
+        response = response.json()
+        if "message" in response:
+            return OpenAIConverters.FromOllama.convert(response=response)
+        return response
+
+
+class OpenAICompletionHandler(OpenAIResponseHandler):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/chat/completions`` route of an OpenAI‑compatible service.
@@ -51,8 +63,10 @@ class OpenAICompletionHandler(PassthroughI):
             method="POST",
         )
 
+        self._prepare_response_function = self.prepare_response_function
 
-class OpenAICompletionHandlerWOApi(PassthroughI):
+
+class OpenAICompletionHandlerWOApi(OpenAIResponseHandler):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/chat/completions`` route of an OpenAI‑compatible service.
@@ -84,6 +98,8 @@ class OpenAICompletionHandlerWOApi(PassthroughI):
             direct_return=direct_return,
             method="POST",
         )
+
+        self._prepare_response_function = self.prepare_response_function
 
 
 class OpenAIModelsHandler(PassthroughI):
