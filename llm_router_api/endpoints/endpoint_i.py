@@ -865,6 +865,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         # Remember general options before clear payload
         _anon_payload = FORCE_ANONYMISATION or payload.pop("anonymize", False)
+        _anonymize_algorithm = payload.pop("anonymize_algorithm", None)
+        _model_name_anonymize = payload.pop("model_name_anonymize", None)
 
         payload = self._clear_payload(payload=payload)
         if not _anon_payload:
@@ -898,7 +900,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             payload.pop(k, "")
 
         # If stream param is not given, then set as False
-        payload["stream"] =  payload.get("stream", False)
+        payload["stream"] = payload.get("stream", False)
         return payload
 
     def _anonymize_payload(self, payload: Dict | str | List | Any) -> Dict[str, Any]:
