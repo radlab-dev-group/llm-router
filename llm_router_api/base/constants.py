@@ -52,6 +52,11 @@ DEFAULT_API_PREFIX = os.environ.get(
 # Run service as a proxy only
 SERVICE_AS_PROXY = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM")
 
+# If set to True, then each user request will be anonymised before provider call
+FORCE_ANONYMISATION = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_ANONYMISATION"
+)
+
 # Type of server, default is flask {flask, gunicorn, waitress}
 SERVER_TYPE = (
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_TYPE", "flask")
@@ -110,24 +115,53 @@ REDIS_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_HOST", "").st
 # Strategy for load balancing when a multi-provider model is available
 REDIS_PORT = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PORT", 6379))
 
+# If env is enabled, then genai-based anonymization endpoint will be available
+ENABLE_GENAI_ANONYMIZE_TEXT_EP = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}ENABLE_GENAI_ANONYMIZE_TEXT_EP"
+)
 
-def __verify_is_able_to_init():
-    if not SERVICE_AS_PROXY:
-        raise Exception(
-            f"Currently llm-proxy-api only supports service-as-proxy mode!\n"
-            f"Environment: {_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM "
-            f"must be set as True/1/yes/t\n\n"
-            ">> LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api\n\n"
-        )
+# Default masking strategy in case when FORCE_ANONYMISATION
+DEFAULT_MASKING_STRATEGY = "fast_masking"
+# TODO: Should be set used env value
+#  ==> DEFAULT_MASKING_STRATEGY:
+#       fast_masking -> <FALLBACK IG NO DEFAULT IS SET>
+#       genai_masking -> ENABLE_GENAI_ANONYMIZE_TEXT_EP
 
-
-def __verify_correctness():
-    if SERVER_BALANCE_STRATEGY not in POSSIBLE_BALANCE_STRATEGIES:
-        raise Exception(
-            f"{SERVER_BALANCE_STRATEGY} is not a valid strategy for balancing.\n"
-            f"Available strategies: {POSSIBLE_BALANCE_STRATEGIES}"
-        )
+# =============================================================================
 
 
-__verify_is_able_to_init()
-__verify_correctness()
+class _StartAppVerificator:
+    @staticmethod
+    def __verify_is_able_to_init():
+        if not SERVICE_AS_PROXY:
+            raise Exception(
+                f"Currently llm-proxy-api only supports service-as-proxy mode!\n"
+                f"Environment: {_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM "
+                f"must be set as True/1/yes/t\n\n"
+                ">> LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api\n\n"
+            )
+
+    @staticmethod
+    def __verify_balancing_strategy():
+        if SERVER_BALANCE_STRATEGY not in POSSIBLE_BALANCE_STRATEGIES:
+            raise Exception(
+                f"{SERVER_BALANCE_STRATEGY} is not a valid strategy for balancing.\n"
+                f"Available strategies: {POSSIBLE_BALANCE_STRATEGIES}"
+            )
+
+    @staticmethod
+    def __verify_default_masking_strategy():
+        if FORCE_ANONYMISATION:
+            _POSSIBLE_STRATEGIES = ["fast_masking", "genai_masking"]
+            if DEFAULT_MASKING_STRATEGY not in _POSSIBLE_STRATEGIES:
+                raise Exception(
+                    f"Default masking strategy may be one of: {_POSSIBLE_STRATEGIES}"
+                )
+
+    def check_if_start_is_possible(self):
+        self.__verify_is_able_to_init()
+        self.__verify_balancing_strategy()
+        self.__verify_default_masking_strategy()
+
+
+_StartAppVerificator().check_if_start_is_possible()

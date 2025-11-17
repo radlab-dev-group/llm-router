@@ -69,6 +69,7 @@ Configuration is driven primarily by environment variables and a JSON model‑co
 | `LLM_ROUTER_SERVER_WORKERS_COUNT`                 | Number of workers (Gunicorn/Waitress).                                                   | `2`                                    |
 | `LLM_ROUTER_SERVER_THREADS_COUNT`                 | Number of threads per worker.                                                            | `8`                                    |
 | `LLM_ROUTER_SERVER_WORKER_CLASS`                  | Gunicorn worker class (e.g., `gevent`).                                                  | *empty*                                |
+| `LLM_ROUTER_FORCE_ANONYMISATION`                  | Each request payload will be fully anonymised.                                           | `False`                                |
 
 ### Model Configuration
 

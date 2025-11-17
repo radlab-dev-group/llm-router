@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pl" x-data>
+<head>
+    <meta charset="UTF-8"/>
+    <title>{{ title or "LLM-Router Anonymizer" }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <!-- Common styles (independent of theme) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Theme‑specific stylesheet – will be swapped by the toggle button -->
+    <link id="theme-link" rel="stylesheet"
+          href="{{ url_for('static', filename='style-dark.css') }}">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+<body>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+{% if messages %}
+<div class="flash-container">
+    {% for category, message in messages %}
+    <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endwith %}
+
+<!-- Layout with sidebar -->
+<div class="layout">
+    <nav class="sidebar">
+        <a href="{{ url_for('anonymize_web.show_form') }}"
+           class="{% if request.endpoint == 'anonymize_web.show_form' %}active{% endif %}">Anonymize</a>
+        <a href="{{ url_for('anonymize_web.show_chat') }}"
+           class="{% if request.endpoint == 'anonymize_web.show_chat' %}active{% endif %}">Chat</a>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+
+</body>
+</html>

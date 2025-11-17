@@ -31,11 +31,20 @@ setup(
     description="LLM Router – core library with optional API and metrics",
     packages=find_packages(
         where=".",
-        include=["llm_router_lib*", "llm_router_api*"],
+        include=[
+            "llm_router_lib*",
+            "llm_router_api*",
+            "llm_router_plugins*",
+            "llm_router_cli*",
+        ],
         exclude=("tests", "docs"),
     ),
     python_requires=">=3.10",
     install_requires=requirements_lib,
     extras_require=extras,
-    entry_points={},
+    entry_points={
+        "console_scripts": {
+            "llm-router-fast-masker=llm_router_cli.fast_masker:main",
+        }
+    },
 )

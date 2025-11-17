@@ -1,0 +1,94 @@
+{% extends "base_anonymizer.html" %}
+{% block content %}
+<div class="card">
+    <h2>💬 LLM‑Router Chat</h2>
+
+    <!-- Chat message form -->
+    <form id="chat-form"
+          hx-post="{{ url_for('anonymize_web.chat_message') }}"
+          hx-target="#chat-container"
+          hx-swap="innerHTML"
+          hx-trigger="submit"
+          hx-indicator="#loading-spinner"
+          class="form">
+
+        <label for="chat-input">Your message:</label>
+        <textarea id="chat-input" name="message" rows="3"
+                  placeholder="Type a message…" required
+                  class="w100"></textarea>
+
+        <!-- New: algorithm selector (same as on the anonymize page) -->
+        <div class="form-actions" style="display:flex; align-items:center; gap:var(--space-2); margin-top:1rem;">
+            <select id="algorithm-select" name="algorithm"
+                    class="btn"
+                    style="width:auto;">
+                <option value="fast" selected>Fast Masking</option>
+                <option value="genai">GenAI Anonymisation</option>
+                <option value="priv">Priv Masker</option>
+                <option value="no_anno">Dont anonymize</option>
+            </select>
+
+            <!-- New: model selector – populated from our own `/anonymize/models` endpoint -->
+            <select id="model-select" name="model_name"
+                    class="btn"
+                    style="width:auto;">
+                <option value="" disabled selected>Loading models…</option>
+            </select>
+
+            <button type="submit" class="btn primary">📤 Send</button>
+            <span id="loading-spinner" class="spinner" aria-live="polite"></span>
+        </div>
+    </form>
+
+    <!-- Container where the assistant’s reply will appear -->
+    <div id="chat-container"></div>
+</div>
+
+<script>
+    // ------------------------------------------------------------------
+    // Load the list of models from our Flask endpoint and fill the dropdown.
+    // ------------------------------------------------------------------
+    async function loadModels() {
+        const modelsUrl = "{{ url_for('anonymize_web.models') }}";
+
+        try {
+            const response = await fetch(modelsUrl);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+
+            const modelSelect = document.getElementById('model-select');
+            modelSelect.innerHTML = '';   // clear placeholder
+
+            const models = data.models || [];
+
+            if (models.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = "";
+                opt.textContent = "No models available";
+                opt.disabled = true;
+                modelSelect.appendChild(opt);
+                return;
+            }
+
+            models.forEach(m => {
+                // Router may return a string or an object with `id`/`name`
+                const name = typeof m === 'string' ? m : (m.id || m.name);
+                const opt = document.createElement('option');
+                opt.value = name;
+                opt.textContent = name;
+                modelSelect.appendChild(opt);
+            });
+
+            // Select the first model by default
+            if (modelSelect.options.length) modelSelect.selectedIndex = 0;
+        } catch (err) {
+            console.error('Failed to load models:', err);
+            const modelSelect = document.getElementById('model-select');
+            modelSelect.innerHTML = '<option value="" disabled selected>Error loading models</option>';
+        }
+    }
+
+    // Load models when the page is ready
+    document.addEventListener('DOMContentLoaded', loadModels);
+</script>
+{% endblock %}
