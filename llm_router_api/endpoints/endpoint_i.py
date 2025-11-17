@@ -892,8 +892,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         # Previously cleared arguments:
         #   * anonymize [_prepare_payload_at_beginning]
+        #   * anonymize_algorithm [_prepare_payload_at_beginning]
+        #   * model_name_anonymize [_prepare_payload_at_beginning]
         for k in ["response_time"]:
             payload.pop(k, "")
+
+        # If stream param is not given, then set as False
+        payload["stream"] =  payload.get("stream", False)
         return payload
 
     def _anonymize_payload(self, payload: Dict | str | List | Any) -> Dict[str, Any]:
