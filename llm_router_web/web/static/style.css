@@ -977,3 +977,122 @@ summary.clickable:hover {
         animation: none !important;
     }
 }
+
+/* =================================================== */
+/* UI components used in the anonymizer templates  */
+/* =================================================== */
+.tag-highlight {
+    background-color: #ffeb3b;
+    color: #000;
+    font-weight: bold;
+}
+
+/* Card container – a simple panel with subtle shadow and padding */
+.card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
+    box-shadow: var(--shadow);
+    margin-bottom: var(--space-4);
+}
+
+/* Algorithm selector fieldset – keep the same vertical spacing as other form groups */
+.algorithm-selector {
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+/* Primary button variant (used together with .btn) */
+.btn.primary {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Hidden utility class – used to hide elements like the spinner */
+.hidden {
+    display: none !important;
+}
+
+/* Simple spinner  */
+.spinner {
+    display: none !important;
+    width: 1rem;
+    height: 1rem;
+    margin-left: var(--space-2);
+    vertical-align: middle;
+    border: 2px solid var(--muted);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+#loading-spinner.htmx-request {
+    display: inline-block !important;
+}
+
+/* Spinner animation */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Muted text – already defined as .muted, kept here for reference */
+.muted {
+    color: var(--muted);
+}
+
+/* Full‑width utility – already exists as .w100, kept for reference */
+.w100 {
+    width: 100%;
+}
+
+
+/* =================================================== */
+/* ----- Layout ----- */
+/* =================================================== */
+.layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ----- Sidebar menu ----- */
+.sidebar {
+    width: 200px;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    padding: var(--space-4);
+    box-sizing: border-box;
+}
+
+/* Menu links */
+.sidebar a {
+    display: block;
+    margin-bottom: var(--space-2);
+    padding: var(--space-2);
+    color: var(--fg);
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    transition: background .15s ease, color .15s ease;
+}
+
+/* Hover state */
+.sidebar a:hover {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Active state */
+.sidebar a.active {
+    background: var(--accent);
+    color: #fff;
+}
+
+/* Adjust the main container when inside the flex layout */
+.layout .container {
+    flex: 1;
+    margin: 0;
+}

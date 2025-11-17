@@ -1,0 +1,8 @@
+<div class="card" style="margin-top:1rem;">
+    <h3>💬 Chat</h3>
+    {% if chat %}
+    <pre class="w100" style="white-space:pre-wrap;">{{ chat }}</pre>
+    {% else %}
+    <p class="muted">Enter a message and press Send.</p>
+    {% endif %}
+</div>

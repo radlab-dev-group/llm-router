@@ -1,9 +1,13 @@
-import json
 import os
-from datetime import datetime
-from functools import wraps
-
+import json
 import requests
+
+from functools import wraps
+from sqlalchemy import func
+from datetime import datetime
+
+from werkzeug.security import generate_password_hash, check_password_hash
+
 from flask import (
     Blueprint,
     render_template,
@@ -15,9 +19,6 @@ from flask import (
     abort,
     session,
 )
-from sqlalchemy import func
-
-from werkzeug.security import generate_password_hash, check_password_hash
 
 from .models import (
     db,
@@ -33,8 +34,8 @@ from .utils import (
     to_json,
     snapshot_version,
     export_config_to_file,
-    VALID_FAMILIES,
 )
+from .constants import VALID_FAMILIES
 
 bp = Blueprint(
     "web",

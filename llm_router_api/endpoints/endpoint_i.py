@@ -27,6 +27,9 @@ from typing import Optional, Dict, Any, Iterator, Iterable, List
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+
+from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
+
 from llm_router_lib.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
@@ -37,11 +40,12 @@ from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     EXTERNAL_API_TIMEOUT,
-    DEFAULT_API_PREFIX,
+    FORCE_ANONYMISATION,
 )
-from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
-from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.endpoints.httprequest import HttpRequestExecutor
+
+from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 
 
 # ----------------------------------------------------------------------
@@ -174,6 +178,11 @@ class EndpointI(abc.ABC):
 
         # marker when ep stared
         self._start_time = None
+
+        # Api anonymizer
+        self._fast_masker: Optional[FastMasker] = None
+        if FORCE_ANONYMISATION:
+            self._prepare_anonymizer()
 
     # ------------------------------------------------------------------
     # Public read‑only properties
@@ -339,6 +348,22 @@ class EndpointI(abc.ABC):
             assistant_response = choices[0].get("message", {}).get("content")
 
         return j_response, choices, assistant_response
+
+    def _prepare_anonymizer(self):
+        """
+        Actually as default FAST_MASKER is used.
+
+        TODO: In the future:
+        Check what type of anonymization should be used:
+         - FAST_MASKER
+         - PRIV_MASKER
+         - GENAI_MASKER
+        :return:
+        """
+        if self._fast_masker:
+            return
+        self._fast_masker = FastMasker()
+        self.logger.debug("llm-router is running in force anonymization mode")
 
     # ------------------------------------------------------------------
     # Parameter validation helpers
@@ -533,6 +558,23 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     """
 
     class RetryResponse:
+        """
+        Configuration for automatic retry handling when an outbound HTTP
+        request fails with a transient error.
+
+        Attributes
+        ----------
+        RETRY_WHEN_STATUS : List[int]
+            HTTP status codes that trigger a retry.  Includes client and
+            server error codes that are typically recoverable (e.g. 429,
+            503, 504, 500).
+        TIME_TO_WAIT_SEC : float
+            Number of seconds to wait between successive retry attempts.
+        MAX_RECONNECTIONS : int
+            Upper bound on how many retry attempts will be made before giving
+            up.
+        """
+
         # Code - definition
         #  * 400 - Raised by internal httprequest
         #  * 404 - Not Found
@@ -608,6 +650,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
     @property
     def timeout(self):
+        """
+        Return the request timeout (in seconds) configured for outbound
+        HTTP calls made by this endpoint.
+
+        The value is used by the internal :class:`HttpRequestExecutor` when
+        performing ``GET``/``POST`` requests to external LLM services.
+        """
         return self._timeout
 
     # ------------------------------------------------------------------
@@ -658,10 +707,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         api_model_provider = None
         clear_chosen_provider_finally = False
 
-        self._start_time = time.time()
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+
+        self._start_time = time.time()
         try:
             params = self.prepare_payload(params)
+            params = self._prepare_payload_at_beginning(payload=params)
+
             map_prompt = None
             prompt_str_force = None
             prompt_str_postfix = None
@@ -669,13 +721,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 map_prompt = params.pop("map_prompt", {})
                 prompt_str_force = params.pop("prompt_str_force", "")
                 prompt_str_postfix = params.pop("prompt_str_postfix", "")
-                params.pop("response_time", "")
 
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
-            if type(params) is dict:
-                if not params.get("status", True):
-                    return params
+            # Testing: possible part to remove
+            # if type(params) is dict:
+            #     if not params.get("status", True):
+            #         return params
 
             if self.direct_return:
                 return params
@@ -789,6 +841,89 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     options=options,
                 )
 
+    def _prepare_payload_at_beginning(
+        self, payload: Dict[str, Any] | Any
+    ) -> Dict[str, Any] | Any:
+        """
+        Perform early preprocessing of the incoming payload before the main
+        business logic runs.
+
+        The routine extracts a potential ``anonymize`` flag (or falls back to
+        the global ``FORCE_ANONYMISATION`` setting), removes housekeeping
+        fields such as ``response_time``, and optionally runs
+        the method to clean payload.
+
+        Parameters
+        ----------
+        payload : Union[Dict[Any, Any], Any]
+            The raw request payload as received from the Flask layer.
+
+        Returns
+        -------
+        Union[Dict[Any, Any], Any]
+            The possibly anonymized payload ready for further processing.
+        """
+        # Remember general options before clear payload
+        _anon_payload = FORCE_ANONYMISATION or payload.pop("anonymize", False)
+        _anonymize_algorithm = payload.pop("anonymize_algorithm", None)
+        _model_name_anonymize = payload.pop("model_name_anonymize", None)
+
+        payload = self._clear_payload(payload=payload)
+        if not _anon_payload:
+            return payload
+        return self._anonymize_payload(payload=payload)
+
+    @staticmethod
+    def _clear_payload(payload: Dict[str, Any]):
+        """
+        Remove internal‑only keys from the payload before it is sent to the
+        downstream model.
+
+        Currently the method strips the ``response_time`` key, which is used
+        internally for logging and should not be forwarded.
+
+        Parameters
+        ----------
+        payload : Dict[str, Any]
+            The payload dictionary possibly containing internal keys.
+
+        Returns
+        -------
+        Dict[str, Any]
+            The payload with internal keys removed.
+        """
+        # Previously cleared arguments:
+        #   * anonymize [_prepare_payload_at_beginning]
+        #   * anonymize_algorithm [_prepare_payload_at_beginning]
+        #   * model_name_anonymize [_prepare_payload_at_beginning]
+        for k in ["response_time"]:
+            payload.pop(k, "")
+
+        # If stream param is not given, then set as False
+        payload["stream"] = payload.get("stream", False)
+        return payload
+
+    def _anonymize_payload(self, payload: Dict | str | List | Any) -> Dict[str, Any]:
+        """
+        Apply the configured :class:`Anonymizer` to the supplied payload.
+
+        The method lazily creates an :class:`Anonymizer` instance on first
+        use and then forwards the payload to its ``anonymize_payload`` method.
+
+        Parameters
+        ----------
+        payload : Union[Dict, str, List, Any]
+            The data to be anonymized.
+
+        Returns
+        -------
+        Dict[Any, Any]
+            The anonymized representation of *payload*.
+        """
+        self._prepare_anonymizer()
+        _p = self._fast_masker.mask_payload_fast(payload=payload)
+        return _p
+
     def _return_response_or_rerun(
         self,
         api_model_provider,
@@ -799,6 +934,40 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         options: Dict,
         reconnect_number: int,
     ):
+        """
+        Send the prepared request to the external service and optionally retry
+        on transient failures.
+
+        The method delegates the actual HTTP call to
+        :meth:`_http_executor.call_http_request`.  If the response status code
+        matches one of the values defined in :class:`RetryResponse`, the call
+        is retried up to ``MAX_RECONNECTIONS`` times with a short pause
+        between attempts.
+
+        Parameters
+        ----------
+        api_model_provider :
+            The :class:`ApiModel` instance describing the target external
+            service.
+        ep_url : str
+            Fully resolved endpoint URL to which the request will be sent.
+        prompt_str : str
+            Prompt text that may be injected into the request body.
+        orig_params : dict
+            The original request parameters (kept for possible retry).
+        params : dict
+            The processed parameters that will be sent to the external service.
+        options : dict
+            Additional options that may influence request handling.
+        reconnect_number : int
+            Current retry attempt counter.
+
+        Returns
+        -------
+        dict | requests.Response | None
+            The response from the external service, possibly after retries,
+            or ``None`` if all attempts fail.
+        """
         response = None
         status_code_force = None
         try:
@@ -811,6 +980,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
         except Exception as e:
             self.logger.error(e)
+            self.logger.error(response.text)
             status_code_force = 500
 
         self.unset_model(
@@ -831,7 +1001,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if status_code and status_code in self.RetryResponse.RETRY_WHEN_STATUS:
             self.logger.warning(
                 f" Provider {api_model_provider.id} responded with "
-                f"{status_code}. Retrying {reconnect_number + 1}/"
+                f"{status_code}. Retrying {reconnect_number}/"
                 f"{self.RetryResponse.MAX_RECONNECTIONS}."
             )
 

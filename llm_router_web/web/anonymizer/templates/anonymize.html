@@ -1,0 +1,65 @@
+{% extends "base_anonymizer.html" %}
+{% block content %}
+<div class="card">
+    <h2>🔒 Text Anonymization</h2>
+
+    <form id="anonymize-form"
+          hx-post="{{ url_for('anonymize_web.process_text') }}"
+          hx-target="#result-container"
+          hx-swap="innerHTML"
+          hx-trigger="submit"
+          hx-indicator="#loading-spinner"
+          class="form">
+
+        <label for="input-text">Paste text to anonymize:</label>
+        <textarea id="input-text" name="text" rows="6"
+                  placeholder="Enter or paste text…" required
+                  class="w100"></textarea>
+
+        <div class="form-actions" style="display:flex; align-items:center; gap:var(--space-2); margin-top:1rem;">
+            <select id="algorithm-select" name="algorithm"
+                    class="btn"
+                    style="width:auto;">
+                <option value="fast" selected>Fast Masking</option>
+                <option value="genai">GenAI Anonymisation</option>
+                <option value="priv">Priv Masker</option>
+            </select>
+
+            <button type="submit" class="btn primary">🚀 Anonymize</button>
+            <span id="loading-spinner" class="spinner" aria-live="polite"></span>
+        </div>
+
+        <!-- 1️⃣  Fixed result panel (original placeholder) -->
+        <div id="result-container" class="card" style="margin-top: 1rem;">
+            <h3>✅ Anonymized Text</h3>
+            <p class="muted">The result will appear after anonymization.</p>
+        </div>
+
+        {% raw %}
+        <script>
+            // --------------------------------------------------------
+            // Highlight {{TAG}} occurrences in the returned text
+            // --------------------------------------------------------
+            function highlightTags() {
+                const pre = document.getElementById('anonymized-result');
+                if (!pre) return;               // nie ma wyniku – nic nie robimy
+                const highlighted = pre.innerHTML.replace(
+                    /(\{\{[^}]+\}\})/g,
+                    '<span class="tag-highlight">$1</span>'
+                );
+                pre.innerHTML = highlighted;
+            }
+
+            // --------------------------------------------------------
+            // Run highlightTags() after htmx swaps the result panel
+            // --------------------------------------------------------
+            document.body.addEventListener('htmx:afterSwap', function (e) {
+                // The result panel is rendered into #result-container
+                if (e.detail && e.detail.target && e.detail.target.id === 'result-container') {
+                    highlightTags();
+                }
+            });
+        </script>
+        {% endraw %}
+
+        {% endblock %}

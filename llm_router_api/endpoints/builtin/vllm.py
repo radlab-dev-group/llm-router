@@ -1,13 +1,13 @@
-from typing import Optional, Dict, Any, List
+from typing import Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_api.base.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
-from llm_router_api.endpoints.passthrough import PassthroughI
+from llm_router_api.endpoints.builtin.openai import OpenAIResponseHandler
 
 
-class VllmChatCompletion(PassthroughI):
+class VllmChatCompletion(OpenAIResponseHandler):
     REQUIRED_ARGS = None
     OPTIONAL_ARGS = None
     SYSTEM_PROMPT_NAME = None
@@ -53,3 +53,5 @@ class VllmChatCompletion(PassthroughI):
             dont_add_api_prefix=dont_add_api_prefix,
             direct_return=False,
         )
+
+        self._prepare_response_function = self.prepare_response_function
