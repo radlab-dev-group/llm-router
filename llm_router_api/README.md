@@ -140,9 +140,9 @@ All routes are prefixed by `LLM_ROUTER_EP_PREFIX` (default `/api`).
 | Method | Path                                     | Description                                                   |
 |--------|------------------------------------------|---------------------------------------------------------------|
 | `GET`  | `/api/ping`                              | Health‑check, returns `"pong"`                                |
-| `GET`  | `/api/ollama/`                           | Ollama health endpoint (`"Ollama is running"`).               |
-| `GET`  | `/api/ollama/tags`                       | List available Ollama model tags.                             |
-| `GET`  | `/api/openai/models`                     | List OpenAI‑compatible model tags.                            |
+| `GET`  | `/`                                      | Ollama health endpoint (`"Ollama is running"`).               |
+| `GET`  | `/tags`                                  | List available Ollama model tags.                             |
+| `GET`  | `/models`                                | List OpenAI‑compatible model tags.                            |
 | `POST` | `/api/conversation_with_model`           | Chat endpoint (builtin).                                      |
 | `POST` | `/api/extended_conversation_with_model`  | Chat with extra fields (builtin).                             |
 | `POST` | `/api/generate_questions`                | Generate questions from texts (builtin).                      |
