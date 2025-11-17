@@ -1,10 +1,10 @@
-from pydantic import BaseModel
 from typing import List, Dict, Any
 
 from llm_router_api.base.constants_base import DEFAULT_EP_LANGUAGE
+from llm_router_lib.data_models.base_model import BaseModelOptions
 
 
-class OpenAIChatModel(BaseModel):
+class OpenAIChatModel(BaseModelOptions):
     model: str
     messages: List[Dict[str, Any]]
 
