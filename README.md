@@ -1,10 +1,10 @@
 ## llm‑router
 
-**LLM Router** is a service that can be deployed on‑premises or in the cloud. 
-It adds a layer between any application and the LLM provider. In real time it controls traffic, 
-distributes a load among providers of a specific LLM, and enables analysis of outgoing requests 
-from a security perspective (masking, anonymization, prohibited content). 
-It is an open‑source solution (Apache 2.0) that can be launched instantly by running 
+**LLM Router** is a service that can be deployed on‑premises or in the cloud.
+It adds a layer between any application and the LLM provider. In real time it controls traffic,
+distributes a load among providers of a specific LLM, and enables analysis of outgoing requests
+from a security perspective (masking, anonymization, prohibited content).
+It is an open‑source solution (Apache 2.0) that can be launched instantly by running
 a ready‑made image in your own infrastructure.
 
 - **llm_router_api** provides a unified REST proxy that can route requests to any supported LLM backend (
@@ -14,9 +14,9 @@ a ready‑made image in your own infrastructure.
   handling and a rich exception hierarchy, letting developers focus on application logic rather than raw HTTP calls.
 - **llm_router_web** offers ready‑to‑use Flask UIs – an anonymizer UI that masks sensitive data and a configuration
   manager for model/user settings – demonstrating how to consume the router from a browser.
-- **Plugins** (e.g., the **fast_masker** plugin) deliver a rule‑based text anonymisation engine with a comprehensive set
-  of Polish‑specific masking rules (emails, IPs, URLs, phone numbers, PESEL, NIP, KRS, REGON, monetary amounts, dates,
-  etc.) and an extensible architecture for custom rules and validators.
+- **llm_router_plugins** (e.g., the **fast_masker** plugin) deliver a rule‑based text anonymisation engine with
+  a comprehensive set of Polish‑specific masking rules (emails, IPs, URLs, phone numbers, PESEL, NIP, KRS, REGON,
+  monetary amounts, dates, etc.) and an extensible architecture for custom rules and validators.
 
 All components run on Python 3.10+ using `virtualenv` and require only the listed dependencies, making the suite easy to
 install, extend, and deploy in both development and production environments.
@@ -149,30 +149,30 @@ docker run \
 
 ### 3️⃣ Optional configuration (via environment)
 
-| Variable                                    | Description                                                                                                                                                                    | Default                                |
-|---------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| `LLM_ROUTER_PROMPTS_DIR`                    | Directory containing predefined system prompts.                                                                                                                                | `resources/prompts`                    |
-| `LLM_ROUTER_MODELS_CONFIG`                  | Path to the models configuration JSON file.                                                                                                                                    | `resources/configs/models-config.json` |
-| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`            | Default language for endpoint prompts.                                                                                                                                         | `pl`                                   |
-| `LLM_ROUTER_TIMEOUT`                        | Timeout (seconds) for llm-router API calls.                                                                                                                                    | `0`                                    |
-| `LLM_ROUTER_EXTERNAL_TIMEOUT`               | Timeout (seconds) for external model API calls.                                                                                                                                | `300`                                  |
-| `LLM_ROUTER_LOG_FILENAME`                   | Name of the log file.                                                                                                                                                          | `llm-router.log`                       |
-| `LLM_ROUTER_LOG_LEVEL`                      | Logging level (e.g., INFO, DEBUG).                                                                                                                                             | `INFO`                                 |
-| `LLM_ROUTER_EP_PREFIX`                      | Prefix for all API endpoints.                                                                                                                                                  | `/api`                                 |
-| `LLM_ROUTER_MINIMUM`                        | Run service in proxy‑only mode (boolean).                                                                                                                                      | `False`                                |
-| `LLM_ROUTER_IN_DEBUG`                       | Run server in debug mode (boolean).                                                                                                                                            | `False`                                |
-| `LLM_ROUTER_BALANCE_STRATEGY`               | Strategy used to balance routing between LLM providers. Allowed values are `balanced`, `weighted`, `dynamic_weighted` and `first_available` as defined in `constants_base.py`. | `balanced`                             |
-| `LLM_ROUTER_REDIS_HOST`                     | Redis host for load‑balancing when a multi‑provider model is available.                                                                                                        | `<empty string>`                       |
-| `LLM_ROUTER_REDIS_PORT`                     | Redis port for load‑balancing when a multi‑provider model is available.                                                                                                        | `6379`                                 |
-| `LLM_ROUTER_SERVER_TYPE`                    | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                                                                                                | `flask`                                |
-| `LLM_ROUTER_SERVER_PORT`                    | Port on which the server listens.                                                                                                                                              | `8080`                                 |
-| `LLM_ROUTER_SERVER_HOST`                    | Host address for the server.                                                                                                                                                   | `0.0.0.0`                              |
-| `LLM_ROUTER_SERVER_WORKERS_COUNT`           | Number of workers (used in case when the selected server type supports multiworkers)                                                                                           | `2`                                    |
-| `LLM_ROUTER_SERVER_THREADS_COUNT`           | Number of workers threads (used in case when the selected server type supports multithreading)                                                                                 | `8`                                    |
-| `LLM_ROUTER_SERVER_WORKER_CLASS`            | If server accepts workers type, its able to set worker class by this environment.                                                                                              | `None`                                 |
-| `LLM_ROUTER_USE_PROMETHEUS`                 | Enable Prometheus metrics collection.** When set to `True`, the router registers a `/metrics` endpoint exposing Prometheus‑compatible metrics for monitoring.                  | `False`                                |
-| `LLM_ROUTER_FORCE_ANONYMISATION`            | Enable whole payload anonymisation. Each key and value is aut-anonymized before sending to model provider.                                                                     | `False`                                |
-| `LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP` | Enable builtin endpoint `/api/anonymize_text_genai` which uses genai to anonymize text                                                                                         | `False`                                |
+| Variable                                    | Description                                                                                                                                                                                                    | Default                                |
+|---------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `LLM_ROUTER_PROMPTS_DIR`                    | Directory containing predefined system prompts.                                                                                                                                                                | `resources/prompts`                    |
+| `LLM_ROUTER_MODELS_CONFIG`                  | Path to the models configuration JSON file.                                                                                                                                                                    | `resources/configs/models-config.json` |
+| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`            | Default language for endpoint prompts.                                                                                                                                                                         | `pl`                                   |
+| `LLM_ROUTER_TIMEOUT`                        | Timeout (seconds) for llm-router API calls.                                                                                                                                                                    | `0`                                    |
+| `LLM_ROUTER_EXTERNAL_TIMEOUT`               | Timeout (seconds) for external model API calls.                                                                                                                                                                | `300`                                  |
+| `LLM_ROUTER_LOG_FILENAME`                   | Name of the log file.                                                                                                                                                                                          | `llm-router.log`                       |
+| `LLM_ROUTER_LOG_LEVEL`                      | Logging level (e.g., INFO, DEBUG).                                                                                                                                                                             | `INFO`                                 |
+| `LLM_ROUTER_EP_PREFIX`                      | Prefix for all API endpoints.                                                                                                                                                                                  | `/api`                                 |
+| `LLM_ROUTER_MINIMUM`                        | Run service in proxy‑only mode (boolean).                                                                                                                                                                      | `False`                                |
+| `LLM_ROUTER_IN_DEBUG`                       | Run server in debug mode (boolean).                                                                                                                                                                            | `False`                                |
+| `LLM_ROUTER_BALANCE_STRATEGY`               | Strategy used to balance routing between LLM providers. Allowed values are `balanced`, `weighted`, `dynamic_weighted` (beta), `first_available` and `first_available_optim` as defined in `constants_base.py`. | `balanced`                             |
+| `LLM_ROUTER_REDIS_HOST`                     | Redis host for load‑balancing when a multi‑provider model is available.                                                                                                                                        | `<empty string>`                       |
+| `LLM_ROUTER_REDIS_PORT`                     | Redis port for load‑balancing when a multi‑provider model is available.                                                                                                                                        | `6379`                                 |
+| `LLM_ROUTER_SERVER_TYPE`                    | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                                                                                                                                | `flask`                                |
+| `LLM_ROUTER_SERVER_PORT`                    | Port on which the server listens.                                                                                                                                                                              | `8080`                                 |
+| `LLM_ROUTER_SERVER_HOST`                    | Host address for the server.                                                                                                                                                                                   | `0.0.0.0`                              |
+| `LLM_ROUTER_SERVER_WORKERS_COUNT`           | Number of workers (used in case when the selected server type supports multiworkers)                                                                                                                           | `2`                                    |
+| `LLM_ROUTER_SERVER_THREADS_COUNT`           | Number of workers threads (used in case when the selected server type supports multithreading)                                                                                                                 | `8`                                    |
+| `LLM_ROUTER_SERVER_WORKER_CLASS`            | If server accepts workers type, its able to set worker class by this environment.                                                                                                                              | `None`                                 |
+| `LLM_ROUTER_USE_PROMETHEUS`                 | Enable Prometheus metrics collection.** When set to `True`, the router registers a `/metrics` endpoint exposing Prometheus‑compatible metrics for monitoring.                                                  | `False`                                |
+| `LLM_ROUTER_FORCE_ANONYMISATION`            | Enable whole payload anonymisation. Each key and value is aut-anonymized before sending to model provider.                                                                                                     | `False`                                |
+| `LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP` | Enable builtin endpoint `/api/anonymize_text_genai` which uses genai to anonymize text                                                                                                                         | `False`                                |
 
 ### 4️⃣ Run the REST API
 
@@ -208,7 +208,7 @@ and reliable routing of requests. The available strategies are:
   characteristics, and you want to prioritize certain providers without needing dynamic adjustments.
 * **Implementation:** Implemented in `llm_router_api.base.lb.weighted.WeightedStrategy`.
 
-### 3. `dynamic_weighted`
+### 3. `dynamic_weighted` (beta)
 
 * **Description:** An extension of the `weighted` strategy. It not only uses weights
   but also tracks the latency between successive selections of the same provider.
