@@ -1,6 +1,11 @@
 ## llm‑router
 
-**llm‑router** – a lightweight, modular ecosystem for building and interacting with Large Language Model (LLM) services.
+**LLM Router** is a service that can be deployed on‑premises or in the cloud. 
+It adds a layer between any application and the LLM provider. In real time it controls traffic, 
+distributes a load among providers of a specific LLM, and enables analysis of outgoing requests 
+from a security perspective (masking, anonymization, prohibited content). 
+It is an open‑source solution (Apache 2.0) that can be launched instantly by running 
+a ready‑made image in your own infrastructure.
 
 - **llm_router_api** provides a unified REST proxy that can route requests to any supported LLM backend (
   OpenAI‑compatible, Ollama, vLLM, LM Studio, etc.), with built‑in load‑balancing, health checks, streaming responses
