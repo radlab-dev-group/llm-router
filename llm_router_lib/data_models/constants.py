@@ -25,3 +25,11 @@ MODEL_NAME_PARAMS = [MODEL_NAME_PARAM, "model"]
 #     "texts": Dict[str, List[str]] | List[str],
 #     "historical_messages": List[Dict[str, str]],
 # }
+
+
+CLEAR_PREDEFINED_PARAMS = [
+    "response_time",
+    "anonymize",
+    "anonymize_algorithm",
+    "model_name_anonymize",
+]
