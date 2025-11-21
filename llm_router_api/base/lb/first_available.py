@@ -24,7 +24,6 @@ Typical usage::
 
 import time
 import logging
-import random
 
 try:
     import redis
@@ -36,7 +35,6 @@ except ImportError:
 from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.base.lb.provider_monitor import RedisProviderMonitor
 from llm_router_api.base.lb.redis_based_interface import RedisBasedStrategyInterface
 
 
