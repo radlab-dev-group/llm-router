@@ -57,6 +57,9 @@ FORCE_ANONYMISATION = bool_env_value(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_ANONYMISATION"
 )
 
+FORCE_ANONYMISATION_ALGORITHM = None
+FORCE_ANONYMISATION_MODEL = None
+
 # Type of server, default is flask {flask, gunicorn, waitress}
 SERVER_TYPE = (
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_TYPE", "flask")
@@ -76,7 +79,7 @@ SERVER_WORKERS_COUNT = int(
     ).strip()
 )
 
-# Number of threads (if server supports multithreading), default: 8
+# Number of threads (if the server supports multithreading), default: 8
 SERVER_THREADS_COUNT = int(
     os.environ.get(
         f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_THREADS_COUNT", "8"
