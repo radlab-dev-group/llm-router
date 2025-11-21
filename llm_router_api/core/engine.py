@@ -23,7 +23,6 @@ import traceback
 from flask import Flask
 from typing import List, Type, Optional
 
-from llm_router_api.base.lb.chooser import ProviderChooser
 
 from llm_router_api.endpoints.endpoint_i import EndpointI
 from llm_router_api.register.auto_loader import EndpointAutoLoader
@@ -34,6 +33,7 @@ from llm_router_api.base.constants import (
     USE_PROMETHEUS,
     SERVER_BALANCE_STRATEGY,
 )
+from llm_router_api.base.lb.provider_strategy_facase import ProviderStrategyFacade
 
 if USE_PROMETHEUS:
     from llm_router_api.core.metrics import PrometheusMetrics
@@ -104,7 +104,7 @@ class FlaskEngine:
         self.logger_level = logger_level
         self.logger_file_name = logger_file_name
 
-        self._provider_chooser = ProviderChooser(
+        self._provider_chooser = ProviderStrategyFacade(
             models_config_path=models_config_path,
             strategy_name=SERVER_BALANCE_STRATEGY,
             logger_level=logger_level,

@@ -10,8 +10,8 @@ This module defines:
 from dataclasses import dataclass
 from typing import Dict, Optional, Any
 
-from llm_router_api.base.lb.chooser import ProviderChooser
 from llm_router_api.base.model_config import ApiModelConfig
+from llm_router_api.base.lb.provider_strategy_facase import ProviderStrategyFacade
 
 
 @dataclass(frozen=True)
@@ -108,7 +108,9 @@ class ModelHandler:
 
     LIST_MODEL_FIELDS_REMOVE = ["model_path", "api_token"]
 
-    def __init__(self, models_config_path: str, provider_chooser: ProviderChooser):
+    def __init__(
+        self, models_config_path: str, provider_chooser: ProviderStrategyFacade
+    ):
         """
         Initialize the handler with the provided configuration path.
 

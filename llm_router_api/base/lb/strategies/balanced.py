@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from typing import List, Dict, Optional, Any
 
-from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
+from llm_router_api.base.lb.strategy_interface import ChooseProviderStrategyI
 
 
 class LoadBalancedStrategy(ChooseProviderStrategyI):
