@@ -9,10 +9,12 @@ from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_api.base.lb.chooser import ProviderChooser
-from llm_router_api.endpoints.passthrough import PassthroughI
-from llm_router_api.endpoints.endpoint_i import EndpointI, EndpointWithHttpRequestI
 from llm_router_api.base.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
+
+from llm_router_api.endpoints.passthrough import PassthroughI
+from llm_router_api.endpoints.builtin.openai import OpenAIResponseHandler
+from llm_router_api.endpoints.endpoint_i import EndpointI, EndpointWithHttpRequestI
 
 
 class EndpointAutoLoader:
@@ -127,7 +129,7 @@ class EndpointAutoLoader:
         """
         instances: List[EndpointI] = []
         for cls in classes:
-            if cls in [PassthroughI, EndpointWithHttpRequestI]:
+            if cls in [PassthroughI, EndpointWithHttpRequestI, OpenAIResponseHandler]:
                 continue
 
             try:
