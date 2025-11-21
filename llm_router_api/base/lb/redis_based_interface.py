@@ -16,7 +16,7 @@ from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
 from llm_router_api.base.lb.provider_monitor import RedisProviderMonitor
 
 
-class RedisBasedStrategyI(ChooseProviderStrategyI, ABC):
+class RedisBasedStrategyInterface(ChooseProviderStrategyI, ABC):
     """
     Strategy that selects the first free provider for a model using Redis.
 
