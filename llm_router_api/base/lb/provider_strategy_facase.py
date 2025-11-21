@@ -25,14 +25,17 @@ from rdl_ml_utils.utils.logger import prepare_logger
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.base.constants_base import BalanceStrategies
 
-from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
-from llm_router_api.base.lb.first_available import RedisBasedStrategy
-from llm_router_api.base.lb.first_available_optim import (
+from llm_router_api.base.lb.strategy_interface import ChooseProviderStrategyI
+from llm_router_api.base.lb.strategies.first_available import RedisBasedStrategy
+from llm_router_api.base.lb.strategies.first_available_optim import (
     RedisBasedOptimStrategy,
 )
 
-from llm_router_api.base.lb.balanced import LoadBalancedStrategy
-from llm_router_api.base.lb.weighted import WeightedStrategy, DynamicWeightedStrategy
+from llm_router_api.base.lb.strategies.balanced import LoadBalancedStrategy
+from llm_router_api.base.lb.strategies.weighted import (
+    WeightedStrategy,
+    DynamicWeightedStrategy,
+)
 
 STRATEGIES = {
     BalanceStrategies.BALANCED: LoadBalancedStrategy,
@@ -43,7 +46,7 @@ STRATEGIES = {
 }
 
 
-class ProviderChooser:
+class ProviderStrategyFacade:
     """
     Facade for selecting a provider using a configurable load‑balancing strategy.
 
