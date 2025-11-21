@@ -129,7 +129,11 @@ class EndpointAutoLoader:
         """
         instances: List[EndpointI] = []
         for cls in classes:
-            if cls in [PassthroughI, EndpointWithHttpRequestI, OpenAIResponseHandler]:
+            if cls in [
+                PassthroughI,
+                EndpointWithHttpRequestI,
+                OpenAIResponseHandler,
+            ]:
                 continue
 
             try:
