@@ -37,10 +37,10 @@ except ImportError:
 from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.base.lb.first_available_i import FirstAvailableStrategyI
+from llm_router_api.base.lb.redis_based_interface import RedisBasedStrategyI
 
 
-class FirstAvailableOptimStrategy(FirstAvailableStrategyI):
+class RedisBasedOptimStrategy(RedisBasedStrategyI):
     """
     Strategy that selects the first free provider for a model using Redis.
 

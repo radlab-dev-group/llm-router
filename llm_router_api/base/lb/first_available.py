@@ -37,10 +37,10 @@ from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
 from llm_router_api.base.lb.provider_monitor import RedisProviderMonitor
-from llm_router_api.base.lb.first_available_i import FirstAvailableStrategyI
+from llm_router_api.base.lb.redis_based_interface import RedisBasedStrategyI
 
 
-class FirstAvailableStrategy(FirstAvailableStrategyI):
+class RedisBasedStrategy(RedisBasedStrategyI):
     """
     Strategy that selects the first free provider for a model using Redis.
 
