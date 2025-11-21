@@ -1,6 +1,6 @@
 from typing import List, Dict
 
-from llm_router_api.base.lb.weighted import DynamicWeightedStrategy
+from llm_router_api.base.lb.strategies.weighted import DynamicWeightedStrategy
 
 
 class AdaptiveStrategy(DynamicWeightedStrategy):

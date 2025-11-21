@@ -25,6 +25,9 @@ class ChooseProviderStrategyI(ABC):
         )
         self.logger = logger
 
+        # Placeholder for any monitor, may be initialized in any provider
+        self._monitor = None
+
     def __str__(self):
         return str(self.__class__.__name__)
 

@@ -8,11 +8,13 @@ from typing import Iterable, Dict, Any, Optional, Callable, Type, List, Set
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
-from llm_router_api.base.lb.chooser import ProviderChooser
-from llm_router_api.endpoints.passthrough import PassthroughI
-from llm_router_api.endpoints.endpoint_i import EndpointI, EndpointWithHttpRequestI
 from llm_router_api.base.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
+from llm_router_api.base.lb.provider_strategy_facase import ProviderStrategyFacade
+
+from llm_router_api.endpoints.passthrough import PassthroughI
+from llm_router_api.endpoints.builtin.openai import OpenAIResponseHandler
+from llm_router_api.endpoints.endpoint_i import EndpointI, EndpointWithHttpRequestI
 
 
 class EndpointAutoLoader:
@@ -30,7 +32,7 @@ class EndpointAutoLoader:
         base_class: Type[EndpointI],
         prompts_dir: str,
         models_config_path: str,
-        provider_chooser: ProviderChooser,
+        provider_chooser: ProviderStrategyFacade,
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
     ):
@@ -127,7 +129,11 @@ class EndpointAutoLoader:
         """
         instances: List[EndpointI] = []
         for cls in classes:
-            if cls in [PassthroughI, EndpointWithHttpRequestI]:
+            if cls in [
+                PassthroughI,
+                EndpointWithHttpRequestI,
+                OpenAIResponseHandler,
+            ]:
                 continue
 
             try:

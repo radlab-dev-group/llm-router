@@ -26,6 +26,7 @@ import time
 import logging
 import random
 
+
 try:
     import redis
 
@@ -36,11 +37,10 @@ except ImportError:
 from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.base.lb.provider_monitor import RedisProviderMonitor
-from llm_router_api.base.lb.first_available_i import FirstAvailableStrategyI
+from llm_router_api.base.lb.redis_based_interface import RedisBasedStrategyInterface
 
 
-class FirstAvailableStrategy(FirstAvailableStrategyI):
+class RedisBasedOptimStrategy(RedisBasedStrategyInterface):
     """
     Strategy that selects the first free provider for a model using Redis.
 
@@ -99,6 +99,31 @@ class FirstAvailableStrategy(FirstAvailableStrategyI):
             strategy_prefix="fa_",
         )
 
+        # ---------- Host‑level lock scripts ----------
+        # Acquire a host lock (one host can serve only one provider at a time)
+        self._acquire_host_script = self.redis_client.register_script(
+            """
+                local host_key = KEYS[1]
+                local v = redis.call('GET', host_key)
+                if v == false or v == 'false' then
+                    redis.call('SET', host_key, 'true')
+                    return 1
+                end
+                return 0
+            """
+        )
+        # Release a host lock
+        self._release_host_script = self.redis_client.register_script(
+            """
+                local host_key = KEYS[1]
+                redis.call('DEL', host_key)
+                return 1
+            """
+        )
+
+    # ----------------------------------------------------------------------
+    # Public API
+    # ----------------------------------------------------------------------
     def get_provider(
         self,
         model_name: str,
@@ -148,7 +173,6 @@ class FirstAvailableStrategy(FirstAvailableStrategyI):
         * Call :meth:`put_provider` to release the lock once the provider is no
           longer needed.
         """
-
         redis_key, is_random = self.init_provider(
             model_name=model_name, providers=providers, options=options
         )
@@ -175,9 +199,30 @@ class FirstAvailableStrategy(FirstAvailableStrategyI):
                     redis_key=redis_key, providers=_providers
                 )
                 if provider:
-                    provider_field = self._provider_field(provider)
-                    provider["__chosen_field"] = provider_field
-                    return provider
+                    # ----- Host lock for random choice -----
+                    host_name = provider.get("id") or provider.get("api_host")
+                    if host_name:
+                        host_key = self._host_key(host_name)
+                        ok_host = int(
+                            self._acquire_host_script(keys=[host_key], args=[])
+                        )
+                        if ok_host == 1:
+                            provider["__chosen_field"] = self._provider_field(
+                                provider
+                            )
+                            provider["__host_key"] = host_key
+                            return provider
+                        else:
+                            # Host already taken – release provider lock and continue
+                            self._release_script(
+                                keys=[redis_key],
+                                args=[self._provider_field(provider)],
+                            )
+                            continue
+                    else:
+                        provider["__chosen_field"] = self._provider_field(provider)
+                        return provider
+            # ----------------------------------------
             else:
                 for provider in _providers:
                     provider_field = self._provider_field(provider)
@@ -188,8 +233,30 @@ class FirstAvailableStrategy(FirstAvailableStrategyI):
                             )
                         )
                         if ok == 1:
-                            provider["__chosen_field"] = provider_field
-                            return provider
+                            # ----- Host lock for deterministic choice -----
+                            host_name = provider.get("id") or provider.get(
+                                "api_host"
+                            )
+                            if host_name:
+                                host_key = self._host_key(host_name)
+                                ok_host = int(
+                                    self._acquire_host_script(
+                                        keys=[host_key], args=[]
+                                    )
+                                )
+                                if ok_host == 1:
+                                    provider["__chosen_field"] = provider_field
+                                    provider["__host_key"] = host_key
+                                    return provider
+                                else:
+                                    # Host already occupied – release provider lock
+                                    self._release_script(
+                                        keys=[redis_key], args=[provider_field]
+                                    )
+                                    continue
+                            else:
+                                provider["__chosen_field"] = provider_field
+                                return provider
                     except Exception:
                         pass
             time.sleep(self.check_interval)
@@ -220,8 +287,14 @@ class FirstAvailableStrategy(FirstAvailableStrategyI):
         redis_key = self._get_redis_key(model_name)
         provider_field = self._provider_field(provider)
         try:
+            # Release provider lock
             self.redis_client.hdel(redis_key, provider_field)
+            # Release host lock if it was acquired
+            host_key = provider.get("id") or provider.get("api_host")
+            if host_key:
+                self._release_host_script(keys=[host_key], args=[])
         except Exception:
             raise
 
         provider.pop("__chosen_field", None)
+        provider.pop("__host_key", None)

@@ -26,3 +26,7 @@ POSSIBLE_BALANCE_STRATEGIES = [
     BalanceStrategies.FIRST_AVAILABLE,
     BalanceStrategies.FIRST_AVAILABLE_OPTIM,
 ]
+
+#
+# DEFAULT_ANONYMIZE_STRATEGY = "fast_masker"
+# POSSIBLE_ANONYMIZE_STRATEGIES = ["fast_masker", "genai"]
