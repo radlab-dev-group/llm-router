@@ -1,7 +1,8 @@
 import random
-import time
 import logging
+
 from abc import ABC
+from typing import List, Dict, Optional, Any, Tuple
 
 try:
     import redis
@@ -10,14 +11,16 @@ try:
 except ImportError:
     REDIS_IS_AVAILABLE = False
 
-from typing import List, Dict, Optional, Any, Tuple
-
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.base.lb.strategy import ChooseProviderStrategyI
-from llm_router_api.base.lb.provider_monitor import RedisProviderMonitor
+from llm_router_api.base.lb.strategy_interface import ChooseProviderStrategyI
+from llm_router_api.base.monitor.redis_health_interface import (
+    RedisBasedHealthCheckInterface,
+)
 
 
-class FirstAvailableStrategyI(ChooseProviderStrategyI, ABC):
+class RedisBasedStrategyInterface(
+    ChooseProviderStrategyI, RedisBasedHealthCheckInterface, ABC
+):
     """
     Strategy that selects the first free provider for a model using Redis.
 
@@ -39,6 +42,7 @@ class FirstAvailableStrategyI(ChooseProviderStrategyI, ABC):
         redis_db: int = 0,
         timeout: int = 60,
         check_interval: float = 0.1,
+        monitor_check_interval: float = 30,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
         strategy_prefix: Optional[str] = "",
@@ -62,20 +66,29 @@ class FirstAvailableStrategyI(ChooseProviderStrategyI, ABC):
         check_interval : float, optional
             Time to sleep between checks for available providers (in seconds).
             Default is ``0.1``.
+        monitor_check_interval : float, optional
+            Time to sleep [in monitor module] between checks
+            for available providers (in seconds).
+            Default is ``0.1``.
         clear_buffers:
             Whether to clear all buffers when starting. Default is ``True``.
         """
-        if not REDIS_IS_AVAILABLE:
-            raise RuntimeError("Redis is not available. Please install it first.")
-
-        super().__init__(models_config_path=models_config_path, logger=logger)
-
-        self.redis_client = redis.Redis(
-            host=redis_host, port=redis_port, db=redis_db, decode_responses=True
+        ChooseProviderStrategyI.__init__(
+            self=self, models_config_path=models_config_path, logger=logger
         )
+
+        RedisBasedHealthCheckInterface.__init__(
+            self=self,
+            redis_host=redis_host,
+            redis_port=redis_port,
+            redis_db=redis_db,
+            clear_buffers=clear_buffers,
+            logger=logger,
+            check_interval=monitor_check_interval,
+        )
+
         self.timeout = timeout
         self.check_interval = check_interval
-
         self.strategy_prefix = strategy_prefix
 
         # Atomic acquire script – treat missing field as “available”
@@ -107,14 +120,6 @@ class FirstAvailableStrategyI(ChooseProviderStrategyI, ABC):
 
         if clear_buffers:
             self._clear_buffers()
-
-        # Start providers monitor
-        self._monitor = RedisProviderMonitor(
-            redis_client=self.redis_client,
-            check_interval=30,
-            clear_buffers=clear_buffers,
-            logger=self.logger,
-        )
 
     def init_provider(
         self,

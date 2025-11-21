@@ -33,6 +33,7 @@ from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
 from llm_router_lib.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
+    CLEAR_PREDEFINED_PARAMS,
 )
 
 from llm_router_api.base.model_handler import ModelHandler, ApiModel
@@ -41,6 +42,8 @@ from llm_router_api.base.constants import (
     REST_API_LOG_LEVEL,
     EXTERNAL_API_TIMEOUT,
     FORCE_ANONYMISATION,
+    FORCE_ANONYMISATION_ALGORITHM,
+    FORCE_ANONYMISATION_MODEL,
 )
 from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 
@@ -863,15 +866,32 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Union[Dict[Any, Any], Any]
             The possibly anonymized payload ready for further processing.
         """
-        # Remember general options before clear payload
-        _anon_payload = FORCE_ANONYMISATION or payload.pop("anonymize", False)
-        _anonymize_algorithm = payload.pop("anonymize_algorithm", None)
-        _model_name_anonymize = payload.pop("model_name_anonymize", None)
+        if type(payload) is dict:
+            # Remember general options before clear payload
+            _anon_payload = FORCE_ANONYMISATION or payload.pop("anonymize", False)
+            _anonymize_algorithm = FORCE_ANONYMISATION_ALGORITHM or payload.pop(
+                "anonymize_algorithm", None
+            )
+            _model_name_anonymize = FORCE_ANONYMISATION_MODEL or payload.pop(
+                "model_name_anonymize", None
+            )
 
-        payload = self._clear_payload(payload=payload)
-        if not _anon_payload:
-            return payload
-        return self._anonymize_payload(payload=payload)
+            payload = self._clear_payload(payload=payload)
+            if not _anon_payload:
+                return payload
+
+            return self._anonymize_payload(
+                payload=payload,
+                algorithm=_anonymize_algorithm,
+                model_name=_model_name_anonymize,
+            )
+        elif FORCE_ANONYMISATION:
+            return self._anonymize_payload(
+                payload=payload,
+                algorithm=FORCE_ANONYMISATION_ALGORITHM,
+                model_name=FORCE_ANONYMISATION_MODEL,
+            )
+        return payload
 
     @staticmethod
     def _clear_payload(payload: Dict[str, Any]):
@@ -892,18 +912,18 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Dict[str, Any]
             The payload with internal keys removed.
         """
-        # Previously cleared arguments:
-        #   * anonymize [_prepare_payload_at_beginning]
-        #   * anonymize_algorithm [_prepare_payload_at_beginning]
-        #   * model_name_anonymize [_prepare_payload_at_beginning]
-        for k in ["response_time"]:
-            payload.pop(k, "")
-
+        for k in CLEAR_PREDEFINED_PARAMS:
+            payload.pop(k, None)
         # If stream param is not given, then set as False
         payload["stream"] = payload.get("stream", False)
         return payload
 
-    def _anonymize_payload(self, payload: Dict | str | List | Any) -> Dict[str, Any]:
+    def _anonymize_payload(
+        self,
+        payload: Dict | str | List | Any,
+        algorithm: str | None,
+        model_name: str | None,
+    ) -> Dict[str, Any]:
         """
         Apply the configured :class:`Anonymizer` to the supplied payload.
 
