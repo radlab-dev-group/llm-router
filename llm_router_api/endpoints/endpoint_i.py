@@ -19,9 +19,10 @@ methods for performing outbound HTTP requests to an external service.
 """
 
 import abc
-import datetime
-import json
 import time
+import json
+import logging
+import datetime
 
 from copy import deepcopy
 from typing import Optional, Dict, Any, Iterator, Iterable, List
@@ -44,9 +45,15 @@ from llm_router_api.base.constants import (
     FORCE_MASKING,
     MASKING_WITH_AUDIT,
     MASKING_STRATEGY_PIPELINE,
+    FORCE_GUARDRAIL_REQUEST,
+    GUARDRAIL_WITH_AUDIT_REQUEST,
+    GUARDRAIL_STRATEGY_PIPELINE_REQUEST,
+    FORCE_GUARDRAIL_RESPONSE,
+    GUARDRAIL_STRATEGY_PIPELINE_RESPONSE,
+    GUARDRAIL_WITH_AUDIT_RESPONSE,
 )
 
-from llm_router_api.core.auditor import MaskAuditor
+from llm_router_api.core.auditor import AnyRequestAuditor
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.endpoints.httprequest import HttpRequestExecutor
@@ -54,10 +61,160 @@ from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 from llm_router_plugins.maskers.pipeline import MaskerPipeline
 
 
+class SecureEndpointI(abc.ABC):
+    def __init__(self, ep_name: str, method: str, logger: logging.Logger):
+
+        self.logger = logger
+        self._ep_name = ep_name
+        self._ep_method = method
+
+        # --------------------------------------------------------------------------
+        # ----------- MASKER SECTION
+        # Masker pipeline definition
+        self._masker_pipeline = None
+        if FORCE_MASKING:
+            self._prepare_masker_pipeline(plugins=MASKING_STRATEGY_PIPELINE)
+        self._mask_auditor = None
+        if MASKING_WITH_AUDIT:
+            self._mask_auditor = AnyRequestAuditor()
+
+        # --------------------------------------------------------------------------
+        # ----------- GUARDRAILS SECTION
+        # Guardrails (request) pipeline definition
+        self._guardrails_pipeline_request = None
+        if FORCE_GUARDRAIL_REQUEST:
+            self._guardrails_pipeline_request = self._prepare_guardrails_pipeline(
+                plugins=GUARDRAIL_STRATEGY_PIPELINE_REQUEST
+            )
+        self._guardrail_auditor_request = None
+        if GUARDRAIL_WITH_AUDIT_REQUEST:
+            self._guardrail_auditor_request = AnyRequestAuditor()
+        # --------------------------------------------------------------------------
+        # Guardrails (response) pipeline definition
+        self._guardrails_pipeline_response = None
+        if FORCE_GUARDRAIL_RESPONSE:
+            self._guardrails_pipeline_response = self._prepare_guardrails_pipeline(
+                plugins=GUARDRAIL_STRATEGY_PIPELINE_RESPONSE
+            )
+        self._guardrail_auditor_response = None
+        if GUARDRAIL_WITH_AUDIT_RESPONSE:
+            self._guardrail_auditor_response = AnyRequestAuditor()
+
+    # ------------------------------------------------------------------
+    # Public read‑only properties
+    # ------------------------------------------------------------------
+    @property
+    def name(self):
+        """
+        Return the raw endpoint name as supplied to the constructor.
+
+        The value is used by the Flask registrar to build the final route.
+        """
+        return self._ep_name
+
+    @property
+    def method(self):
+        """
+        Return the HTTP verb this endpoint expects (``"GET"`` or ``"POST"``).
+        """
+        return self._ep_method
+
+    # ------------------------------------------------------------------
+    def _prepare_masker_pipeline(self, plugins: List[str]):
+        if self._masker_pipeline:
+            return
+
+        self._masker_pipeline = MaskerPipeline(
+            plugin_names=plugins, logger=self.logger
+        )
+        self.logger.debug(
+            f"llm-router pipeline which will be used to masking: {plugins}"
+        )
+
+    def _prepare_guardrails_pipeline(self, plugins: List[str]):
+        # Lista pluginów -- zwraca!
+        return []
+
+    def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not payload:
+            return payload
+
+        audit_log = None
+        payload_before_masking = None
+
+        if MASKING_WITH_AUDIT:
+            payload_before_masking = deepcopy(payload)
+            audit_log = {
+                "endpoint": self.name,
+                "begin": {
+                    "timestamp": datetime.datetime.now().timestamp(),
+                    "payload": None,
+                },
+            }
+
+        if FORCE_MASKING:
+            payload = self._mask_whole_payload(
+                payload=payload,
+                algorithms=MASKING_STRATEGY_PIPELINE,
+            )
+        elif type(payload) is dict:
+            _mask_payload = FORCE_MASKING or payload.pop("mask_payload", False)
+            _mask_pipeline_alg = MASKING_STRATEGY_PIPELINE or payload.pop(
+                "masker_pipeline", None
+            )
+
+            if type(_mask_pipeline_alg) is str:
+                _mask_pipeline_alg = [
+                    _p.strip()
+                    for _p in _mask_pipeline_alg.strip().split(",")
+                    if len(_p.strip())
+                ]
+            payload = self._mask_whole_payload(
+                payload=payload,
+                algorithms=_mask_pipeline_alg,
+            )
+        else:
+            return payload
+
+        if MASKING_WITH_AUDIT and payload_before_masking != payload:
+            audit_log["end"] = {
+                "timestamp": datetime.datetime.now().timestamp(),
+                "payload": deepcopy(payload),
+            }
+            audit_log["begin"]["payload"] = payload_before_masking
+            self._mask_auditor.add_log(audit_log)
+
+        return payload
+
+    def _mask_whole_payload(
+        self,
+        payload: Dict | str | List | Any,
+        algorithms: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Apply the :class:`MaskerPipeline` to the supplied payload.
+
+        The method lazily creates a MaskerPipeline
+
+        Parameters
+        ----------
+        payload : Union[Dict, str, List, Any]
+            The data to be masked.
+
+        Returns
+        -------
+        Dict[Any, Any]
+            The masked representation of *payload*.
+        """
+        self._prepare_masker_pipeline(plugins=algorithms)
+        _p = self._masker_pipeline.apply(payload=payload)
+        return _p
+
+
 # ----------------------------------------------------------------------
 # Public abstract base class – used when the service runs *not* as a proxy.
 # ----------------------------------------------------------------------
-class EndpointI(abc.ABC):
+class EndpointI(SecureEndpointI, abc.ABC):
     """
     Abstract representation of a single REST endpoint.
 
@@ -152,8 +309,16 @@ class EndpointI(abc.ABC):
         ValueError
             If ``method`` is not listed in :attr:`METHODS`.
         """
-        self._ep_name = ep_name
-        self._ep_method = method
+        super().__init__(
+            ep_name=ep_name,
+            method=method,
+            logger=prepare_logger(
+                logger_name=__name__,
+                logger_file_name=logger_file_name or "llm-router.log",
+                log_level=logger_level,
+                use_default_config=True,
+            ),
+        )
         self._model_handler = model_handler
 
         self.direct_return = direct_return
@@ -161,13 +326,6 @@ class EndpointI(abc.ABC):
         self._dont_add_api_prefix = dont_add_api_prefix
 
         self._call_for_each_user_msg = call_for_each_user_msg
-
-        self.logger = prepare_logger(
-            logger_name=__name__,
-            logger_file_name=logger_file_name or "llm-router.log",
-            log_level=logger_level,
-            use_default_config=True,
-        )
 
         self._ep_types_str = api_types
         if self._ep_types_str is None or not len(self._ep_types_str):
@@ -185,39 +343,9 @@ class EndpointI(abc.ABC):
         # marker when ep stared
         self._start_time = None
 
-        # Masker pipeline definition
-        self._masker_pipeline = None
-        if FORCE_MASKING:
-            self._prepare_masker_pipeline(plugins=MASKING_STRATEGY_PIPELINE)
-
-        self._mask_auditor = None
-        if MASKING_WITH_AUDIT:
-            self._mask_auditor = MaskAuditor()
-
-        # Guardrails pipeline definition
-        # self._guardrails_pipeline = None
-        # if FORCE_MASKING:
-        #     self._prepare_guardrails_pipeline()
-
     # ------------------------------------------------------------------
     # Public read‑only properties
     # ------------------------------------------------------------------
-    @property
-    def name(self):
-        """
-        Return the raw endpoint name as supplied to the constructor.
-
-        The value is used by the Flask registrar to build the final route.
-        """
-        return self._ep_name
-
-    @property
-    def method(self):
-        """
-        Return the HTTP verb this endpoint expects (``"GET"`` or ``"POST"``).
-        """
-        return self._ep_method
-
     @property
     def add_api_prefix(self):
         """
@@ -350,86 +478,6 @@ class EndpointI(abc.ABC):
             return {"status": False}
         return {"status": False, "body": body}
 
-    @staticmethod
-    def _get_choices_from_response(response):
-        j_response = response.json()
-        choices = j_response.get("choices", [])
-        if not len(choices):
-            if "message" in j_response:
-                choices = [j_response]
-
-        assistant_response = ""
-        if len(choices):
-            assistant_response = choices[0].get("message", {}).get("content")
-
-        return j_response, choices, assistant_response
-
-    def _prepare_masker_pipeline(self, plugins: List[str]):
-        if self._masker_pipeline:
-            return
-
-        self._masker_pipeline = MaskerPipeline(
-            plugin_names=plugins, logger=self.logger
-        )
-        self.logger.debug(
-            f"llm-router pipeline which will be used to masking: {plugins}"
-        )
-
-    # def _prepare_guardrails_pipeline(self):
-    #     pass
-
-    # ------------------------------------------------------------------
-    # Parameter validation helpers
-    # ------------------------------------------------------------------
-    def _check_required_params(self, params: Optional[Dict[str, Any]]) -> None:
-        """
-        Verify that all keys listed in :attr:`REQUIRED_ARGS` are present.
-
-        Parameters
-        ----------
-        params :
-            Dictionary of request parameters to validate.  ``None`` is treated
-            as an empty mapping.
-
-        Raises
-        ------
-        ValueError
-            If any required key is missing from *params*.
-        """
-        if (
-            params is None
-            or self.REQUIRED_ARGS is None
-            or not len(self.REQUIRED_ARGS)
-        ):
-            return
-
-        missing = [arg for arg in self.REQUIRED_ARGS if arg not in params]
-        if missing:
-            raise ValueError(
-                f"Missing required argument(s) {missing} "
-                f"for endpoint {self._ep_name}"
-            )
-
-    def _check_method_is_allowed(self, method: str) -> None:
-        """
-        Ensure that *method* is one of the supported HTTP verbs.
-
-        Parameters
-        ----------
-        method :
-            HTTP method name to validate.
-
-        Raises
-        ------
-        ValueError
-            If *method* is not present in :attr:`METHODS`.
-        """
-        if method not in self.METHODS:
-            _m_str = ", ".join(self.METHODS)
-            raise ValueError(
-                f"Unknown method {method}. Method must be one of {_m_str}"
-            )
-
     # ------------------------------------------------------------------
     # Model‑related helpers (used by proxy endpoints)
     # ------------------------------------------------------------------
@@ -484,6 +532,72 @@ class EndpointI(abc.ABC):
             provider=api_model_provider.as_dict(),
             options=options,
         )
+
+    # ------------------------------------------------------------------
+    # Parameter validation and helper methods
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _get_choices_from_response(response):
+        j_response = response.json()
+        choices = j_response.get("choices", [])
+        if not len(choices):
+            if "message" in j_response:
+                choices = [j_response]
+
+        assistant_response = ""
+        if len(choices):
+            assistant_response = choices[0].get("message", {}).get("content")
+
+        return j_response, choices, assistant_response
+
+    def _check_required_params(self, params: Optional[Dict[str, Any]]) -> None:
+        """
+        Verify that all keys listed in :attr:`REQUIRED_ARGS` are present.
+
+        Parameters
+        ----------
+        params :
+            Dictionary of request parameters to validate.  ``None`` is treated
+            as an empty mapping.
+
+        Raises
+        ------
+        ValueError
+            If any required key is missing from *params*.
+        """
+        if (
+            params is None
+            or self.REQUIRED_ARGS is None
+            or not len(self.REQUIRED_ARGS)
+        ):
+            return
+
+        missing = [arg for arg in self.REQUIRED_ARGS if arg not in params]
+        if missing:
+            raise ValueError(
+                f"Missing required argument(s) {missing} "
+                f"for endpoint {self._ep_name}"
+            )
+
+    def _check_method_is_allowed(self, method: str) -> None:
+        """
+        Ensure that *method* is one of the supported HTTP verbs.
+
+        Parameters
+        ----------
+        method :
+            HTTP method name to validate.
+
+        Raises
+        ------
+        ValueError
+            If *method* is not present in :attr:`METHODS`.
+        """
+        if method not in self.METHODS:
+            _m_str = ", ".join(self.METHODS)
+            raise ValueError(
+                f"Unknown method {method}. Method must be one of {_m_str}"
+            )
 
     @staticmethod
     def _model_name_from_params_or_model(
@@ -750,11 +864,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
-            # Testing: possible part to remove
-            # if type(params) is dict:
-            #     if not params.get("status", True):
-            #         return params
-
             if self.direct_return:
                 return params
 
@@ -867,57 +976,45 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     options=options,
                 )
 
-    def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if not payload:
-            return payload
+    def return_http_response(self, response):
+        """
+        Normalize an HTTP response object into a Python dictionary.
 
-        audit_log = None
-        payload_before_masking = None
+        If the response status code indicates an error, a
+        :class:`RuntimeError` is raised.  When the body cannot be parsed as
+        JSON a ``{"raw_response": <text>}`` mapping is returned instead.
 
-        if MASKING_WITH_AUDIT:
-            payload_before_masking = deepcopy(payload)
-            audit_log = {
-                "endpoint": self.name,
-                "begin": {
-                    "timestamp": datetime.datetime.now().timestamp(),
-                    "payload": None,
-                },
-            }
+        Parameters
+        ----------
+        response:
+            ``requests.Response`` object obtained from a ``GET`` or ``POST``
+            call.
 
-        if FORCE_MASKING:
-            payload = self._mask_whole_payload(
-                payload=payload,
-                algorithms=MASKING_STRATEGY_PIPELINE,
+        Returns
+        -------
+        dict
+            JSON payload or a raw‑response wrapper.
+
+        Raises
+        ------
+        RuntimeError
+            If ``response.ok`` is ``False``.
+        """
+        if not response.ok:
+            raise RuntimeError(
+                f"POST request to {self._ep_name} returned status "
+                f"{response.status_code}: {response.text}"
             )
-        elif type(payload) is dict:
-            _mask_payload = FORCE_MASKING or payload.pop("mask_payload", False)
-            _mask_pipeline_alg = MASKING_STRATEGY_PIPELINE or payload.pop(
-                "masker_pipeline", None
-            )
+        try:
+            if self._prepare_response_function:
+                return self._prepare_response_function(response)
+            return response.json()
+        except json.JSONDecodeError as e:
+            self.logger.exception(e)
+            return {"raw_response": response.text}
 
-            if type(_mask_pipeline_alg) is str:
-                _mask_pipeline_alg = [
-                    _p.strip()
-                    for _p in _mask_pipeline_alg.strip().split(",")
-                    if len(_p.strip())
-                ]
-            payload = self._mask_whole_payload(
-                payload=payload,
-                algorithms=_mask_pipeline_alg,
-            )
-        else:
-            return payload
-
-        if MASKING_WITH_AUDIT and payload_before_masking != payload:
-            audit_log["end"] = {
-                "timestamp": datetime.datetime.now().timestamp(),
-                "payload": deepcopy(payload),
-            }
-            audit_log["begin"]["payload"] = payload_before_masking
-            self._mask_auditor.add_log(audit_log)
-
-        return payload
-
+    # ==============================================================================
+    # Private helpers
     @staticmethod
     def _clear_payload(payload: Dict[str, Any]):
         """
@@ -942,30 +1039,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         # If stream param is not given, then set as False
         payload["stream"] = payload.get("stream", False)
         return payload
-
-    def _mask_whole_payload(
-        self,
-        payload: Dict | str | List | Any,
-        algorithms: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """
-        Apply the :class:`MaskerPipeline` to the supplied payload.
-
-        The method lazily creates a MaskerPipeline
-
-        Parameters
-        ----------
-        payload : Union[Dict, str, List, Any]
-            The data to be masked.
-
-        Returns
-        -------
-        Dict[Any, Any]
-            The masked representation of *payload*.
-        """
-        self._prepare_masker_pipeline(plugins=algorithms)
-        _p = self._masker_pipeline.apply(payload=payload)
-        return _p
 
     def _return_response_or_rerun(
         self,
@@ -1074,40 +1147,3 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         else:
             raise Exception(f"Unsupported API type: {api_type}")
         return _params
-
-    def return_http_response(self, response):
-        """
-        Normalize an HTTP response object into a Python dictionary.
-
-        If the response status code indicates an error, a
-        :class:`RuntimeError` is raised.  When the body cannot be parsed as
-        JSON a ``{"raw_response": <text>}`` mapping is returned instead.
-
-        Parameters
-        ----------
-        response:
-            ``requests.Response`` object obtained from a ``GET`` or ``POST``
-            call.
-
-        Returns
-        -------
-        dict
-            JSON payload or a raw‑response wrapper.
-
-        Raises
-        ------
-        RuntimeError
-            If ``response.ok`` is ``False``.
-        """
-        if not response.ok:
-            raise RuntimeError(
-                f"POST request to {self._ep_name} returned status "
-                f"{response.status_code}: {response.text}"
-            )
-        try:
-            if self._prepare_response_function:
-                return self._prepare_response_function(response)
-            return response.json()
-        except json.JSONDecodeError as e:
-            self.logger.exception(e)
-            return {"raw_response": response.text}
