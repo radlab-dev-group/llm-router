@@ -52,7 +52,7 @@ class FastTextMasking(EndpointWithHttpRequestI):
     directly to the client without additional wrapping.
     """
 
-    EP_DONT_NEED_GUARDRAIL = True
+    EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
 
     REQUIRED_ARGS = ["text"]
     OPTIONAL_ARGS = None

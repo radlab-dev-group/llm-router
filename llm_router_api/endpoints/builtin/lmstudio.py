@@ -31,7 +31,7 @@ class LmStudioModelsHandler(PassthroughI):
     contains a ``models`` key with a list of model IDs.
     """
 
-    EP_DONT_NEED_GUARDRAIL = True
+    EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
 
     def __init__(
         self,

@@ -63,7 +63,7 @@ from llm_router_plugins.maskers.pipeline import MaskerPipeline
 
 
 class SecureEndpointI(abc.ABC):
-    EP_DONT_NEED_GUARDRAIL = False
+    EP_DONT_NEED_GUARDRAIL_AND_MASKING = False
 
     def __init__(self, ep_name: str, method: str, logger: logging.Logger):
 
@@ -190,7 +190,10 @@ class SecureEndpointI(abc.ABC):
         auditor.add_log(audit_log)
 
     def _is_request_guardrail_safe(self, payload: Dict):
-        if self.EP_DONT_NEED_GUARDRAIL or not self._guardrails_pipeline_request:
+        if (
+            self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
+            or not self._guardrails_pipeline_request
+        ):
             return True
 
         audit_log = self._begin_audit_log_if_needed(
@@ -214,7 +217,7 @@ class SecureEndpointI(abc.ABC):
         return response
 
     def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if not payload:
+        if self.EP_DONT_NEED_GUARDRAIL_AND_MASKING or not payload:
             return payload
 
         audit_log = self._begin_audit_log_if_needed(
@@ -900,7 +903,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
             # 2. Mask the whole payload if needed
-            # params = self._do_masking_if_needed(payload=params)
+            params = self._do_masking_if_needed(payload=params)
 
             # 3. Clear payload to accept only required params
             params = self._clear_payload(payload=params)
