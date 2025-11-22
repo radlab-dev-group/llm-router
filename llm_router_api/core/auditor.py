@@ -35,7 +35,7 @@ class AnyRequestAuditor:
         # print("==" * 100)
         # print(json.dumps(log, indent=2, ensure_ascii=False))
         # print("==" * 100)
-        # self._logs.append(SingleAuditLog(log))
+        self._logs.append(SingleAuditLog(log))
 
     def get_logs(self) -> List[SingleAuditLog]:
         """Return all collected logs."""
