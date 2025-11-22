@@ -110,6 +110,8 @@ class OpenAIModelsHandler(PassthroughI):
     prefix, exposing the route directly under ``/models``.
     """
 
+    EP_DONT_NEED_GUARDRAIL = True
+
     def __init__(
         self,
         logger_file_name: Optional[str] = None,
