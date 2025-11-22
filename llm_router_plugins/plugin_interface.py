@@ -9,7 +9,7 @@ logger (optional) and how they process incoming payloads via the
 
 import abc
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 
 class PluginInterface(abc.ABC):
@@ -69,7 +69,7 @@ class HttpPluginInterface(PluginInterface, abc.ABC):
         pass
 
     @abc.abstractmethod
-    def apply(self, payload: Dict) -> bool:
+    def apply(self, payload: Dict) -> Tuple[bool, Dict]:
         """
         Process *payload* using the common HTTP request mechanism.
 
