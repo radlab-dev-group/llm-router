@@ -20,7 +20,7 @@ class SingleAuditLog:
         return f"<AuditLog payload={self.payload!r}>"
 
 
-class MaskAuditor:
+class AnyRequestAuditor:
     def __init__(self) -> None:
         # Initialize storage for audit logs
         self._logs: List[SingleAuditLog] = []
@@ -35,7 +35,7 @@ class MaskAuditor:
         # print("==" * 100)
         # print(json.dumps(log, indent=2, ensure_ascii=False))
         # print("==" * 100)
-        self._logs.append(SingleAuditLog(log))
+        # self._logs.append(SingleAuditLog(log))
 
     def get_logs(self) -> List[SingleAuditLog]:
         """Return all collected logs."""

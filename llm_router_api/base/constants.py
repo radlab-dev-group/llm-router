@@ -109,6 +109,9 @@ REDIS_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_HOST", "").st
 # Strategy for load balancing when a multi-provider model is available
 REDIS_PORT = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PORT", 6379))
 
+# =============================================================================
+# MASKING
+# =============================================================================
 # If env is enabled, then a genai-based anonymization endpoint will be available
 ENABLE_GENAI_ANONYMIZE_TEXT_EP = bool_env_value(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}ENABLE_GENAI_ANONYMIZE_TEXT_EP"
@@ -116,7 +119,7 @@ ENABLE_GENAI_ANONYMIZE_TEXT_EP = bool_env_value(
 # If set to True, then each user request will be masked before the provider call
 FORCE_MASKING = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_MASKING")
 
-# If True, then masking audit log will be added to
+# If True, then masking audit log will be handled
 MASKING_WITH_AUDIT = bool_env_value(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_WITH_AUDIT"
 )
@@ -131,6 +134,56 @@ if MASKING_STRATEGY_PIPELINE:
     MASKING_STRATEGY_PIPELINE = [
         _s.strip()
         for _s in MASKING_STRATEGY_PIPELINE.strip().split(",")
+        if len(_s.strip())
+    ]
+# =============================================================================
+# GUARDRAILS
+# =============================================================================
+# ----------- REQUEST GUARDRAILZ
+# If set to True, then each user request will be checked before the provider call
+FORCE_GUARDRAIL_REQUEST = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_GUARDRAIL_REQUEST"
+)
+
+# If True, then guardrail audit log will be handled for each user request
+GUARDRAIL_WITH_AUDIT_REQUEST = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_WITH_AUDIT_REQUEST"
+)
+
+# Guardrail strategy pipeline for request in case when FORCE_GUARDRAIL_REQUEST
+GUARDRAIL_STRATEGY_PIPELINE_REQUEST = str(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_STRATEGY_PIPELINE_REQUEST", ""
+    )
+)
+if GUARDRAIL_STRATEGY_PIPELINE_REQUEST:
+    GUARDRAIL_STRATEGY_PIPELINE_REQUEST = [
+        _s.strip()
+        for _s in GUARDRAIL_STRATEGY_PIPELINE_REQUEST.strip().split(",")
+        if len(_s.strip())
+    ]
+# -----------------------------------------------------------------------------
+# ----------- RESPONSE GUARDRAIL
+# If set to True, then each response will be checked before receive response
+FORCE_GUARDRAIL_RESPONSE = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_GUARDRAIL_RESPONSE"
+)
+
+# If True, then guardrail audit log will be handled for response
+GUARDRAIL_WITH_AUDIT_RESPONSE = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_WITH_AUDIT_RESPONSE"
+)
+
+# Guardrail strategy pipeline for response in case when FORCE_GUARDRAIL_RESPONSE
+GUARDRAIL_STRATEGY_PIPELINE_RESPONSE = str(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_STRATEGY_PIPELINE_RESPONSE", ""
+    )
+)
+if GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
+    GUARDRAIL_STRATEGY_PIPELINE_RESPONSE = [
+        _s.strip()
+        for _s in GUARDRAIL_STRATEGY_PIPELINE_RESPONSE.strip().split(",")
         if len(_s.strip())
     ]
 
@@ -162,7 +215,7 @@ class _StartAppVerificator:
             if not FORCE_MASKING:
                 raise Exception(
                     f"`export LLM_ROUTER_FORCE_MASKING=1` environment is "
-                    f"required when `MASKING_WITH_AUDIT=1`\n\n"
+                    f"required when `LLM_ROUTER_MASKING_WITH_AUDIT=1`\n\n"
                 )
 
         if FORCE_MASKING and not len(MASKING_STRATEGY_PIPELINE):
@@ -171,10 +224,43 @@ class _StartAppVerificator:
                 "pipeline of masking strategies"
             )
 
+    @staticmethod
+    def __verify_default_request_guardrails():
+        if GUARDRAIL_WITH_AUDIT_REQUEST:
+            if not FORCE_GUARDRAIL_REQUEST:
+                raise Exception(
+                    f"`export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=1` environment is "
+                    f"required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=1`\n\n"
+                )
+
+        if FORCE_GUARDRAIL_REQUEST and not len(GUARDRAIL_STRATEGY_PIPELINE_REQUEST):
+            raise Exception(
+                "When FORCE_GUARDRAIL_REQUEST is set to `True`, you must specify the "
+                "pipeline of guardrail strategies for each user request"
+            )
+
+    @staticmethod
+    def __verify_default_response_guardrails():
+        if GUARDRAIL_WITH_AUDIT_RESPONSE:
+            if not FORCE_GUARDRAIL_RESPONSE:
+                raise Exception(
+                    f"`export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=1` environment is "
+                    f"required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=1`\n\n"
+                )
+        if FORCE_GUARDRAIL_RESPONSE and not len(
+            GUARDRAIL_STRATEGY_PIPELINE_RESPONSE
+        ):
+            raise Exception(
+                "When FORCE_GUARDRAIL_RESPONSE is set to `True`, you must specify the "
+                "pipeline of guardrail strategies for each response"
+            )
+
     def dont_run_if_something_is_wrong(self):
         self.__verify_is_able_to_init()
         self.__verify_balancing_strategy()
         self.__verify_default_masking_strategy()
+        self.__verify_default_request_guardrails()
+        self.__verify_default_response_guardrails()
 
 
 _StartAppVerificator().dont_run_if_something_is_wrong()
