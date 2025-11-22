@@ -13,4 +13,4 @@ class FastMaskerPlugin(PluginInterface):
         self._fast_masker = FastMasker()
 
     def apply(self, payload: Dict) -> Dict:
-        return self._fast_masker.mask_payload_fast(payload=payload)
+        return self._fast_masker.mask_payload(payload=payload)
