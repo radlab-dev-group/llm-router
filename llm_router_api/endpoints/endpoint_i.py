@@ -57,11 +57,14 @@ from llm_router_api.core.auditor import AnyRequestAuditor
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.endpoints.httprequest import HttpRequestExecutor
+from llm_router_plugins.guardrails.pipeline import GuardrailPipeline
 
 from llm_router_plugins.maskers.pipeline import MaskerPipeline
 
 
 class SecureEndpointI(abc.ABC):
+    EP_DONT_NEED_GUARDRAIL = False
+
     def __init__(self, ep_name: str, method: str, logger: logging.Logger):
 
         self.logger = logger
@@ -80,21 +83,25 @@ class SecureEndpointI(abc.ABC):
 
         # --------------------------------------------------------------------------
         # ----------- GUARDRAILS SECTION
+
         # Guardrails (request) pipeline definition
         self._guardrails_pipeline_request = None
         if FORCE_GUARDRAIL_REQUEST:
-            self._guardrails_pipeline_request = self._prepare_guardrails_pipeline(
-                plugins=GUARDRAIL_STRATEGY_PIPELINE_REQUEST
+            self._prepare_guardrails_pipeline(
+                plugins=GUARDRAIL_STRATEGY_PIPELINE_REQUEST, for_response_mode=False
             )
         self._guardrail_auditor_request = None
         if GUARDRAIL_WITH_AUDIT_REQUEST:
             self._guardrail_auditor_request = AnyRequestAuditor()
+
         # --------------------------------------------------------------------------
+
         # Guardrails (response) pipeline definition
         self._guardrails_pipeline_response = None
         if FORCE_GUARDRAIL_RESPONSE:
-            self._guardrails_pipeline_response = self._prepare_guardrails_pipeline(
-                plugins=GUARDRAIL_STRATEGY_PIPELINE_RESPONSE
+            self._prepare_guardrails_pipeline(
+                plugins=GUARDRAIL_STRATEGY_PIPELINE_RESPONSE,
+                for_response_mode=True,
             )
         self._guardrail_auditor_response = None
         if GUARDRAIL_WITH_AUDIT_RESPONSE:
@@ -131,12 +138,77 @@ class SecureEndpointI(abc.ABC):
             f"llm-router pipeline which will be used to masking: {plugins}"
         )
 
-    def _prepare_guardrails_pipeline(self, plugins: List[str]):
-        # Lista pluginów -- zwraca!
-        return []
+    def _prepare_guardrails_pipeline(
+        self, plugins: List[str], for_response_mode: bool
+    ):
+        if for_response_mode and self._guardrails_pipeline_response:
+            return
+        elif not for_response_mode and self._guardrails_pipeline_request:
+            return
+
+        resp_str = "request"
+        if for_response_mode:
+            resp_str = "response"
+            self._guardrails_pipeline_response = GuardrailPipeline(
+                plugin_names=plugins, logger=self.logger
+            )
+        else:
+            self._guardrails_pipeline_request = GuardrailPipeline(
+                plugin_names=plugins, logger=self.logger
+            )
+
+        self.logger.debug(
+            f"llm-router pipeline which will be used "
+            f"to {resp_str} guardrails: {plugins}"
+        )
+
+    def _begin_audit_log_if_needed(
+        self, payload, prepare_audit_log: bool, audit_type: str
+    ):
+        audit_log = None
+        if prepare_audit_log:
+            audit_log = {
+                "endpoint": self.name,
+                "audit_type": audit_type,
+                "begin": {
+                    "timestamp": datetime.datetime.now().timestamp(),
+                    "payload": deepcopy(payload),
+                },
+            }
+        return audit_log
+
+    def _end_audit_log_if_needed(
+        self, payload, audit_log, auditor: AnyRequestAuditor
+    ):
+        if not audit_log:
+            return
+
+        audit_log["end"] = {
+            "timestamp": datetime.datetime.now().timestamp(),
+            "payload": deepcopy(payload),
+        }
+        auditor.add_log(audit_log)
 
     def _is_request_guardrail_safe(self, payload: Dict):
-        return True
+        if self.EP_DONT_NEED_GUARDRAIL or not self._guardrails_pipeline_request:
+            return True
+
+        audit_log = self._begin_audit_log_if_needed(
+            payload=payload,
+            prepare_audit_log=GUARDRAIL_WITH_AUDIT_REQUEST,
+            audit_type="guardrail_request",
+        )
+
+        is_safe, message = self._guardrails_pipeline_request.apply(payload=payload)
+
+        if not is_safe:
+            self._end_audit_log_if_needed(
+                payload=message,
+                audit_log=audit_log,
+                auditor=self._guardrail_auditor_request,
+            )
+
+        return is_safe
 
     def _guardrail_response_if_needed(self, response):
         return response
@@ -145,50 +217,23 @@ class SecureEndpointI(abc.ABC):
         if not payload:
             return payload
 
-        audit_log = None
-        payload_before_masking = None
-
-        if MASKING_WITH_AUDIT:
-            payload_before_masking = deepcopy(payload)
-            audit_log = {
-                "endpoint": self.name,
-                "begin": {
-                    "timestamp": datetime.datetime.now().timestamp(),
-                    "payload": None,
-                },
-            }
+        audit_log = self._begin_audit_log_if_needed(
+            payload=payload,
+            prepare_audit_log=MASKING_WITH_AUDIT,
+            audit_type="masking",
+        )
 
         if FORCE_MASKING:
             payload = self._mask_whole_payload(
                 payload=payload,
                 algorithms=MASKING_STRATEGY_PIPELINE,
             )
-        elif type(payload) is dict:
-            _mask_payload = FORCE_MASKING or payload.pop("mask_payload", False)
-            _mask_pipeline_alg = MASKING_STRATEGY_PIPELINE or payload.pop(
-                "masker_pipeline", None
-            )
-
-            if type(_mask_pipeline_alg) is str:
-                _mask_pipeline_alg = [
-                    _p.strip()
-                    for _p in _mask_pipeline_alg.strip().split(",")
-                    if len(_p.strip())
-                ]
-            payload = self._mask_whole_payload(
-                payload=payload,
-                algorithms=_mask_pipeline_alg,
-            )
         else:
             return payload
 
-        if MASKING_WITH_AUDIT and payload_before_masking != payload:
-            audit_log["end"] = {
-                "timestamp": datetime.datetime.now().timestamp(),
-                "payload": deepcopy(payload),
-            }
-            audit_log["begin"]["payload"] = payload_before_masking
-            self._mask_auditor.add_log(audit_log)
+        self._end_audit_log_if_needed(
+            payload=payload, audit_log=audit_log, auditor=self._mask_auditor
+        )
 
         return payload
 
@@ -851,7 +896,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # 1. Check payload using guardrails
             if not self._is_request_guardrail_safe(payload=params):
                 return self.return_response_not_ok(
-                    body={"guardrail": "Not safe content!"}
+                    body={"reason": "guardrail", "error": "Not safe content!"}
                 )
 
             # 2. Mask the whole payload if needed
