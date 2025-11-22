@@ -5,7 +5,7 @@ Rule that masks valid Polish NIP numbers.
 import re
 from typing import Match
 
-from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
+from llm_router_plugins.maskers.fast_masker.rules.base_rule import BaseRule
 
 
 def _is_valid_nip(raw_nip: str) -> bool:

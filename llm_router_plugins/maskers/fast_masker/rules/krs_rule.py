@@ -5,8 +5,8 @@ Rule that masks valid Polish KRS numbers.
 import re
 from typing import Match
 
-from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
-from llm_router_plugins.plugins.fast_masker.utils.validators import is_valid_krs
+from llm_router_plugins.maskers.fast_masker.rules.base_rule import BaseRule
+from llm_router_plugins.maskers.fast_masker.utils.validators import is_valid_krs
 
 
 class KrsRule(BaseRule):

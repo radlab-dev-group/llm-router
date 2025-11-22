@@ -22,8 +22,8 @@ regular expression for speed).
 import re
 from typing import Match
 
-from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
-from llm_router_plugins.plugins.fast_masker.utils.validators import is_valid_regon
+from llm_router_plugins.maskers.fast_masker.rules.base_rule import BaseRule
+from llm_router_plugins.maskers.fast_masker.utils.validators import is_valid_regon
 
 
 class RegonRule(BaseRule):

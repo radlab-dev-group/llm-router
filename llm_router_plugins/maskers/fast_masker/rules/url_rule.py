@@ -4,7 +4,7 @@ Rule that masks web URLs.
 
 import re
 
-from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
+from llm_router_plugins.maskers.fast_masker.rules.base_rule import BaseRule
 
 
 class UrlRule(BaseRule):
