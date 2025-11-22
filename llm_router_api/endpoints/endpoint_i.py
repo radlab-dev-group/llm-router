@@ -19,16 +19,16 @@ methods for performing outbound HTTP requests to an external service.
 """
 
 import abc
+import datetime
 import json
 import time
 
+from copy import deepcopy
 from typing import Optional, Dict, Any, Iterator, Iterable, List
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
-
-from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
 
 from llm_router_lib.data_models.constants import (
     MODEL_NAME_PARAMS,
@@ -41,14 +41,17 @@ from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     EXTERNAL_API_TIMEOUT,
-    FORCE_ANONYMISATION,
-    FORCE_ANONYMISATION_ALGORITHM,
-    FORCE_ANONYMISATION_MODEL,
+    FORCE_MASKING,
+    MASKING_WITH_AUDIT,
+    MASKING_STRATEGY_PIPELINE,
 )
-from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 
+from llm_router_api.core.auditor import MaskAuditor
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
+from llm_router_api.endpoints.httprequest import HttpRequestExecutor
+
+from llm_router_plugins.maskers.pipeline import MaskerPipeline
 
 
 # ----------------------------------------------------------------------
@@ -182,10 +185,19 @@ class EndpointI(abc.ABC):
         # marker when ep stared
         self._start_time = None
 
-        # Api anonymizer
-        self._fast_masker: Optional[FastMasker] = None
-        if FORCE_ANONYMISATION:
-            self._prepare_anonymizer()
+        # Masker pipeline definition
+        self._masker_pipeline = None
+        if FORCE_MASKING:
+            self._prepare_masker_pipeline(plugins=MASKING_STRATEGY_PIPELINE)
+
+        self._mask_auditor = None
+        if MASKING_WITH_AUDIT:
+            self._mask_auditor = MaskAuditor()
+
+        # Guardrails pipeline definition
+        # self._guardrails_pipeline = None
+        # if FORCE_MASKING:
+        #     self._prepare_guardrails_pipeline()
 
     # ------------------------------------------------------------------
     # Public read‑only properties
@@ -352,21 +364,19 @@ class EndpointI(abc.ABC):
 
         return j_response, choices, assistant_response
 
-    def _prepare_anonymizer(self):
-        """
-        Actually as default FAST_MASKER is used.
-
-        TODO: In the future:
-        Check what type of anonymization should be used:
-         - FAST_MASKER
-         - PRIV_MASKER
-         - GENAI_MASKER
-        :return:
-        """
-        if self._fast_masker:
+    def _prepare_masker_pipeline(self, plugins: List[str]):
+        if self._masker_pipeline:
             return
-        self._fast_masker = FastMasker()
-        self.logger.debug("llm-router is running in force anonymization mode")
+
+        self._masker_pipeline = MaskerPipeline(
+            plugin_names=plugins, logger=self.logger
+        )
+        self.logger.debug(
+            f"llm-router pipeline which will be used to masking: {plugins}"
+        )
+
+    # def _prepare_guardrails_pipeline(self):
+    #     pass
 
     # ------------------------------------------------------------------
     # Parameter validation helpers
@@ -851,11 +861,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Perform early preprocessing of the incoming payload before the main
         business logic runs.
 
-        The routine extracts a potential ``anonymize`` flag (or falls back to
-        the global ``FORCE_ANONYMISATION`` setting), removes housekeeping
-        fields such as ``response_time``, and optionally runs
-        the method to clean payload.
-
         Parameters
         ----------
         payload : Union[Dict[Any, Any], Any]
@@ -864,33 +869,47 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Returns
         -------
         Union[Dict[Any, Any], Any]
-            The possibly anonymized payload ready for further processing.
+            The possibly masked payload ready for further processing.
         """
+        audit_log = None
+        payload_before_masking = None
+        if MASKING_WITH_AUDIT:
+            payload_before_masking = deepcopy(payload)
+            audit_log = {
+                "begin": {"timestamp": datetime.datetime.now(), "payload": None}
+            }
+
         if type(payload) is dict:
-            # Remember general options before clear payload
-            _anon_payload = FORCE_ANONYMISATION or payload.pop("anonymize", False)
-            _anonymize_algorithm = FORCE_ANONYMISATION_ALGORITHM or payload.pop(
-                "anonymize_algorithm", None
-            )
-            _model_name_anonymize = FORCE_ANONYMISATION_MODEL or payload.pop(
-                "model_name_anonymize", None
+            _mask_payload = FORCE_MASKING or payload.pop("mask_payload", False)
+            _mask_pipeline_alg = MASKING_STRATEGY_PIPELINE or payload.pop(
+                "masker_pipeline", None
             )
 
             payload = self._clear_payload(payload=payload)
-            if not _anon_payload:
+            if not _mask_payload:
                 return payload
 
-            return self._anonymize_payload(
+            if MASKING_WITH_AUDIT:
+                payload_before_masking = deepcopy(payload)
+
+            payload = self._mask_whole_payload(
                 payload=payload,
-                algorithm=_anonymize_algorithm,
-                model_name=_model_name_anonymize,
+                algorithms=_mask_pipeline_alg,
             )
-        elif FORCE_ANONYMISATION:
-            return self._anonymize_payload(
+        elif FORCE_MASKING:
+            payload = self._mask_whole_payload(
                 payload=payload,
-                algorithm=FORCE_ANONYMISATION_ALGORITHM,
-                model_name=FORCE_ANONYMISATION_MODEL,
+                algorithms=MASKING_STRATEGY_PIPELINE,
             )
+
+        if MASKING_WITH_AUDIT and payload_before_masking != payload:
+            audit_log["end"] = {
+                "timestamp": datetime.datetime.now(),
+                "payload": deepcopy(payload),
+            }
+            audit_log["begin"]["payload"] = payload_before_masking
+            self._mask_auditor.add_log(audit_log)
+
         return payload
 
     @staticmethod
@@ -918,30 +937,28 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         payload["stream"] = payload.get("stream", False)
         return payload
 
-    def _anonymize_payload(
+    def _mask_whole_payload(
         self,
         payload: Dict | str | List | Any,
-        algorithm: str | None,
-        model_name: str | None,
+        algorithms: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
-        Apply the configured :class:`Anonymizer` to the supplied payload.
+        Apply the :class:`MaskerPipeline` to the supplied payload.
 
-        The method lazily creates an :class:`Anonymizer` instance on first
-        use and then forwards the payload to its ``anonymize_payload`` method.
+        The method lazily creates a MaskerPipeline
 
         Parameters
         ----------
         payload : Union[Dict, str, List, Any]
-            The data to be anonymized.
+            The data to be masked.
 
         Returns
         -------
         Dict[Any, Any]
-            The anonymized representation of *payload*.
+            The masked representation of *payload*.
         """
-        self._prepare_anonymizer()
-        _p = self._fast_masker.mask_payload_fast(payload=payload)
+        self._prepare_masker_pipeline(plugins=algorithms)
+        _p = self._masker_pipeline.apply(payload=payload)
         return _p
 
     def _return_response_or_rerun(
