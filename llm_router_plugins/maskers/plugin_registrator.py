@@ -46,7 +46,9 @@ class MaskerRegistry:
             KeyError: If ``name`` is not present in ``MAIN_MASKERS_REGISTRY``.
         """
         if name not in MAIN_MASKERS_REGISTRY:
-            raise KeyError(f"Masker '{name}' not found in registry.")
+            raise KeyError(
+                f"Masker '{name}' not found in registry: {MAIN_MASKERS_REGISTRY}"
+            )
 
         if name in MASKERS_REGISTRY_SESSION:
             return

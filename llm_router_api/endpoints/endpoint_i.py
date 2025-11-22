@@ -877,7 +877,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             payload_before_masking = deepcopy(payload)
             audit_log = {
                 "endpoint": self.name,
-                "begin": {"timestamp": datetime.datetime.now().timestamp(), "payload": None}
+                "begin": {
+                    "timestamp": datetime.datetime.now().timestamp(),
+                    "payload": None,
+                },
             }
 
         if type(payload) is dict:
