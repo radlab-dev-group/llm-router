@@ -36,7 +36,7 @@ from llm_router_api.base.constants import (
     ENABLE_GENAI_ANONYMIZE_TEXT_EP,
 )
 
-from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
+from llm_router_plugins.maskers.fast_masker.core.masker import FastMasker
 from llm_router_lib.data_models.masker import FastMaskerModel, GenAIAnonymizerModel
 
 
