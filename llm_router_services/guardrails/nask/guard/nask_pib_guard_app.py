@@ -37,20 +37,14 @@ guardrail_processor = GuardrailProcessor(
 @app.route(f"{SERVICES_API_PREFIX}/nask_guard", methods=["POST"])
 def nask_guardrail():
     """
-    Accepts a JSON payload (field name ``payload``), converts it to a
-    string, splits it into overlapping chunks (≤ 500 tokens, 200‑token
-    overlap), classifies each chunk and returns the aggregated results.
+    Accepts a JSON payload (as sent by :class:`HttpPluginInterface` via
+    ``_request``), classifies the content and returns the aggregated results.
     """
     if not request.is_json:
         return jsonify({"error": "Request body must be JSON"}), 400
 
-    req_json: Dict[str, Any] = request.get_json()
-
-    # The endpoint expects the actual data under the key "payload"
-    if "payload" not in req_json:
-        return jsonify({"error": "Missing required field 'payload'"}), 400
-
-    payload = req_json["payload"]
+    # The request body itself is the payload expected by the processor
+    payload: Dict[str, Any] = request.get_json()
     try:
         results = guardrail_processor.classify_chunks(payload)
         return jsonify({"results": results}), 200
