@@ -20,8 +20,8 @@ from typing import List, Dict, Any, Optional
 
 from llm_router_lib.core.constants import USE_BETA_FEATURES
 
-from llm_router_plugins.plugins.fast_masker.core.rule_interface import MaskerRuleI
-from llm_router_plugins.plugins.fast_masker.rules import (
+from llm_router_plugins.maskers.fast_masker.core.rule_interface import MaskerRuleI
+from llm_router_plugins.maskers.fast_masker.rules import (
     PhoneRule,
     UrlRule,
     IpRule,
@@ -38,7 +38,7 @@ from llm_router_plugins.plugins.fast_masker.rules import (
 )
 
 if USE_BETA_FEATURES:
-    from llm_router_plugins.plugins.fast_masker.rules import (
+    from llm_router_plugins.maskers.fast_masker.rules import (
         StreetNameRule,
         SimplePersonalDataRule,
     )

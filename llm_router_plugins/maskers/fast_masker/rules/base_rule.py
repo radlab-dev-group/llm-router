@@ -6,7 +6,7 @@ import abc
 import re
 from typing import Pattern
 
-from llm_router_plugins.plugins.fast_masker.core.rule_interface import MaskerRuleI
+from llm_router_plugins.maskers.fast_masker.core.rule_interface import MaskerRuleI
 
 
 class BaseRule(MaskerRuleI, abc.ABC):

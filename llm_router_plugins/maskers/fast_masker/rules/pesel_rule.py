@@ -4,8 +4,8 @@ Rule that masks valid Polish PESEL numbers.
 
 import re
 
-from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
-from llm_router_plugins.plugins.fast_masker.utils.validators import is_valid_pesel
+from llm_router_plugins.maskers.fast_masker.rules.base_rule import BaseRule
+from llm_router_plugins.maskers.fast_masker.utils.validators import is_valid_pesel
 
 
 class PeselRule(BaseRule):

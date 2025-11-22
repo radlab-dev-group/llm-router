@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 from typing import Set
 
-from llm_router_plugins.plugins.fast_masker.rules.base_rule import BaseRule
+from llm_router_plugins.maskers.fast_masker.rules.base_rule import BaseRule
 
 
 # ----------------------------------------------------------------------
