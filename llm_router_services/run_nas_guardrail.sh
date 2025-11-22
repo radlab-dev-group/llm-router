@@ -36,4 +36,6 @@ echo
 #   -b host:port       → bind address
 #   guardrails.nask_pib_guard_app:app  → import the Flask app object
 # ---------------------------------------------------------------
-gunicorn -w 1 -b "${LLM_ROUTER_NASK_PIB_GUARD_FLASK_HOST}:${LLM_ROUTER_NASK_PIB_GUARD_FLASK_PORT}" guardrails.nask_pib_guard_app:app
+gunicorn -w 1 -b \
+  "${LLM_ROUTER_NASK_PIB_GUARD_FLASK_HOST}:${LLM_ROUTER_NASK_PIB_GUARD_FLASK_PORT}" \
+  guardrails.nask.guard.nask_pib_guard_app:app
