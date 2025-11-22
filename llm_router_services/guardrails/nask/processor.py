@@ -1,16 +1,10 @@
 import json
 from typing import Any, Dict, List
 
-from transformers import pipeline, AutoTokenizer
+from transformers import pipeline, AutoTokenizer, AutoConfig
 
 
 class GuardrailProcessor:
-    """
-    Converts an arbitrary payload to a string, splits it into overlapping
-    token chunks (max 500 tokens, 200‑token overlap) and classifies each
-    chunk with a HuggingFace text‑classification pipeline.
-    """
-
     def __init__(
         self,
         model_path: str,
@@ -18,30 +12,24 @@ class GuardrailProcessor:
         max_tokens: int = 500,
         overlap: int = 200,
     ):
-        """
-        Parameters
-        ----------
-        model_path: str
-            Path or hub identifier of the model.
-        device: int, default –1 (CPU)
-            ``-1`` → CPU, ``0``/``1`` … → GPU index.
-        max_tokens: int, default 500
-            Upper bound of tokens per chunk.
-        overlap: int, default 200
-            Number of tokens overlapping between consecutive chunks.
-        """
-        self.max_tokens = max_tokens
-        self.overlap = overlap
+        self._overlap = overlap
+        self._max_tokens = max_tokens
 
-        # Tokenizer from the same model directory
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path)
+        self._tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+        self._model_max_length = AutoConfig.from_pretrained(
+            model_path
+        ).max_position_embeddings
 
-        # Classification pipeline – device is passed directly
-        self.classifier = pipeline(
+        if self._max_tokens > self._model_max_length:
+            self._max_tokens = self._model_max_length
+
+        self._pipeline = pipeline(
             "text-classification",
             model=model_path,
-            tokenizer=model_path,
+            tokenizer=self._tokenizer,
             device=device,
+            truncation=True,
+            max_length=self._max_tokens,
         )
 
     @staticmethod
@@ -49,17 +37,18 @@ class GuardrailProcessor:
         try:
             return json.dumps(payload, ensure_ascii=False, sort_keys=True)
         except (TypeError, ValueError):
-            return str(payload)
+            parts = [f"{str(k)}={str(v)}" for k, v in payload.items()]
+            return ", ".join(parts)
 
     def _chunk_text(self, text: str) -> List[str]:
-        token_ids = self.tokenizer(text, add_special_tokens=False)["input_ids"]
+        token_ids = self._tokenizer.encode(text, add_special_tokens=False)
         chunks: List[str] = []
 
-        step = self.max_tokens - self.overlap
+        step = self._max_tokens - self._overlap
         for start in range(0, len(token_ids), step):
-            end = min(start + self.max_tokens, len(token_ids))
+            end = min(start + self._max_tokens, len(token_ids))
             chunk_ids = token_ids[start:end]
-            chunk_text = self.tokenizer.decode(
+            chunk_text = self._tokenizer.decode(
                 chunk_ids,
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True,
@@ -70,35 +59,15 @@ class GuardrailProcessor:
         return chunks
 
     def classify_chunks(self, payload: Dict[Any, Any]) -> Dict[str, Any]:
-        """
-        Convert ``payload`` → string, split into overlapping chunks,
-        classify each chunk and build the final response:
-
-        {
-            "safe":   bool,               # True only if **all** chunks are safe
-            "detailed": [
-                {
-                    "chunk_index": int,
-                    "chunk_text":  str,
-                    "label":       str,
-                    "score":       float,
-                    "safe":        bool   # True if this chunk is safe
-                },
-                ...
-            ]
-        }
-
-        The definition of *safe* is based on the classifier label.
-        By convention we treat the label ``"SAFE"`` (case‑insensitive) as
-        safe; any other label is considered unsafe.
-        """
         text = self._payload_to_string(payload)
         chunks = self._chunk_text(text)
 
+        raw_results = self._pipeline(chunks, batch_size=32)
+
+        flat_results = [r[0] if isinstance(r, list) else r for r in raw_results]
+
         detailed: List[Dict[str, Any]] = []
-        for idx, chunk in enumerate(chunks):
-            # ``pipeline`` returns a list; we take the first (aggregated) entry
-            classification = self.classifier(chunk)[0]
+        for idx, (chunk, classification) in enumerate(zip(chunks, flat_results)):
             label = classification.get("label", "")
             score = round(classification.get("score", 0.0), 4)
             is_safe = label.lower() == "safe"
