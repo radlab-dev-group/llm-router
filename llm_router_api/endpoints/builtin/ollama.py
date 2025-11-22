@@ -43,6 +43,8 @@ class OllamaHomeHandler(EndpointWithHttpRequestI):
         No system prompt is used for this endpoint.
     """
 
+    EP_DONT_NEED_GUARDRAIL = True
+
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
     SYSTEM_PROMPT_NAME = None
@@ -105,6 +107,8 @@ class OllamaTagsHandler(EndpointWithHttpRequestI):
     The endpoint is registered under the root path ``/`` and only supports
     the HTTP ``GET`` method.  It does not require any request parameters.
     """
+
+    EP_DONT_NEED_GUARDRAIL = True
 
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
