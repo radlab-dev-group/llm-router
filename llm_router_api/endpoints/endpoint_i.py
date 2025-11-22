@@ -725,8 +725,21 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         self._start_time = time.time()
         try:
             params = self.prepare_payload(params)
-            params = self._prepare_payload_at_beginning(payload=params)
 
+            # ------------ BEGIN SECURE SECTION ------------
+            # 1. Check payload using guardrails
+            # TODO: Tutaj idzie guard -- sprawdzi is_safe i blokowac jak is_safe == False + audyt
+            # FORCE_GUARDRAIL, GUARDRAIL_WITH_AUDIT, GUARDRAIL_STRATEGY_PIPELINE
+
+            # 2. Mask the whole payload if needed
+            # TODO: Tutaj idzie anon -- wydzielic z _prepare_payload_at_beginning maskowanie i audyt
+            params = self._do_masking_if_needed(payload=params)
+
+            # 3. Clear payload to accept only required params
+            params = self._clear_payload(payload=params)
+            # ------------ END SECURE SECTION ------------
+
+            # 4. Endpoint processing
             map_prompt = None
             prompt_str_force = None
             prompt_str_postfix = None
@@ -854,25 +867,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     options=options,
                 )
 
-    def _prepare_payload_at_beginning(
-        self, payload: Dict[str, Any] | Any
-    ) -> Dict[str, Any] | Any:
-        """
-        Perform early preprocessing of the incoming payload before the main
-        business logic runs.
+    def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not payload:
+            return payload
 
-        Parameters
-        ----------
-        payload : Union[Dict[Any, Any], Any]
-            The raw request payload as received from the Flask layer.
-
-        Returns
-        -------
-        Union[Dict[Any, Any], Any]
-            The possibly masked payload ready for further processing.
-        """
         audit_log = None
         payload_before_masking = None
+
         if MASKING_WITH_AUDIT:
             payload_before_masking = deepcopy(payload)
             audit_log = {
@@ -883,28 +884,29 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 },
             }
 
-        if type(payload) is dict:
+        if FORCE_MASKING:
+            payload = self._mask_whole_payload(
+                payload=payload,
+                algorithms=MASKING_STRATEGY_PIPELINE,
+            )
+        elif type(payload) is dict:
             _mask_payload = FORCE_MASKING or payload.pop("mask_payload", False)
             _mask_pipeline_alg = MASKING_STRATEGY_PIPELINE or payload.pop(
                 "masker_pipeline", None
             )
 
-            payload = self._clear_payload(payload=payload)
-            if not _mask_payload:
-                return payload
-
-            if MASKING_WITH_AUDIT:
-                payload_before_masking = deepcopy(payload)
-
+            if type(_mask_pipeline_alg) is str:
+                _mask_pipeline_alg = [
+                    _p.strip()
+                    for _p in _mask_pipeline_alg.strip().split(",")
+                    if len(_p.strip())
+                ]
             payload = self._mask_whole_payload(
                 payload=payload,
                 algorithms=_mask_pipeline_alg,
             )
-        elif FORCE_MASKING:
-            payload = self._mask_whole_payload(
-                payload=payload,
-                algorithms=MASKING_STRATEGY_PIPELINE,
-            )
+        else:
+            return payload
 
         if MASKING_WITH_AUDIT and payload_before_masking != payload:
             audit_log["end"] = {
