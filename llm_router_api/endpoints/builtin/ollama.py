@@ -43,7 +43,7 @@ class OllamaHomeHandler(EndpointWithHttpRequestI):
         No system prompt is used for this endpoint.
     """
 
-    EP_DONT_NEED_GUARDRAIL = True
+    EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
 
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
@@ -108,7 +108,7 @@ class OllamaTagsHandler(EndpointWithHttpRequestI):
     the HTTP ``GET`` method.  It does not require any request parameters.
     """
 
-    EP_DONT_NEED_GUARDRAIL = True
+    EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
 
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
