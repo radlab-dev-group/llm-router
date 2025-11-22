@@ -3,7 +3,7 @@ from typing import Any, Dict, List
 PIPELINE_BATCH_SIZE = 64
 
 MIN_SCORE_FOR_SAFE = 0.5
-MIN_SCORE_FOR_NOT_SAFE = 0.89
+MIN_SCORE_FOR_NOT_SAFE = 0.5
 
 from transformers import pipeline, AutoTokenizer, AutoConfig
 
@@ -67,6 +67,10 @@ class GuardrailProcessor:
     def classify_chunks(self, payload: Dict[Any, Any]) -> Dict[str, Any]:
         texts = self._payload_to_string_list(payload)
         chunks = self._chunk_text(texts=texts)
+
+        import json
+
+        print(json.dumps(chunks, indent=2, ensure_ascii=False))
 
         raw_results = self._pipeline(chunks, batch_size=PIPELINE_BATCH_SIZE)
 
