@@ -177,17 +177,21 @@ class SecureEndpointI(abc.ABC):
             }
         return audit_log
 
+    @staticmethod
     def _end_audit_log_if_needed(
-        self, payload, audit_log, auditor: AnyRequestAuditor
+        payload, audit_log, auditor: AnyRequestAuditor, force_end: bool
     ):
         if not audit_log:
+            if force_end:
+                raise Exception(f"Cannot end audit! Audit log is not set!")
             return
 
-        audit_log["end"] = {
-            "timestamp": datetime.datetime.now().timestamp(),
-            "payload": deepcopy(payload),
-        }
-        auditor.add_log(audit_log)
+        if force_end or audit_log["begin"]["payload"] != payload:
+            audit_log["end"] = {
+                "timestamp": datetime.datetime.now().timestamp(),
+                "payload": deepcopy(payload),
+            }
+            auditor.add_log(audit_log)
 
     def _is_request_guardrail_safe(self, payload: Dict):
         if (
@@ -209,6 +213,7 @@ class SecureEndpointI(abc.ABC):
                 payload=message,
                 audit_log=audit_log,
                 auditor=self._guardrail_auditor_request,
+                force_end=True,
             )
 
         return is_safe
@@ -235,7 +240,10 @@ class SecureEndpointI(abc.ABC):
             return payload
 
         self._end_audit_log_if_needed(
-            payload=payload, audit_log=audit_log, auditor=self._mask_auditor
+            payload=payload,
+            audit_log=audit_log,
+            auditor=self._mask_auditor,
+            force_end=False,
         )
 
         return payload
