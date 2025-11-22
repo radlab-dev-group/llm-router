@@ -4,8 +4,8 @@ from typing import Any, Dict
 from flask import Flask, request, jsonify
 
 # ----------------------------------------------------------------------
-from .constants import SERVICES_API_PREFIX
-from .nask.processor import GuardrailProcessor
+from guardrails.constants import SERVICES_API_PREFIX
+from guardrails.nask.processor import GuardrailProcessor
 
 # ----------------------------------------------------------------------
 # Environment prefix – all configuration keys start with this value

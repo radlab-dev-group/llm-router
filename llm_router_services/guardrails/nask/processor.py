@@ -69,29 +69,50 @@ class GuardrailProcessor:
                 break
         return chunks
 
-    def classify_chunks(self, payload: Dict[Any, Any]) -> List[Dict[str, Any]]:
+    def classify_chunks(self, payload: Dict[Any, Any]) -> Dict[str, Any]:
         """
-        Returns a list of dictionaries, one per chunk:
+        Convert ``payload`` → string, split into overlapping chunks,
+        classify each chunk and build the final response:
 
         {
-            "chunk_index": int,
-            "chunk_text": str,
-            "label": str,
-            "score": float   # rounded to 4 dp
+            "safe":   bool,               # True only if **all** chunks are safe
+            "detailed": [
+                {
+                    "chunk_index": int,
+                    "chunk_text":  str,
+                    "label":       str,
+                    "score":       float,
+                    "safe":        bool   # True if this chunk is safe
+                },
+                ...
+            ]
         }
+
+        The definition of *safe* is based on the classifier label.
+        By convention we treat the label ``"SAFE"`` (case‑insensitive) as
+        safe; any other label is considered unsafe.
         """
         text = self._payload_to_string(payload)
         chunks = self._chunk_text(text)
 
-        results: List[Dict[str, Any]] = []
+        detailed: List[Dict[str, Any]] = []
         for idx, chunk in enumerate(chunks):
-            classification = self.classifier(chunk)[0]  # aggregated result
-            results.append(
+            # ``pipeline`` returns a list; we take the first (aggregated) entry
+            classification = self.classifier(chunk)[0]
+            label = classification.get("label", "")
+            score = round(classification.get("score", 0.0), 4)
+            is_safe = label.lower() == "safe"
+
+            detailed.append(
                 {
                     "chunk_index": idx,
                     "chunk_text": chunk,
-                    "label": classification["label"],
-                    "score": round(classification.get("score", 0.0), 4),
+                    "label": label,
+                    "score": score,
+                    "safe": is_safe,
                 }
             )
-        return results
+
+        overall_safe = all(item["safe"] for item in detailed)
+
+        return {"safe": overall_safe, "detailed": detailed}
