@@ -79,7 +79,7 @@ class SecureEndpointI(abc.ABC):
             self._prepare_masker_pipeline(plugins=MASKING_STRATEGY_PIPELINE)
         self._mask_auditor = None
         if MASKING_WITH_AUDIT:
-            self._mask_auditor = AnyRequestAuditor()
+            self._mask_auditor = AnyRequestAuditor(logger=self.logger)
 
         # --------------------------------------------------------------------------
         # ----------- GUARDRAILS SECTION
@@ -92,7 +92,7 @@ class SecureEndpointI(abc.ABC):
             )
         self._guardrail_auditor_request = None
         if GUARDRAIL_WITH_AUDIT_REQUEST:
-            self._guardrail_auditor_request = AnyRequestAuditor()
+            self._guardrail_auditor_request = AnyRequestAuditor(logger=self.logger)
 
         # --------------------------------------------------------------------------
 
@@ -105,7 +105,7 @@ class SecureEndpointI(abc.ABC):
             )
         self._guardrail_auditor_response = None
         if GUARDRAIL_WITH_AUDIT_RESPONSE:
-            self._guardrail_auditor_response = AnyRequestAuditor()
+            self._guardrail_auditor_response = AnyRequestAuditor(logger=self.logger)
 
     # ------------------------------------------------------------------
     # Public read‑only properties

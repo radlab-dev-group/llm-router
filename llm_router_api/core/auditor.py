@@ -1,3 +1,4 @@
+import logging
 from typing import List
 
 
@@ -21,9 +22,10 @@ class SingleAuditLog:
 
 
 class AnyRequestAuditor:
-    def __init__(self) -> None:
-        # Initialize storage for audit logs
+    def __init__(self, logger: logging.Logger) -> None:
         self._logs: List[SingleAuditLog] = []
+
+        self.logger = logger
 
     def add_log(self, log):
         """
@@ -31,10 +33,12 @@ class AnyRequestAuditor:
         The log can be a dict (JSON) or any serializable object,
         including a list of such entries.
         """
-        # import json
         # print("==" * 100)
+        # import json
         # print(json.dumps(log, indent=2, ensure_ascii=False))
         # print("==" * 100)
+
+        self.logger.warning("[AUDIT] ************ Added audit log! ************ ")
         self._logs.append(SingleAuditLog(log))
 
     def get_logs(self) -> List[SingleAuditLog]:
