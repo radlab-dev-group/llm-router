@@ -124,7 +124,7 @@ MASKING_WITH_AUDIT = bool_env_value(
 # Masking strategy pipeline in case when FORCE_MASKING
 MASKING_STRATEGY_PIPELINE = str(
     os.environ.get(
-        f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_STRATEGY_PIPELINE", "fast_masking"
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_STRATEGY_PIPELINE", "fast_masker"
     )
 )
 if MASKING_STRATEGY_PIPELINE:
