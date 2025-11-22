@@ -139,7 +139,7 @@ if MASKING_STRATEGY_PIPELINE:
 # =============================================================================
 # GUARDRAILS
 # =============================================================================
-# ----------- REQUEST GUARDRAILZ
+# ----------- REQUEST GUARDRAIL
 # If set to True, then each user request will be checked before the provider call
 FORCE_GUARDRAIL_REQUEST = bool_env_value(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_GUARDRAIL_REQUEST"
