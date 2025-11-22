@@ -9,7 +9,6 @@ from llm_router_api.base.constants_base import (
     BalanceStrategies,
 )
 
-
 # Directory with predefined system prompts
 PROMPTS_DIR = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}PROMPTS_DIR", "resources/prompts"
@@ -51,14 +50,6 @@ DEFAULT_API_PREFIX = os.environ.get(
 
 # Run service as a proxy only
 SERVICE_AS_PROXY = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM")
-
-# If set to True, then each user request will be anonymised before provider call
-FORCE_ANONYMISATION = bool_env_value(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_ANONYMISATION"
-)
-
-FORCE_ANONYMISATION_ALGORITHM = None
-FORCE_ANONYMISATION_MODEL = None
 
 # Type of server, default is flask {flask, gunicorn, waitress}
 SERVER_TYPE = (
@@ -118,17 +109,30 @@ REDIS_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_HOST", "").st
 # Strategy for load balancing when a multi-provider model is available
 REDIS_PORT = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PORT", 6379))
 
-# If env is enabled, then genai-based anonymization endpoint will be available
+# If env is enabled, then a genai-based anonymization endpoint will be available
 ENABLE_GENAI_ANONYMIZE_TEXT_EP = bool_env_value(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}ENABLE_GENAI_ANONYMIZE_TEXT_EP"
 )
+# If set to True, then each user request will be masked before the provider call
+FORCE_MASKING = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_MASKING")
 
-# Default masking strategy in case when FORCE_ANONYMISATION
-DEFAULT_MASKING_STRATEGY = "fast_masking"
-# TODO: Should be set used env value
-#  ==> DEFAULT_MASKING_STRATEGY:
-#       fast_masking -> <FALLBACK IG NO DEFAULT IS SET>
-#       genai_masking -> ENABLE_GENAI_ANONYMIZE_TEXT_EP
+# If True, then masking audit log will be added to
+MASKING_WITH_AUDIT = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_WITH_AUDIT"
+)
+
+# Masking strategy pipeline in case when FORCE_MASKING
+MASKING_STRATEGY_PIPELINE = str(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_STRATEGY_PIPELINE", "fast_masking"
+    )
+)
+if MASKING_STRATEGY_PIPELINE:
+    MASKING_STRATEGY_PIPELINE = [
+        _s.strip()
+        for _s in MASKING_STRATEGY_PIPELINE.strip().split(",")
+        if len(_s.strip())
+    ]
 
 # =============================================================================
 
@@ -149,22 +153,28 @@ class _StartAppVerificator:
         if SERVER_BALANCE_STRATEGY not in POSSIBLE_BALANCE_STRATEGIES:
             raise Exception(
                 f"{SERVER_BALANCE_STRATEGY} is not a valid strategy for balancing.\n"
-                f"Available strategies: {POSSIBLE_BALANCE_STRATEGIES}"
+                f"Available strategies: {POSSIBLE_BALANCE_STRATEGIES}\n\n"
             )
 
     @staticmethod
     def __verify_default_masking_strategy():
-        if FORCE_ANONYMISATION:
-            _POSSIBLE_STRATEGIES = ["fast_masking", "genai_masking"]
-            if DEFAULT_MASKING_STRATEGY not in _POSSIBLE_STRATEGIES:
+        if MASKING_WITH_AUDIT:
+            if not FORCE_MASKING:
                 raise Exception(
-                    f"Default masking strategy may be one of: {_POSSIBLE_STRATEGIES}"
+                    f"`export LLM_ROUTER_FORCE_MASKING=1` environment is "
+                    f"required when `MASKING_WITH_AUDIT=1`\n\n"
                 )
 
-    def check_if_start_is_possible(self):
+        if FORCE_MASKING and not len(MASKING_STRATEGY_PIPELINE):
+            raise Exception(
+                "When FORCE_MASKING is set to `True`, you must specify the "
+                "pipeline of masking strategies"
+            )
+
+    def dont_run_if_something_is_wrong(self):
         self.__verify_is_able_to_init()
         self.__verify_balancing_strategy()
         self.__verify_default_masking_strategy()
 
 
-_StartAppVerificator().check_if_start_is_possible()
+_StartAppVerificator().dont_run_if_something_is_wrong()
