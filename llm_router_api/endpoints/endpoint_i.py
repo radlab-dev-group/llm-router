@@ -135,6 +135,12 @@ class SecureEndpointI(abc.ABC):
         # Lista pluginów -- zwraca!
         return []
 
+    def _is_request_guardrail_safe(self, payload: Dict):
+        return True
+
+    def _guardrail_response_if_needed(self, response):
+        return response
+
     def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not payload:
             return payload
@@ -838,15 +844,17 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         self._start_time = time.time()
         try:
+            # 0. There user is able to prepare a payload to process
             params = self.prepare_payload(params)
 
             # ------------ BEGIN SECURE SECTION ------------
             # 1. Check payload using guardrails
-            # TODO: Tutaj idzie guard -- sprawdzi is_safe i blokowac jak is_safe == False + audyt
-            # FORCE_GUARDRAIL, GUARDRAIL_WITH_AUDIT, GUARDRAIL_STRATEGY_PIPELINE
+            if not self._is_request_guardrail_safe(payload=params):
+                return self.return_response_not_ok(
+                    body={"guardrail": "Not safe content!"}
+                )
 
             # 2. Mask the whole payload if needed
-            # TODO: Tutaj idzie anon -- wydzielic z _prepare_payload_at_beginning maskowanie i audyt
             params = self._do_masking_if_needed(payload=params)
 
             # 3. Clear payload to accept only required params
@@ -1133,7 +1141,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     options=options,
                 )
             self.logger.error(f"Max reconnections exceeded: {reconnect_number}!")
-        return response
+
+        return self._guardrail_response_if_needed(response=response)
 
     @staticmethod
     def _filter_params_to_acceptable(
