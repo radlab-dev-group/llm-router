@@ -1,6 +1,6 @@
-## llm‑router
+## LLM Router - Open-Source AI Gateway for Local and Cloud LLM Infrastructure
 
-**LLM Router** is a service that can be deployed on‑premises or in the cloud.
+[**LLM Router**](https://llm-router.cloud) is a service that can be deployed on‑premises or in the cloud.
 It adds a layer between any application and the LLM provider. In real time it controls traffic,
 distributes a load among providers of a specific LLM, and enables analysis of outgoing requests
 from a security perspective (masking, anonymization, prohibited content).
@@ -149,30 +149,8 @@ docker run \
 
 ### 3️⃣ Optional configuration (via environment)
 
-| Variable                                    | Description                                                                                                                                                                                                    | Default                                |
-|---------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| `LLM_ROUTER_PROMPTS_DIR`                    | Directory containing predefined system prompts.                                                                                                                                                                | `resources/prompts`                    |
-| `LLM_ROUTER_MODELS_CONFIG`                  | Path to the models configuration JSON file.                                                                                                                                                                    | `resources/configs/models-config.json` |
-| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`            | Default language for endpoint prompts.                                                                                                                                                                         | `pl`                                   |
-| `LLM_ROUTER_TIMEOUT`                        | Timeout (seconds) for llm-router API calls.                                                                                                                                                                    | `0`                                    |
-| `LLM_ROUTER_EXTERNAL_TIMEOUT`               | Timeout (seconds) for external model API calls.                                                                                                                                                                | `300`                                  |
-| `LLM_ROUTER_LOG_FILENAME`                   | Name of the log file.                                                                                                                                                                                          | `llm-router.log`                       |
-| `LLM_ROUTER_LOG_LEVEL`                      | Logging level (e.g., INFO, DEBUG).                                                                                                                                                                             | `INFO`                                 |
-| `LLM_ROUTER_EP_PREFIX`                      | Prefix for all API endpoints.                                                                                                                                                                                  | `/api`                                 |
-| `LLM_ROUTER_MINIMUM`                        | Run service in proxy‑only mode (boolean).                                                                                                                                                                      | `False`                                |
-| `LLM_ROUTER_IN_DEBUG`                       | Run server in debug mode (boolean).                                                                                                                                                                            | `False`                                |
-| `LLM_ROUTER_BALANCE_STRATEGY`               | Strategy used to balance routing between LLM providers. Allowed values are `balanced`, `weighted`, `dynamic_weighted` (beta), `first_available` and `first_available_optim` as defined in `constants_base.py`. | `balanced`                             |
-| `LLM_ROUTER_REDIS_HOST`                     | Redis host for load‑balancing when a multi‑provider model is available.                                                                                                                                        | `<empty string>`                       |
-| `LLM_ROUTER_REDIS_PORT`                     | Redis port for load‑balancing when a multi‑provider model is available.                                                                                                                                        | `6379`                                 |
-| `LLM_ROUTER_SERVER_TYPE`                    | Server implementation to use (`flask`, `gunicorn`, `waitress`).                                                                                                                                                | `flask`                                |
-| `LLM_ROUTER_SERVER_PORT`                    | Port on which the server listens.                                                                                                                                                                              | `8080`                                 |
-| `LLM_ROUTER_SERVER_HOST`                    | Host address for the server.                                                                                                                                                                                   | `0.0.0.0`                              |
-| `LLM_ROUTER_SERVER_WORKERS_COUNT`           | Number of workers (used in case when the selected server type supports multiworkers)                                                                                                                           | `2`                                    |
-| `LLM_ROUTER_SERVER_THREADS_COUNT`           | Number of workers threads (used in case when the selected server type supports multithreading)                                                                                                                 | `8`                                    |
-| `LLM_ROUTER_SERVER_WORKER_CLASS`            | If server accepts workers type, its able to set worker class by this environment.                                                                                                                              | `None`                                 |
-| `LLM_ROUTER_USE_PROMETHEUS`                 | Enable Prometheus metrics collection.** When set to `True`, the router registers a `/metrics` endpoint exposing Prometheus‑compatible metrics for monitoring.                                                  | `False`                                |
-| `LLM_ROUTER_FORCE_ANONYMISATION`            | Enable whole payload anonymisation. Each key and value is aut-anonymized before sending to model provider.                                                                                                     | `False`                                |
-| `LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP` | Enable builtin endpoint `/api/anonymize_text_genai` which uses genai to anonymize text                                                                                                                         | `False`                                |
+A full list of environment variables is available at the link
+[.env list](llm_router_api/README.md#environment-variables)
 
 ### 4️⃣ Run the REST API
 
@@ -186,111 +164,10 @@ LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 
 ## ⚖️ Load Balancing Strategies
 
-The `llm-router` supports various strategies for selecting the most suitable provider
-when multiple options exist for a given model. This ensures efficient
-and reliable routing of requests. The available strategies are:
+The current list of available strategies, the interface description,
+and an example extension can be found at the link
+[load balancing strategies](llm_router_api/LB_STRATEGIES.md#load-balancing-strategies)
 
-### 1. `balanced` (Default)
-
-* **Description:** This is the default strategy. It aims to distribute requests
-  evenly across available providers by keeping track of how many times each provider has
-  been used for a specific model. It selects the provider that has been used the least.
-* **When to use:** Ideal for scenarios where all providers are considered equal
-  in terms of capacity and performance. It provides a simple and effective way to balance the load.
-* **Implementation:** Implemented in `llm_router_api.base.lb.balanced.LoadBalancedStrategy`.
-
-### 2. `weighted`
-
-* **Description:** This strategy allows you to assign static weights to providers.
-  Providers with higher weights are more likely to be selected. The selection is deterministic,
-  ensuring that over time, the request distribution closely matches the configured weights.
-* **When to use:** Useful when you have providers with different capacities or performance
-  characteristics, and you want to prioritize certain providers without needing dynamic adjustments.
-* **Implementation:** Implemented in `llm_router_api.base.lb.weighted.WeightedStrategy`.
-
-### 3. `dynamic_weighted` (beta)
-
-* **Description:** An extension of the `weighted` strategy. It not only uses weights
-  but also tracks the latency between successive selections of the same provider.
-  This allows for more adaptive routing, as providers with consistently high latency
-  might be de-prioritized over time. You can also dynamically update provider weights.
-* **When to use:** Recommended for dynamic environments where provider performance
-  can fluctuate. It offers more sophisticated load balancing by considering both
-  configured weights and real-time performance metrics (latency).
-* **Implementation:** Implemented in `llm_router_api.base.lb.weighted.DynamicWeightedStrategy`.
-
-### 4. `first_available`
-
-* **Description:** This strategy selects the very first provider that is available.
-  It uses Redis to coordinate across multiple workers, ensuring that only one
-  worker can use a specific provider at a time.
-* **When to use:** Suitable for critical applications where you need the fastest
-  possible response and want to ensure that a request is immediately handled by any available
-  provider, without complex load distribution logic. It guarantees that a provider,
-  once taken, is exclusive until released.
-* **Implementation:** Implemented in `llm_router_api.base.lb.first_available.FirstAvailableStrategy`.
-
-**When using the** `first_available` load balancing strategy, a **Redis server is required**
-for coordinating provider availability across multiple workers.
-
-The connection details for Redis can be configured using environment variables:
-
-```shell
-LLM_ROUTER_BALANCE_STRATEGY="first_available" \
-LLM_ROUTER_REDIS_HOST="your.machine.redis.host" \
-LLM_ROUTER_REDIS_PORT=redis_port \
-```
-
-**Installing Redis on Ubuntu**
-
-To install Redis on an Ubuntu system, follow these steps:
-
-1. **Update package list:**
-
-```shell
-sudo apt update
-```
-
-2. **Install Redis server:**
-
-```shell
-sudo apt install redis-server
-```
-
-3. **Start and enable Redis service:**
-   The Redis service should start automatically after installation.
-   To ensure it's running and starts on system boot, you can use the following commands:
-
-``` shell
-sudo systemctl status redis-server
-sudo systemctl enable redis-server
-```
-
-4. **Configure Redis (optional):**
-   The default Redis configuration (`/etc/redis/redis.conf`) is usually sufficient
-   to get started. If you need to adjust settings (e.g., address, port),
-   edit this file. After making configuration changes, restart the Redis server:
-
-```shell
-sudo systemctl restart redis-server
-```
-
----
-
-### Extending with Custom Strategies
-
-To use a different strategy (e.g., round‑robin, random weighted, latency‑based),
-implement `ChooseProviderStrategyI` and pass the instance to `ProviderChooser`:
-
-``` python
-from llm_router_api.base.lb.chooser import ProviderChooser
-from my_strategies import RoundRobinStrategy
-
-chooser = ProviderChooser(strategy=RoundRobinStrategy())
-```
-
-The rest of the code – `ModelHandler`, endpoint implementations, etc. – will
-automatically use the chooser you provide.
 
 ---
 
@@ -299,47 +176,34 @@ automatically use the chooser you provide.
 All endpoints are exposed under the REST API service. Unless stated otherwise, methods are POST and consume/produce
 JSON.
 
-### Built-in Text Utilities
+### Health & Info
 
-- `POST /builtin/generate_questions`
-    - **Purpose**: Generate a list of questions for each provided text.
-    - **Required**: `texts`, `model_name`
-    - **Optional**: `number_of_questions`, `stream`, and other common options
-    - **Response**: For each input text returns an array of generated questions.
+- **GET** `LLM_ROUTER_EP_PREFIX/ping` – Simple health‑check, returns `"pong"`.
+- **GET** `LLM_ROUTER_EP_PREFIX/` – Ollama health endpoint.
 
-- `POST /builtin/translate`
-    - **Purpose**: Translate input texts to Polish.
-    - **Required**: `texts`, `model_name`
-    - **Optional**: `stream` and other common options
-    - **Response**: Array of objects `{ original, translated }` per input text.
+### Provider‑Specific
 
-- `POST /builtin/simplify_text`
-    - **Purpose**: Simplify input texts (make them easier to read).
-    - **Required**: `texts`, `model_name`
-    - **Optional**: `stream`, `temperature`, `max_tokens` and other common options
-    - **Response**: Array of simplified texts aligned with input order.
+- **GET** `LLM_ROUTER_EP_PREFIX/tags` – List available Ollama model tags.
+- **GET** `LLM_ROUTER_EP_PREFIX/models` – List OpenAI‑compatible models.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/v0/models` – List LM Studio models.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/chat` – Ollama‑style chat completion.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/chat/completions` – OpenAI‑style chat completion.
+- **POST** `LLM_ROUTER_EP_PREFIX/chat/completions` – OpenAI‑style chat completion (alternative path).
+- **POST** `LLM_ROUTER_EP_PREFIX/v1/chat/completions` – vLLM‑like chat completion.
 
-### Content Generation
+### Chat & Completions (Built‑in)
 
-- `POST /builtin/generate_article_from_text`
-    - **Purpose**: Generate a short article/news-like snippet from a single text.
-    - **Required**: text, `model_name`
-    - **Optional**: `temperature`, `max_tokens`, `stream` and other common options
-    - **Response**: `{ article_text }`
+- **POST** `LLM_ROUTER_EP_PREFIX/api/conversation_with_model` – Standard chat endpoint (OpenAI‑compatible payload).
+- **POST** `LLM_ROUTER_EP_PREFIX/api/extended_conversation_with_model` – Chat with extended fields support.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/generative_answer` – Answer a question using provided context.
 
-- `POST /builtin/create_full_article_from_texts`
-    - **Purpose**: Create a full article from multiple texts with a guiding user query.
-    - **Required**: `user_query`, `texts`, `model_name`
-    - **Optional**: `article_type`, `stream`, `temperature`, `max_tokens` and other common options
-    - **Response**: `{ article_text }`
+### Utility Endpoints (Built‑in)
 
-### Context QA (RAG-like)
-
-- `POST /builtin/generative_answer`
-    - **Purpose**: Answer a question using provided context (list of texts or map of `doc_name -> [texts]`).
-    - **Required**: `question_str`, `texts`, `model_name`
-    - **Optional**: `question_prompt`, `system_prompt`, `doc_name_in_answer`, `stream` and other common options
-    - **Response**: `{ article_text }` where the content is the model’s answer based on the supplied context.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/generate_questions` – Generate questions from input texts.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/translate` – Translate a list of texts.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/simplify_text` – Simplify input texts.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/generate_article_from_text` – Generate a short article from a single text.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/create_full_article_from_texts` – Generate a full article from multiple texts.
 
 ### Streaming vs. Non‑Streaming Responses
 
@@ -373,7 +237,6 @@ flag lives in the request schema (`OpenAIChatModel` and analogous models) and is
 
 - **Python**3.10+ (project is tested on 3.10.6)
 - All dependencies are listed in `requirements.txt`. Install them inside the virtualenv.
-- Run tests with `pytest` (already in the environment).
 - To add a new provider, create a class in `llm_proxy_rest/core/api_types` that implements the `BaseProvider` interface
   and register it in `llm_proxy_rest/register/__init__.py`.
 
