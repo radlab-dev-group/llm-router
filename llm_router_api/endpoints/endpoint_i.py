@@ -855,7 +855,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
             # 2. Mask the whole payload if needed
-            params = self._do_masking_if_needed(payload=params)
+            # params = self._do_masking_if_needed(payload=params)
 
             # 3. Clear payload to accept only required params
             params = self._clear_payload(payload=params)
