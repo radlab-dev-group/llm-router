@@ -48,10 +48,21 @@ export LLM_ROUTER_REDIS_PORT=${LLM_ROUTER_REDIS_PORT:-6379}
 
 # ==================================================================================
 # Data protection (additional endpoints will be available)
+# ------------ Masker section
 export LLM_ROUTER_FORCE_MASKING=${LLM_ROUTER_FORCE_MASKING:-0}
 export LLM_ROUTER_MASKING_WITH_AUDIT=${LLM_ROUTER_MASKING_WITH_AUDIT:-0}
 export LLM_ROUTER_MASKING_STRATEGY_PIPELINE=${LLM_ROUTER_MASKING_STRATEGY_PIPELINE:-"fast_masker"}
 export LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP=${LLM_ROUTER_ENABLE_GENAI_ANONYMIZE_TEXT_EP:-1}
+# ------------ Guardrails section (request)
+export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=${LLM_ROUTER_FORCE_GUARDRAIL_REQUEST:-0}
+export LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=${LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST:-0}
+export LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_REQUEST=${LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_REQUEST:-"nask_guard"}
+# ------------ Guardrails section (response)
+#export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=${LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE:-1}
+#export LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=${LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE:-1}
+#export LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_RESPONSE=${LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:-"nask_guard"}
+# ------------ Guardrails services (full host + endpoint path)
+export LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST_EP=${LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST_EP:-"http://192.168.100.71:5000/api/guardrails/nask_guard"}
 
 
 # ==================================================================================
