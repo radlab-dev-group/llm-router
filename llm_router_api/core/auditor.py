@@ -31,6 +31,10 @@ class MaskAuditor:
         The log can be a dict (JSON) or any serializable object,
         including a list of such entries.
         """
+        # import json
+        # print("==" * 100)
+        # print(json.dumps(log, indent=2, ensure_ascii=False))
+        # print("==" * 100)
         self._logs.append(SingleAuditLog(log))
 
     def get_logs(self) -> List[SingleAuditLog]:
