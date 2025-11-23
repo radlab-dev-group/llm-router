@@ -147,18 +147,10 @@ docker run \
 
 ---
 
-### 3️⃣ Optional configuration (via environment)
+### Configuration (via environment)
 
 A full list of environment variables is available at the link
 [.env list](llm_router_api/README.md#environment-variables)
-
-### 4️⃣ Run the REST API
-
-```shell script
-./run-rest-api.sh
-# or
-LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
-```
 
 ---
 
@@ -173,50 +165,9 @@ and an example extension can be found at the link
 
 ## 🛣️ Endpoints Overview
 
-All endpoints are exposed under the REST API service. Unless stated otherwise, methods are POST and consume/produce
-JSON.
-
-### Health & Info
-
-- **GET** `LLM_ROUTER_EP_PREFIX/ping` – Simple health‑check, returns `"pong"`.
-- **GET** `LLM_ROUTER_EP_PREFIX/` – Ollama health endpoint.
-
-### Provider‑Specific
-
-- **GET** `LLM_ROUTER_EP_PREFIX/tags` – List available Ollama model tags.
-- **GET** `LLM_ROUTER_EP_PREFIX/models` – List OpenAI‑compatible models.
-- **POST** `LLM_ROUTER_EP_PREFIX/api/v0/models` – List LM Studio models.
-- **POST** `LLM_ROUTER_EP_PREFIX/api/chat` – Ollama‑style chat completion.
-- **POST** `LLM_ROUTER_EP_PREFIX/api/chat/completions` – OpenAI‑style chat completion.
-- **POST** `LLM_ROUTER_EP_PREFIX/chat/completions` – OpenAI‑style chat completion (alternative path).
-- **POST** `LLM_ROUTER_EP_PREFIX/v1/chat/completions` – vLLM‑like chat completion.
-
-### Chat & Completions (Built‑in)
-
-- **POST** `LLM_ROUTER_EP_PREFIX/api/conversation_with_model` – Standard chat endpoint (OpenAI‑compatible payload).
-- **POST** `LLM_ROUTER_EP_PREFIX/api/extended_conversation_with_model` – Chat with extended fields support.
-- **POST** `LLM_ROUTER_EP_PREFIX/api/generative_answer` – Answer a question using provided context.
-
-### Utility Endpoints (Built‑in)
-
-- **POST** `LLM_ROUTER_EP_PREFIX/api/generate_questions` – Generate questions from input texts.
-- **POST** `LLM_ROUTER_EP_PREFIX/api/translate` – Translate a list of texts.
-- **POST** `LLM_ROUTER_EP_PREFIX/api/simplify_text` – Simplify input texts.
-- **POST** `LLM_ROUTER_EP_PREFIX/api/generate_article_from_text` – Generate a short article from a single text.
-- **POST** `LLM_ROUTER_EP_PREFIX/api/create_full_article_from_texts` – Generate a full article from multiple texts.
-
-### Streaming vs. Non‑Streaming Responses
-
-- **Streaming (`stream: true` – default)**  
-  The proxy opens an HTTP **chunked** connection and forwards each token/segment from the upstream LLM as soon as it
-  arrives. Clients can process partial output in real time (e.g., live UI updates).
-
-- **Non‑Streaming (`stream: false`)**  
-  The proxy collects the full response from the provider, then returns a single JSON object containing the complete
-  text. Use this mode when you need the whole answer before proceeding.
-
-Both modes are supported for every provider that implements the streaming interface (OpenAI, Ollama, vLLM). The `stream`
-flag lives in the request schema (`OpenAIChatModel` and analogous models) and is honoured automatically by the proxy.
+The list of endpoints—categorized into built‑in, provider‑dependent, and extended endpoints—and
+a description of the streaming mechanisms can be found at the link:
+[load endpoints overview](llm_router_api/endpoints/README.md#endpoints-overview)
 
 ---
 
