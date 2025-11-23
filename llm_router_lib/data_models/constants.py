@@ -29,7 +29,6 @@ MODEL_NAME_PARAMS = [MODEL_NAME_PARAM, "model"]
 
 CLEAR_PREDEFINED_PARAMS = [
     "response_time",
-    "anonymize",
-    "anonymize_algorithm",
-    "model_name_anonymize",
+    "mask_payload",
+    "masker_pipeline",
 ]

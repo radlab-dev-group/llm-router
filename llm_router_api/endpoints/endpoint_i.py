@@ -19,16 +19,17 @@ methods for performing outbound HTTP requests to an external service.
 """
 
 import abc
-import json
 import time
+import json
+import logging
+import datetime
 
+from copy import deepcopy
 from typing import Optional, Dict, Any, Iterator, Iterable, List
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
-
-from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
 
 from llm_router_lib.data_models.constants import (
     MODEL_NAME_PARAMS,
@@ -41,20 +42,241 @@ from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     EXTERNAL_API_TIMEOUT,
-    FORCE_ANONYMISATION,
-    FORCE_ANONYMISATION_ALGORITHM,
-    FORCE_ANONYMISATION_MODEL,
+    FORCE_MASKING,
+    MASKING_WITH_AUDIT,
+    MASKING_STRATEGY_PIPELINE,
+    FORCE_GUARDRAIL_REQUEST,
+    GUARDRAIL_WITH_AUDIT_REQUEST,
+    GUARDRAIL_STRATEGY_PIPELINE_REQUEST,
+    FORCE_GUARDRAIL_RESPONSE,
+    GUARDRAIL_STRATEGY_PIPELINE_RESPONSE,
+    GUARDRAIL_WITH_AUDIT_RESPONSE,
 )
-from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 
+from llm_router_api.core.auditor import AnyRequestAuditor
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
+from llm_router_api.endpoints.httprequest import HttpRequestExecutor
+from llm_router_plugins.guardrails.pipeline import GuardrailPipeline
+
+from llm_router_plugins.maskers.pipeline import MaskerPipeline
+
+
+class SecureEndpointI(abc.ABC):
+    EP_DONT_NEED_GUARDRAIL_AND_MASKING = False
+
+    def __init__(self, ep_name: str, method: str, logger: logging.Logger):
+
+        self.logger = logger
+        self._ep_name = ep_name
+        self._ep_method = method
+
+        # --------------------------------------------------------------------------
+        # ----------- MASKER SECTION
+        # Masker pipeline definition
+        self._masker_pipeline = None
+        if FORCE_MASKING:
+            self._prepare_masker_pipeline(plugins=MASKING_STRATEGY_PIPELINE)
+        self._mask_auditor = None
+        if MASKING_WITH_AUDIT:
+            self._mask_auditor = AnyRequestAuditor(logger=self.logger)
+
+        # --------------------------------------------------------------------------
+        # ----------- GUARDRAILS SECTION
+
+        # Guardrails (request) pipeline definition
+        self._guardrails_pipeline_request = None
+        if FORCE_GUARDRAIL_REQUEST:
+            self._prepare_guardrails_pipeline(
+                plugins=GUARDRAIL_STRATEGY_PIPELINE_REQUEST, for_response_mode=False
+            )
+        self._guardrail_auditor_request = None
+        if GUARDRAIL_WITH_AUDIT_REQUEST:
+            self._guardrail_auditor_request = AnyRequestAuditor(logger=self.logger)
+
+        # --------------------------------------------------------------------------
+
+        # Guardrails (response) pipeline definition
+        self._guardrails_pipeline_response = None
+        if FORCE_GUARDRAIL_RESPONSE:
+            self._prepare_guardrails_pipeline(
+                plugins=GUARDRAIL_STRATEGY_PIPELINE_RESPONSE,
+                for_response_mode=True,
+            )
+        self._guardrail_auditor_response = None
+        if GUARDRAIL_WITH_AUDIT_RESPONSE:
+            self._guardrail_auditor_response = AnyRequestAuditor(logger=self.logger)
+
+    # ------------------------------------------------------------------
+    # Public read‑only properties
+    # ------------------------------------------------------------------
+    @property
+    def name(self):
+        """
+        Return the raw endpoint name as supplied to the constructor.
+
+        The value is used by the Flask registrar to build the final route.
+        """
+        return self._ep_name
+
+    @property
+    def method(self):
+        """
+        Return the HTTP verb this endpoint expects (``"GET"`` or ``"POST"``).
+        """
+        return self._ep_method
+
+    # ------------------------------------------------------------------
+    def _prepare_masker_pipeline(self, plugins: List[str]):
+        if self._masker_pipeline:
+            return
+
+        self._masker_pipeline = MaskerPipeline(
+            plugin_names=plugins, logger=self.logger
+        )
+        self.logger.debug(
+            f"llm-router pipeline which will be used to masking: {plugins}"
+        )
+
+    def _prepare_guardrails_pipeline(
+        self, plugins: List[str], for_response_mode: bool
+    ):
+        if for_response_mode and self._guardrails_pipeline_response:
+            return
+        elif not for_response_mode and self._guardrails_pipeline_request:
+            return
+
+        resp_str = "request"
+        if for_response_mode:
+            resp_str = "response"
+            self._guardrails_pipeline_response = GuardrailPipeline(
+                plugin_names=plugins, logger=self.logger
+            )
+        else:
+            self._guardrails_pipeline_request = GuardrailPipeline(
+                plugin_names=plugins, logger=self.logger
+            )
+
+        self.logger.debug(
+            f"llm-router pipeline which will be used "
+            f"to {resp_str} guardrails: {plugins}"
+        )
+
+    def _begin_audit_log_if_needed(
+        self, payload, prepare_audit_log: bool, audit_type: str
+    ):
+        audit_log = None
+        if prepare_audit_log:
+            audit_log = {
+                "endpoint": self.name,
+                "audit_type": audit_type,
+                "begin": {
+                    "timestamp": datetime.datetime.now().timestamp(),
+                    "payload": deepcopy(payload),
+                },
+            }
+        return audit_log
+
+    @staticmethod
+    def _end_audit_log_if_needed(
+        payload, audit_log, auditor: AnyRequestAuditor, force_end: bool
+    ):
+        if not audit_log:
+            if force_end:
+                raise Exception(f"Cannot end audit! Audit log is not set!")
+            return
+
+        if force_end or audit_log["begin"]["payload"] != payload:
+            audit_log["end"] = {
+                "timestamp": datetime.datetime.now().timestamp(),
+                "payload": deepcopy(payload),
+            }
+            auditor.add_log(audit_log)
+
+    def _is_request_guardrail_safe(self, payload: Dict):
+        if (
+            self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
+            or not self._guardrails_pipeline_request
+        ):
+            return True
+
+        audit_log = self._begin_audit_log_if_needed(
+            payload=payload,
+            prepare_audit_log=GUARDRAIL_WITH_AUDIT_REQUEST,
+            audit_type="guardrail_request",
+        )
+
+        is_safe, message = self._guardrails_pipeline_request.apply(payload=payload)
+
+        if not is_safe:
+            self._end_audit_log_if_needed(
+                payload=message,
+                audit_log=audit_log,
+                auditor=self._guardrail_auditor_request,
+                force_end=True,
+            )
+
+        return is_safe
+
+    def _guardrail_response_if_needed(self, response):
+        return response
+
+    def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if self.EP_DONT_NEED_GUARDRAIL_AND_MASKING or not payload:
+            return payload
+
+        audit_log = self._begin_audit_log_if_needed(
+            payload=payload,
+            prepare_audit_log=MASKING_WITH_AUDIT,
+            audit_type="masking",
+        )
+
+        if FORCE_MASKING:
+            payload = self._mask_whole_payload(
+                payload=payload,
+                algorithms=MASKING_STRATEGY_PIPELINE,
+            )
+        else:
+            return payload
+
+        self._end_audit_log_if_needed(
+            payload=payload,
+            audit_log=audit_log,
+            auditor=self._mask_auditor,
+            force_end=False,
+        )
+
+        return payload
+
+    def _mask_whole_payload(
+        self,
+        payload: Dict | str | List | Any,
+        algorithms: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Apply the :class:`MaskerPipeline` to the supplied payload.
+
+        The method lazily creates a MaskerPipeline
+
+        Parameters
+        ----------
+        payload : Union[Dict, str, List, Any]
+            The data to be masked.
+
+        Returns
+        -------
+        Dict[Any, Any]
+            The masked representation of *payload*.
+        """
+        self._prepare_masker_pipeline(plugins=algorithms)
+        _p = self._masker_pipeline.apply(payload=payload)
+        return _p
 
 
 # ----------------------------------------------------------------------
 # Public abstract base class – used when the service runs *not* as a proxy.
 # ----------------------------------------------------------------------
-class EndpointI(abc.ABC):
+class EndpointI(SecureEndpointI, abc.ABC):
     """
     Abstract representation of a single REST endpoint.
 
@@ -149,8 +371,16 @@ class EndpointI(abc.ABC):
         ValueError
             If ``method`` is not listed in :attr:`METHODS`.
         """
-        self._ep_name = ep_name
-        self._ep_method = method
+        super().__init__(
+            ep_name=ep_name,
+            method=method,
+            logger=prepare_logger(
+                logger_name=__name__,
+                logger_file_name=logger_file_name or "llm-router.log",
+                log_level=logger_level,
+                use_default_config=True,
+            ),
+        )
         self._model_handler = model_handler
 
         self.direct_return = direct_return
@@ -158,13 +388,6 @@ class EndpointI(abc.ABC):
         self._dont_add_api_prefix = dont_add_api_prefix
 
         self._call_for_each_user_msg = call_for_each_user_msg
-
-        self.logger = prepare_logger(
-            logger_name=__name__,
-            logger_file_name=logger_file_name or "llm-router.log",
-            log_level=logger_level,
-            use_default_config=True,
-        )
 
         self._ep_types_str = api_types
         if self._ep_types_str is None or not len(self._ep_types_str):
@@ -182,30 +405,9 @@ class EndpointI(abc.ABC):
         # marker when ep stared
         self._start_time = None
 
-        # Api anonymizer
-        self._fast_masker: Optional[FastMasker] = None
-        if FORCE_ANONYMISATION:
-            self._prepare_anonymizer()
-
     # ------------------------------------------------------------------
     # Public read‑only properties
     # ------------------------------------------------------------------
-    @property
-    def name(self):
-        """
-        Return the raw endpoint name as supplied to the constructor.
-
-        The value is used by the Flask registrar to build the final route.
-        """
-        return self._ep_name
-
-    @property
-    def method(self):
-        """
-        Return the HTTP verb this endpoint expects (``"GET"`` or ``"POST"``).
-        """
-        return self._ep_method
-
     @property
     def add_api_prefix(self):
         """
@@ -338,88 +540,6 @@ class EndpointI(abc.ABC):
             return {"status": False}
         return {"status": False, "body": body}
 
-    @staticmethod
-    def _get_choices_from_response(response):
-        j_response = response.json()
-        choices = j_response.get("choices", [])
-        if not len(choices):
-            if "message" in j_response:
-                choices = [j_response]
-
-        assistant_response = ""
-        if len(choices):
-            assistant_response = choices[0].get("message", {}).get("content")
-
-        return j_response, choices, assistant_response
-
-    def _prepare_anonymizer(self):
-        """
-        Actually as default FAST_MASKER is used.
-
-        TODO: In the future:
-        Check what type of anonymization should be used:
-         - FAST_MASKER
-         - PRIV_MASKER
-         - GENAI_MASKER
-        :return:
-        """
-        if self._fast_masker:
-            return
-        self._fast_masker = FastMasker()
-        self.logger.debug("llm-router is running in force anonymization mode")
-
-    # ------------------------------------------------------------------
-    # Parameter validation helpers
-    # ------------------------------------------------------------------
-    def _check_required_params(self, params: Optional[Dict[str, Any]]) -> None:
-        """
-        Verify that all keys listed in :attr:`REQUIRED_ARGS` are present.
-
-        Parameters
-        ----------
-        params :
-            Dictionary of request parameters to validate.  ``None`` is treated
-            as an empty mapping.
-
-        Raises
-        ------
-        ValueError
-            If any required key is missing from *params*.
-        """
-        if (
-            params is None
-            or self.REQUIRED_ARGS is None
-            or not len(self.REQUIRED_ARGS)
-        ):
-            return
-
-        missing = [arg for arg in self.REQUIRED_ARGS if arg not in params]
-        if missing:
-            raise ValueError(
-                f"Missing required argument(s) {missing} "
-                f"for endpoint {self._ep_name}"
-            )
-
-    def _check_method_is_allowed(self, method: str) -> None:
-        """
-        Ensure that *method* is one of the supported HTTP verbs.
-
-        Parameters
-        ----------
-        method :
-            HTTP method name to validate.
-
-        Raises
-        ------
-        ValueError
-            If *method* is not present in :attr:`METHODS`.
-        """
-        if method not in self.METHODS:
-            _m_str = ", ".join(self.METHODS)
-            raise ValueError(
-                f"Unknown method {method}. Method must be one of {_m_str}"
-            )
-
     # ------------------------------------------------------------------
     # Model‑related helpers (used by proxy endpoints)
     # ------------------------------------------------------------------
@@ -474,6 +594,72 @@ class EndpointI(abc.ABC):
             provider=api_model_provider.as_dict(),
             options=options,
         )
+
+    # ------------------------------------------------------------------
+    # Parameter validation and helper methods
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _get_choices_from_response(response):
+        j_response = response.json()
+        choices = j_response.get("choices", [])
+        if not len(choices):
+            if "message" in j_response:
+                choices = [j_response]
+
+        assistant_response = ""
+        if len(choices):
+            assistant_response = choices[0].get("message", {}).get("content")
+
+        return j_response, choices, assistant_response
+
+    def _check_required_params(self, params: Optional[Dict[str, Any]]) -> None:
+        """
+        Verify that all keys listed in :attr:`REQUIRED_ARGS` are present.
+
+        Parameters
+        ----------
+        params :
+            Dictionary of request parameters to validate.  ``None`` is treated
+            as an empty mapping.
+
+        Raises
+        ------
+        ValueError
+            If any required key is missing from *params*.
+        """
+        if (
+            params is None
+            or self.REQUIRED_ARGS is None
+            or not len(self.REQUIRED_ARGS)
+        ):
+            return
+
+        missing = [arg for arg in self.REQUIRED_ARGS if arg not in params]
+        if missing:
+            raise ValueError(
+                f"Missing required argument(s) {missing} "
+                f"for endpoint {self._ep_name}"
+            )
+
+    def _check_method_is_allowed(self, method: str) -> None:
+        """
+        Ensure that *method* is one of the supported HTTP verbs.
+
+        Parameters
+        ----------
+        method :
+            HTTP method name to validate.
+
+        Raises
+        ------
+        ValueError
+            If *method* is not present in :attr:`METHODS`.
+        """
+        if method not in self.METHODS:
+            _m_str = ", ".join(self.METHODS)
+            raise ValueError(
+                f"Unknown method {method}. Method must be one of {_m_str}"
+            )
 
     @staticmethod
     def _model_name_from_params_or_model(
@@ -714,9 +900,24 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         self._start_time = time.time()
         try:
+            # 0. There user is able to prepare a payload to process
             params = self.prepare_payload(params)
-            params = self._prepare_payload_at_beginning(payload=params)
 
+            # ------------ BEGIN SECURE SECTION ------------
+            # 1. Check payload using guardrails
+            if not self._is_request_guardrail_safe(payload=params):
+                return self.return_response_not_ok(
+                    body={"reason": "guardrail", "error": "Not safe content!"}
+                )
+
+            # 2. Mask the whole payload if needed
+            params = self._do_masking_if_needed(payload=params)
+
+            # 3. Clear payload to accept only required params
+            params = self._clear_payload(payload=params)
+            # ------------ END SECURE SECTION ------------
+
+            # 4. Endpoint processing
             map_prompt = None
             prompt_str_force = None
             prompt_str_postfix = None
@@ -726,11 +927,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 prompt_str_postfix = params.pop("prompt_str_postfix", "")
 
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
-
-            # Testing: possible part to remove
-            # if type(params) is dict:
-            #     if not params.get("status", True):
-            #         return params
 
             if self.direct_return:
                 return params
@@ -844,55 +1040,45 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     options=options,
                 )
 
-    def _prepare_payload_at_beginning(
-        self, payload: Dict[str, Any] | Any
-    ) -> Dict[str, Any] | Any:
+    def return_http_response(self, response):
         """
-        Perform early preprocessing of the incoming payload before the main
-        business logic runs.
+        Normalize an HTTP response object into a Python dictionary.
 
-        The routine extracts a potential ``anonymize`` flag (or falls back to
-        the global ``FORCE_ANONYMISATION`` setting), removes housekeeping
-        fields such as ``response_time``, and optionally runs
-        the method to clean payload.
+        If the response status code indicates an error, a
+        :class:`RuntimeError` is raised.  When the body cannot be parsed as
+        JSON a ``{"raw_response": <text>}`` mapping is returned instead.
 
         Parameters
         ----------
-        payload : Union[Dict[Any, Any], Any]
-            The raw request payload as received from the Flask layer.
+        response:
+            ``requests.Response`` object obtained from a ``GET`` or ``POST``
+            call.
 
         Returns
         -------
-        Union[Dict[Any, Any], Any]
-            The possibly anonymized payload ready for further processing.
+        dict
+            JSON payload or a raw‑response wrapper.
+
+        Raises
+        ------
+        RuntimeError
+            If ``response.ok`` is ``False``.
         """
-        if type(payload) is dict:
-            # Remember general options before clear payload
-            _anon_payload = FORCE_ANONYMISATION or payload.pop("anonymize", False)
-            _anonymize_algorithm = FORCE_ANONYMISATION_ALGORITHM or payload.pop(
-                "anonymize_algorithm", None
+        if not response.ok:
+            raise RuntimeError(
+                f"POST request to {self._ep_name} returned status "
+                f"{response.status_code}: {response.text}"
             )
-            _model_name_anonymize = FORCE_ANONYMISATION_MODEL or payload.pop(
-                "model_name_anonymize", None
-            )
+        try:
+            if self._prepare_response_function:
+                return self._prepare_response_function(response)
+            return response.json()
+        except json.JSONDecodeError as e:
+            self.logger.exception(e)
+            return {"raw_response": response.text}
 
-            payload = self._clear_payload(payload=payload)
-            if not _anon_payload:
-                return payload
-
-            return self._anonymize_payload(
-                payload=payload,
-                algorithm=_anonymize_algorithm,
-                model_name=_model_name_anonymize,
-            )
-        elif FORCE_ANONYMISATION:
-            return self._anonymize_payload(
-                payload=payload,
-                algorithm=FORCE_ANONYMISATION_ALGORITHM,
-                model_name=FORCE_ANONYMISATION_MODEL,
-            )
-        return payload
-
+    # ==============================================================================
+    # Private helpers
     @staticmethod
     def _clear_payload(payload: Dict[str, Any]):
         """
@@ -917,32 +1103,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         # If stream param is not given, then set as False
         payload["stream"] = payload.get("stream", False)
         return payload
-
-    def _anonymize_payload(
-        self,
-        payload: Dict | str | List | Any,
-        algorithm: str | None,
-        model_name: str | None,
-    ) -> Dict[str, Any]:
-        """
-        Apply the configured :class:`Anonymizer` to the supplied payload.
-
-        The method lazily creates an :class:`Anonymizer` instance on first
-        use and then forwards the payload to its ``anonymize_payload`` method.
-
-        Parameters
-        ----------
-        payload : Union[Dict, str, List, Any]
-            The data to be anonymized.
-
-        Returns
-        -------
-        Dict[Any, Any]
-            The anonymized representation of *payload*.
-        """
-        self._prepare_anonymizer()
-        _p = self._fast_masker.mask_payload_fast(payload=payload)
-        return _p
 
     def _return_response_or_rerun(
         self,
@@ -1037,7 +1197,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     options=options,
                 )
             self.logger.error(f"Max reconnections exceeded: {reconnect_number}!")
-        return response
+
+        return self._guardrail_response_if_needed(response=response)
 
     @staticmethod
     def _filter_params_to_acceptable(
@@ -1051,40 +1212,3 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         else:
             raise Exception(f"Unsupported API type: {api_type}")
         return _params
-
-    def return_http_response(self, response):
-        """
-        Normalize an HTTP response object into a Python dictionary.
-
-        If the response status code indicates an error, a
-        :class:`RuntimeError` is raised.  When the body cannot be parsed as
-        JSON a ``{"raw_response": <text>}`` mapping is returned instead.
-
-        Parameters
-        ----------
-        response:
-            ``requests.Response`` object obtained from a ``GET`` or ``POST``
-            call.
-
-        Returns
-        -------
-        dict
-            JSON payload or a raw‑response wrapper.
-
-        Raises
-        ------
-        RuntimeError
-            If ``response.ok`` is ``False``.
-        """
-        if not response.ok:
-            raise RuntimeError(
-                f"POST request to {self._ep_name} returned status "
-                f"{response.status_code}: {response.text}"
-            )
-        try:
-            if self._prepare_response_function:
-                return self._prepare_response_function(response)
-            return response.json()
-        except json.JSONDecodeError as e:
-            self.logger.exception(e)
-            return {"raw_response": response.text}

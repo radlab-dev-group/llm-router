@@ -37,7 +37,7 @@ setup(
             "llm_router_plugins*",
             "llm_router_cli*",
         ],
-        exclude=("tests", "docs"),
+        exclude=("tests", "docs", "llm_router_services*"),
     ),
     python_requires=">=3.10",
     install_requires=requirements_lib,

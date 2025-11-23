@@ -48,8 +48,8 @@ The script will finish and display the anonymised output.
 import argparse
 import sys
 
-from llm_router_plugins.plugins.fast_masker.core.masker import FastMasker
-from llm_router_plugins.plugins.fast_masker.core.masker import (
+from llm_router_plugins.maskers.fast_masker.core.masker import FastMasker
+from llm_router_plugins.maskers.fast_masker.core.masker import (
     PhoneRule,
     UrlRule,
     IpRule,

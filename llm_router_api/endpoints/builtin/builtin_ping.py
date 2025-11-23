@@ -33,6 +33,8 @@ class Ping(EndpointWithHttpRequestI):
         SYSTEM_PROMPT_NAME (dict): Not set - as None
     """
 
+    EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
+
     REQUIRED_ARGS = []
     OPTIONAL_ARGS = []
     SYSTEM_PROMPT_NAME = None
