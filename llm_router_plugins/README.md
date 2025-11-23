@@ -20,6 +20,8 @@ endpoint logic in `endpoint_i.py`.
 
 ### 1.2 Built‑in anonymizer plugins
 
+Full list of `FastMaskerPlugin` masking strategies is located in [README.md](maskers/fast_masker/README.md) file.
+
 | Plugin                                         | Description                                                                                                                                            | Technical notes                                                                                                                                                            |
 |------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **FastMaskerPlugin** (`fast_masker_plugin.py`) | A thin wrapper around the `FastMasker` utility class. It receives a JSON‑compatible payload and returns the same payload with all detected PII masked. | Implements `PluginInterface`. The heavy lifting is delegated to `FastMasker.mask_payload(payload)`. No extra I/O; the `FastMasker` instance is created once in `__init__`. |
