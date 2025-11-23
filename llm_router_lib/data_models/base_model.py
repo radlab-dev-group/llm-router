@@ -8,7 +8,7 @@ the request payload should be anonymised before further processing.
 """
 
 from pydantic import BaseModel
-from typing import Literal, Optional
+from typing import Optional, List
 
 
 class BaseModelOptions(BaseModel):
@@ -17,26 +17,13 @@ class BaseModelOptions(BaseModel):
 
     Attributes
     ----------
-    anonymize : bool, default ``False``
-        When set to ``True`` the incoming payload will be passed through the
-        library's :class:`~llm_router_lib.anonymizer.core.Anonymizer` before any
-        downstream logic is executed.  The default value ``False`` disables
-        anonymisation.
 
-    anonymize_algorithm : Literal["fast_masker", "genai", "priv_masker"], default ``"fast_masker"``
-        Specifies which anonymisation algorithm to use when ``anonymize`` is ``True``.
-        * ``"fast_masker"`` – a lightweight, high‑performance masker.
-        * ``"genai"`` – a generative‑AI based approach.
-        * ``"priv_masker"`` – a privacy‑focused masking technique.
+    mask_payload: bool, Default False, Whether to mask the payload before
+    sending it to the LLM provider.
 
-    model_name_anonymize : Optional[str], default ``None``
-        Name or identifier of the model to be used for anonymisation when
-        ``anonymize_algorithm`` requires a specific model (e.g., for the ``"genai"``
-        algorithm).  If ``None``, the library will fall back to its default model.
+    masker_pipeline : Pipeline of maskers, list with names of plugins
+    used as a pipeline to mask payload
     """
 
-    anonymize: bool = False
-    anonymize_algorithm: Literal["fast_masker", "genai", "priv_masker"] = (
-        "fast_masker"
-    )
-    model_name_anonymize: Optional[str] = None
+    mask_payload: bool = False
+    masker_pipeline: Optional[List[str]] = None

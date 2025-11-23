@@ -9,7 +9,6 @@ from llm_router_api.base.constants_base import (
     BalanceStrategies,
 )
 
-
 # Directory with predefined system prompts
 PROMPTS_DIR = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}PROMPTS_DIR", "resources/prompts"
@@ -51,14 +50,6 @@ DEFAULT_API_PREFIX = os.environ.get(
 
 # Run service as a proxy only
 SERVICE_AS_PROXY = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM")
-
-# If set to True, then each user request will be anonymised before provider call
-FORCE_ANONYMISATION = bool_env_value(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_ANONYMISATION"
-)
-
-FORCE_ANONYMISATION_ALGORITHM = None
-FORCE_ANONYMISATION_MODEL = None
 
 # Type of server, default is flask {flask, gunicorn, waitress}
 SERVER_TYPE = (
@@ -118,17 +109,89 @@ REDIS_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_HOST", "").st
 # Strategy for load balancing when a multi-provider model is available
 REDIS_PORT = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PORT", 6379))
 
-# If env is enabled, then genai-based anonymization endpoint will be available
-ENABLE_GENAI_ANONYMIZE_TEXT_EP = bool_env_value(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}ENABLE_GENAI_ANONYMIZE_TEXT_EP"
+# =============================================================================
+# MASKING
+# =============================================================================
+# If set to True, then each user request will be masked before the provider call
+FORCE_MASKING = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_MASKING")
+
+# If True, then masking audit log will be handled
+MASKING_WITH_AUDIT = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_WITH_AUDIT"
 )
 
-# Default masking strategy in case when FORCE_ANONYMISATION
-DEFAULT_MASKING_STRATEGY = "fast_masking"
-# TODO: Should be set used env value
-#  ==> DEFAULT_MASKING_STRATEGY:
-#       fast_masking -> <FALLBACK IG NO DEFAULT IS SET>
-#       genai_masking -> ENABLE_GENAI_ANONYMIZE_TEXT_EP
+# Masking strategy pipeline in case when FORCE_MASKING
+MASKING_STRATEGY_PIPELINE = str(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_STRATEGY_PIPELINE", "fast_masker"
+    )
+)
+if MASKING_STRATEGY_PIPELINE:
+    MASKING_STRATEGY_PIPELINE = [
+        _s.strip()
+        for _s in MASKING_STRATEGY_PIPELINE.strip().split(",")
+        if len(_s.strip())
+    ]
+# =============================================================================
+# GUARDRAILS
+# =============================================================================
+# ----------- REQUEST GUARDRAIL
+# If set to True, then each user request will be checked before the provider call
+FORCE_GUARDRAIL_REQUEST = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_GUARDRAIL_REQUEST"
+)
+
+# If True, then guardrail audit log will be handled for each user request
+GUARDRAIL_WITH_AUDIT_REQUEST = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_WITH_AUDIT_REQUEST"
+)
+
+# Guardrail strategy pipeline for request in case when FORCE_GUARDRAIL_REQUEST
+GUARDRAIL_STRATEGY_PIPELINE_REQUEST = str(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_STRATEGY_PIPELINE_REQUEST", ""
+    )
+)
+if GUARDRAIL_STRATEGY_PIPELINE_REQUEST:
+    GUARDRAIL_STRATEGY_PIPELINE_REQUEST = [
+        _s.strip()
+        for _s in GUARDRAIL_STRATEGY_PIPELINE_REQUEST.strip().split(",")
+        if len(_s.strip())
+    ]
+# -----------------------------------------------------------------------------
+# ----------- RESPONSE GUARDRAIL
+# If set to True, then each response will be checked before receive response
+FORCE_GUARDRAIL_RESPONSE = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_GUARDRAIL_RESPONSE"
+)
+
+# If True, then guardrail audit log will be handled for response
+GUARDRAIL_WITH_AUDIT_RESPONSE = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_WITH_AUDIT_RESPONSE"
+)
+
+# Guardrail strategy pipeline for response in case when FORCE_GUARDRAIL_RESPONSE
+GUARDRAIL_STRATEGY_PIPELINE_RESPONSE = str(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_STRATEGY_PIPELINE_RESPONSE", ""
+    )
+)
+if GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
+    GUARDRAIL_STRATEGY_PIPELINE_RESPONSE = [
+        _s.strip()
+        for _s in GUARDRAIL_STRATEGY_PIPELINE_RESPONSE.strip().split(",")
+        if len(_s.strip())
+    ]
+
+# =============================================================================
+# ENVIRONMENTS USED INTO PLUGINS
+# Host with router service where NASK-PIB/HerBERT-PL-Guard model is served
+# Read model License before using this model **MODEL LICENSE** CC BY-NC-SA 4.0
+GUARDRAIL_NASK_GUARD_HOST_EP = str(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_NASK_GUARD_HOST_EP", ""
+    )
+)
 
 # =============================================================================
 
@@ -149,22 +212,61 @@ class _StartAppVerificator:
         if SERVER_BALANCE_STRATEGY not in POSSIBLE_BALANCE_STRATEGIES:
             raise Exception(
                 f"{SERVER_BALANCE_STRATEGY} is not a valid strategy for balancing.\n"
-                f"Available strategies: {POSSIBLE_BALANCE_STRATEGIES}"
+                f"Available strategies: {POSSIBLE_BALANCE_STRATEGIES}\n\n"
             )
 
     @staticmethod
     def __verify_default_masking_strategy():
-        if FORCE_ANONYMISATION:
-            _POSSIBLE_STRATEGIES = ["fast_masking", "genai_masking"]
-            if DEFAULT_MASKING_STRATEGY not in _POSSIBLE_STRATEGIES:
+        if MASKING_WITH_AUDIT:
+            if not FORCE_MASKING:
                 raise Exception(
-                    f"Default masking strategy may be one of: {_POSSIBLE_STRATEGIES}"
+                    f"`export LLM_ROUTER_FORCE_MASKING=1` environment is "
+                    f"required when `LLM_ROUTER_MASKING_WITH_AUDIT=1`\n\n"
                 )
 
-    def check_if_start_is_possible(self):
+        if FORCE_MASKING and not len(MASKING_STRATEGY_PIPELINE):
+            raise Exception(
+                "When FORCE_MASKING is set to `True`, you must specify the "
+                "pipeline of masking strategies"
+            )
+
+    @staticmethod
+    def __verify_default_request_guardrails():
+        if GUARDRAIL_WITH_AUDIT_REQUEST:
+            if not FORCE_GUARDRAIL_REQUEST:
+                raise Exception(
+                    f"`export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=1` environment is "
+                    f"required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=1`\n\n"
+                )
+
+        if FORCE_GUARDRAIL_REQUEST and not len(GUARDRAIL_STRATEGY_PIPELINE_REQUEST):
+            raise Exception(
+                "When FORCE_GUARDRAIL_REQUEST is set to `True`, you must specify the "
+                "pipeline of guardrail strategies for each user request"
+            )
+
+    @staticmethod
+    def __verify_default_response_guardrails():
+        if GUARDRAIL_WITH_AUDIT_RESPONSE:
+            if not FORCE_GUARDRAIL_RESPONSE:
+                raise Exception(
+                    f"`export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=1` environment is "
+                    f"required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=1`\n\n"
+                )
+        if FORCE_GUARDRAIL_RESPONSE and not len(
+            GUARDRAIL_STRATEGY_PIPELINE_RESPONSE
+        ):
+            raise Exception(
+                "When FORCE_GUARDRAIL_RESPONSE is set to `True`, you must specify the "
+                "pipeline of guardrail strategies for each response"
+            )
+
+    def dont_run_if_something_is_wrong(self):
         self.__verify_is_able_to_init()
         self.__verify_balancing_strategy()
         self.__verify_default_masking_strategy()
+        self.__verify_default_request_guardrails()
+        self.__verify_default_response_guardrails()
 
 
-_StartAppVerificator().check_if_start_is_possible()
+_StartAppVerificator().dont_run_if_something_is_wrong()
