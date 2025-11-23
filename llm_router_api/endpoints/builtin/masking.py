@@ -29,15 +29,12 @@ from typing import Optional, Dict, Any
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_api.core.decorators import EP
+from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.base.model_handler import ModelHandler
+from llm_router_lib.data_models.masker import FastMaskerModel
 from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI
-from llm_router_api.base.constants import (
-    REST_API_LOG_LEVEL,
-    ENABLE_GENAI_ANONYMIZE_TEXT_EP,
-)
 
 from llm_router_plugins.maskers.fast_masker.core.masker import FastMasker
-from llm_router_lib.data_models.masker import FastMaskerModel, GenAIAnonymizerModel
 
 
 class FastTextMasking(EndpointWithHttpRequestI):
@@ -126,62 +123,3 @@ class FastTextMasking(EndpointWithHttpRequestI):
         """
         options = FastMaskerModel(**params)
         return {"text": self._fast_masker.mask_text(text=options.text)}
-
-
-if ENABLE_GENAI_ANONYMIZE_TEXT_EP:
-
-    class GenAIModelMasking(EndpointWithHttpRequestI):
-        REQUIRED_ARGS = ["model_name", "text"]
-        OPTIONAL_ARGS = None
-
-        SYSTEM_PROMPT_NAME = {
-            "pl": "builtin/system/pl/anonymize-text",
-            "en": "builtin/system/en/anonymize-text",
-        }
-
-        def __init__(
-            self,
-            logger_file_name: Optional[str] = None,
-            logger_level: Optional[str] = REST_API_LOG_LEVEL,
-            prompt_handler: Optional[PromptHandler] = None,
-            model_handler: Optional[ModelHandler] = None,
-            ep_name: str = "anonymize_text_genai",
-        ):
-            super().__init__(
-                ep_name=ep_name,
-                api_types=["builtin"],
-                method="POST",
-                logger_level=logger_level,
-                logger_file_name=logger_file_name,
-                prompt_handler=prompt_handler,
-                model_handler=model_handler,
-                dont_add_api_prefix=False,
-                direct_return=False,
-            )
-
-            self._prepare_response_function = self.__prepare_response_function
-
-        @EP.require_params
-        def prepare_payload(
-            self, params: Optional[Dict[str, Any]]
-        ) -> Optional[Dict[str, Any]]:
-            options = GenAIAnonymizerModel(**params)
-            _payload = options.model_dump()
-
-            _payload["model"] = _payload["model_name"]
-            _payload["stream"] = _payload.get("stream", False)
-            _payload["messages"] = [
-                {
-                    "role": "user",
-                    "content": _payload["text"],
-                }
-            ]
-            _payload.pop("text")
-
-            return _payload
-
-        def __prepare_response_function(self, response):
-            _, _, assistant_response = self._get_choices_from_response(
-                response=response
-            )
-            return {"text": assistant_response}

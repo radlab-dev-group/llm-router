@@ -8,5 +8,7 @@ class BaseMaskerModel(BaseModel):
 class FastMaskerModel(BaseMaskerModel): ...
 
 
-class GenAIAnonymizerModel(BaseMaskerModel):
-    model_name: str
+#
+#
+# class GenAIAnonymizerModel(BaseMaskerModel):
+#     model_name: str
