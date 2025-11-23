@@ -112,10 +112,6 @@ REDIS_PORT = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PORT", 63
 # =============================================================================
 # MASKING
 # =============================================================================
-# If env is enabled, then a genai-based anonymization endpoint will be available
-ENABLE_GENAI_ANONYMIZE_TEXT_EP = bool_env_value(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}ENABLE_GENAI_ANONYMIZE_TEXT_EP"
-)
 # If set to True, then each user request will be masked before the provider call
 FORCE_MASKING = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}FORCE_MASKING")
 
