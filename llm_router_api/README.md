@@ -148,36 +148,9 @@ The server starts on the host/port defined by `LLM_ROUTER_SERVER_HOST` and `LLM_
 ## REST API Overview
 
 All routes are prefixed by `LLM_ROUTER_EP_PREFIX` (default `/api`).
-
-| Method | Path                                     | Description                                                   |
-|--------|------------------------------------------|---------------------------------------------------------------|
-| `GET`  | `/api/ping`                              | Health‑check, returns `"pong"`                                |
-| `GET`  | `/`                                      | Ollama health endpoint (`"Ollama is running"`).               |
-| `GET`  | `/tags`                                  | List available Ollama model tags.                             |
-| `GET`  | `/models`                                | List OpenAI‑compatible model tags.                            |
-| `POST` | `/api/conversation_with_model`           | Chat endpoint (builtin).                                      |
-| `POST` | `/api/extended_conversation_with_model`  | Chat with extra fields (builtin).                             |
-| `POST` | `/api/generate_questions`                | Generate questions from texts (builtin).                      |
-| `POST` | `/api/translate`                         | Translate a list of texts (builtin).                          |
-| `POST` | `/api/simplify_text`                     | Simplify texts (builtin).                                     |
-| `POST` | `/api/generate_article_from_text`        | Generate article from a single text (builtin).                |
-| `POST` | `/api/create_full_article_from_texts`    | Generate a full article from multiple texts (builtin).        |
-| `POST` | `/api/generative_answer`                 | Answer a question using a context (builtin).                  |
-| `POST` | `/api/v0/models`                         | List LM Studio models.                                        |
-| `POST` | `/api/chat` (or provider‑specific paths) | Proxy to the underlying provider’s chat/completions endpoint. |
-
-**Payload format** follows the OpenAI schema (`model`, `messages`, optional `stream`, etc.) unless a custom endpoint
-overrides it.
-
-All endpoints automatically:
-
-- Validate required arguments (via `REQUIRED_ARGS`).
-- Resolve the appropriate provider using the configured **load‑balancing strategy**.
-- Inject system prompts when `SYSTEM_PROMPT_NAME` is defined.
-- Return a JSON response with `{ "status": true, "body": … }` or an error payload.
-
-Streaming responses are returned as **Server‑Sent Events (SSE)** (`text/event-stream`) and are compatible with both
-OpenAI‑style and Ollama‑style streams.
+The list of endpoints—categorized into built‑in, provider‑dependent, and extended endpoints—and
+a description of the streaming mechanisms can be found at the link:
+[load endpoints overview](endpoints/README.md#endpoints-overview)
 
 ---
 
@@ -186,15 +159,10 @@ OpenAI‑style and Ollama‑style streams.
 The router selects a provider for a given model request using the **ProviderChooser**. The strategy can be chosen via
 the `LLM_ROUTER_BALANCE_STRATEGY` variable.
 
-| Strategy             | Description                                                                                   |
-|----------------------|-----------------------------------------------------------------------------------------------|
-| **balanced**         | Simple round‑robin based on usage counters.                                                   |
-| **weighted**         | Static weights defined in each provider configuration (`weight` field).                       |
-| **dynamic_weighted** | Weights are updated at runtime; tracks latency and failure penalties.                         |
-| **first_available**  | Uses Redis locks to guarantee exclusive access to a provider (useful for stateful back‑ends). |
+The current list of available strategies, the interface description,
+and an example extension can be found at the link
+[load balancing strategies](LB_STRATEGIES.md#load-balancing-strategies)
 
-Custom strategies can be added by subclassing `ChooseProviderStrategyI` and registering the class in
-`llm_router_api.base.lb.chooser.STRATEGIES`.
 
 ---
 
