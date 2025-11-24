@@ -1,4 +1,3 @@
-# guardrails/nask/guard/nask_pib_guard_app.py
 import os
 from typing import Any, Dict
 
