@@ -14,31 +14,10 @@ by supplying a custom list to the constructor.
 
 from typing import List, Optional
 
-from llm_router_lib.core.constants import USE_BETA_FEATURES
 
-from llm_router_plugins.maskers.fast_masker.rules import (
-    PhoneRule,
-    UrlRule,
-    IpRule,
-    PeselRule,
-    EmailRule,
-    NipRule,
-    KrsRule,
-    PostalCodeRule,
-    MoneyRule,
-    BankAccountRule,
-    RegonRule,
-    DateNumberRule,
-    DateWordRule,
-)
+from llm_router_plugins.maskers.fast_masker.rules import *
 from llm_router_plugins.maskers.payload_interface import MaskerPayloadTraveler
 from llm_router_plugins.maskers.fast_masker.core.rule_interface import MaskerRuleI
-
-if USE_BETA_FEATURES:
-    from llm_router_plugins.maskers.fast_masker.rules import (
-        StreetNameRule,
-        SimplePersonalDataRule,
-    )
 
 
 class FastMasker(MaskerPayloadTraveler):
@@ -58,21 +37,51 @@ class FastMasker(MaskerPayloadTraveler):
         construction time, the module‑level ``ALL_MASKER_RULES`` is used.
     """
 
+    # Rules ordered from most specific/certain to least specific
+    # Priority: checksum-validated > structured formats > pattern-based
     __ALL_MASKER_RULES = [
-        EmailRule(),
-        UrlRule(),
-        IpRule(),
-        StreetNameRule() if USE_BETA_FEATURES else None,
-        PeselRule(),
-        NipRule(),
-        KrsRule(),
-        PostalCodeRule(),
-        MoneyRule(),
-        BankAccountRule(),
-        RegonRule(),
-        DateWordRule(),
-        DateNumberRule(),
-        PhoneRule(),
+        # 1. HIGHEST CERTAINTY - Checksum validated identifiers
+        CreditCardRule(),  # Luhn checksum
+        VinRule(),  # VIN checksum (ISO 3779)
+        PeselTaggedRule(),  # PESEL with label + checksum
+        PeselRule(),  # PESEL with checksum
+        NipRule(),  # NIP with checksum
+        KrsRule(),  # KRS with checksum
+        RegonRule(),  # REGON with checksum
+        # 2. HIGH CERTAINTY - Strict formats with validation
+        NrbRule(),  # 26 digits (bank account)
+        MacAddressRule(),  # MAC address format
+        PassportRule(),  # 2 letters + 7 digits
+        IdCardRule(),  # 3 letters + 6 digits
+        SsnRule(),  # SSN format AAA-GG-SSSS
+        # EuVatRule(),             # EU VAT - disabled (too noisy, catches words like "Configuration")
+        # 3. MEDIUM-HIGH - International phone numbers (more specific than local)
+        PhoneInternationalRule(),  # + prefix with country code
+        # 4. MEDIUM - Well-structured formats
+        EmailRule(),  # Email addresses (before URLs!)
+        UrlRule(),  # URLs and domains
+        IpRule(),  # IP addresses with optional ports
+        BankAccountRule(),  # Polish IBAN
+        # 5. MEDIUM-LOW - Business identifiers with structure
+        JwtRule(),  # JWT tokens (3 parts)
+        InvoiceNumberRule(),  # FV/INV patterns
+        OrderNumberRule(),  # ORD patterns
+        TransactionRefRule(),  # Transaction IDs
+        # 6. LOWER CERTAINTY - Pattern-based with context
+        DateWordRule(),  # Textual dates
+        DateNumberRule(),  # Numeric dates
+        MoneyRule(),  # Amounts with currency
+        # 7. FORMAT-BASED - Specific patterns
+        PostalCodeRule(),  # DD-DDD format
+        HealthIdRule(),  # NFZ with slash
+        CarPlateRule(),  # License plates
+        SimCardRule(),  # 19-20 digit ICCID
+        SslCertRule(),  # 16-40 hex chars
+        # 8. LOWEST CERTAINTY - Generic patterns (potentially noisy)
+        StreetNameRule(),  # Street
+        PhoneRule(),  # Local phone (9 digits)
+        SocialIdRule(),  # fbid only
+        # Beta features (if enabled)
         SimplePersonalDataRule() if USE_BETA_FEATURES else None,
     ]
 

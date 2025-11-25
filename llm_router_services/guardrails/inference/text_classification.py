@@ -1,26 +1,54 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Any, Dict, List
-
-PIPELINE_BATCH_SIZE = 64
-
-MIN_SCORE_FOR_SAFE = 0.5
-MIN_SCORE_FOR_NOT_SAFE = 0.5
 
 from transformers import pipeline, AutoTokenizer, AutoConfig
 
-from guardrails.nask.payload_handler import GuardrailPayloadExtractor
+from guardrails.inference.base import GuardrailBase
+from guardrails.inference.config import GuardrailModelConfig
+from guardrails.payload_handler import GuardrailPayloadExtractor
 
 
-class GuardrailProcessor:
+# -----------------------------------------------------------------------
+# Default (generic) configuration – can be used when a model does not have a
+# specialized config.  It implements the GuardrailModelConfig interface.
+# -----------------------------------------------------------------------
+@dataclass(frozen=True)
+class GenericModelConfig(GuardrailModelConfig):
+    pipeline_batch_size: int = 64
+    min_score_for_safe: float = 0.5
+    min_score_for_not_safe: float = 0.5
+
+
+class TextClassificationGuardrail(GuardrailBase):
+    """
+    Generic text‑classification guardrail.
+
+    The caller supplies a concrete ``config`` object that implements
+    :class:`GuardrailModelConfig`.  This makes the guardrail reusable for any model.
+    """
+
     def __init__(
         self,
         model_path: str,
         device: int = -1,
         max_tokens: int = 500,
         overlap: int = 200,
+        *,
+        config: GuardrailModelConfig | None = None,
     ):
+        # ---------------------------------------------------------------
+        # Store model‑specific thresholds & batch size
+        # ---------------------------------------------------------------
+        self._config = config or GenericModelConfig()
+
         self._overlap = overlap
         self._max_tokens = max_tokens
 
+        # ---------------------------------------------------------------
+        # Tokeniser & pipeline preparation (unchanged)
+        # ---------------------------------------------------------------
         self._tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
         self._model_max_length = AutoConfig.from_pretrained(
             model_path
@@ -38,6 +66,9 @@ class GuardrailProcessor:
             max_length=self._max_tokens,
         )
 
+    # -------------------------------------------------------------------
+    # Helper: convert payload → list of strings
+    # -------------------------------------------------------------------
     @staticmethod
     def _payload_to_string_list(payload: Dict[Any, Any]) -> List[str]:
         try:
@@ -46,6 +77,9 @@ class GuardrailProcessor:
             parts = [f"{str(k)}={str(v)}" for k, v in payload.items()]
             return [", ".join(parts)]
 
+    # -------------------------------------------------------------------
+    # Helper: split long texts into token‑aware chunks
+    # -------------------------------------------------------------------
     def _chunk_text(self, texts: List[str]) -> List[str]:
         chunks: List[str] = []
         for text in texts:
@@ -64,16 +98,19 @@ class GuardrailProcessor:
                     break
         return chunks
 
+    # -------------------------------------------------------------------
+    # Public API – called from the Flask endpoint
+    # -------------------------------------------------------------------
     def classify_chunks(self, payload: Dict[Any, Any]) -> Dict[str, Any]:
         texts = self._payload_to_string_list(payload)
         chunks = self._chunk_text(texts=texts)
 
-        import json
+        # Run inference in batches defined by the model config
+        raw_results = self._pipeline(
+            chunks, batch_size=self._config.pipeline_batch_size
+        )
 
-        print(json.dumps(chunks, indent=2, ensure_ascii=False))
-
-        raw_results = self._pipeline(chunks, batch_size=PIPELINE_BATCH_SIZE)
-
+        # Normalise pipeline output (it can be a list of dicts or a list containing a single list)
         flat_results = [r[0] if isinstance(r, list) else r for r in raw_results]
 
         detailed: List[Dict[str, Any]] = []
@@ -92,14 +129,18 @@ class GuardrailProcessor:
                 }
             )
 
+        # ---------------------------------------------------------------
+        # Overall safety decision – uses the per‑model thresholds
+        # ---------------------------------------------------------------
         overall_safe = True
-
         for item in detailed:
-            if item["safe"] and item["score"] < MIN_SCORE_FOR_SAFE:
+            if item["safe"] and item["score"] < self._config.min_score_for_safe:
                 overall_safe = False
                 break
-
-            if not item["safe"] and item["score"] > MIN_SCORE_FOR_NOT_SAFE:
+            if (
+                not item["safe"]
+                and item["score"] > self._config.min_score_for_not_safe
+            ):
                 overall_safe = False
                 break
 
