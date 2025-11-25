@@ -12,14 +12,16 @@ class PhoneRule(BaseRule):
     Detects common phone number formats and replaces them with ``{{PHONE}}``.
     """
 
-    # Very permissive pattern that matches:
-    # +48 123 456 789, 123-456-789, (123) 456 7890, 1234567890, etc.
+    # Polish phone numbers: 9 digits with optional spaces/dashes
+    # Examples: 123 456 789, 123-456-789, 123456789
     _PHONE_REGEX = r"""
+        \b
         (?:
-            \+?\d{1,3}[\s-]?          # optional country code
-        )?
-        (?:\(?\d{2,4}\)?[\s-]?)?      # optional area code
-        \d{3}[\s-]?\d{2,4}[\s-]?\d{2,4}   # main number blocks
+            (?:\d{3}[\s-]?\d{3}[\s-]?\d{3})   # 123 456 789 or 123-456-789
+            |
+            (?:\d{2}[\s-]?\d{3}[\s-]?\d{2}[\s-]?\d{2})   # 12 345 67 89
+        )
+        \b
     """
 
     def __init__(self):

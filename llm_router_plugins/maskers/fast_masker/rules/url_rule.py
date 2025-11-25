@@ -1,7 +1,3 @@
-"""
-Rule that masks web URLs.
-"""
-
 import re
 
 from llm_router_plugins.maskers.fast_masker.rules.base_rule import BaseRule
@@ -14,19 +10,28 @@ class UrlRule(BaseRule):
     """
 
     # The pattern matches:
-    #   • An optional scheme (http:// or https://)
-    #   • One or more sub‑domains/labels ending with a dot
-    #   • A top‑level domain of at least two letters (covers .pl, .dev, etc.)
-    #   • An optional path, query string or fragment starting with '/' or ':'
-    # It works for full URLs like ``https://example.com/path`` and for
-    # plain domains such as ``www.wp.pl`` or ``radlab.dev``.
+    #   • Full URLs with http:// or https:// scheme
+    #   • OR standalone domains (www.example.com) that are NOT part of code
+    # Avoids matching code patterns like: requests.post, response.json, object.method
     _URL_REGEX = r"""
-        \b
-        (?:https?://)?               # optional http/https scheme
-        (?!m\.in\b)                  # forbid the literal “m.in”
-        (?:[A-Za-z0-9-]+\.)+         # one or more sub‑domains / domain labels
-        [A-Za-z]{2,}                 # top‑level domain (at least 2 letters)
-        (?:[/:][^\s]*)?              # optional path, query or fragment
+        (?:
+            # Option 1: Full URL with scheme (always match)
+            \b(?:https?://)
+            (?:[A-Za-z0-9-]+\.)*         # optional subdomains
+            [A-Za-z0-9-]+                # domain name
+            \.                           # dot
+            [A-Za-z]{2,}                 # TLD
+            (?:[/:][^\s\)]*)?            # optional path (stop at closing paren)
+        |
+            # Option 2: Domain without scheme (only if not preceded by identifier)
+            (?<![A-Za-z0-9_])            # NOT preceded by identifier char
+            (?:www\.|[A-Za-z0-9-]+\.)    # must start with www. or subdomain.
+            [A-Za-z0-9-]+                # domain name
+            \.                           # dot
+            (?:com|org|net|edu|gov|pl|dev|io|co|uk|de|fr|it|es|ru|cn|jp|br|au|in|nl|se|no|fi|dk|cz|sk|eu|info|biz)  # common TLDs
+            \b
+            (?![A-Za-z0-9_\(])           # NOT followed by identifier or (
+        )
     """
 
     def __init__(self):

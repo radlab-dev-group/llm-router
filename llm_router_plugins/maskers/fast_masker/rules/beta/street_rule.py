@@ -30,22 +30,23 @@ class StreetNameRule(BaseRule):
             os\.?|osiedle|rondo|droga|dr\.?|trakt|t\.?|ścieżka|ś\.?)
     """
 
-    # Street name – one or more words, each may contain Polish diacritics
+    # Street name – 1 to 5 words max, each may contain Polish diacritics
+    # Limit to prevent overly greedy matching
     _NAME = r"""
-        (?:\s+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż][A-Za-z0-9ĄąĆćĘęŁłŃńÓóŚśŹźŻż-]*)+
+        (?:\s+[A-Za-zĄąĆćĘęŁłŃńÓóŚśŹźŻż][A-Za-z0-9ĄąĆćĘęŁłŃńÓóŚśŹźŻż-]*){1,5}
     """
 
-    # Optional house number (e.g. 12, 12A, 12/3)
+    # House number (e.g. 12, 12A, 12/3) - now REQUIRED when present
     _NUMBER = r"""
-        (?:\s*\d+[A-Za-z]?(?:\/\d+)? )?
+        (?:\s+\d+[A-Za-z]?(?:\/\d+)?)?
     """
 
-    # Full pattern with word boundaries on both sides
+    # Full pattern with word boundaries
     _FULL_PATTERN = rf"""
         \b                      # start of word
-        {_TYPE}                 # street type
-        {_NAME}                 # street name
-        {_NUMBER}               # optional house number
+        {_TYPE}                 # street type (required)
+        {_NAME}                 # street name (1-5 words)
+        {_NUMBER}               # house number (optional but if present, must be digit)
         \b                      # end of word
     """
 
