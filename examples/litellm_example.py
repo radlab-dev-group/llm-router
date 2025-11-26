@@ -5,11 +5,10 @@ Demonstrates how to use LiteLLM as a proxy for an LLM Router.
 LiteLLM provides a unified API for 100+ LLM providers.
 """
 
-# ----- GLOBAL CONFIGURATION -----
-# The router host and model list are defined in a separate constants module.
 import asyncio
 import litellm
 from litellm import completion, acompletion, Router, Cache
+
 from constants import HOST, MODELS
 
 
