@@ -7,6 +7,7 @@ Change the base_url!
 
 import json
 from openai import OpenAI, AsyncOpenAI
+
 from constants import HOST, MODELS
 
 
