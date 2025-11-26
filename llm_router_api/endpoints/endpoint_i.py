@@ -30,7 +30,6 @@ from typing import Optional, Dict, Any, Iterator, Iterable, List
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
-
 from llm_router_lib.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
@@ -516,29 +515,53 @@ class EndpointI(SecureEndpointI, abc.ABC):
         """
         return {"status": True, "body": body}
 
-    @staticmethod
-    def return_response_not_ok(body: Optional[Any]) -> Dict[str, Any]:
+    def return_response_not_ok(self, body: Optional[Any]) -> Any:
         """
-        Build an error response payload.
-
-        If *body* is falsy (``None`` or empty) the resulting dictionary
-        contains only the ``"status": False`` flag.  Otherwise the payload
-        also includes a ``"body"`` key with the supplied value.
+        Build an error response payload with an appropriate HTTP status code.
 
         Parameters
         ----------
-        body :
-            Optional error details or additional data to be returned to the
-            client.
+        body : Optional[Any]
+            The error information that may be an exception instance, a string,
+            a dictionary, or ``None``. The function attempts to extract an HTTP
+            status code from known exception attributes and falls back to heuristics.
 
         Returns
         -------
-        dict
-            Mapping following the ``{"status": False, "body": ...}`` convention.
+        Tuple[dict, int]
+            A tuple where the first element is a JSON‑serialisable dictionary
+            representing the error payload and the second element is the HTTP
+            status code. Flask interprets this as ``(Response, Status)``.
         """
-        if body is None or not len(body):
-            return {"status": False}
-        return {"status": False, "body": body}
+        # Attempt to extract a status code from an exception object (if body is one)
+        status_code = 500
+        if hasattr(body, "response") and hasattr(body.response, "status_code"):
+            # e.g., for ``requests.exceptions.HTTPError``
+            status_code = body.response.status_code
+        elif hasattr(body, "status_code") and isinstance(body.status_code, int):
+            # e.g., for OpenAI ``APIError`` exceptions
+            status_code = body.status_code
+        elif str(body).lower().find("not found") != -1:
+            # Heuristic for plain text (if body is a string)
+            status_code = 404
+
+        error_message = str(body) if body else "Error while processing"
+        if any(t in self._ep_types_str for t in ["ollama", "openai", "vllm"]):
+            error_body = {
+                "error": {
+                    "message": error_message,
+                    "type": "api_error",  # or ``invalid_request_error``
+                    "param": None,
+                    "code": status_code,
+                }
+            }
+        else:
+            if body is None or not str(body):
+                error_body = {"status": False}
+            else:
+                error_body = {"status": False, "body": str(body)}
+
+        return error_body, status_code
 
     # ------------------------------------------------------------------
     # Model‑related helpers (used by proxy endpoints)
@@ -1031,7 +1054,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         except Exception as e:
             self.logger.exception(e)
             clear_chosen_provider_finally = True
-            return self.return_response_not_ok(str(e))
+            return self.return_response_not_ok(e)
         finally:
             if clear_chosen_provider_finally and api_model_provider is not None:
                 self.unset_model(
