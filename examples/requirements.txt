@@ -21,3 +21,4 @@ litellm>=1.30.0
 haystack-ai>=2.0.0
 
 langfuse
+haystack-ai
