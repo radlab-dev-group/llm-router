@@ -6,6 +6,8 @@ router by simply switching the host.
 ## Available Examples
 
 - **[LlamaIndex](llamaindex_example.py)** – Integration with LlamaIndex (GPT Index)
+- **[Using LlamaIndex with Local Models](README_LLAMAINDEX.md)** – Guide for mapping OpenAI model names to local models
+  via the router.
 - **[LangChain](langchain_example.py)** – Integration with LangChain
 - **[OpenAI SDK](openai_example.py)** – Direct integration with the OpenAI Python SDK
 - **[LiteLLM](litellm_example.py)** – Integration with LiteLLM
