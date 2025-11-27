@@ -23,6 +23,16 @@ install, extend, and deploy in both development and production environments.
 
 ---
 
+### Boilerplates
+
+For a detailed explanation of each example’s purpose, structure, and how the boilerplates are organized, see the main
+project README:
+
+- **Main README – Boilerplate Overview** – [examples](examples/README.md)
+- **LlamaIndex Boilerplate Details** – [README](examples/README_LLAMAINDEX.md)
+
+---
+
 ### ✨ Key Features
 
 | Feature                             | Description                                                                                                                                             |
