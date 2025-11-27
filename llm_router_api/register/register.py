@@ -169,9 +169,15 @@ class FlaskEndpointRegistrar:
                     response.implicit_sequence_conversion = False
                     response.direct_passthrough = True
                     return response
-
                 if isinstance(result, str):
                     return result, 200
+
+                # Handling the tuple (body, status_code) returned by
+                # ``EndpointI.return_response_not_ok``
+                if isinstance(result, tuple) and len(result) == 2:
+                    body, status_code = result
+                    if isinstance(status_code, int):
+                        return jsonify(body or {}), status_code
 
                 return jsonify(result or {}), 200
             except ValueError as ve:

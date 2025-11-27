@@ -12,3 +12,9 @@ vllm serve \
         --load-format bitsandbytes \
         --max-model-len=56000 \
         --gpu-memory-utilization=0.90
+
+#         \
+#        --dtype auto \
+#        --enable-auto-tool-choice \
+#        --tool-call-parser hermes \
+#        --enforce-eager
