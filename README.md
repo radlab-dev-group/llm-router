@@ -31,6 +31,8 @@ project README:
 - **Main README – Boilerplate Overview** – [examples](examples/README.md)
 - **LlamaIndex Boilerplate Details** – [README](examples/README_LLAMAINDEX.md)
 
+---
+
 ### ✨ Key Features
 
 | Feature                             | Description                                                                                                                                             |
