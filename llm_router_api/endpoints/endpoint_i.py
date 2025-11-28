@@ -221,7 +221,15 @@ class SecureEndpointI(abc.ABC):
         return response
 
     def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if self.EP_DONT_NEED_GUARDRAIL_AND_MASKING or not payload:
+        if (
+            self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
+            or not payload
+            or type(payload) is not dict
+        ):
+            return payload
+
+        do_masking = FORCE_MASKING or bool(payload.get("anonymize", False))
+        if not do_masking:
             return payload
 
         audit_log = self._begin_audit_log_if_needed(
@@ -229,14 +237,10 @@ class SecureEndpointI(abc.ABC):
             prepare_audit_log=MASKING_WITH_AUDIT,
             audit_type="masking",
         )
-
-        if FORCE_MASKING:
-            payload = self._mask_whole_payload(
-                payload=payload,
-                algorithms=MASKING_STRATEGY_PIPELINE,
-            )
-        else:
-            return payload
+        payload = self._mask_whole_payload(
+            payload=payload,
+            algorithms=MASKING_STRATEGY_PIPELINE,
+        )
 
         self._end_audit_log_if_needed(
             payload=payload,
