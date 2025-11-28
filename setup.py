@@ -8,7 +8,6 @@ BASE_DIR = Path(__file__).parent
 # ----------------------------------------------------------------------
 version = (BASE_DIR / ".version").read_text().strip()
 long_description = (BASE_DIR / "README.md").read_text(encoding="utf-8")
-requirements_lib = (BASE_DIR / "requirements_lib.txt").read_text().splitlines()
 
 # ----------------------------------------------------------------------
 # API‑specific requirements
@@ -43,8 +42,7 @@ setup(
         exclude=("tests", "docs"),
     ),
     python_requires=">=3.10",
-    install_requires=requirements_lib
-    + [
+    install_requires=[
         "radlab-ml-utils @ git+https://github.com/radlab-dev-group/ml-utils",
         "llm-router-plugins @ git+https://github.com/radlab-dev-group/llm-router-plugins",
     ],
