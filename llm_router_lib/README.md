@@ -1,168 +1,119 @@
-# llm‑router-LIB — Python client library
-
-**llm‑router** is a lightweight Python client for interacting with the LLM‑Router API.
-It provides typed request models, convenient service wrappers, and robust error handling so you can focus on building
-LLM‑driven applications rather than dealing with raw HTTP calls.
-
----  
+# llm_router_lib
 
 ## Overview
 
-`llm_router_lib` is the official Python SDK for the **LLM‑Router**
-project <https://github.com/radlab-dev-group/llm-router>.
+`llm_router_lib` is ** a collection of data‑model definitions**.
+It supplies the **foundation** for request/response structures used by the
+`llm_router_api` package **and** provides a **thin, opinionated client wrapper**
+that makes interacting with the LLM Router service straightforward.
 
-It abstracts the HTTP layer behind a small, well‑typed API:
+Key components:
 
-* **Typed payloads** built with *pydantic* (e.g., `GenerativeConversationModel`).
-* **Service objects** that know the endpoint URL and the model class they expect.
-* **Automatic token handling**, request retries, and exponential back‑off.
-* **Rich exception hierarchy** (`LLMRouterError`, `AuthenticationError`, `RateLimitError`, `ValidationError`).
+| Package             | Purpose                                                                                                                                                                                                                                                                                                                                                    |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`data_models`**   | `pydantic` models that define the shape of payloads sent to the router (e.g. `GenerativeConversationModel`, `ExtendedGenerativeConversationModel`, utility models for question generation, translation, etc.). These models are shared with the API side, ensuring both client and server speak the same contract.                                         |
+| **`client.py`**     | `LLMRouterClient` – a lightweight wrapper around the router’s HTTP API. It offers high‑level methods (`conversation_with_model`, `extended_conversation_with_model`) that accept either plain dictionaries **or** the aforementioned data‑model instances. The client handles payload validation, provider selection, error mapping, and response parsing. |
+| **`services`**      | Low‑level service classes (`ConversationService`, `ExtendedConversationService`) that perform the actual HTTP calls via `HttpRequester`. They are used internally by the client but can be reused directly if finer‑grained control is needed.                                                                                                             |
+| **`exceptions.py`** | Custom exception hierarchy (`LLMRouterError`, `AuthenticationError`, `RateLimitError`, `ValidationError`) that mirrors the router’s error semantics, making error handling in user code clean and explicit.                                                                                                                                                |
+| **`utils/http.py`** | `HttpRequester` – a small wrapper around `requests` providing retries, time‑outs and logging. It is the networking backbone for the client wrapper.                                                                                                                                                                                                        |
 
----  
-
-## Features
-
-| Feature                            | Description                                                                    |
-|------------------------------------|--------------------------------------------------------------------------------|
-| **Typed request/response models**  | Guarantees payload correctness at runtime using Pydantic.                      |
-| **Built‑in conversation services** | Simple `conversation_with_model` and `extended_conversation_with_model` calls. |
-| **Retry & timeout**                | Configurable request timeout and automatic retries with exponential back‑off.  |
-| **Authentication**                 | Bearer‑token support; raises `AuthenticationError` on 401/403.                 |
-| **Rate‑limit handling**            | Detects HTTP 429 and raises `RateLimitError`.                                  |
-| **Extensible**                     | Add custom services or models by extending the base classes.                   |
-| **Test suite**                     | Ready‑to‑run unit tests in `llm_router_lib/tests`.                             |
-
----  
+In short, `llm_router_lib` provides **both** the data contract (the “schema”) **and** a convenient Pythonic client to
+consume the router service.
 
 ## Installation
 
-The library is pure Python and works with **Python 3.10+**.
+The library targets **Python 3.10.6** and uses a `virtualenv`. Install it in editable mode for development:
 
-```shell script
-# Create a virtualenv (recommended)
-python -m venv .venv
+``` bash
+# Clone the repository (if you haven't already)
+git clone https://github.com/radlab-dev-group/llm-router.git
+cd llm-router/llm_router_lib
+
+# Create and activate a virtual environment
+python3 -m venv .venv
 source .venv/bin/activate
 
-# Install from the repository (editable mode)
+# Install the package and its dependencies
 pip install -e .
 ```
 
-If you prefer a regular installation from a wheel or source distribution, use:
-
-```shell script
-pip install .
-```
-
-> **Note** – The project relies only on the packages listed in the repository’s `requirements.txt`
-> (pydantic, requests, etc.), all of which are installed automatically by `pip`.
-
----  
+All runtime dependencies (`requests`, `pydantic`, `rdl_ml_utils`) are declared in the project’s `requirements.txt`.
 
 ## Quick start
 
-```python
-from llm_router_lib.client import LLMRouterClient
-from llm_router_lib.data_models.builtin_chat import GenerativeConversationModel
+``` python
+from llm_router_lib import LLMRouterClient
 
-# Initialise the client (replace with your own endpoint and token)
+# Initialise the client – point it at the router’s base URL
 client = LLMRouterClient(
-    api="https://api.your-llm-router.com",
-    token="YOUR_ACCESS_TOKEN"
+    api="http://localhost:8080/api",   # router base URL
+    token="YOUR_ROUTER_TOKEN",         # optional, if router requires auth
 )
 
-# Build a request payload
-payload = GenerativeConversationModel(
+# Build a payload using the provided data model (validation is automatic)
+payload = {
+    "model_name": "google/gemma-3-12b-it",
+    "user_last_statement": "Hello, how are you?",
+    "temperature": 0.7,
+    "max_new_tokens": 128,
+}
+
+# Call the standard conversation endpoint
+response = client.conversation_with_model(payload)
+
+print(response)   # → {'status': True, 'body': {...}}
+```
+
+You can also pass a `pydantic` model instance directly:
+
+```
+python
+from llm_router_lib.data_models.builtin_chat import GenerativeConversationModel
+
+model = GenerativeConversationModel(
     model_name="google/gemma-3-12b-it",
     user_last_statement="Hello, how are you?",
-    historical_messages=[{"user": "Hi"}],
     temperature=0.7,
     max_new_tokens=128,
 )
 
-# Call the API
-response = client.conversation_with_model(payload)
-
-print(response)  # → dict with the model's answer and metadata
+response = client.conversation_with_model(model)
 ```
 
-### Extended conversation
+## Data models
 
-```python
-from llm_router_lib.data_models.builtin_chat import ExtendedGenerativeConversationModel
+All request payloads are defined in `llm_router_lib/data_models`.  
+Common base:
 
-payload = ExtendedGenerativeConversationModel(
-    model_name="google/gemma-3-12b-it",
-    user_last_statement="Explain quantum entanglement.",
-    system_prompt="Answer as a friendly professor.",
-    temperature=0.6,
-    max_new_tokens=256,
-)
-
-response = client.extended_conversation_with_model(payload)
-print(response)
+``` python
+class BaseModelOptions(BaseModel):
+    """Options shared across many endpoint models."""
+    mask_payload: bool = False
+    masker_pipeline: Optional[List[str]] = None
 ```
 
----  
+### Conversation models
 
-## Core concepts
+| Model                                 | Required fields                     | Optional / extra fields                                   |
+|---------------------------------------|-------------------------------------|-----------------------------------------------------------|
+| `GenerativeConversationModel`         | `model_name`, `user_last_statement` | `temperature`, `max_new_tokens`, `historical_messages`, … |
+| `ExtendedGenerativeConversationModel` | All of the above + `system_prompt`  | –                                                         |
 
-### Client
+Utility models for other built‑in endpoints (question generation, translation,
+article creation, context‑based answering, etc.) follow the same pattern and
+inherit from `BaseModelOptions`.
 
-`LLMRouterClient` is the entry point. It handles:
+## Thin client wrapper (`LLMRouterClient`)
 
-* Base URL normalization.
-* Optional bearer token injection.
-* Construction of the internal `HttpRequester`.
+`LLMRouterClient` offers a **high‑level API** that abstracts away the low‑level
+HTTP details:
 
-All public methods accept either a **dict** or a **pydantic model**; models are automatically serialized with
-`.model_dump()`.
+| Method                                      | Description                                                                                                    |
+|---------------------------------------------|----------------------------------------------------------------------------------------------------------------|
+| `conversation_with_model(payload)`          | Calls `/api/conversation_with_model`. Accepts a dict **or** a `GenerativeConversationModel`.                   |
+| `extended_conversation_with_model(payload)` | Calls `/api/extended_conversation_with_model`. Accepts a dict **or** an `ExtendedGenerativeConversationModel`. |
 
-### Data models
+Internally the client:
 
-Located in `llm_router_lib/data_models/`.  
-Key models:
-
-| Model                                        | Purpose                                                           |
-|----------------------------------------------|-------------------------------------------------------------------|
-| `GenerativeConversationModel`                | Simple chat payload (model name, user message, optional history). |
-| `ExtendedGenerativeConversationModel`        | Same as above, plus a `system_prompt`.                            |
-| `GenerateQuestionFromTextsModel`             | Generate questions from a list of texts.                          |
-| `TranslateTextModel`, `SimplifyTextModel`, … | Various utility models for text transformation.                   |
-| `OpenAIChatModel`                            | Payload for direct OpenAI‑compatible chat calls.                  |
-
-All models inherit from a common `_GenerativeOptions` base that defines temperature, token limits, language, etc.
-
-### Services
-
-Implemented in `llm_router_lib/services/`.  
-Each service extends `_BaseConversationService` and defines:
-
-* `endpoint` – the API path (e.g., `/api/conversation_with_model`).
-* `model_cls` – the Pydantic model class used for validation.
-
-The service’s `call()` method performs the HTTP POST and returns a parsed JSON dictionary, raising `LLMRouterError` on
-malformed responses.
-
-### Utilities
-
-* `llm_router_lib/utils/http.py` – thin wrapper around `requests` with retry logic, response validation, and logging.
-* Logging is integrated via the standard library `logging` module; you can inject your own logger when constructing the
-  client.
-
-### Error handling
-
-| Exception             | When raised                                               |
-|-----------------------|-----------------------------------------------------------|
-| `LLMRouterError`      | Generic SDK‑level error (e.g., non‑JSON response).        |
-| `AuthenticationError` | HTTP 401/403 – missing or invalid token.                  |
-| `RateLimitError`      | HTTP 429 – the server throttled the request.              |
-| `ValidationError`     | HTTP 400 – request payload failed server‑side validation. |
-
-All exceptions inherit from `LLMRouterError`, allowing a single `except LLMRouterError:` clause to catch any SDK‑related
-problem.
-
----
-
-## License
-
-`llm_router_lib` is released under the **MIT License**. See the `LICENSE` file for details.  
+1. **Validates** the payload (via the corresponding `pydantic` model if a model instance is supplied).
+2. **Selects** an appropriate provider using the router’s load‑balancing
