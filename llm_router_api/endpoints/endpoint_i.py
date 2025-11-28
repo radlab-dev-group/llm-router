@@ -207,7 +207,7 @@ class SecureEndpointI(abc.ABC):
 
         is_safe, message = self._guardrails_pipeline_request.apply(payload=payload)
 
-        if not is_safe:
+        if not is_safe and audit_log:
             self._end_audit_log_if_needed(
                 payload=message,
                 audit_log=audit_log,
@@ -922,6 +922,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         orig_params = params.copy()
         api_model_provider = None
         clear_chosen_provider_finally = False
+        use_streaming = bool((params or {}).get("stream", False))
 
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
@@ -988,8 +989,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 prompt_str_force=prompt_str_force,
                 prompt_str_postfix=prompt_str_postfix,
             )
-
-            use_streaming = bool((params or {}).get("stream", False))
 
             # Prepare proper endpoint url
             ep_url = self._api_type_dispatcher.get_proper_endpoint(
