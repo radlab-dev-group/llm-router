@@ -12,11 +12,16 @@ a ready‑made image in your own infrastructure.
   and optional Prometheus metrics.
 - **llm_router_lib** is a Python SDK that wraps the API with typed request/response models, automatic retries, token
   handling and a rich exception hierarchy, letting developers focus on application logic rather than raw HTTP calls.
-- **llm_router_web** offers ready‑to‑use Flask UIs – an anonymizer UI that masks sensitive data and a configuration
+- [**llm_router_web**](https://github.com/radlab-dev-group/llm-router-web) offers ready‑to‑use Flask UIs – an anonymizer
+  UI that masks sensitive data and a configuration
   manager for model/user settings – demonstrating how to consume the router from a browser.
-- **llm_router_plugins** (e.g., the **fast_masker** plugin) deliver a rule‑based text anonymisation engine with
+- [**llm_router_plugins**](https://github.com/radlab-dev-group/llm-router-plugins) (e.g., the **fast_masker** plugin)
+  deliver a rule‑based text anonymisation engine with
   a comprehensive set of Polish‑specific masking rules (emails, IPs, URLs, phone numbers, PESEL, NIP, KRS, REGON,
   monetary amounts, dates, etc.) and an extensible architecture for custom rules and validators.
+- [**llm_router_services**](https://github.com/radlab-dev-group/llm-router-services) provides HTTP services that
+  implement the core functionality used by the LLM‑Router’s plugin system. The services expose guardrail and masking
+  capabilities through Flask applications.
 
 All components run on Python 3.10+ using `virtualenv` and require only the listed dependencies, making the suite easy to
 install, extend, and deploy in both development and production environments.
@@ -62,21 +67,6 @@ project README:
 
 #### Base requirements
 
-> **Prerequisite**: `radlab-ml-utils`
->
-> This project uses the
-> [radlab-ml-utils](https://github.com/radlab-dev-group/ml-utils)
-> library for machine learning utilities
-> (e.g., experiment/result logging with Weights & Biases/wandb).
-> Install it before working with ML-related parts:
->
-> ```bash
-> pip install git+https://github.com/radlab-dev-group/ml-utils.git
-> ```
->
-> For more options and details, see the library README:
-> https://github.com/radlab-dev-group/ml-utils
-
 ```shell script
 python3 -m venv .venv
 source .venv/bin/activate
@@ -118,7 +108,7 @@ metrics for monitoring and alerting.
 LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 ```
 
-### 📦 Docker
+## 📦 Docker
 
 Run the container with the default configuration:
 
@@ -157,7 +147,7 @@ docker run \
 
 ---
 
-### Configuration (via environment)
+## 🛠️ Configuration (via environment)
 
 A full list of environment variables is available at the link
 [.env list](llm_router_api/README.md#environment-variables)
@@ -194,7 +184,7 @@ a description of the streaming mechanisms can be found at the link:
 
 ---
 
-## 🛠️ Development
+## 🔧 Development
 
 - **Python**3.10+ (project is tested on 3.10.6)
 - All dependencies are listed in `requirements.txt`. Install them inside the virtualenv.
