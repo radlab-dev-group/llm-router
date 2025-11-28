@@ -1,4 +1,4 @@
-## LLM Router - Open-Source AI Gateway for Local and Cloud LLM Infrastructure
+# LLM Router - Open-Source AI Gateway for Local and Cloud LLM Infrastructure
 
 [**LLM Router**](https://llm-router.cloud) is a service that can be deployed on‑premises or in the cloud.
 It adds a layer between any application and the LLM provider. In real time it controls traffic,
@@ -28,7 +28,7 @@ install, extend, and deploy in both development and production environments.
 
 ---
 
-### Boilerplates
+## 🧩 Boilerplates
 
 For a detailed explanation of each example’s purpose, structure, and how the boilerplates are organized, see the main
 project README:
@@ -38,7 +38,7 @@ project README:
 
 ---
 
-### ✨ Key Features
+## ✨ Key Features
 
 | Feature                             | Description                                                                                                                                             |
 |-------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------|
