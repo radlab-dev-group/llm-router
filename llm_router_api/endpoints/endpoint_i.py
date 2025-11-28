@@ -1121,6 +1121,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Dict[str, Any]
             The payload with internal keys removed.
         """
+        if type(payload) is str:
+            return payload
+
         for k in CLEAR_PREDEFINED_PARAMS:
             payload.pop(k, None)
         # If stream param is not given, then set as False
