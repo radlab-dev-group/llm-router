@@ -72,11 +72,7 @@ class LmStudioModelsHandler(PassthroughI):
             A response containing the object type ``"list"`` and a ``data``
             field with the available model tags.
         """
-        # models = self.__proper_models_list_format()
-        models = self.__proper_models_list_format()
-        # import json
-        # print(json.dumps(models, indent=2, ensure_ascii=False))
-        return {"models": models}
+        return self.__proper_models_list_format()
 
     def __proper_models_list_format(self):
         _models_data = self._api_type_dispatcher.tags(
@@ -86,17 +82,17 @@ class LmStudioModelsHandler(PassthroughI):
         proper_models = []
         for m in _models_data:
             _model = {
+                "id": m["id"],
+                "object": "model",
                 "type": "llm",
-                "modelKey": m["id"],
-                "format": "gguf",
-                "displayName": m["id"],
-                "path": m["id"],
-                "sizeBytes": 4683073952,
-                "paramsString": "7B",
-                "architecture": "qwen2",
-                "vision": False,
-                "trainedForToolUse": True,
-                "maxContextLength": 32768,
+                "publisher": m["publisher"],
+                "arch": m["arch"],
+                "compatibility_type": "gguf",
+                "quantization": "Q8_0",
+                "state": "loaded",
+                "max_context_length": m["max_context_length"],
             }
             proper_models.append(_model)
-        return proper_models
+
+        _response = {"data": proper_models, "object": "list"}
+        return _response
