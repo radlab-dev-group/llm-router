@@ -51,32 +51,74 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         if clear_buffers:
             self._clear_buffer()
 
-    # -------------------------------------------------------------------------
-    # Helper utilities
-    # -------------------------------------------------------------------------
-    def _host_from_provider(self, provider: Dict) -> Optional[str]:
-        """Extract the host identifier from a provider configuration."""
-        # Most providers expose the host under ``api_host`` or ``host``.
-        return provider.get("api_host") or provider.get("host")
-
-    def _last_host_key(self, model_name: str) -> str:
-        """Redis key that stores the last host used for a given model."""
-        return f"{self._get_redis_key(model_name)}:last_host"
-
-    def _model_hosts_set_key(self, model_name: str) -> str:
-        """Redis set key that holds all hosts where *model_name* is loaded."""
-        return f"{self._get_redis_key(model_name)}:hosts"
-
-    def _host_occupancy_key(self, host_name: str) -> str:
+    # -----------------------------------------------------------------
+    # Overridden public API
+    # -----------------------------------------------------------------
+    def get_provider(
+        self,
+        model_name: str,
+        providers: List[Dict],
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict | None:
         """
-        Redis hash key that stores the model currently occupying *host_name*.
-        The hash field used is ``model``.
+        Execute the optimisation steps before falling back to the base
+        implementation.
         """
-        return self._host_key(host_name)
+        if not providers:
+            return None
 
-    # -------------------------------------------------------------------------
+        # Initialise Redis structures (same as parent).
+        redis_key, _ = self.init_provider(
+            model_name=model_name, providers=providers, options=options
+        )
+        if not redis_key:
+            return None
+
+        # ---- Step 1 -------------------------------------------------
+        provider = self._step1_last_host(model_name, providers)
+        # print("last_host_provider", provider)
+        # print("last_host_provider", provider)
+        # print("last_host_provider", provider)
+        # print("last_host_provider", provider)
+        if provider:
+            self._record_selection(model_name, provider)
+            return provider
+
+        # ---- Step 2 -------------------------------------------------
+        provider = self._step2_existing_hosts(model_name, providers)
+        # print("existing_host_provider", provider)
+        # print("existing_host_provider", provider)
+        # print("existing_host_provider", provider)
+        # print("existing_host_provider", provider)
+        if provider:
+            self._record_selection(model_name, provider)
+            return provider
+
+        # ---- Step 3 -------------------------------------------------
+        provider = self._step3_unused_host(model_name, providers)
+        # print("unused_host_provider", provider)
+        # print("unused_host_provider", provider)
+        # print("unused_host_provider", provider)
+        # print("unused_host_provider", provider)
+        if provider:
+            self._record_selection(model_name, provider)
+            return provider
+
+        # ---- Step 4 – fallback ---------------------------------------
+        provider = super().get_provider(
+            model_name=model_name, providers=providers, options=options
+        )
+        # print("first_available_host_provider", provider)
+        # print("first_available_host_provider", provider)
+        # print("first_available_host_provider", provider)
+        # print("first_available_host_provider", provider)
+        if provider:
+            self._record_selection(model_name, provider)
+        return provider
+
+    # -----------------------------------------------------------------
     # Step 1 – reuse last host
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
     def _step1_last_host(
         self, model_name: str, providers: List[Dict]
@@ -92,9 +134,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             return None
 
         # Verify host is not occupied by a different model.
-        occupancy_hash = self._host_occupancy_key(last_host)
-        current_model = self.redis_client.hget(occupancy_hash, "model")
-        if current_model and current_model != model_name:
+        if not self._is_host_free(last_host, model_name):
             return None  # host busy with another model
 
         # Find a provider that belongs to this host.
@@ -117,9 +157,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 continue
         return None
 
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
     # Step 2 – reuse any host that already runs this model
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
     def _step2_existing_hosts(
         self, model_name: str, providers: List[Dict]
@@ -139,9 +179,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             if host not in known_hosts:
                 continue
             # Ensure the host is not occupied by a different model.
-            occ_key = self._host_occupancy_key(host)
-            cur = self.redis_client.hget(occ_key, "model")
-            if cur and cur != model_name:
+            if not self._is_host_free(host, model_name):
                 continue
 
             field = self._provider_field(provider)
@@ -158,9 +196,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 continue
         return None
 
-    # ---------------------------------------------------------------------
+    # -----------------------------------------------------------------
     # Step 3 – pick a host that does NOT already have this model loaded
-    # --------------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
     def _step3_unused_host(
         self, model_name: str, providers: List[Dict]
@@ -186,9 +224,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 continue
 
             # Ensure the host is not currently occupied by a different model.
-            occ_key = self._host_occupancy_key(host)
-            current_model = self.redis_client.hget(occ_key, "model")
-            if current_model and current_model != model_name:
+            if not self._is_host_free(host, model_name):
                 continue
 
             field = self._provider_field(provider)
@@ -205,9 +241,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 continue
         return None
 
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
     # Step 5 – bookkeeping after a successful acquisition
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
 
     def _record_selection(self, model_name: str, provider: Dict) -> None:
         """
@@ -228,9 +264,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         occ_key = self._host_occupancy_key(host)
         self.redis_client.hset(occ_key, "model", model_name)
 
-    # -------------------------------------------------------
+    # -----------------------------------------------------------------
     # Ensure buffers are cleared on construction (delegated to parent)
-    # -------------------------------------------------------
+    # -----------------------------------------------------------------
 
     def _clear_buffer(self) -> None:
         """
@@ -252,68 +288,35 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 self.logger.debug(f"Removing {self} => {key} from redis")
                 self.redis_client.delete(key)
 
-    # -------------------------------------------------------------------------
-    # Overridden public API
-    # -------------------------------------------------------------------------
+    # -----------------------------------------------------------------
+    # Helper utilities
+    # -----------------------------------------------------------------
+    def _host_from_provider(self, provider: Dict) -> Optional[str]:
+        """Extract the host identifier from a provider configuration."""
+        # Most providers expose the host under ``api_host`` or ``host``.
+        return provider.get("api_host") or provider.get("host")
 
-    def get_provider(
-        self,
-        model_name: str,
-        providers: List[Dict],
-        options: Optional[Dict[str, Any]] = None,
-    ) -> Dict | None:
+    def _last_host_key(self, model_name: str) -> str:
+        """Redis key that stores the last host used for a given model."""
+        return f"{self._get_redis_key(model_name)}:last_host"
+
+    def _model_hosts_set_key(self, model_name: str) -> str:
+        """Redis set key that holds all hosts where *model_name* is loaded."""
+        return f"{self._get_redis_key(model_name)}:hosts"
+
+    def _host_occupancy_key(self, host_name: str) -> str:
         """
-        Execute the optimisation steps before falling back to the base
-        implementation.
+        Redis hash key that stores the model currently occupying *host_name*.
+        The hash field used is ``model``.
         """
-        if not providers:
-            return None
+        return self._host_key(host_name)
 
-        # Initialise Redis structures (same as parent).
-        redis_key, _ = self.init_provider(
-            model_name=model_name, providers=providers, options=options
-        )
-        if not redis_key:
-            return None
-
-        # ---- Step 1 ---------------------------------------------------------
-        provider = self._step1_last_host(model_name, providers)
-        print("last_host_provider", provider)
-        print("last_host_provider", provider)
-        print("last_host_provider", provider)
-        print("last_host_provider", provider)
-        if provider:
-            self._record_selection(model_name, provider)
-            return provider
-
-        # ---- Step 2 ---------------------------------------------------------
-        provider = self._step2_existing_hosts(model_name, providers)
-        print("existing_host_provider", provider)
-        print("existing_host_provider", provider)
-        print("existing_host_provider", provider)
-        print("existing_host_provider", provider)
-        if provider:
-            self._record_selection(model_name, provider)
-            return provider
-
-        # ---- Step 3 ---------------------------------------------------------
-        provider = self._step3_unused_host(model_name, providers)
-        print("unused_host_provider", provider)
-        print("unused_host_provider", provider)
-        print("unused_host_provider", provider)
-        print("unused_host_provider", provider)
-        if provider:
-            self._record_selection(model_name, provider)
-            return provider
-
-        # ---- Step 4 – fallback ---------------------------------------------
-        provider = super().get_provider(
-            model_name=model_name, providers=providers, options=options
-        )
-        print("first_available_host_provider", provider)
-        print("first_available_host_provider", provider)
-        print("first_available_host_provider", provider)
-        print("first_available_host_provider", provider)
-        if provider:
-            self._record_selection(model_name, provider)
-        return provider
+    # New helper to check if a host is free for the requested model.
+    def _is_host_free(self, host: str, model_name: str) -> bool:
+        """
+        Return ``True`` if *host* is either unoccupied or occupied by the same
+        *model_name*. ``False`` means the host is occupied by a different model.
+        """
+        occ_key = self._host_occupancy_key(host)
+        current_model = self.redis_client.hget(occ_key, "model")
+        return not (current_model and current_model != model_name)
