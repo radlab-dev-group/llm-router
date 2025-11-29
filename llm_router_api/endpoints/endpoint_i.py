@@ -52,7 +52,7 @@ from llm_router_api.base.constants import (
     GUARDRAIL_WITH_AUDIT_RESPONSE,
 )
 
-from llm_router_api.core.auditor import AnyRequestAuditor
+from llm_router_api.core.auditor.auditor import AnyRequestAuditor
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 from llm_router_api.endpoints.httprequest import HttpRequestExecutor
