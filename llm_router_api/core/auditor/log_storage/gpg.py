@@ -28,6 +28,14 @@ from llm_router_api.core.auditor.log_storage.log_storage_interface import (
     AuditorLogStorageInterface,
 )
 
+# Base output directory for the auditor
+DEFAULT_AUDITOR_OUT_DIR = Path("logs/auditor")
+DEFAULT_AUDITOR_OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Default gpg auditor public key
+AUDITOR_PUB_KEY_DIR = Path("resources/keys")
+AUDITOR_PUB_KEY_FILE = AUDITOR_PUB_KEY_DIR / Path("llm-router-auditor-pub.asc")
+
 
 class GPGAuditorLogStorage(AuditorLogStorageInterface):
     """
@@ -46,13 +54,6 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
         for encryption.
     """
 
-    # Base output directory for the auditor
-    DEFAULT_AUDITOR_OUT_DIR = Path("logs/auditor")
-    DEFAULT_AUDITOR_OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    AUDITOR_PUB_KEY_DIR = Path("resources/keys")
-    AUDITOR_PUB_KEY_FILE = AUDITOR_PUB_KEY_DIR / Path("llm-router-auditor-pub.asc")
-
     def __init__(self):
         """
         Create a new GPG‑based audit log storage instance.
@@ -67,14 +68,14 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
         """
 
         self._import_result = None
-        self._gpg = gnupg.GPG(gnupghome=str(self.AUDITOR_PUB_KEY_DIR))
+        self._gpg = gnupg.GPG(gnupghome=str(AUDITOR_PUB_KEY_DIR))
         self._gpg.encoding = "utf-8"
 
-        with self.AUDITOR_PUB_KEY_FILE.open("r", encoding="utf-8") as f:
+        with AUDITOR_PUB_KEY_FILE.open("r", encoding="utf-8") as f:
             self._import_result = self._gpg.import_keys(f.read())
             if not self._import_result.count:
                 raise RuntimeError(
-                    f"Failed to import public key from {self.AUDITOR_PUB_KEY_FILE}"
+                    f"Failed to import public key from {AUDITOR_PUB_KEY_FILE}"
                 )
 
     def store_log(self, audit_log, audit_type: str):
@@ -103,7 +104,7 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
         """
         date_str = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         out_file_name = f"{audit_type}__{date_str}.audit"
-        out_file_path = self.DEFAULT_AUDITOR_OUT_DIR / out_file_name
+        out_file_path = DEFAULT_AUDITOR_OUT_DIR / out_file_name
         with open(out_file_path, "wt") as f:
             audit_str = json.dumps(audit_log, indent=2, ensure_ascii=False)
             encrypted_data = self._gpg.encrypt(
