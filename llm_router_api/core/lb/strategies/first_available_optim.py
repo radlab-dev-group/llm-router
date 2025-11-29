@@ -158,24 +158,37 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 continue
         return None
 
-    # -------------------------------------------------------------------------
-    # Step 3 – pick an entirely unused host
-    # -------------------------------------------------------------------------
+    # ---------------------------------------------------------------------
+    # Step 3 – pick a host that does NOT already have this model loaded
+    # --------------------------------------------------------------------------
 
     def _step3_unused_host(
         self, model_name: str, providers: List[Dict]
     ) -> Optional[Dict]:
         """
-        Find a host that has never been used for any model (no occupancy entry)
-        and acquire a provider on it.
+        Find a host that does **not** already run ``model_name`` (i.e. the host
+        is not present in the ``:hosts`` Redis set for this model) and acquire a
+        provider on it. The host must also be free – it must not be occupied by
+        another model.
         """
+        # Hosts that already have this model loaded.
+        known_hosts_key = self._model_hosts_set_key(model_name)
+        known_hosts_bytes = self.redis_client.smembers(known_hosts_key)
+        known_hosts = {b for b in known_hosts_bytes} if known_hosts_bytes else set()
+
         for provider in providers:
             host = self._host_from_provider(provider)
             if not host:
                 continue
+
+            # Skip hosts that already run the requested model.
+            if host in known_hosts:
+                continue
+
+            # Ensure the host is not currently occupied by a different model.
             occ_key = self._host_occupancy_key(host)
-            if self.redis_client.hexists(occ_key, "model"):
-                # Host already assigned to some model.
+            current_model = self.redis_client.hget(occ_key, "model")
+            if current_model and current_model != model_name:
                 continue
 
             field = self._provider_field(provider)
