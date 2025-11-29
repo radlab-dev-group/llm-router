@@ -18,6 +18,7 @@ Typical workflow
    ``logs/auditor/<audit_type>__<timestamp>.audit``.
 """
 
+import uuid
 import json
 import gnupg
 
@@ -32,12 +33,12 @@ from llm_router_api.core.auditor.log_storage.log_storage_interface import (
 DEFAULT_AUDITOR_OUT_DIR = Path("logs/auditor")
 DEFAULT_AUDITOR_OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Default gpg auditor public key
-AUDITOR_PUB_KEY_DIR = Path("resources/keys")
-AUDITOR_PUB_KEY_FILE = AUDITOR_PUB_KEY_DIR / Path("llm-router-auditor-pub.asc")
-
 
 class GPGAuditorLogStorage(AuditorLogStorageInterface):
+    # Default gpg auditor public key
+    AUDITOR_PUB_KEY_DIR = Path("resources/keys")
+    AUDITOR_PUB_KEY_FILE = AUDITOR_PUB_KEY_DIR / Path("llm-router-auditor-pub.asc")
+
     """
     GPG‑backed storage for audit logs.
 
@@ -68,14 +69,16 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
         """
 
         self._import_result = None
-        self._gpg = gnupg.GPG(gnupghome=str(AUDITOR_PUB_KEY_DIR))
+        self._gpg = gnupg.GPG(gnupghome=str(self.AUDITOR_PUB_KEY_DIR))
         self._gpg.encoding = "utf-8"
 
-        with AUDITOR_PUB_KEY_FILE.open("r", encoding="utf-8") as f:
+        self.__verify()
+
+        with self.AUDITOR_PUB_KEY_FILE.open("r", encoding="utf-8") as f:
             self._import_result = self._gpg.import_keys(f.read())
             if not self._import_result.count:
                 raise RuntimeError(
-                    f"Failed to import public key from {AUDITOR_PUB_KEY_FILE}"
+                    f"Failed to import public key from {self.AUDITOR_PUB_KEY_FILE}"
                 )
 
     def store_log(self, audit_log, audit_type: str):
@@ -114,3 +117,46 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
                 armor=True,
             )
             f.write(str(encrypted_data))
+
+    def __verify(self):
+        """
+        Perform internal sanity checks during initialisation.
+
+        This method verifies that the required GPG public key file exists
+        and that the process has write access to ``DEFAULT_AUDITOR_OUT_DIR``.
+        It raises an exception if either check fails.
+        """
+        self.__check_key_exists()
+        self.__check_write_permission()
+
+    def __check_key_exists(self):
+        """
+        Ensure that the GPG public key file specified by
+        ``AUDITOR_PUB_KEY_FILE`` is present on the filesystem.
+
+        Raises
+        ------
+        Exception
+            If the public key file does not exist.
+        """
+        if not self.AUDITOR_PUB_KEY_FILE.exists():
+            raise Exception(
+                f"GPG public key {self.AUDITOR_PUB_KEY_FILE} does not exists!"
+            )
+
+    def __check_write_permission(self):
+        """
+        Verify that the process can write to ``DEFAULT_AUDITOR_OUT_DIR``.
+        Writes a temporary file containing the string ``"llm-router"``,
+        then removes it. Raises ``PermissionError`` if any step fails.
+        """
+        try:
+            temp_name = f"perm_check_{uuid.uuid4().hex}.audit"
+            temp_path = DEFAULT_AUDITOR_OUT_DIR / temp_name
+            with open(temp_path, "wt") as f:
+                f.write("llm-router")
+            temp_path.unlink()
+        except Exception as exc:
+            raise PermissionError(
+                f"Unable to write to {DEFAULT_AUDITOR_OUT_DIR}: {exc}"
+            )
