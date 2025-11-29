@@ -29,7 +29,7 @@ from collections import deque
 from collections import defaultdict
 from typing import List, Dict, Optional, Any
 
-from llm_router_api.base.lb.strategy_interface import ChooseProviderStrategyI
+from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
 
 
 class WeightedStrategy(ChooseProviderStrategyI):

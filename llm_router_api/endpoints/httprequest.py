@@ -27,7 +27,7 @@ import requests
 from requests import Response
 from typing import Optional, Dict, Any, Iterator
 
-from llm_router_api.base.model_handler import ApiModel
+from llm_router_api.core.model_handler import ApiModel
 
 
 class HttpRequestExecutor:

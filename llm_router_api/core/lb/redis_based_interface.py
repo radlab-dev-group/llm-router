@@ -12,8 +12,8 @@ except ImportError:
     REDIS_IS_AVAILABLE = False
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.base.lb.strategy_interface import ChooseProviderStrategyI
-from llm_router_api.base.monitor.redis_health_interface import (
+from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
+from llm_router_api.core.monitor.redis_health_interface import (
     RedisBasedHealthCheckInterface,
 )
 
