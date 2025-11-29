@@ -88,12 +88,12 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             return None
 
         # ------------------------------------------------------------------
-        # Krok 1 – Spróbuj użyć ostatniego hosta, który obsługiwał ten model.
+        # Step 1 – Try to use the last host that handled this model.
         # ------------------------------------------------------------------
         last_host = self._retrieve_last_host(model_name)
         if last_host:
             for provider in providers:
-                # Identyfikator hosta może być zapisany pod różnymi kluczami.
+                # Host identifier may be stored under different keys.
                 provider_host = (
                     provider.get("host")
                     or provider.get("api_host")
@@ -109,15 +109,15 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                     )
                     if ok == 1:
                         provider["__chosen_field"] = provider_field
-                        # Zapamiętaj host na następną prośbę.
+                        # Remember the host for the next request.
                         self._store_last_host(model_name, last_host)
                         return provider
                 except Exception:
-                    # Błąd w skrypcie Lua – przejdź dalej, fallback zajmie się resztą.
+                    # Lua script error – continue, fallback will handle the rest.
                     pass
 
         # ------------------------------------------------------------------
-        # Krok 2 – Przeszukaj inne hosty, które już mają załadowany model.
+        # Step 2 – Scan other hosts that already have the model loaded.
         # ------------------------------------------------------------------
         for provider in providers:
             provider_host = (
@@ -125,7 +125,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 or provider.get("api_host")
                 or provider.get("id")
             )
-            # Pomijamy host, który już sprawdziliśmy powyżej.
+            # Skip the host we already checked above.
             if provider_host == last_host:
                 continue
 
@@ -136,26 +136,25 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 )
                 if ok == 1:
                     provider["__chosen_field"] = provider_field
-                    # Zachowaj host, który dostarczył model.
+                    # Remember the host that provided the model.
                     if provider_host:
                         self._store_last_host(model_name, provider_host)
                     return provider
             except Exception:
-                # Nie krytyczne – szukamy dalej.
+                # Not critical – keep looking.
                 pass
 
         # ------------------------------------------------------------------
-        # Krok 3 – Znajdź provider, który obsługuje model, ale nie ma
-        #          jeszcze żadnego załadowanego modelu. Jeśli istnieje,
-        #          wybierz go.
+        # Step 3 – Find a provider that supports the model but doesn't have
+        #          any model loaded yet. If one exists, select it.
         # ------------------------------------------------------------------
         for provider in providers:
-            # Czy provider jest w stanie obsłużyć żądany model?
+            # Does the provider support the requested model?
             provider_models = provider.get("models") or [provider.get("model")]
             if model_name not in provider_models:
                 continue
 
-            # Pomijamy providerów, którzy już mają załadowane modele.
+            # Skip providers that already have models loaded.
             if provider.get("loaded_models"):
                 continue
 
@@ -175,14 +174,14 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                         self._store_last_host(model_name, provider_host)
                     return provider
             except Exception:
-                # Ignorujemy niepowodzenia – fallback zajmie się dalszą logiką.
+                # Ignore failures – fallback will handle the rest.
                 pass
 
         # ------------------------------------------------------------------
-        # Krok 4 – Fallback do klasycznego algorytmu first‑available.
+        # Step 4 – Fallback to the classic first‑available algorithm.
         # ------------------------------------------------------------------
-        # Delegujemy do implementacji w klasie bazowej, aby zachować
-        # istniejącą obsługę timeoutów i retry.
+        # Delegate to the base class implementation to maintain
+        # existing timeout and retry handling.
         return super().get_provider(model_name, providers, options)
 
     # ----------------------------------------------------------------------
