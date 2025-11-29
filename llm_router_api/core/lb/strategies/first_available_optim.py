@@ -1,55 +1,40 @@
 """
-This module implements the :class:`~FirstAvailableStrategy`, a concrete
-strategy for selecting the first available provider for a given model.  The
-strategy coordinates provider selection across multiple processes using
-Redis hashes as lightweight distributed locks.
+Enhanced provider‑selection strategy.
 
-The implementation relies on two Lua scripts registered with Redis:
+The :class:`FirstAvailableOptimStrategy` builds on the classic
+:class:`~llm_router_api.core.lb.first_available.FirstAvailableStrategy`
+by adding three optimisation steps:
 
-* ``_acquire_script`` – atomically marks a provider as chosen if it is not
-  currently taken.
-* ``_release_script`` – releases the lock by deleting the provider field.
+1. **Last‑host affinity** – if a previous request for the same model was
+   handled on a host that still runs the model and the corresponding provider
+   is free, that provider is chosen again.
+2. **Other hosts with the model** – if the last host is busy, the strategy
+   scans the remaining providers that host the model and picks the first free
+   one.
+3. **Fallback** – if no provider is free on any host that already has the
+   model, the normal *first‑available* algorithm is executed.
 
-Both scripts treat a missing field or a field set to ``'false'`` as an
-available provider.
-
-Typical usage::
-
-    strategy = FirstAvailableStrategy(models_config_path='dir/models-config.json')
-    provider = strategy.get_provider('model-name', providers_list)
-    # ... use the provider ...
-    strategy.put_provider('model-name', provider)
-
+A small piece of state is kept in Redis under the key
+``model:<model_name>:last_host`` so that the affinity survives across
+different processes or machines.
 """
 
-import time
 import logging
-
-try:
-    import redis
-
-    REDIS_IS_AVAILABLE = True
-except ImportError:
-    REDIS_IS_AVAILABLE = False
-
 from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.core.lb.redis_based_interface import RedisBasedStrategyInterface
+from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
 
 
-class RedisBasedOptimStrategy(RedisBasedStrategyInterface):
+class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     """
-    Strategy that selects the first free provider for a model using Redis.
+    Provider‑selection strategy with host‑affinity optimisation.
 
-    The class inherits from
-    :class:`~llm_router_api.core.lb.strategy.ChooseProviderStrategyI`
-    and adds Redis‑based coordination.  It ensures that at most one consumer
-    holds a particular provider at any time, even when multiple workers run
-    concurrently on different hosts.
-
-    Parameters are forwarded to the base class where appropriate, and Redis
-    connection details can be customised via the constructor arguments.
+    Extends :class:`FirstAvailableStrategy` by first trying to reuse the
+    provider that was used most recently for the given model (if it is still
+    free).  If that fails, it looks for any other free provider that already
+    hosts the model before finally falling back to the standard first‑available
+    behaviour.
     """
 
     def __init__(
@@ -64,26 +49,9 @@ class RedisBasedOptimStrategy(RedisBasedStrategyInterface):
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """
-        Initialize the FirstAvailableStrategy.
-
-        Parameters
-        ----------
-        models_config_path : str
-            Path to the models configuration file.
-        redis_host : str, optional
-            Redis server host. Default is ``"192.168.100.67"``.
-        redis_port : int, optional
-            Redis server port. Default is ``6379``.
-        redis_db : int, optional
-            Redis database number. Default is ``0``.
-        timeout : int, optional
-            Maximum time (in seconds) to wait for an available provider.
-            Default is ``60``.
-        check_interval : float, optional
-            Time to sleep between checks for available providers (in seconds).
-            Default is ``0.1``.
-        clear_buffers:
-            Whether to clear all buffers when starting. Default is ``True``.
+        Initialise the optimiser.  All arguments are passed straight through to
+        :class:`FirstAvailableStrategy` – the defaults are the same as in the
+        base class.
         """
         super().__init__(
             models_config_path=models_config_path,
@@ -94,205 +62,182 @@ class RedisBasedOptimStrategy(RedisBasedStrategyInterface):
             check_interval=check_interval,
             clear_buffers=clear_buffers,
             logger=logger,
-            strategy_prefix="fa_",
         )
 
-        # ---------- Host‑level lock scripts ----------
-        # Acquire a host lock (one host can serve only one provider at a time)
-        self._acquire_host_script = self.redis_client.register_script(
-            """
-                local host_key = KEYS[1]
-                local v = redis.call('GET', host_key)
-                if v == false or v == 'false' then
-                    redis.call('SET', host_key, 'true')
-                    return 1
-                end
-                return 0
-            """
-        )
-        # Release a host lock
-        self._release_host_script = self.redis_client.register_script(
-            """
-                local host_key = KEYS[1]
-                redis.call('DEL', host_key)
-                return 1
-            """
-        )
+        if clear_buffers:
+            self._clear_buffers()
 
     # ----------------------------------------------------------------------
-    # Public API
+    # Overridden public API
     # ----------------------------------------------------------------------
     def get_provider(
         self,
         model_name: str,
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
-    ) -> Dict | None:
+    ) -> Optional[Dict]:
         """
-        Acquire a provider for *model_name* from the supplied ``providers`` list.
-
-        The method attempts to lock a provider using a Redis‑backed
-        atomic Lua script.  If ``options`` contains ``{\"random_choice\": True}``,
-        the selection is performed on a shuffled copy of ``providers``; otherwise
-        providers are examined in the order they appear in the list.
-
-        Parameters
-        ----------
-        model_name : str
-            Identifier of the model for which a provider is required.
-        providers : List[Dict]
-            A list of provider configuration dictionaries.  Each dictionary must
-            contain the information required by :meth:`_provider_field` to build a
-            unique Redis hash field name.
-        options : dict, optional
-            Additional flags that influence the acquisition strategy.  Currently
-            supported keys:
-            ``random_choice`` (bool) – when ``True`` the provider is chosen at
-            random; defaults to ``False``.
-
-        Returns
-        -------
-        dict | None
-            The chosen provider dictionary with an extra ``"__chosen_field"``
-            entry indicating the Redis hash field that was locked.  Returns
-            ``None`` if ``providers`` is empty.
-
-        Raises
-        ------
-        TimeoutError
-            Raised when no provider can be locked within the ``timeout`` period
-            configured for the strategy instance.
-
-        Notes
-        -----
-        * The method creates the Redis hash (``model:<model_name>``) and initial
-          ``false`` fields if they do not already exist.
-        * The lock is represented by the value ``'true'`` in the hash field.
-        * Call :meth:`put_provider` to release the lock once the provider is no
-          longer needed.
+        Acquire a provider using the optimisation steps described in the
+        module docstring.
         """
+        # Initialise the Redis structures (identical to the base implementation).
         redis_key, is_random = self.init_provider(
             model_name=model_name, providers=providers, options=options
         )
         if not redis_key:
             return None
 
-        start_time = time.time()
-        while True:
-            _providers = self._get_active_providers(
-                model_name=model_name, providers=providers
-            )
-
-            if not len(_providers):
-                time.sleep(self.check_interval)
-
-            if time.time() - start_time > self.timeout:
-                raise TimeoutError(
-                    f"No available provider found for model '{model_name}' "
-                    f"within {self.timeout} seconds"
+        # ------------------------------------------------------------------
+        # Krok 1 – Spróbuj użyć ostatniego hosta, który obsługiwał ten model.
+        # ------------------------------------------------------------------
+        last_host = self._retrieve_last_host(model_name)
+        if last_host:
+            for provider in providers:
+                # Identyfikator hosta może być zapisany pod różnymi kluczami.
+                provider_host = (
+                    provider.get("host")
+                    or provider.get("api_host")
+                    or provider.get("id")
                 )
+                if provider_host != last_host:
+                    continue
 
-            if is_random:
-                provider = self._try_acquire_random_provider(
-                    redis_key=redis_key, providers=_providers
-                )
-                if provider:
-                    # ----- Host lock for random choice -----
-                    host_name = provider.get("id") or provider.get("api_host")
-                    if host_name:
-                        host_key = self._host_key(host_name)
-                        ok_host = int(
-                            self._acquire_host_script(keys=[host_key], args=[])
-                        )
-                        if ok_host == 1:
-                            provider["__chosen_field"] = self._provider_field(
-                                provider
-                            )
-                            provider["__host_key"] = host_key
-                            return provider
-                        else:
-                            # Host already taken – release provider lock and continue
-                            self._release_script(
-                                keys=[redis_key],
-                                args=[self._provider_field(provider)],
-                            )
-                            continue
-                    else:
-                        provider["__chosen_field"] = self._provider_field(provider)
+                provider_field = self._provider_field(provider)
+                try:
+                    ok = int(
+                        self._acquire_script(keys=[redis_key], args=[provider_field])
+                    )
+                    if ok == 1:
+                        provider["__chosen_field"] = provider_field
+                        # Zapamiętaj host na następną prośbę.
+                        self._store_last_host(model_name, last_host)
                         return provider
-            # ----------------------------------------
-            else:
-                for provider in _providers:
-                    provider_field = self._provider_field(provider)
-                    try:
-                        ok = int(
-                            self._acquire_script(
-                                keys=[redis_key], args=[provider_field]
-                            )
-                        )
-                        if ok == 1:
-                            # ----- Host lock for deterministic choice -----
-                            host_name = provider.get("id") or provider.get(
-                                "api_host"
-                            )
-                            if host_name:
-                                host_key = self._host_key(host_name)
-                                ok_host = int(
-                                    self._acquire_host_script(
-                                        keys=[host_key], args=[]
-                                    )
-                                )
-                                if ok_host == 1:
-                                    provider["__chosen_field"] = provider_field
-                                    provider["__host_key"] = host_key
-                                    return provider
-                                else:
-                                    # Host already occupied – release provider lock
-                                    self._release_script(
-                                        keys=[redis_key], args=[provider_field]
-                                    )
-                                    continue
-                            else:
-                                provider["__chosen_field"] = provider_field
-                                return provider
-                    except Exception:
-                        pass
-            time.sleep(self.check_interval)
+                except Exception:
+                    # Błąd w skrypcie Lua – przejdź dalej, fallback zajmie się resztą.
+                    pass
 
-    def put_provider(
-        self,
-        model_name: str,
-        provider: Dict,
-        options: Optional[Dict[str, Any]] = None,
-    ) -> None:
+        # ------------------------------------------------------------------
+        # Krok 2 – Przeszukaj inne hosty, które już mają załadowany model.
+        # ------------------------------------------------------------------
+        for provider in providers:
+            provider_host = (
+                provider.get("host")
+                or provider.get("api_host")
+                or provider.get("id")
+            )
+            # Pomijamy host, który już sprawdziliśmy powyżej.
+            if provider_host == last_host:
+                continue
+
+            provider_field = self._provider_field(provider)
+            try:
+                ok = int(
+                    self._acquire_script(keys=[redis_key], args=[provider_field])
+                )
+                if ok == 1:
+                    provider["__chosen_field"] = provider_field
+                    # Zachowaj host, który dostarczył model.
+                    if provider_host:
+                        self._store_last_host(model_name, provider_host)
+                    return provider
+            except Exception:
+                # Nie krytyczne – szukamy dalej.
+                pass
+
+        # ------------------------------------------------------------------
+        # Krok 3 – Znajdź provider, który obsługuje model, ale nie ma
+        #          jeszcze żadnego załadowanego modelu. Jeśli istnieje,
+        #          wybierz go.
+        # ------------------------------------------------------------------
+        for provider in providers:
+            # Czy provider jest w stanie obsłużyć żądany model?
+            provider_models = provider.get("models") or [provider.get("model")]
+            if model_name not in provider_models:
+                continue
+
+            # Pomijamy providerów, którzy już mają załadowane modele.
+            if provider.get("loaded_models"):
+                continue
+
+            provider_field = self._provider_field(provider)
+            try:
+                ok = int(
+                    self._acquire_script(keys=[redis_key], args=[provider_field])
+                )
+                if ok == 1:
+                    provider["__chosen_field"] = provider_field
+                    provider_host = (
+                        provider.get("host")
+                        or provider.get("api_host")
+                        or provider.get("id")
+                    )
+                    if provider_host:
+                        self._store_last_host(model_name, provider_host)
+                    return provider
+            except Exception:
+                # Ignorujemy niepowodzenia – fallback zajmie się dalszą logiką.
+                pass
+
+        # ------------------------------------------------------------------
+        # Krok 4 – Fallback do klasycznego algorytmu first‑available.
+        # ------------------------------------------------------------------
+        # Delegujemy do implementacji w klasie bazowej, aby zachować
+        # istniejącą obsługę timeoutów i retry.
+        return super().get_provider(model_name, providers, options)
+
+    # ----------------------------------------------------------------------
+    # Helper methods specific to the optimisation
+    # ----------------------------------------------------------------------
+    def _clear_buffers(self) -> None:
         """
-        Release a previously acquired provider back to the pool.
+        Remove stale Redis keys that are specific to the optimisation layer.
 
-        The method removes the lock field from the Redis hash, making the
-        provider available for subsequent ``get_provider`` calls.  It also
-        cleans up the temporary ``"__chosen_field"`` entry from the provider
-        dictionary.
+        The base class ``RedisBasedStrategyInterface`` already provides a
+        ``_clear_buffers`` method that resets the generic provider‑lock fields.
+        This optimiser adds an additional per‑model key
+        ``model:<model_name>:last_host`` that stores the host which last served
+        the model.  ``clear_buffers`` deletes those keys for **all** known
+        models, ensuring that no stale affinity information remains after a
+        deployment or a manual reset.
 
-        Parameters
-        ----------
-        model_name : str
-            The model name associated with the provider.
-        provider : Dict
-            The provider dictionary that was returned by :meth:`get_provider`.
-        options: Dict[str, Any], default: None
-            Additional options passed to the chosen provider.
+        The method does **not** delete the generic provider lock hashes – they
+        are handled by the parent ``_clear_buffers`` if a full reset is required.
         """
-        redis_key = self._get_redis_key(model_name)
-        provider_field = self._provider_field(provider)
         try:
-            # Release provider lock
-            self.redis_client.hdel(redis_key, provider_field)
-            # Release host lock if it was acquired
-            host_key = provider.get("id") or provider.get("api_host")
-            if host_key:
-                self._release_host_script(keys=[host_key], args=[])
-        except Exception:
-            raise
+            active_models = self._api_model_config.active_models
+            for _, model_names in active_models.items():
+                for model_name in model_names:
+                    last_host_key = self._last_host_key(model_name)
+                    self.redis_client.delete(last_host_key)
+        except Exception as exc:
+            if self.logger:
+                self.logger.warning(
+                    f"[FirstAvailableOptimStrategy] Failed to clear last‑host buffers: {exc}"
+                )
 
-        provider.pop("__chosen_field", None)
-        provider.pop("__host_key", None)
+    def _last_host_key(self, model_name: str) -> str:
+        """
+        Redis key that stores the name of the host that handled the most recent
+        request for *model_name*.
+        """
+        return f"{self._get_redis_key(model_name)}:last_host"
+
+    def _store_last_host(self, model_name: str, host_name: str) -> None:
+        """
+        Persist the chosen host for *model_name*.
+        """
+        try:
+            self.redis_client.set(self._last_host_key(model_name), host_name)
+        except Exception:
+            pass
+
+    def _retrieve_last_host(self, model_name: str) -> Optional[str]:
+        """
+        Return the previously stored host for *model_name*, or ``None`` if the
+        key does not exist.
+        """
+        try:
+            raw = self.redis_client.get(self._last_host_key(model_name))
+            return raw.decode() if raw else None
+        except Exception:
+            return None

@@ -28,7 +28,7 @@ from llm_router_api.base.constants_base import BalanceStrategies
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
 from llm_router_api.core.lb.strategies.first_available_optim import (
-    RedisBasedOptimStrategy,
+    FirstAvailableOptimStrategy,
 )
 
 from llm_router_api.core.lb.strategies.balanced import LoadBalancedStrategy
@@ -42,7 +42,7 @@ STRATEGIES = {
     BalanceStrategies.WEIGHTED: WeightedStrategy,
     BalanceStrategies.DYNAMIC_WEIGHTED: DynamicWeightedStrategy,
     BalanceStrategies.FIRST_AVAILABLE: FirstAvailableStrategy,
-    BalanceStrategies.FIRST_AVAILABLE_OPTIM: RedisBasedOptimStrategy,
+    BalanceStrategies.FIRST_AVAILABLE_OPTIM: FirstAvailableOptimStrategy,
 }
 
 
