@@ -3,7 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
-from llm_router_api.base.model_config import ApiModelConfig
+from llm_router_api.core.model_config import ApiModelConfig
 
 
 class ChooseProviderStrategyI(ABC):

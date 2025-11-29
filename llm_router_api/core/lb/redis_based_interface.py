@@ -12,8 +12,8 @@ except ImportError:
     REDIS_IS_AVAILABLE = False
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.base.lb.strategy_interface import ChooseProviderStrategyI
-from llm_router_api.base.monitor.redis_health_interface import (
+from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
+from llm_router_api.core.monitor.redis_health_interface import (
     RedisBasedHealthCheckInterface,
 )
 
@@ -25,7 +25,7 @@ class RedisBasedStrategyInterface(
     Strategy that selects the first free provider for a model using Redis.
 
     The class inherits from
-    :class:`~llm_router_api.base.lb.strategy.ChooseProviderStrategyI`
+    :class:`~llm_router_api.core.lb.strategy.ChooseProviderStrategyI`
     and adds Redis‑based coordination.  It ensures that at most one consumer
     holds a particular provider at any time, even when multiple workers run
     concurrently on different hosts.
