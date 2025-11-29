@@ -3,4 +3,4 @@ gunicorn
 redis
 prometheus_client
 
-# gevent
+python-gnupg
