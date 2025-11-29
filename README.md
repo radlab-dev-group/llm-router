@@ -108,6 +108,22 @@ metrics for monitoring and alerting.
 LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 ```
 
+---
+
+## 🔐 Auditing
+
+The router can record request‑level events (guard‑rail checks, payload masking, custom logs) in a tamper‑evident,
+encrypted form.  
+All audit entries are written by the **auditor** module and stored under `logs/auditor/` as GPG‑encrypted files.
+
+For a complete guide—including key generation, encryption workflow, and decryption utilities—see the dedicated
+documentation:
+
+➡️ **[Auditing subsystem documentation](llm_router_api/core/auditor/README.md)**
+
+
+---
+
 ## 📦 Docker
 
 Run the container with the default configuration:
