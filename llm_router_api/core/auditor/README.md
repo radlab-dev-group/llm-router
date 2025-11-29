@@ -162,18 +162,3 @@ class that inherits from `AuditorLogStorageInterface` and provides a
 --- 
 
 *Happy auditing!* 🎯
-
-
---- 
-00/000000
-
-## 📄 Update to the main `README.md`
-
-Add the following section near the **Features** or **Monitoring & Metrics** part of the main README:
-
-```
-
-Place the snippet where you describe optional runtime features (e.g., after *Monitoring & Metrics*). This gives users a
-quick overview and a direct link to the full audit guide.
-
-```
