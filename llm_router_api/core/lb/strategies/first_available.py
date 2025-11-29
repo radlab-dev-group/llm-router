@@ -62,6 +62,7 @@ class FirstAvailableStrategy(RedisBasedStrategyInterface):
         check_interval: float = 0.1,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
+        strategy_prefix: Optional[str] = None,
     ) -> None:
         """
         Initialize the FirstAvailableStrategy.
@@ -94,7 +95,7 @@ class FirstAvailableStrategy(RedisBasedStrategyInterface):
             check_interval=check_interval,
             clear_buffers=clear_buffers,
             logger=logger,
-            strategy_prefix="fa_",
+            strategy_prefix=strategy_prefix or "fa_",
         )
 
     def get_provider(
