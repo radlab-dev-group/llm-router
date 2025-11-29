@@ -266,7 +266,7 @@ import time
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_api.core.decorators import EP
-from llm_router_api.base.model_handler import ModelHandler
+from llm_router_api.core.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI
 from llm_router_lib.data_models import (

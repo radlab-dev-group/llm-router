@@ -2,7 +2,7 @@
 Provider selection orchestrator.
 
 The :class:`ProviderChooser` class acts as a thin façade around the
-different load‑balancing strategies defined in the ``llm_router_api.base.lb``
+different load‑balancing strategies defined in the ``llm_router_api.core.lb``
 package.  It allows callers to either supply a concrete strategy instance
 or specify a strategy by name (e.g. ``"balanced"``, ``"weighted"``,
 ``"dynamic_weighted"``, ``"adaptive_base"``).  The chosen strategy is then
@@ -25,14 +25,14 @@ from rdl_ml_utils.utils.logger import prepare_logger
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.base.constants_base import BalanceStrategies
 
-from llm_router_api.base.lb.strategy_interface import ChooseProviderStrategyI
-from llm_router_api.base.lb.strategies.first_available import RedisBasedStrategy
-from llm_router_api.base.lb.strategies.first_available_optim import (
-    RedisBasedOptimStrategy,
+from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
+from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
+from llm_router_api.core.lb.strategies.first_available_optim import (
+    FirstAvailableOptimStrategy,
 )
 
-from llm_router_api.base.lb.strategies.balanced import LoadBalancedStrategy
-from llm_router_api.base.lb.strategies.weighted import (
+from llm_router_api.core.lb.strategies.balanced import LoadBalancedStrategy
+from llm_router_api.core.lb.strategies.weighted import (
     WeightedStrategy,
     DynamicWeightedStrategy,
 )
@@ -41,8 +41,8 @@ STRATEGIES = {
     BalanceStrategies.BALANCED: LoadBalancedStrategy,
     BalanceStrategies.WEIGHTED: WeightedStrategy,
     BalanceStrategies.DYNAMIC_WEIGHTED: DynamicWeightedStrategy,
-    BalanceStrategies.FIRST_AVAILABLE: RedisBasedStrategy,
-    BalanceStrategies.FIRST_AVAILABLE_OPTIM: RedisBasedOptimStrategy,
+    BalanceStrategies.FIRST_AVAILABLE: FirstAvailableStrategy,
+    BalanceStrategies.FIRST_AVAILABLE_OPTIM: FirstAvailableOptimStrategy,
 }
 
 

@@ -35,15 +35,15 @@ except ImportError:
 from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
-from llm_router_api.base.lb.redis_based_interface import RedisBasedStrategyInterface
+from llm_router_api.core.lb.redis_based_interface import RedisBasedStrategyInterface
 
 
-class RedisBasedStrategy(RedisBasedStrategyInterface):
+class FirstAvailableStrategy(RedisBasedStrategyInterface):
     """
     Strategy that selects the first free provider for a model using Redis.
 
     The class inherits from
-    :class:`~llm_router_api.base.lb.strategy.ChooseProviderStrategyI`
+    :class:`~llm_router_api.core.lb.strategy.ChooseProviderStrategyI`
     and adds Redis‑based coordination.  It ensures that at most one consumer
     holds a particular provider at any time, even when multiple workers run
     concurrently on different hosts.
@@ -62,6 +62,7 @@ class RedisBasedStrategy(RedisBasedStrategyInterface):
         check_interval: float = 0.1,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
+        strategy_prefix: Optional[str] = None,
     ) -> None:
         """
         Initialize the FirstAvailableStrategy.
@@ -94,7 +95,7 @@ class RedisBasedStrategy(RedisBasedStrategyInterface):
             check_interval=check_interval,
             clear_buffers=clear_buffers,
             logger=logger,
-            strategy_prefix="fa_",
+            strategy_prefix=strategy_prefix or "fa_",
         )
 
     def get_provider(
@@ -155,41 +156,17 @@ class RedisBasedStrategy(RedisBasedStrategyInterface):
 
         start_time = time.time()
         while True:
-            _providers = self._get_active_providers(
-                model_name=model_name, providers=providers
+            # Delegate the acquisition logic to a helper method.
+            provider = self._acquire_provider_step(
+                model_name=model_name,
+                providers=providers,
+                is_random=is_random,
+                redis_key=redis_key,
+                start_time=start_time,
             )
+            if provider:
+                return provider
 
-            if not len(_providers):
-                time.sleep(self.check_interval)
-
-            if time.time() - start_time > self.timeout:
-                raise TimeoutError(
-                    f"No available provider found for model '{model_name}' "
-                    f"within {self.timeout} seconds"
-                )
-
-            if is_random:
-                provider = self._try_acquire_random_provider(
-                    redis_key=redis_key, providers=_providers
-                )
-                if provider:
-                    provider_field = self._provider_field(provider)
-                    provider["__chosen_field"] = provider_field
-                    return provider
-            else:
-                for provider in _providers:
-                    provider_field = self._provider_field(provider)
-                    try:
-                        ok = int(
-                            self._acquire_script(
-                                keys=[redis_key], args=[provider_field]
-                            )
-                        )
-                        if ok == 1:
-                            provider["__chosen_field"] = provider_field
-                            return provider
-                    except Exception:
-                        pass
             time.sleep(self.check_interval)
 
     def put_provider(
@@ -223,3 +200,59 @@ class RedisBasedStrategy(RedisBasedStrategyInterface):
             raise
 
         provider.pop("__chosen_field", None)
+
+    # ------------------------------------------------------------------------------
+    # Private helper methods
+    # ------------------------------------------------------------------------------
+    def _acquire_provider_step(
+        self,
+        model_name: str,
+        providers: List[Dict],
+        is_random: bool,
+        redis_key: str,
+        start_time: float,
+    ) -> Optional[Dict]:
+        """
+        Perform one iteration of the provider‑acquisition loop.
+
+        Returns the chosen provider dictionary if acquisition succeeds,
+        otherwise returns ``None``.  May raise ``TimeoutError`` if the overall
+        timeout has been exceeded.
+        """
+        _providers = self._get_active_providers(
+            model_name=model_name, providers=providers
+        )
+
+        if not _providers:
+            return None
+
+        if time.time() - start_time > self.timeout:
+            raise TimeoutError(
+                f"No available provider found for model '{model_name}' "
+                f"within {self.timeout} seconds"
+            )
+
+        if is_random:
+            provider = self._try_acquire_random_provider(
+                redis_key=redis_key, providers=_providers
+            )
+            if provider:
+                provider_field = self._provider_field(provider)
+                provider["__chosen_field"] = provider_field
+                return provider
+        else:
+            for provider in _providers:
+                provider_field = self._provider_field(provider)
+                try:
+                    ok = int(
+                        self._acquire_script(keys=[redis_key], args=[provider_field])
+                    )
+                    if ok == 1:
+                        provider["__chosen_field"] = provider_field
+                        return provider
+                except Exception:
+                    # Silently ignore acquisition errors for this provider.
+                    pass
+
+        # Nothing acquired.
+        return None
