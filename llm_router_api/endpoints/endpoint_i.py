@@ -36,7 +36,7 @@ from llm_router_lib.data_models.constants import (
     CLEAR_PREDEFINED_PARAMS,
 )
 
-from llm_router_api.base.model_handler import ModelHandler, ApiModel
+from llm_router_api.core.model_handler import ModelHandler, ApiModel
 from llm_router_api.base.constants import (
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,

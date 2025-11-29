@@ -25,14 +25,14 @@ from rdl_ml_utils.utils.logger import prepare_logger
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.base.constants_base import BalanceStrategies
 
-from llm_router_api.base.lb.strategy_interface import ChooseProviderStrategyI
-from llm_router_api.base.lb.strategies.first_available import RedisBasedStrategy
-from llm_router_api.base.lb.strategies.first_available_optim import (
+from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
+from llm_router_api.core.lb.strategies.first_available import RedisBasedStrategy
+from llm_router_api.core.lb.strategies.first_available_optim import (
     RedisBasedOptimStrategy,
 )
 
-from llm_router_api.base.lb.strategies.balanced import LoadBalancedStrategy
-from llm_router_api.base.lb.strategies.weighted import (
+from llm_router_api.core.lb.strategies.balanced import LoadBalancedStrategy
+from llm_router_api.core.lb.strategies.weighted import (
     WeightedStrategy,
     DynamicWeightedStrategy,
 )
