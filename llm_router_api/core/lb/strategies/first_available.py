@@ -155,41 +155,17 @@ class RedisBasedStrategy(RedisBasedStrategyInterface):
 
         start_time = time.time()
         while True:
-            _providers = self._get_active_providers(
-                model_name=model_name, providers=providers
+            # Delegate the acquisition logic to a helper method.
+            provider = self._acquire_provider_step(
+                model_name=model_name,
+                providers=providers,
+                is_random=is_random,
+                redis_key=redis_key,
+                start_time=start_time,
             )
+            if provider:
+                return provider
 
-            if not len(_providers):
-                time.sleep(self.check_interval)
-
-            if time.time() - start_time > self.timeout:
-                raise TimeoutError(
-                    f"No available provider found for model '{model_name}' "
-                    f"within {self.timeout} seconds"
-                )
-
-            if is_random:
-                provider = self._try_acquire_random_provider(
-                    redis_key=redis_key, providers=_providers
-                )
-                if provider:
-                    provider_field = self._provider_field(provider)
-                    provider["__chosen_field"] = provider_field
-                    return provider
-            else:
-                for provider in _providers:
-                    provider_field = self._provider_field(provider)
-                    try:
-                        ok = int(
-                            self._acquire_script(
-                                keys=[redis_key], args=[provider_field]
-                            )
-                        )
-                        if ok == 1:
-                            provider["__chosen_field"] = provider_field
-                            return provider
-                    except Exception:
-                        pass
             time.sleep(self.check_interval)
 
     def put_provider(
@@ -223,3 +199,59 @@ class RedisBasedStrategy(RedisBasedStrategyInterface):
             raise
 
         provider.pop("__chosen_field", None)
+
+    # ------------------------------------------------------------------------------
+    # Private helper methods
+    # ------------------------------------------------------------------------------
+    def _acquire_provider_step(
+        self,
+        model_name: str,
+        providers: List[Dict],
+        is_random: bool,
+        redis_key: str,
+        start_time: float,
+    ) -> Optional[Dict]:
+        """
+        Perform one iteration of the provider‑acquisition loop.
+
+        Returns the chosen provider dictionary if acquisition succeeds,
+        otherwise returns ``None``.  May raise ``TimeoutError`` if the overall
+        timeout has been exceeded.
+        """
+        _providers = self._get_active_providers(
+            model_name=model_name, providers=providers
+        )
+
+        if not _providers:
+            return None
+
+        if time.time() - start_time > self.timeout:
+            raise TimeoutError(
+                f"No available provider found for model '{model_name}' "
+                f"within {self.timeout} seconds"
+            )
+
+        if is_random:
+            provider = self._try_acquire_random_provider(
+                redis_key=redis_key, providers=_providers
+            )
+            if provider:
+                provider_field = self._provider_field(provider)
+                provider["__chosen_field"] = provider_field
+                return provider
+        else:
+            for provider in _providers:
+                provider_field = self._provider_field(provider)
+                try:
+                    ok = int(
+                        self._acquire_script(keys=[redis_key], args=[provider_field])
+                    )
+                    if ok == 1:
+                        provider["__chosen_field"] = provider_field
+                        return provider
+                except Exception:
+                    # Silently ignore acquisition errors for this provider.
+                    pass
+
+        # Nothing acquired.
+        return None
