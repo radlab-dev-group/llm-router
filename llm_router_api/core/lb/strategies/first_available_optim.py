@@ -1,5 +1,7 @@
+import logging
 from typing import List, Dict, Optional, Any
 
+from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
 
 
@@ -24,10 +26,34 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
        used host for the model and update the bookkeeping structures.
     """
 
+    def __init__(
+        self,
+        models_config_path: str,
+        redis_host: str = REDIS_HOST,
+        redis_port: int = REDIS_PORT,
+        redis_db: int = 0,
+        timeout: int = 60,
+        check_interval: float = 0.1,
+        clear_buffers: bool = True,
+        logger: Optional[logging.Logger] = None,
+    ) -> None:
+        super().__init__(
+            models_config_path=models_config_path,
+            redis_host=redis_host,
+            redis_port=redis_port,
+            redis_db=redis_db,
+            timeout=timeout,
+            check_interval=check_interval,
+            clear_buffers=clear_buffers,
+            logger=logger,
+            strategy_prefix="fa_optim_",
+        )
+        if clear_buffers:
+            self._clear_buffer()
+
     # -------------------------------------------------------------------------
     # Helper utilities
     # -------------------------------------------------------------------------
-
     def _host_from_provider(self, provider: Dict) -> Optional[str]:
         """Extract the host identifier from a provider configuration."""
         # Most providers expose the host under ``api_host`` or ``host``.
@@ -189,6 +215,30 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         occ_key = self._host_occupancy_key(host)
         self.redis_client.hset(occ_key, "model", model_name)
 
+    # -------------------------------------------------------
+    # Ensure buffers are cleared on construction (delegated to parent)
+    # -------------------------------------------------------
+
+    def _clear_buffer(self) -> None:
+        """
+        Remove all Redis keys that are used by this optimisation strategy.
+        The keys have the following suffixes:
+
+        * ``:last_host`` – stores the last host used for a model.
+        * ``:hosts`` – set of hosts where a model is loaded.
+        * ``:occupancy`` – hash that records which model currently occupies a host.
+
+        The method scans Redis for keys ending with any of these suffixes and
+        deletes them.  It is safe to run on start‑up because the strategy will
+        recreate the necessary keys on the first request.
+        """
+        suffixes = (":last_host", ":hosts", ":occupancy")
+        for suffix in suffixes:
+            # ``scan_iter`` yields matching keys without loading them all into memory.
+            for key in self.redis_client.scan_iter(match=f"*{suffix}"):
+                self.logger.debug(f"Removing {self} => {key} from redis")
+                self.redis_client.delete(key)
+
     # -------------------------------------------------------------------------
     # Overridden public API
     # -------------------------------------------------------------------------
@@ -254,12 +304,3 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         if provider:
             self._record_selection(model_name, provider)
         return provider
-
-    # -------------------------------------------------------------------------
-    # Ensure buffers are cleared on construction (delegated to parent)
-    # -------------------------------------------------------------------------
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Parent already calls ``_clear_buffers`` when ``clear_buffers=True``.
-        # No additional initialisation required here.
