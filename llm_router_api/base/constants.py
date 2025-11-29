@@ -217,13 +217,6 @@ class _StartAppVerificator:
 
     @staticmethod
     def __verify_default_masking_strategy():
-        if MASKING_WITH_AUDIT:
-            if not FORCE_MASKING:
-                raise Exception(
-                    f"`export LLM_ROUTER_FORCE_MASKING=1` environment is "
-                    f"required when `LLM_ROUTER_MASKING_WITH_AUDIT=1`\n\n"
-                )
-
         if FORCE_MASKING and not len(MASKING_STRATEGY_PIPELINE):
             raise Exception(
                 "When FORCE_MASKING is set to `True`, you must specify the "

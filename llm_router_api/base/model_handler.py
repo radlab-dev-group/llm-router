@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Dict, Optional, Any
 
 from llm_router_api.base.model_config import ApiModelConfig
-from llm_router_api.base.lb.provider_strategy_facase import ProviderStrategyFacade
+from llm_router_api.base.lb.provider_strategy_facade import ProviderStrategyFacade
 
 
 @dataclass(frozen=True)
