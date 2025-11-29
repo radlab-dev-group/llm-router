@@ -33,7 +33,7 @@ from llm_router_api.base.constants import (
     USE_PROMETHEUS,
     SERVER_BALANCE_STRATEGY,
 )
-from llm_router_api.base.lb.provider_strategy_facase import ProviderStrategyFacade
+from llm_router_api.base.lb.provider_strategy_facade import ProviderStrategyFacade
 
 if USE_PROMETHEUS:
     from llm_router_api.core.metrics import PrometheusMetrics
