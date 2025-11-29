@@ -16,7 +16,7 @@ Typical usage::
 
 import logging
 
-from llm_router_api.core.auditor.log_storage.pgp import GPGAuditorLogStorage
+from llm_router_api.core.auditor.log_storage.gpg import GPGAuditorLogStorage
 
 DEFAULT_AUDITOR_STORAGE_CLASS = GPGAuditorLogStorage
 
