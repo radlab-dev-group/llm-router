@@ -11,7 +11,7 @@ and reliable routing of requests. The available strategies are:
   been used for a specific model. It selects the provider that has been used the least.
 * **When to use:** Ideal for scenarios where all providers are considered equal
   in terms of capacity and performance. It provides a simple and effective way to balance the load.
-* **Implementation:** Implemented in `llm_router_api.base.lb.balanced.LoadBalancedStrategy`.
+* **Implementation:** Implemented in `llm_router_api.core.lb.balanced.LoadBalancedStrategy`.
 
 ### 2. `weighted`
 
@@ -20,7 +20,7 @@ and reliable routing of requests. The available strategies are:
   ensuring that over time, the request distribution closely matches the configured weights.
 * **When to use:** Useful when you have providers with different capacities or performance
   characteristics, and you want to prioritize certain providers without needing dynamic adjustments.
-* **Implementation:** Implemented in `llm_router_api.base.lb.weighted.WeightedStrategy`.
+* **Implementation:** Implemented in `llm_router_api.core.lb.weighted.WeightedStrategy`.
 
 ### 3. `dynamic_weighted` (beta)
 
@@ -31,7 +31,7 @@ and reliable routing of requests. The available strategies are:
 * **When to use:** Recommended for dynamic environments where provider performance
   can fluctuate. It offers more sophisticated load balancing by considering both
   configured weights and real-time performance metrics (latency).
-* **Implementation:** Implemented in `llm_router_api.base.lb.weighted.DynamicWeightedStrategy`.
+* **Implementation:** Implemented in `llm_router_api.core.lb.weighted.DynamicWeightedStrategy`.
 
 ### 4. `first_available`
 
@@ -42,7 +42,7 @@ and reliable routing of requests. The available strategies are:
   possible response and want to ensure that a request is immediately handled by any available
   provider, without complex load distribution logic. It guarantees that a provider,
   once taken, is exclusive until released.
-* **Implementation:** Implemented in `llm_router_api.base.lb.first_available.FirstAvailableStrategy`.
+* **Implementation:** Implemented in `llm_router_api.core.lb.first_available.FirstAvailableStrategy`.
 
 **When using the** `first_available` load balancing strategy, a **Redis server is required**
 for coordinating provider availability across multiple workers.
@@ -100,7 +100,7 @@ To use a different strategy (e.g., round‑robin, random weighted, latency‑bas
 implement `ChooseProviderStrategyI` and pass the instance to `ProviderChooser`:
 
 ``` python
-from llm_router_api.base.lb.chooser import ProviderChooser
+from llm_router_api.core.lb.chooser import ProviderChooser
 from my_strategies import RoundRobinStrategy
 
 chooser = ProviderChooser(strategy=RoundRobinStrategy())

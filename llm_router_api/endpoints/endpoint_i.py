@@ -296,7 +296,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         Module‑level logger configured with the supplied log file and level.
     _model_handler: ModelHandler | None
         Optional handler used to resolve model names to concrete
-        :class:`~llm_router_api.base.model_handler.ApiModel` objects.
+        :class:`~llm_router_api.core.model_handler.ApiModel` objects.
     _prompt_handler: PromptHandler | None
         Optional handler used to retrieve prompt templates.
     _dont_add_api_prefix: bool
@@ -353,7 +353,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
             Path to a file where log records will be written.  When
             ``None`` the default ``llm-router.log`` is used.
         model_handler :
-            Optional :class:`~llm_router_api.base.model_handler.ModelHandler`
+            Optional :class:`~llm_router_api.core.model_handler.ModelHandler`
             instance used to resolve model identifiers supplied by the
             client.
         prompt_handler :

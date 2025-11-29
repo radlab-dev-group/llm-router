@@ -2,7 +2,7 @@
 Provider selection orchestrator.
 
 The :class:`ProviderChooser` class acts as a thin façade around the
-different load‑balancing strategies defined in the ``llm_router_api.base.lb``
+different load‑balancing strategies defined in the ``llm_router_api.core.lb``
 package.  It allows callers to either supply a concrete strategy instance
 or specify a strategy by name (e.g. ``"balanced"``, ``"weighted"``,
 ``"dynamic_weighted"``, ``"adaptive_base"``).  The chosen strategy is then

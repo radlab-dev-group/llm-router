@@ -43,7 +43,7 @@ class RedisBasedStrategy(RedisBasedStrategyInterface):
     Strategy that selects the first free provider for a model using Redis.
 
     The class inherits from
-    :class:`~llm_router_api.base.lb.strategy.ChooseProviderStrategyI`
+    :class:`~llm_router_api.core.lb.strategy.ChooseProviderStrategyI`
     and adds Redis‑based coordination.  It ensures that at most one consumer
     holds a particular provider at any time, even when multiple workers run
     concurrently on different hosts.
