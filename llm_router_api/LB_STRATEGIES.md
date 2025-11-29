@@ -4,6 +4,8 @@ The `llm-router` supports various strategies for selecting the most suitable pro
 when multiple options exist for a given model. This ensures efficient
 and reliable routing of requests. The available strategies are:
 
+---
+
 ### 1. `balanced` (Default)
 
 * **Description:** This is the default strategy. It aims to distribute requests
@@ -13,6 +15,8 @@ and reliable routing of requests. The available strategies are:
   in terms of capacity and performance. It provides a simple and effective way to balance the load.
 * **Implementation:** Implemented in `llm_router_api.core.lb.balanced.LoadBalancedStrategy`.
 
+---
+
 ### 2. `weighted`
 
 * **Description:** This strategy allows you to assign static weights to providers.
@@ -21,6 +25,8 @@ and reliable routing of requests. The available strategies are:
 * **When to use:** Useful when you have providers with different capacities or performance
   characteristics, and you want to prioritize certain providers without needing dynamic adjustments.
 * **Implementation:** Implemented in `llm_router_api.core.lb.weighted.WeightedStrategy`.
+
+---
 
 ### 3. `dynamic_weighted` (beta)
 
@@ -32,6 +38,8 @@ and reliable routing of requests. The available strategies are:
   can fluctuate. It offers more sophisticated load balancing by considering both
   configured weights and real-time performance metrics (latency).
 * **Implementation:** Implemented in `llm_router_api.core.lb.weighted.DynamicWeightedStrategy`.
+
+---
 
 ### 4. `first_available`
 
@@ -47,16 +55,54 @@ and reliable routing of requests. The available strategies are:
 **When using the** `first_available` load balancing strategy, a **Redis server is required**
 for coordinating provider availability across multiple workers.
 
-### 4. `first_available_optim`
-**UNDER DEVELOPMENT, DESCRIPTION WILL BE SOON**
+---
+
+### 5. `first_available_optim`
+
+**What it is**  
+`first_available_optim` is an enhanced version of the plain *first‑available* load‑balancing strategy. It uses Redis to
+coordinate across multiple workers and tries to reuse a host that has already been used for the requested model before
+falling back to the classic “pick the first free provider” logic.
+
+**How it works**
+
+| Step                                      | Purpose                                                                                        | Behaviour                                                                                                                                                                                                |
+|-------------------------------------------|------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **1️⃣ Re‑use the last host**              | If the model was previously run on a specific host and that host is currently free, select it. | The host identifier is stored in a Redis key `:last_host`. The strategy checks that the host is not occupied by another model and attempts an atomic acquisition of a provider on that host.             |
+| **2️⃣ Re‑use any known host**             | Prefer any host that already has the model loaded.                                             | A Redis set `:hosts` tracks all hosts where the model is currently loaded. The strategy scans the provider list, picks a free provider on one of those hosts, and locks it atomically.                   |
+| **3️⃣ Pick an unused host**               | Spread the load to a fresh host when no suitable “known” host is available.                    | It looks for a provider whose host is **not** present in the `:hosts` set and is not occupied, then acquires it.                                                                                         |
+| **4️⃣ Fallback to plain first‑available** | Guarantees a result even if the optimisation steps fail.                                       | If none of the previous steps succeed, the strategy delegates to the base `FirstAvailableStrategy`, which simply selects the first free provider.                                                        |
+| **5️⃣ Book‑keeping**                      | Keep the optimisation data up‑to‑date for future requests.                                     | After a provider is successfully acquired, the host is recorded as the *last host* (`:last_host`), added to the model‑specific host set (`:hosts`), and marked as occupied in a Redis hash `:occupancy`. |
+
+**When to use it**
+
+* **Low‑latency / high‑throughput workloads** – Re‑using the same host avoids the overhead of re‑loading a large model,
+  resulting in faster responses.
+* **Environments with a limited number of hosts** – The strategy maximises the utilization of already‑occupied hosts
+  while still allowing the load to be spread when needed.
+* **Multi‑worker deployments** – Because all state is stored in Redis, many processes (or even different machines) can
+  safely share the optimisation logic without race conditions.
+
+**Summary**  
+`first_available_optim` combines the simplicity of the *first‑available* approach with smart host reuse, reducing
+model‑loading latency and improving overall throughput while still providing a reliable fallback mechanism. All
+coordination is performed via Redis, ensuring safe concurrent operation across multiple workers.
+
+---
+
+## Environments and Redis installation
 
 The connection details for Redis can be configured using environment variables:
 
-```shell
-LLM_ROUTER_BALANCE_STRATEGY="first_available" \
-LLM_ROUTER_REDIS_HOST="your.machine.redis.host" \
-LLM_ROUTER_REDIS_PORT=redis_port \
-```
+| Environment variable          | Default           | Description                               |
+|-------------------------------|-------------------|-------------------------------------------|
+| `LLM_ROUTER_BALANCE_STRATEGY` | `first_available` | Enables this strategy.                    |
+| `LLM_ROUTER_REDIS_HOST`       | –                 | Hostname of the Redis server (mandatory). |
+| `LLM_ROUTER_REDIS_PORT`       | –                 | Port of the Redis server (mandatory).     |
+| `LLM_ROUTER_REDIS_DB`         | `0`               | Optional Redis database index.            |
+| `LLM_ROUTER_REDIS_TIMEOUT`    | `60`              | Connection timeout in seconds.            |
+
+---
 
 **Installing Redis on Ubuntu**
 
