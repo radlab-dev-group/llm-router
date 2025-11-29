@@ -106,7 +106,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         host_bytes = self.redis_client.smembers(hosts_key)
         if not host_bytes:
             return None
-        known_hosts = {b.decode() for b in host_bytes}
+        known_hosts = {b for b in host_bytes}
 
         for provider in providers:
             host = self._host_from_provider(provider)
@@ -115,7 +115,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             # Ensure the host is not occupied by a different model.
             occ_key = self._host_occupancy_key(host)
             cur = self.redis_client.hget(occ_key, "model")
-            if cur and cur.decode() != model_name:
+            if cur and cur != model_name:
                 continue
 
             field = self._provider_field(provider)
