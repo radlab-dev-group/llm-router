@@ -1,0 +1,17 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "llm-router.fullname" . }}-redis
+  labels:
+    app.kubernetes.io/name: {{ include "llm-router.fullname" . }}-redis
+spec:
+  type: {{ .Values.redis.service.type }}
+  ports:
+    - name: redis
+      port: {{ .Values.redis.service.port }}
+      targetPort: {{ .Values.redis.service.targetPort }}
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: {{ include "llm-router.fullname" . }}-redis
+  {{- end }}
