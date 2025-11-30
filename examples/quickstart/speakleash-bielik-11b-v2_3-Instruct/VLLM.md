@@ -89,6 +89,9 @@ bash run-bielik-11b-v2_3-vllm.sh
 
 ## 8️⃣ Przetestuj endpoint
 
+> > **INFO**: `curl` i `jq` to narzędzia systemowe.
+
+
 ```
 curl http://localhost:7000/v1/chat/completions \
   -H "Content-Type: application/json" \
