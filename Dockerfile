@@ -1,4 +1,4 @@
-FROM python:3.13.7-slim-trixie
+FROM python:3.13.9-slim-trixie
 
 ARG version=prod
 ARG GIT_REF=main
@@ -14,21 +14,17 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y supervisor htop c
 
 WORKDIR /srv/
 
-
 RUN git clone https://github.com/radlab-dev-group/llm-router.git && \
     cd /srv/llm-router && \
-    git checkout ${GIT_REF} && \
-    cat .git/HEAD > .version && git log -1 | head -1 >> .version && \
-    rm -rf .git .gitignore
+    git checkout ${GIT_REF}
 
 WORKDIR /srv/llm-router
 
-RUN pip3 install --upgrade pip && pip3 install -r requirements.txt
+RUN pip3 install --upgrade pip
+RUN pip3 install --no-cache-dir .
+RUN pip3 install --no-cache-dir .[api]
 
-RUN pip3 install git+https://github.com/radlab-dev-group/ml-utils.git
-
+COPY entrypoint.sh entrypoint.sh
 RUN chmod +x run-rest-api.sh && chmod +x entrypoint.sh
-
-RUN cd llm_router_web && pip3 install -r requirements.txt && cd ..
 
 ENTRYPOINT ["/srv/llm-router/entrypoint.sh"]
