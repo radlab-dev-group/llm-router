@@ -1,0 +1,6 @@
+apiVersion: v2
+name: llm-router
+description: Helm chart for the LLM‑Router
+type: application
+version: 0.1.0
+appVersion: "0.4.0"
