@@ -135,7 +135,9 @@ cp path/to/google-gemma3-12b-it/models-config.json resources/configs/
 
 ---
 
-## 6️⃣ Run the **LLM‑Router** (Gunicorn)
+## 6️⃣ Run the **LLM‑Router**
+
+### Local Gunicorn
 
 The helper script `run-rest-api-gunicorn.sh` sets a sensible default environment. You can use it directly or export the
 variables yourself.
@@ -160,7 +162,8 @@ Key environment variables (already defined in the script) you may want to adjust
 | `LLM_ROUTER_USE_PROMETHEUS`   | `1` (if you installed metrics)         | Enable `/api/metrics` endpoint             |
 
 After the script starts, the router will be reachable at **`http://0.0.0.0:8080/api`**.
-
+A full list of available environment variables can be found in
+the [environment description](../../../llm_router_api/README.md#environment-variables)
 ---
 
 ## 7️⃣ Test the full stack (router → vLLM)
@@ -180,6 +183,47 @@ response.
 
 ---
 
+## 🚀 Running the examples
+
+The [`examples/`](../../../examples) folder already contains detailed README files and individual script doc‑strings
+that explain how each library (LangChain, LlamaIndex, OpenAI SDK, LiteLLM, Haystack) works with the LLM‑Router.
+
+**What you need to do**
+
+1. **Set the router address** – export `LLM_ROUTER_HOST` in the environment (or edit `examples/constants.py`) so that
+
+```python
+HOST = "http://localhost:8080/api"
+```
+
+matches the URL where you started the router (`run-rest-api-gunicorn.sh`).
+
+2. **(Optional) Synchronise model names** – ensure the `MODELS` list in `constants.py` reflects the logical model
+   identifiers you defined in `resources/configs/models-config.json`.
+
+3. **Install the example dependencies**
+
+```shell script
+pip install -r examples/requirements.txt
+```
+
+4. **Run the examples** – each script can be executed directly, e.g.:
+
+```shell script
+python examples/langchain_example.py
+   python examples/llamaindex_example.py
+   python examples/openai_example.py
+   python examples/litellm_example.py
+   python examples/haystack_example.py
+```
+
+All other configuration details (prompt handling, streaming, multi‑model usage, error handling, etc.) are documented
+inside the individual example files and the [`examples/README.md`](../../README.md) / [
+`examples/README_LLAMAINDEX.md`](../../README_LLAMAINDEX.md) files. Adjust only the `HOST`
+(and optionally `MODELS`) and the examples will automatically route their requests through the running LLM‑Router.
+
+---
+
 ## 🎉 What’s next?
 
 - **Prometheus**: If you enabled metrics, add the router’s `/api/metrics` endpoint to your Prometheus scrape config.
@@ -188,4 +232,8 @@ response.
 - **Multiple providers**: Extend `models-config.json` with additional providers (e.g., Ollama, OpenAI) and experiment
   with different load‑balancing strategies.
 
-Enjoy your local Gemma 3 12B‑IT deployment powered by vLLM and LLM‑Router!
+---
+
+Enjoy your local `gemma-3-12b‑it` deployment powered by vLLM and LLM‑Router!
+
+---
