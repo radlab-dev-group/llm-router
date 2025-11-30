@@ -1,0 +1,22 @@
+{
+  "speakleash_models": {
+    "speakleash/Bielik-11B-v2.3-Instruct-FP8": {
+      "providers": [
+        {
+          "id": "bielik-11B_v2_3-vllm-local:7000",
+          "api_host": "http://localhost:7000/",
+          "api_token": "",
+          "api_type": "vllm",
+          "input_size": 56000,
+          "model_path": "",
+          "weight": 1.0
+        }
+      ]
+    }
+  },
+  "active_models": {
+    "speakleash_models": [
+      "speakleash/Bielik-11B-v2.3-Instruct-FP8"
+    ]
+  }
+}
