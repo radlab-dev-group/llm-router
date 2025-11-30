@@ -143,6 +143,4 @@ Powinieneś otrzymać odpowiedź w formacie JSON, np.:
 ## 🎉 Gotowe!
 
 Masz już w pełni działające API kompatybilne z OpenAI, oparte na **vLLM** i modelu
-**speakleash/Bielik-11B-v2.3-Instruct-FP8**.  
-Jeśli napotkasz problemy (błędy CUDA, niezgodności wersji itp.), daj znać – chętnie pomogę. Powodzenia i przyjemnego
-generowania!
+**speakleash/Bielik-11B-v2.3-Instruct-FP8**.
