@@ -149,4 +149,3 @@ You should receive a JSON response containing the model’s generated text, for 
 ## 🎉 All set!
 
 You now have a fully functional OpenAI‑compatible API powered by **vLLM** and the **google/gemma‑3‑12b‑it** model.
-If you encounter any issues (CUDA errors, version mismatches, etc.), feel free to ask for help. Happy generating!
