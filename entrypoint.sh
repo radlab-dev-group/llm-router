@@ -1,13 +1,33 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -e
 
-if [ "$1" = "SLEEP" ]; then
-  echo "[Entrypoint] Debug mode: sleeping indefinitely..."
-  sleep infinity
+# Default values
+APP_SCRIPT="run-rest-api-gunicorn.sh"
+DEBUG_MODE=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --debug|debug|--shell|shell)
+            DEBUG_MODE=true
+            ;;
+        --runserver|runserver)
+            APP_SCRIPT="run-rest-api.sh"
+            ;;
+    esac
+done
+
+echo "[entrypoint] Working directory: $(pwd)"
+
+if [ "$DEBUG_MODE" = true ]; then
+    echo "[entrypoint] Debug mode activated. Container will stay alive for exec."
+    sleep infinity
+    exit 0
 fi
 
-echo "[Entrypoint] Creating supervisord.conf ..."
-envsubst < docker/supervisord.conf.template > /etc/supervisor/conf.d/supervisord.conf
+if [ ! -f "./$APP_SCRIPT" ]; then
+    echo "[entrypoint] ERROR: Script $APP_SCRIPT not found!"
+    exit 1
+fi
 
-echo "[Entrypoint] Starting supervisord..."
-supervisord
+echo "[entrypoint] Starting application using $APP_SCRIPT ..."
+exec "./$APP_SCRIPT"
