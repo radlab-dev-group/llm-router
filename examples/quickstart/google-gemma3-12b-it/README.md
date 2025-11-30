@@ -211,10 +211,10 @@ pip install -r examples/requirements.txt
 
 ```shell script
 python examples/langchain_example.py
-   python examples/llamaindex_example.py
-   python examples/openai_example.py
-   python examples/litellm_example.py
-   python examples/haystack_example.py
+python examples/llamaindex_example.py
+python examples/openai_example.py
+python examples/litellm_example.py
+python examples/haystack_example.py
 ```
 
 All other configuration details (prompt handling, streaming, multi‑model usage, error handling, etc.) are documented
