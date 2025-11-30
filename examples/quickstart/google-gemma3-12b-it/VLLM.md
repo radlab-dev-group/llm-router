@@ -50,8 +50,7 @@ You should see a version string such as `0.11.2`.
 mkdir -p ./google/gemma-3-12b-it
 pip install huggingface_hub
 hf download google/gemma-3-12b-it \
-    --local-dir ./google/gemma-3-12b-it \
-    --repo-type model
+    --local-dir ./google/gemma-3-12b-it
 ```
 
 > This creates a folder for the model, installs the Hugging Face CLI, and downloads the model files into
