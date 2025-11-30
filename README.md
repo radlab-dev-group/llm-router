@@ -100,6 +100,11 @@ as request counts, latencies, and any custom counters defined by the
 application. Prometheus servers can scrape this URL to collect runtime
 metrics for monitoring and alerting.
 
+The quick‑start guides for running the full stack with **local models** are included in the repository:
+
+- **Gemma 3 12B‑IT** – [README](examples/quickstart/google-gemma3-12b-it/README.md)
+- **Bielik 11B‑v2.3‑Instruct‑FP8** – [README](examples/quickstart/speakleash-bielik-11b-v2_3-Instruct/README.md)
+
 ### 2️⃣ Minimum required environment variable
 
 ``` shell script
