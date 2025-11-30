@@ -3,6 +3,8 @@
 This directory contains example boilerplates that demonstrate how easy it is to integrate popular LLM libraries with the
 router by simply switching the host.
 
+---
+
 ## Available Examples
 
 - **[LlamaIndex](llamaindex_example.py)** – Integration with LlamaIndex (GPT Index)
@@ -23,6 +25,8 @@ router will automatically:
 3. ✅ Provide health checking
 4. ✅ Supply monitoring and metrics
 5. ✅ Handle streaming and non‑streaming responses
+
+---
 
 ## Quick Start
 
@@ -45,6 +49,8 @@ python examples/litellm_example.py
 python examples/haystack_example.py
 ```
 
+---
+
 ## Example Structure
 
 Each example includes:
@@ -53,6 +59,25 @@ Each example includes:
 2. **Streaming** – handling streaming responses
 3. **Non‑streaming** – handling full responses
 4. **Error handling** – managing errors
+
+---
+
+## Full Stack with Local Models
+
+The quick‑start guides for running the full stack with **local models** are included in the repository:
+
+- **Gemma 3 12B‑IT** – [README](quickstart/google-gemma3-12b-it/README.md)
+- **Bielik 11B‑v2.3‑Instruct‑FP8** – [README](quickstart/speakleash-bielik-11b-v2_3-Instruct/README.md)
+
+These guides walk you through:
+
+1. Installing **vLLM** and the respective model.
+2. Setting up **LLM‑Router** with the provided `models-config.json`.
+3. Testing the end‑to‑end flow (router → vLLM).
+
+Follow the linked README files for step‑by‑step instructions to launch a complete stack locally.
+
+---
 
 ## Additional Information
 
