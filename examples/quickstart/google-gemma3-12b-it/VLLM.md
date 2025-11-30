@@ -49,7 +49,7 @@ You should see a version string such as `0.11.2`.
 ```
 mkdir -p ./google/gemma-3-12b-it
 pip install huggingface_hub
-huggingface-cli download google/gemma-3-12b-it \
+hf download google/gemma-3-12b-it \
     --local-dir ./google/gemma-3-12b-it \
     --repo-type model
 ```
