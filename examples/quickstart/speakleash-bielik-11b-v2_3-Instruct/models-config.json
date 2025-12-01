@@ -1,6 +1,6 @@
 {
   "speakleash_models": {
-    "speakleash/Bielik-11B-v2.3-Instruct-FP8": {
+    "speakleash/Bielik-11B-v2.3-Instruct": {
       "providers": [
         {
           "id": "bielik-11B_v2_3-vllm-local:7000",
@@ -16,7 +16,7 @@
   },
   "active_models": {
     "speakleash_models": [
-      "speakleash/Bielik-11B-v2.3-Instruct-FP8"
+      "speakleash/Bielik-11B-v2.3-Instruct"
     ]
   }
 }
