@@ -2,7 +2,7 @@
 
 export CUDA_VISIBLE_DEVICES=0
 
-MODEL_PATH=speakleash/Bielik-11B-v2.3-Instruct-FP8
+MODEL_PATH=speakleash/Bielik-11B-v2.3-Instruct
 
 vllm serve \
 	"${MODEL_PATH}" \

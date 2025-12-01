@@ -1,4 +1,4 @@
-# vLLM + `speakleash/Bielik-11B-v2.3-Instruct-FP8` – Przewodnik Szybkiego Startu (Ubuntu)
+# vLLM + `speakleash/Bielik-11B-v2.3-Instruct` – Przewodnik Szybkiego Startu (Ubuntu)
 
 > **Wymagania wstępne**
 > - Ubuntu 20.04 lub nowszy
@@ -51,12 +51,12 @@ pip install huggingface_hub
 
 ---  
 
-## 6️⃣ Pobierz model `speakleash/Bielik-11B-v2.3-Instruct-FP8`
+## 6️⃣ Pobierz model `speakleash/Bielik-11B-v2.3-Instruct`
 
 ```
-mkdir -p ./speakleash/Bielik-11B-v2.3-Instruct-FP8
-hf download speakleash/Bielik-11B-v2.3-Instruct-FP8 \
-    --local-dir ./speakleash/Bielik-11B-v2.3-Instruct-FP8
+mkdir -p ./speakleash/Bielik-11B-v2.3-Instruct
+hf download speakleash/Bielik-11B-v2.3-Instruct \
+    --local-dir ./speakleash/Bielik-11B-v2.3-Instruct
 ```
 
 > Model zostanie pobrany do wskazanego katalogu. Pliki będą także buforowane domyślnie w `~/.cache/huggingface/hub`.
@@ -91,12 +91,11 @@ bash run-bielik-11b-v2_3-vllm.sh
 
 > > **INFO**: `curl` i `jq` to narzędzia systemowe.
 
-
 ```
 curl http://localhost:7000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-        "model": "speakleash/Bielik-11B-v2.3-Instruct-FP8",
+        "model": "speakleash/Bielik-11B-v2.3-Instruct",
         "messages": [{"role": "user", "content": "Cześć, jak się masz?"}],
         "max_tokens": 100
       }' | jq
@@ -109,7 +108,7 @@ Powinieneś otrzymać odpowiedź w formacie JSON, np.:
   "id": "chatcmpl-xxxx",
   "object": "chat.completion",
   "created": 1764516430,
-  "model": "speakleash/Bielik-11B-v2.3-Instruct-FP8",
+  "model": "speakleash/Bielik-11B-v2.3-Instruct",
   "choices": [
     {
       "index": 0,
@@ -132,18 +131,18 @@ Powinieneś otrzymać odpowiedź w formacie JSON, np.:
 
 ## 9️⃣ Przydatne wskazówki
 
-| Temat                       | Rekomendacja                                                                                                                              |
-|-----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| **Pamięć**                  | `speakleash/Bielik-11B-v2.3-Instruct-FP8` potrzebuje ok. 12GB VRAM. Użyj `--cpu-offload` (jeśli wspierane) przy ograniczonej pamięci GPU. |
-| **Lokalizacja cache**       | Ustaw `HF_HOME=$PWD/.cache/huggingface`, aby wszystkie pliki modelu znajdowały się w katalogu projektu.                                   |
-| **Równoległość tokenizera** | `export TOKENIZERS_PARALLELISM=false` wyciszy ostrzeżenia tokenizera.                                                                     |
-| **Wybór GPU**               | `export CUDA_VISIBLE_DEVICES=0` (lub inny indeks) przy wielu kartach GPU.                                                                 |
-| **Aktualizacja**            | `pip install -U vllm` odświeża bibliotekę; przy następnym uruchomieniu serwera zostaną pobrane nowsze pliki modelu, jeśli są dostępne.    |
-| **Dezaktywacja**            | Po zakończeniu pracy wystarczy wpisać `deactivate`, aby opuścić wirtualne środowisko.                                                     |
+| Temat                       | Rekomendacja                                                                                                                           |
+|-----------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| **Pamięć**                  | `speakleash/Bielik-11B-v2.3-Instruct` potrzebuje ok. 24GB VRAM. Użyj `--cpu-offload` (jeśli wspierane) przy ograniczonej pamięci GPU.  |
+| **Lokalizacja cache**       | Ustaw `HF_HOME=$PWD/.cache/huggingface`, aby wszystkie pliki modelu znajdowały się w katalogu projektu.                                |
+| **Równoległość tokenizera** | `export TOKENIZERS_PARALLELISM=false` wyciszy ostrzeżenia tokenizera.                                                                  |
+| **Wybór GPU**               | `export CUDA_VISIBLE_DEVICES=0` (lub inny indeks) przy wielu kartach GPU.                                                              |
+| **Aktualizacja**            | `pip install -U vllm` odświeża bibliotekę; przy następnym uruchomieniu serwera zostaną pobrane nowsze pliki modelu, jeśli są dostępne. |
+| **Dezaktywacja**            | Po zakończeniu pracy wystarczy wpisać `deactivate`, aby opuścić wirtualne środowisko.                                                  |
 
 ---  
 
 ## 🎉 Gotowe!
 
 Masz już w pełni działające API kompatybilne z OpenAI, oparte na **vLLM** i modelu
-**speakleash/Bielik-11B-v2.3-Instruct-FP8**.
+**speakleash/Bielik-11B-v2.3-Instruct**.

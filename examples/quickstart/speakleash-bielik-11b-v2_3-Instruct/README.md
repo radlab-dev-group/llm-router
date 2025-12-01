@@ -1,8 +1,8 @@
-# 🚀 **Przewodnik Szybkiego Startu** dla `speakleash/Bielik-11B-v2.3-Instruct-FP8` z **vLLM** & **LLM‑Router**
+# 🚀 **Przewodnik Szybkiego Startu** dla `speakleash/Bielik-11B-v2.3-Instruct` z **vLLM** & **LLM‑Router**
 
 Ten przewodnik prowadzi Cię krok po kroku przez:
 
-1. **Instalację vLLM** i modelu `speakleash/Bielik-11B-v2.3-Instruct-FP8`.
+1. **Instalację vLLM** i modelu `speakleash/Bielik-11B-v2.3-Instruct`.
 2. **Instalację LLM‑Router** (bramki API).
 3. **Uruchomienie routera** z konfiguracją modeli dostarczoną w `models-config.json`.
 
@@ -65,7 +65,7 @@ Możesz szybko go przetestować:
 curl http://localhost:7000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-        "model": "speakleash/Bielik-11B-v2.3-Instruct-FP8",
+        "model": "speakleash/Bielik-11B-v2.3-Instruct",
         "messages": [{"role": "user", "content": "Cześć, jak się masz?"}],
         "max_tokens": 100
       }' | jq
@@ -101,7 +101,7 @@ Plik `models-config.json` znajdujący się w katalogu **speakleash‑bielik** ju
 ```json
 {
   "speakleash_models": {
-    "speakleash/Bielik-11B-v2.3-Instruct-FP8": {
+    "speakleash/Bielik-11B-v2.3-Instruct": {
       "providers": [
         {
           "id": "bielik-11B_v2_3-vllm-local:7000",
@@ -115,7 +115,7 @@ Plik `models-config.json` znajdujący się w katalogu **speakleash‑bielik** ju
   },
   "active_models": {
     "speakleash_models": [
-      "speakleash/Bielik-11B-v2.3-Instruct-FP8"
+      "speakleash/Bielik-11B-v2.3-Instruct"
     ]
   }
 }
@@ -163,7 +163,7 @@ Pełna lista dostępnych zmiennych środowiskowych znajduje się w
 curl http://localhost:8080/api/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-        "model": "speakleash/Bielik-11B-v2.3-Instruct-FP8",
+        "model": "speakleash/Bielik-11B-v2.3-Instruct",
         "messages": [{"role": "user", "content": "Opowiedz krótki żart."}],
         "max_tokens": 80
       }' | jq
