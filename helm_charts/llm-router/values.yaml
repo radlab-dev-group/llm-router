@@ -8,38 +8,71 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
+# Redis dependencies
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+    #password: ""
+    #existingSecret: ""
+
 # -------------------------------------------------
 # ConfigMap
 # -------------------------------------------------
 config:
-  LLM_ROUTER_BALANCE_STRATEGY: balanced
-  LLM_ROUTER_DEFAULT_EP_LANGUAGE: pl
-  LLM_ROUTER_EP_PREFIX: /api
-  LLM_ROUTER_EXTERNAL_TIMEOUT: "300"
-  LLM_ROUTER_FORCE_GUARDRAIL_REQUEST: "False"
-  LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE: "False"
-  LLM_ROUTER_FORCE_MASKING: "False"
-  LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST_EP: ""
-  LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_RESPONSE: ""
-  LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST: "False"
-  LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE: "False"
-  LLM_ROUTER_IN_DEBUG: "False"
-  LLM_ROUTER_LOG_FILENAME: llm-router.log
-  LLM_ROUTER_LOG_LEVEL: INFO
-  LLM_ROUTER_MASKING_STRATEGY_PIPELINE: "['fast_masker']"
-  LLM_ROUTER_MASKING_WITH_AUDIT: "False"
-  LLM_ROUTER_MINIMUM: "True"
-  LLM_ROUTER_MODELS_CONFIG: resources/configs/models-config.json
-  LLM_ROUTER_PROMPTS_DIR: resources/prompts
-  LLM_ROUTER_REDIS_HOST: svc-redis
+  #LLM_ROUTER_BALANCE_STRATEGY: balanced
+  #LLM_ROUTER_DEFAULT_EP_LANGUAGE: pl
+  #LLM_ROUTER_EP_PREFIX: /api
+  #LLM_ROUTER_EXTERNAL_TIMEOUT: "300"
+  #LLM_ROUTER_FORCE_GUARDRAIL_REQUEST: "False"
+  #LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE: "False"
+  #LLM_ROUTER_FORCE_MASKING: "False"
+  #LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST_EP: ""
+  #LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_RESPONSE: ""
+  #LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST: "False"
+  #LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE: "False"
+  #LLM_ROUTER_IN_DEBUG: "False"
+  #LLM_ROUTER_LOG_FILENAME: llm-router.log
+  #LLM_ROUTER_LOG_LEVEL: INFO
+  #LLM_ROUTER_MASKING_STRATEGY_PIPELINE: "['fast_masker']"
+  #LLM_ROUTER_MASKING_WITH_AUDIT: "False"
+  #LLM_ROUTER_MINIMUM: "True"
+  #LLM_ROUTER_MODELS_CONFIG: resources/configs/models-config.json
+  #LLM_ROUTER_PROMPTS_DIR: resources/prompts
+  LLM_ROUTER_REDIS_HOST: "{{ .Release.Name }}-redis-master"
   LLM_ROUTER_REDIS_PORT: "6379"
+  #LLM_ROUTER_REDIS_PASSWORD: "" # Set only if you have own redis instance
   LLM_ROUTER_SERVER_HOST: 0.0.0.0
   LLM_ROUTER_SERVER_PORT: "8080"
-  LLM_ROUTER_SERVER_THREADS_COUNT: "1"
-  LLM_ROUTER_SERVER_TYPE: uvicorn
-  LLM_ROUTER_SERVER_WORKER_CLASS: uvicorn.workers.UvicornWorker
-  LLM_ROUTER_SERVER_WORKERS_COUNT: "1"
-  LLM_ROUTER_TIMEOUT: "30"
+  #LLM_ROUTER_SERVER_THREADS_COUNT: "1"
+  #LLM_ROUTER_SERVER_TYPE: uvicorn
+  #LLM_ROUTER_SERVER_WORKER_CLASS: uvicorn.workers.UvicornWorker
+  #LLM_ROUTER_SERVER_WORKERS_COUNT: "1"
+  #LLM_ROUTER_TIMEOUT: "30"
+
+configModels:
+  models-config.json: |
+    {
+      "google_models": {
+        "google/gemma-3-12b-it": {
+          "providers": [
+            {
+              "id": "gemma3_12b-vllm-local:7000",
+              "api_host": "http://localhost:7000/",
+              "api_type": "vllm",
+              "input_size": 56000,
+              "weight": 1.0
+            }
+          ]
+        }
+      },
+      "active_models": {
+        "google_models": [
+          "google/gemma-3-12b-it"
+        ]
+      }
+    }
 
 # -------------------------------------------------
 # Service
@@ -48,17 +81,6 @@ service:
   type: ClusterIP
   port: 8080
   targetPort: 8080
-
-redis:
-  enabled: true
-  image:
-    repository: redis
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  service:
-    type: ClusterIP
-    port: 6379
-    targetPort: 6379
 
 # -------------------------------------------------
 # Ingress
