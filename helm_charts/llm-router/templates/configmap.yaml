@@ -6,5 +6,5 @@ metadata:
     app.kubernetes.io/name: {{ include "llm-router.fullname" . }}
 data:
   {{- range $key, $value := .Values.config }}
-  {{ $key }}: "{{ $value }}"
-  {{- end }}
+    {{ $key }}: {{ tpl $value $ | quote }}
+    {{- end }}

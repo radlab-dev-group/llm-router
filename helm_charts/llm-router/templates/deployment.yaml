@@ -18,8 +18,25 @@ spec:
         - name: llm-router
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["--debug"]
           ports:
             - containerPort: {{ .Values.service.port }}
           envFrom:
             - configMapRef:
                 name: {{ include "llm-router.fullname" . }}-config
+          env:
+            {{- if .Values.redis.enabled }}
+            - name: LLM_ROUTER_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Release.Name }}-redis
+                  key: redis-password
+            {{- end }}
+          volumeMounts:
+            - name: {{ include "llm-router.fullname" . }}-vol-config-models
+              mountPath: /srv/llm-router/resources/configs/
+      volumes:
+        - name: {{ include "llm-router.fullname" . }}-vol-config-models
+          configMap:
+            name: {{ include "llm-router.fullname" . }}-config-models
+            defaultMode: 420
