@@ -51,6 +51,9 @@ DEFAULT_API_PREFIX = os.environ.get(
 # Run service as a proxy only
 SERVICE_AS_PROXY = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM")
 
+# =============================================================================
+# SERVER CONFIGURATION
+# =============================================================================
 # Type of server, default is flask {flask, gunicorn, waitress}
 SERVER_TYPE = (
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_TYPE", "flask")
@@ -95,19 +98,32 @@ RUN_IN_DEBUG_MODE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}IN_DEBUG")
 if RUN_IN_DEBUG_MODE:
     REST_API_LOG_LEVEL = "DEBUG"
 
+# =============================================================================
 # Use Prometheus to collect metrics
 USE_PROMETHEUS = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}USE_PROMETHEUS")
 
+# =============================================================================
 # Strategy for load balancing when a multi-provider model is available
 SERVER_BALANCE_STRATEGY = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}BALANCE_STRATEGY", BalanceStrategies.BALANCED
 ).strip()
 
+# =============================================================================
+# REDIS CONFIGURATION
+# =============================================================================
 # Strategy for load balancing when a multi-provider model is available
 REDIS_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_HOST", "").strip()
-
 # Strategy for load balancing when a multi-provider model is available
 REDIS_PORT = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PORT", 6379))
+# Redis database number
+REDIS_DB = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_DB", 0))
+# Redis password
+REDIS_PASSWORD = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PASSWORD", ""
+).strip()
+if not len(REDIS_PASSWORD):
+    REDIS_PASSWORD = None
+
 
 # =============================================================================
 # MASKING
@@ -132,6 +148,7 @@ if MASKING_STRATEGY_PIPELINE:
         for _s in MASKING_STRATEGY_PIPELINE.strip().split(",")
         if len(_s.strip())
     ]
+
 # =============================================================================
 # GUARDRAILS
 # =============================================================================
@@ -182,16 +199,6 @@ if GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
         for _s in GUARDRAIL_STRATEGY_PIPELINE_RESPONSE.strip().split(",")
         if len(_s.strip())
     ]
-
-# =============================================================================
-# ENVIRONMENTS USED INTO PLUGINS
-# Host with router service where NASK-PIB/HerBERT-PL-Guard model is served
-# Read model License before using this model **MODEL LICENSE** CC BY-NC-SA 4.0
-GUARDRAIL_NASK_GUARD_HOST_EP = str(
-    os.environ.get(
-        f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_NASK_GUARD_HOST_EP", ""
-    )
-)
 
 # =============================================================================
 
