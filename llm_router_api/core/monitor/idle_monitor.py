@@ -32,6 +32,7 @@ class IdleMonitor:
         get_last_host_key: Optional[Callable[[str], str]] = None,
         get_last_used_key: Optional[Callable[[str], str]] = None,
         is_host_free_callback: Optional[Callable[[str, str], bool]] = None,
+        clear_buffers: bool = False,
     ) -> None:
         """
         Create a new :class:`IdleMonitor`.
@@ -70,6 +71,9 @@ class IdleMonitor:
             is_host_free_callback if is_host_free_callback else lambda h, m: False
         )
 
+        if clear_buffers:
+            self._clear_buffers()
+
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -87,6 +91,18 @@ class IdleMonitor:
         self._stop_event.set()
         self._thread.join()
         self.logger.debug("IdleMonitor thread stopped")
+
+    def _clear_buffers(self) -> None:
+        """
+        Remove all Redis keys used by the idle monitor.
+        This scans Redis for keys matching the pattern and deletes them.
+        """
+        # Patterns for keys used by idle monitor
+        patterns = ["*:last_host", "*:last_used"]
+        for pattern in patterns:
+            for key in self.redis_client.scan_iter(match=pattern):
+                self.logger.debug(f"Removing idle monitor key from redis: {key}")
+                self.redis_client.delete(key)
 
     def _run(self) -> None:
         """
@@ -130,7 +146,7 @@ class IdleMonitor:
 
                     # Logujemy, że host jest wolny i wyślemy prompt
                     host_str = (
-                        host.decode('utf-8', errors='ignore')
+                        host.decode("utf-8", errors="ignore")
                         if isinstance(host, (bytes, bytearray))
                         else str(host)
                     )
