@@ -10,7 +10,12 @@ try:
 except ImportError:
     REDIS_IS_AVAILABLE = False
 
-from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
+from llm_router_api.base.constants import (
+    REDIS_PORT,
+    REDIS_HOST,
+    REDIS_DB,
+    REDIS_PASSWORD,
+)
 from llm_router_api.core.monitor.provider_monitor import RedisProviderMonitor
 
 
@@ -19,7 +24,8 @@ class RedisBasedHealthCheckInterface(ABC):
         self,
         redis_host: str = REDIS_HOST,
         redis_port: int = REDIS_PORT,
-        redis_db: int = 0,
+        redis_password: str = REDIS_PASSWORD,
+        redis_db: int = REDIS_DB,
         check_interval: float = 30,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
@@ -28,7 +34,11 @@ class RedisBasedHealthCheckInterface(ABC):
             raise RuntimeError("Redis is not available. Please install it first.")
 
         self.redis_client = redis.Redis(
-            host=redis_host, port=redis_port, db=redis_db, decode_responses=True
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            decode_responses=True,
+            password=redis_password,
         )
 
         # Start providers monitor

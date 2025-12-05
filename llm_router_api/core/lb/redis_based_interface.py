@@ -11,7 +11,12 @@ try:
 except ImportError:
     REDIS_IS_AVAILABLE = False
 
-from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
+from llm_router_api.base.constants import (
+    REDIS_PORT,
+    REDIS_HOST,
+    REDIS_DB,
+    REDIS_PASSWORD,
+)
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
 from llm_router_api.core.monitor.redis_health_interface import (
     RedisBasedHealthCheckInterface,
@@ -38,8 +43,9 @@ class RedisBasedStrategyInterface(
         self,
         models_config_path: str,
         redis_host: str = REDIS_HOST,
+        redis_password: str = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
-        redis_db: int = 0,
+        redis_db: int = REDIS_DB,
         timeout: int = 60,
         check_interval: float = 0.1,
         monitor_check_interval: float = 30,
@@ -82,6 +88,7 @@ class RedisBasedStrategyInterface(
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,
+            redis_password=redis_password,
             clear_buffers=clear_buffers,
             logger=logger,
             check_interval=monitor_check_interval,
