@@ -84,6 +84,7 @@ Configuration is driven primarily by environment variables and a JSON model‑co
 | `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE`        | Audits all guardrail decisions (response).                                                                                                                                                                                                                               | `False`                                |
 | `LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_RESPONSE` | Ordered list of guardrail strategies (response).                                                                                                                                                                                                                         | `-`                                    |
 | `LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST_EP`         | Full endpoint address with the `naskguard` service running, **NOTE!** Read the plugin license before use the proposed model!                                                                                                                                             | `-`                                    |
+| `LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST_EP`        | Full endpoint address with the `sojkaguard` service running.                                                                                                                                                                                                             | `-`                                    |
 
 ### Model Configuration
 
