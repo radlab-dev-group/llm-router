@@ -201,16 +201,6 @@ if GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
     ]
 
 # =============================================================================
-# ENVIRONMENTS USED INTO PLUGINS
-# Host with router service where NASK-PIB/HerBERT-PL-Guard model is served
-# Read model License before using this model **MODEL LICENSE** CC BY-NC-SA 4.0
-GUARDRAIL_NASK_GUARD_HOST_EP = str(
-    os.environ.get(
-        f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_NASK_GUARD_HOST_EP", ""
-    )
-)
-
-# =============================================================================
 
 
 class _StartAppVerificator:
