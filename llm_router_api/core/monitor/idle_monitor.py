@@ -26,7 +26,7 @@ class IdleMonitor:
         self,
         redis_client: redis.Redis,
         idle_time_seconds: int = 3600,
-        check_interval: float = 5.0,
+        check_interval: float = 0.1,
         logger: Optional[logging.Logger] = None,
         send_prompt_callback: Optional[Callable[[str, str], None]] = None,
         get_last_host_key: Optional[Callable[[str], str]] = None,
@@ -97,16 +97,12 @@ class IdleMonitor:
                 # Find all keys with the ':last_used' suffix
                 pattern = "*:last_used"
                 for key in self.redis_client.scan_iter(match=pattern):
-                    model_name = key.strip().rsplit(":", 1)[0]
-                    self.logger.debug(f"[idle-monitor] checking {model_name}")
+                    model_name = key.rsplit(":", 1)[0]
 
-                    # Retrieve the last usage timestamp
-                    ts_raw = self.redis_client.get(
-                        self._get_last_used_key(model_name)
+                    ts_raw = self.redis_client.get(key)
+                    self.logger.debug(
+                        f"[idle-monitor] {model_name} last used timestamp: {ts_raw}"
                     )
-
-                    self.logger.debug(f"[idle-monitor] checking {model_name} => {ts_raw}")
-
                     if ts_raw is None:
                         continue
                     try:
@@ -116,41 +112,40 @@ class IdleMonitor:
 
                     idle_seconds = int(time.time()) - last_ts
                     if idle_seconds < self.idle_time_seconds:
-                        # model is still active
+                        # model jest nadal aktywny
                         continue
 
-                    # Retrieve host information
-                    host_raw = self.redis_client.get(
-                        self._get_last_host_key(model_name)
-                    )
+                    # ---- odczyt hosta ----
+                    # Host jest zapisany pod kluczem "<model>:last_host"
+                    host_key = key.replace(":last_used", ":last_host")
+                    host_raw = self.redis_client.get(host_key)
                     if not host_raw:
                         continue
                     host = host_raw.strip()
 
-                    # Check if the host is free for this model
+                    # ---- sprawdzenie dostępności hosta ----
                     if not self._is_host_free(host, model_name):
-                        # another model is using the host
+                        # inny model używa tego hosta
                         continue
 
-                    # Log that the host is free and will be used to raise (send prompt)
+                    # Logujemy, że host jest wolny i wyślemy prompt
                     host_str = (
                         host.decode('utf-8', errors='ignore')
                         if isinstance(host, (bytes, bytearray))
                         else str(host)
                     )
                     self.logger.debug(
-                        f"[idle-monitor] host '{host_str}' is free for model '{model_name}' – raising prompt"
+                        f"[idle-monitor] host '{host_str}' is free for model "
+                        f"'{model_name}' – raising prompt"
                     )
 
-                    # Send a short prompt to keep the model alive
+                    # ---- wysłanie keep‑alive prompt ----
                     prompt = "W odpowiedzi wybierz tylko 1 lub 2"
                     self._send_prompt(model_name, prompt)
 
-                    # Update the timestamp to avoid spamming
-                    self.redis_client.set(
-                        self._get_last_used_key(model_name), int(time.time())
-                    )
-            except Exception as exc:  # pragma: no cover – rarely occurs
+                    # ---- aktualizacja timestampu, aby nie spamować ----
+                    self.redis_client.set(key, int(time.time()))
+            except Exception as exc:  # pragma: no cover – rzadko występuje
                 self.logger.exception(f"IdleMonitor error: {exc}")
 
             time.sleep(self.check_interval)
