@@ -26,7 +26,7 @@ class IdleMonitor:
         self,
         redis_client: redis.Redis,
         idle_time_seconds: int = 3600,
-        check_interval: float = 0.1,
+        check_interval: float = 5.0,
         logger: Optional[logging.Logger] = None,
         send_prompt_callback: Optional[Callable[[str, str], None]] = None,
         get_last_host_key: Optional[Callable[[str], str]] = None,
@@ -98,11 +98,15 @@ class IdleMonitor:
                 pattern = "*:last_used"
                 for key in self.redis_client.scan_iter(match=pattern):
                     model_name = key.strip().rsplit(":", 1)[0]
+                    self.logger.debug(f"[idle-monitor] checking {model_name}")
 
                     # Retrieve the last usage timestamp
                     ts_raw = self.redis_client.get(
                         self._get_last_used_key(model_name)
                     )
+
+                    self.logger.debug(f"[idle-monitor] checking {model_name} => {ts_raw}")
+
                     if ts_raw is None:
                         continue
                     try:
@@ -112,7 +116,8 @@ class IdleMonitor:
 
                     idle_seconds = int(time.time()) - last_ts
                     if idle_seconds < self.idle_time_seconds:
-                        continue  # model is still active
+                        # model is still active
+                        continue
 
                     # Retrieve host information
                     host_raw = self.redis_client.get(
@@ -124,7 +129,18 @@ class IdleMonitor:
 
                     # Check if the host is free for this model
                     if not self._is_host_free(host, model_name):
-                        continue  # another model is using the host
+                        # another model is using the host
+                        continue
+
+                    # Log that the host is free and will be used to raise (send prompt)
+                    host_str = (
+                        host.decode('utf-8', errors='ignore')
+                        if isinstance(host, (bytes, bytearray))
+                        else str(host)
+                    )
+                    self.logger.debug(
+                        f"[idle-monitor] host '{host_str}' is free for model '{model_name}' – raising prompt"
+                    )
 
                     # Send a short prompt to keep the model alive
                     prompt = "W odpowiedzi wybierz tylko 1 lub 2"

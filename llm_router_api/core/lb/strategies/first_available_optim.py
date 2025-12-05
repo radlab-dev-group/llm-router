@@ -2,6 +2,7 @@ import logging
 from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
+from llm_router_api.core.monitor.idle_monitor import IdleMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
 
 
@@ -36,6 +37,8 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         check_interval: float = 0.1,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
+        idle_time_seconds: int = 3600,
+        idle_monitor_check_interval: float = 5.0,
     ) -> None:
         super().__init__(
             models_config_path=models_config_path,
@@ -51,6 +54,19 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         if clear_buffers:
             self._clear_buffer()
 
+        # Initialize and start the idle monitor
+        self.idle_monitor = IdleMonitor(
+            redis_client=self.redis_client,
+            idle_time_seconds=idle_time_seconds,
+            check_interval=idle_monitor_check_interval,
+            logger=self.logger,
+            send_prompt_callback=self._send_keepalive_prompt,
+            get_last_host_key=self._last_host_key,
+            get_last_used_key=self._last_used_key,
+            is_host_free_callback=self._is_host_free,
+        )
+        self.idle_monitor.start()
+
     # -------------------------------------------------------------------------
     # Helper utilities
     # -------------------------------------------------------------------------
@@ -63,6 +79,10 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         """Redis key that stores the last host used for a given model."""
         return f"{self._get_redis_key(model_name)}:last_host"
 
+    def _last_used_key(self, model_name: str) -> str:
+        """Redis key that stores the timestamp of the last model usage."""
+        return f"{self._get_redis_key(model_name)}:last_used"
+
     def _model_hosts_set_key(self, model_name: str) -> str:
         """Redis set key that holds all hosts where *model_name* is loaded."""
         return f"{self._get_redis_key(model_name)}:hosts"
@@ -73,6 +93,23 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         The hash field used is ``model``.
         """
         return self._host_key(host_name)
+
+    def _is_host_free(self, host: str, model_name: str) -> bool:
+        """
+        Check if a host is free for a given model.
+        """
+        occ_key = self._host_occupancy_key(host)
+        current_model = self.redis_client.hget(occ_key, "model")
+        return not current_model or current_model == model_name
+
+    def _send_keepalive_prompt(self, model_name: str, prompt: str) -> None:
+        """
+        Send a keep-alive prompt to a model on a host.
+        This callback is used by the IdleMonitor.
+        """
+        # This is a placeholder - in a real implementation,
+        # this would send an actual prompt to the model
+        self.logger.debug(f"Sending keep-alive prompt to model {model_name}")
 
     # -------------------------------------------------------------------------
     # Step 1 – reuse last host
@@ -317,3 +354,10 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         if provider:
             self._record_selection(model_name, provider)
         return provider
+
+    def stop_idle_monitor(self) -> None:
+        """
+        Stop the idle monitor thread.
+        """
+        if hasattr(self, "idle_monitor"):
+            self.idle_monitor.stop()
