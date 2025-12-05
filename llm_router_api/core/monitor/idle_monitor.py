@@ -128,11 +128,11 @@ class IdleMonitor:
 
                     idle_seconds = int(time.time()) - last_ts
                     if idle_seconds < self.idle_time_seconds:
-                        # model jest nadal aktywny
+                        self.logger.debug(
+                            f"  [idle-monitor] {model_name} idle_seconds: {idle_seconds}"
+                        )
                         continue
 
-                    # ---- odczyt hosta ----
-                    # Host jest zapisany pod kluczem "<model>:last_host"
                     host_key = key.replace(":last_used", ":last_host")
                     host_raw = self.redis_client.get(host_key)
                     if not host_raw:
