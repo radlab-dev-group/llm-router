@@ -78,7 +78,7 @@ class IdleMonitor:
         Start the monitoring thread.
         """
         self._thread.start()
-        self.logger.debug("IdleMonitor thread started")
+        self.logger.debug("[idle-monitor] thread started")
 
     def stop(self) -> None:
         """
@@ -97,7 +97,7 @@ class IdleMonitor:
                 # Find all keys with the ':last_used' suffix
                 pattern = "*:last_used"
                 for key in self.redis_client.scan_iter(match=pattern):
-                    model_name = key.decode().rsplit(":", 1)[0]
+                    model_name = key.strip().rsplit(":", 1)[0]
 
                     # Retrieve the last usage timestamp
                     ts_raw = self.redis_client.get(
@@ -120,7 +120,7 @@ class IdleMonitor:
                     )
                     if not host_raw:
                         continue
-                    host = host_raw.decode()
+                    host = host_raw.strip()
 
                     # Check if the host is free for this model
                     if not self._is_host_free(host, model_name):
