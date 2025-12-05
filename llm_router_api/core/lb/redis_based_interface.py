@@ -1,3 +1,16 @@
+"""
+Redis based strategy interface.
+
+This module defines an abstract base class that combines load‑balancing
+strategy selection with Redis‑backed health‑checking.  It is used by the
+router to coordinate provider allocation across multiple processes or
+hosts, guaranteeing that a particular provider is assigned to at most one
+consumer at any time.
+
+The implementation relies on Lua scripts for atomic acquire/release
+operations and uses a per‑model Redis hash to store lock flags.
+"""
+
 import random
 import logging
 
@@ -29,14 +42,25 @@ class RedisBasedStrategyInterface(
     """
     Strategy that selects the first free provider for a model using Redis.
 
-    The class inherits from
-    :class:`~llm_router_api.core.lb.strategy.ChooseProviderStrategyI`
-    and adds Redis‑based coordination.  It ensures that at most one consumer
-    holds a particular provider at any time, even when multiple workers run
-    concurrently on different hosts.
+    This class merges two responsibilities:
 
-    Parameters are forwarded to the base class where appropriate, and Redis
-    connection details can be customised via the constructor arguments.
+    * **Load‑balancing** – Implements the
+      :class:`~llm_router_api.core.lb.strategy.ChooseProviderStrategyI`
+      contract, choosing a provider for a given model.
+    * **Health‑checking** – Inherits from
+      :class:`~llm_router_api.core.monitor.redis_health_interface.RedisBasedHealthCheckInterface`
+      to monitor provider health via Redis.
+
+    By storing a per‑model hash in Redis where each field represents a
+    provider’s lock flag, the strategy guarantees that only one worker can
+    acquire a provider at a time, even when the workers run on different
+    machines.  The acquisition and release are performed atomically using
+    Lua scripts, eliminating race conditions.
+
+    The constructor accepts optional Redis connection parameters so the
+    strategy can be pointed at any Redis instance, and a ``strategy_prefix``
+    can be used to namespace keys when multiple strategies share the same
+    Redis server.
     """
 
     def __init__(
@@ -134,6 +158,32 @@ class RedisBasedStrategyInterface(
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str | None, bool]:
+        """
+        Prepare Redis structures for a model and optionally enable random choice.
+
+        This method is invoked once per model during strategy start‑up.  It
+        registers the providers with the monitoring subsystem, ensures that a
+        Redis hash exists for the model, and populates the hash fields with a
+        ``'false'`` value (meaning *free*) if the hash is missing.  The returned
+        ``redis_key`` is the base key used for all subsequent lock operations.
+
+        Parameters
+        ----------
+        model_name: str
+            The logical name of the model (e.g., ``"gpt‑4"``).
+        providers: List[Dict]
+            A list of provider configuration dictionaries.
+        options: dict | None, optional
+            If ``options.get("random_choice")`` is true, the caller intends to
+            acquire a provider at random; the flag is propagated to the caller.
+
+        Returns
+        -------
+        Tuple[str | None, bool]
+            ``(redis_key, is_random)`` where ``redis_key`` is the Redis hash key
+            for the model (or ``None`` if ``providers`` is empty) and ``is_random``
+            reflects the ``random_choice`` option.
+        """
         if not providers:
             return None, False
         # Register providers for monitoring (only once per model)
@@ -160,6 +210,24 @@ class RedisBasedStrategyInterface(
         return f"model:{model_name}"
 
     def _host_key(self, host_name: str) -> str:
+        """
+        Return a Redis key that uniquely identifies a host.
+
+        Host names may contain characters that are unsuitable for Redis keys.
+        This method sanitises the name by replacing any character listed in
+        ``self.REPLACE_PROVIDER_KEY`` with an underscore and then prefixes it
+        with ``"host:"``.
+
+        Parameters
+        ----------
+        host_name: str
+            The raw host identifier (e.g., a hostname or IP address).
+
+        Returns
+        -------
+        str
+            A safe Redis key such as ``"host:my_server_01"``.
+        """
         for ch in self.REPLACE_PROVIDER_KEY:
             host_name = host_name.replace(ch, "_")
 
@@ -273,6 +341,26 @@ class RedisBasedStrategyInterface(
     def _get_active_providers(
         self, model_name: str, providers: List[Dict]
     ) -> List[Dict]:
+        """
+        Retrieve the list of currently active providers for a model.
+
+        The method delegates to the monitoring component, which tracks the
+        health status of each provider.  Only providers whose health check
+        reports *active* are returned.
+
+        Parameters
+        ----------
+        model_name: str
+            The logical name of the model.
+        providers: List[Dict]
+            The full provider configuration list (kept for signature compatibility;
+            it is not used directly).
+
+        Returns
+        -------
+        List[Dict]
+            A list containing the configuration dictionaries of active providers.
+        """
         active_providers = self._monitor.get_providers(
             model_name=model_name, only_active=True
         )
