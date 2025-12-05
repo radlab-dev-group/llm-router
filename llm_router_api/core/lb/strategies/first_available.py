@@ -34,7 +34,12 @@ except ImportError:
 
 from typing import List, Dict, Optional, Any
 
-from llm_router_api.base.constants import REDIS_PORT, REDIS_HOST
+from llm_router_api.base.constants import (
+    REDIS_PORT,
+    REDIS_HOST,
+    REDIS_PASSWORD,
+    REDIS_DB,
+)
 from llm_router_api.core.lb.redis_based_interface import RedisBasedStrategyInterface
 
 
@@ -56,8 +61,9 @@ class FirstAvailableStrategy(RedisBasedStrategyInterface):
         self,
         models_config_path: str,
         redis_host: str = REDIS_HOST,
+        redis_password: str = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
-        redis_db: int = 0,
+        redis_db: int = REDIS_DB,
         timeout: int = 60,
         check_interval: float = 0.1,
         clear_buffers: bool = True,
@@ -89,6 +95,7 @@ class FirstAvailableStrategy(RedisBasedStrategyInterface):
         super().__init__(
             models_config_path=models_config_path,
             redis_host=redis_host,
+            redis_password=redis_password,
             redis_port=redis_port,
             redis_db=redis_db,
             timeout=timeout,
