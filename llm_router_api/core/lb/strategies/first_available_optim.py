@@ -65,6 +65,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             get_last_host_key=self._last_host_key,
             get_last_used_key=self._last_used_key,
             is_host_free_callback=self._is_host_free,
+            clear_buffers=clear_buffers,
         )
         self.idle_monitor.start()
 
