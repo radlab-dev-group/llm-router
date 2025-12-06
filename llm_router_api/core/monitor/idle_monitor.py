@@ -138,10 +138,17 @@ class IdleMonitor:
                     if not host_raw:
                         continue
                     host = host_raw.strip()
+                    self.logger.debug(
+                            f"  [idle-monitor] {model_name} host: {host}"
+                        )
+
 
                     # ---- sprawdzenie dostępności hosta ----
                     if not self._is_host_free(host, model_name):
                         # inny model używa tego hosta
+                        self.logger.debug(
+                            f"  [idle-monitor] {model_name} host: {host} is not free"
+                        )
                         continue
 
                     # Logujemy, że host jest wolny i wyślemy prompt
@@ -159,9 +166,22 @@ class IdleMonitor:
                     prompt = "W odpowiedzi wybierz tylko 1 lub 2"
                     self._send_prompt(model_name, prompt)
 
+                    # Log that we have sent the keep‑alive prompt
+                    self.logger.debug(
+                        f"[idle-monitor] keep‑alive prompt sent to model "
+                        f"{model_name} on host '{host_str}'"
+                    )
+
                     # ---- aktualizacja timestampu, aby nie spamować ----
-                    self.redis_client.set(key, int(time.time()))
-            except Exception as exc:  # pragma: no cover – rzadko występuje
+                    # ``key`` may be bytes; ensure we write back using a string key
+                    ts_key = (
+                        key.decode("utf-8")
+                        if isinstance(key, (bytes, bytearray))
+                        else key
+                    )
+                    self.redis_client.set(ts_key, int(time.time()))
+            except Exception as exc:
+                # pragma: no cover – rzadko występuje
                 self.logger.exception(f"IdleMonitor error: {exc}")
 
             time.sleep(self.check_interval)
