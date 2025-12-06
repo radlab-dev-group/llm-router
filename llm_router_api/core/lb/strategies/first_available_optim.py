@@ -72,6 +72,16 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     # -----------------------------------------------------------------
     # Helper utilities
     # -----------------------------------------------------------------
+    def _decode_redis(self, value):
+        """
+        Convert a Redis return value (bytes/bytearray/None) to a string or ``None``.
+        """
+        if value is None:
+            return None
+        if isinstance(value, (bytes, bytearray)):
+            return value.decode("utf-8", errors="ignore")
+        return str(value)
+
     def _host_from_provider(self, provider: Dict) -> Optional[str]:
         """Extract the host identifier from a provider configuration."""
         # Most providers expose the host under ``api_host`` or ``host``.
@@ -96,24 +106,30 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         """
         return self._host_key(host_name)
 
+    # -----------------------------------------------------------------
+    # Occupancy check – **now decodes the stored model name**
+    # -----------------------------------------------------------------
     def _is_host_free(self, host: str, model_name: str) -> bool:
         """
         Check if a host is free for a given model.
         """
         occ_key = self._host_occupancy_key(host)
-        current_model = self.redis_client.hget(occ_key, "model")
+        current_model = self._decode_redis(self.redis_client.hget(occ_key, "model"))
         return not current_model or current_model == model_name
 
     def _send_keepalive_prompt(self, model_name: str, prompt: str) -> None:
         """
-        Send a keep-alive prompt to a model on a host.
+        Send a keep‑alive prompt to a model on a host.
         This callback is used by the IdleMonitor.
         """
-        # Placeholder – in production this would issue an actual request.
-        self.logger.debug(f"Sending keep-alive prompt to model {model_name}")
+        # Keep the original debug line for the strategy’s logger, but also
+        # make sure the monitor’s logger (configured above) is at DEBUG level.
+        self.logger.debug(
+            f'Sending keep‑alive prompt "{prompt}" to model {model_name}'
+        )
 
     # -----------------------------------------------------------------
-    # Step 1 – reuse last host
+    # Step 1 – reuse last host (decode occupancy value)
     # -----------------------------------------------------------------
     def _step1_last_host(
         self, model_name: str, providers: List[Dict]
@@ -130,7 +146,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         # Verify host is not occupied by a different model.
         occupancy_hash = self._host_occupancy_key(last_host)
-        current_model = self.redis_client.hget(occupancy_hash, "model")
+        current_model = self._decode_redis(
+            self.redis_client.hget(occupancy_hash, "model")
+        )
         if current_model and current_model != model_name:
             return None  # host busy with another model
 
@@ -173,7 +191,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             if host not in known_hosts:
                 continue
             occ_key = self._host_occupancy_key(host)
-            cur = self.redis_client.hget(occ_key, "model")
+            cur = self._decode_redis(self.redis_client.hget(occ_key, "model"))
             if cur and cur != model_name:
                 continue
 
@@ -214,7 +232,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             if host in known_hosts:
                 continue
             occ_key = self._host_occupancy_key(host)
-            current_model = self.redis_client.hget(occ_key, "model")
+            current_model = self._decode_redis(
+                self.redis_client.hget(occ_key, "model")
+            )
             if current_model and current_model != model_name:
                 continue
 
