@@ -129,7 +129,7 @@ class IdleMonitor:
                     idle_seconds = int(time.time()) - last_ts
                     if idle_seconds < self.idle_time_seconds:
                         self.logger.debug(
-                            f"  [idle-monitor] {model_name} idle_seconds: {idle_seconds}"
+                            f"[idle-monitor] {model_name} idle_seconds: {idle_seconds}"
                         )
                         continue
 
@@ -138,16 +138,11 @@ class IdleMonitor:
                     if not host_raw:
                         continue
                     host = host_raw.strip()
-                    self.logger.debug(
-                            f"  [idle-monitor] {model_name} host: {host}"
-                        )
+                    self.logger.debug(f"[idle-monitor] {model_name} host: {host}")
 
-
-                    # ---- sprawdzenie dostępności hosta ----
                     if not self._is_host_free(host, model_name):
-                        # inny model używa tego hosta
                         self.logger.debug(
-                            f"  [idle-monitor] {model_name} host: {host} is not free"
+                            f"[idle-monitor]  {model_name} host: {host} is not free"
                         )
                         continue
 
