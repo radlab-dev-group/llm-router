@@ -352,5 +352,4 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         """
         Stop the idle monitor thread.
         """
-        if hasattr(self, "idle_monitor"):
-            self.idle_monitor.stop()
+        self.idle_monitor.stop()
