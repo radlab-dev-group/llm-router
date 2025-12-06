@@ -40,7 +40,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
         idle_time_seconds: int = 600,
-        idle_monitor_check_interval: float = 5,
+        idle_monitor_check_interval: float = 30,
     ) -> None:
         super().__init__(
             models_config_path=models_config_path,
