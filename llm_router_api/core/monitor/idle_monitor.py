@@ -71,7 +71,7 @@ class IdleMonitor:
         idle_time_seconds: int = 3600,
         check_interval: float = 0.1,
         logger: Optional[logging.Logger] = None,
-        send_prompt_callback: Optional[Callable[[str, str], None]] = None,
+        send_prompt_callback: Optional[Callable[[str, str, str], None]] = None,
         get_last_host_key: Optional[Callable[[str], str]] = None,
         get_last_used_key: Optional[Callable[[str], str]] = None,
         is_host_free_callback: Optional[Callable[[str, str], bool]] = None,
@@ -95,7 +95,7 @@ class IdleMonitor:
             How often (seconds) to poll Redis for model state.
         logger : logging.Logger, optional
             Optional logger; defaults to a module‑level logger.
-        send_prompt_callback : Callable[[str, str], None], optional
+        send_prompt_callback : Callable[[str, str, str], None], optional
             Callback to send a keep‑alive prompt. Signature
             ``(model_name: str, prompt: str) -> None``.
         get_last_host_key : Callable[[str], str], optional
@@ -236,7 +236,9 @@ class IdleMonitor:
 
                     # ---- send keep‑alive prompt ----
                     prompt = "W odpowiedzi wybierz tylko 1 lub 2"
-                    self._send_prompt(model_name, prompt)
+                    self._send_prompt(
+                        model_name=model_name, prompt=prompt, host=host
+                    )
 
                     # Log that we have sent the keep‑alive prompt
                     self.logger.debug(
