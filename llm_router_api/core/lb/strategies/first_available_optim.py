@@ -1,5 +1,6 @@
 import logging
 import time
+import requests
 from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
@@ -38,7 +39,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         check_interval: float = 0.1,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
-        idle_time_seconds: int = 3600,
+        idle_time_seconds: int = 600,
         idle_monitor_check_interval: float = 5,
     ) -> None:
         super().__init__(
@@ -120,15 +121,94 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             current_model = self._host_key(current_model).replace("host:", "")
         return not current_model or current_model == model_name
 
-    def _send_keepalive_prompt(self, model_name: str, prompt: str) -> None:
+    def _send_keepalive_prompt(
+        self, model_name: str, prompt: str, host: str
+    ) -> None:
         """
         Send a keep‑alive prompt to a model on a host.
         This callback is used by the IdleMonitor.
         """
-        # Keep the original debug line for the strategy’s logger, but also
-        # make sure the monitor’s logger (configured above) is at DEBUG level.
-        self.logger.debug(
-            f'Sending keep‑alive prompt "{prompt}" to model {model_name}'
+        model_providers = []
+        orig_model_name = None
+        model_name = model_name.replace("model:", "")
+        for m_name, providers in self._api_model_config.models_configs.items():
+            orig_model_name = m_name
+            m_name = self._host_key(m_name).replace("host:", "")
+            if m_name == model_name:
+                model_providers = providers
+                break
+
+        if not model_providers:
+            self.logger.error(
+                f"Error while sending keep‑alive prompt "
+                f"to model {model_name} to host {host} "
+                f"No providers found for this model!"
+            )
+            return
+
+        found_provider = None
+        for _p in model_providers.get("providers", []):
+            if _p["api_host"] == host:
+                found_provider = _p
+                break
+
+        if not found_provider:
+            self.logger.error(
+                f"Error while sending keep‑alive prompt "
+                f"to model {model_name} to host {host} "
+                f"Given host does not exist in the providers list!"
+            )
+            return
+
+        api_type = found_provider.get("api_type", "").lower()
+        api_host = found_provider.get("api_host", "").rstrip("/")
+        token = found_provider.get("api_token", "")
+        api_model_name = found_provider.get("model_path") or orig_model_name
+
+        # Przygotowanie nagłówków
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        payload = {
+            "stream": False,
+            "model": api_model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 56,
+            "temperature": 0.0,
+        }
+
+        # self.logger.debug(payload)
+
+        if api_type in ("vllm", "openai"):
+            endpoint = f"{api_host}/v1/chat/completions"
+        elif api_type == "ollama":
+            endpoint = f"{api_host}/api/chat"
+        else:
+            self.logger.warning(
+                f"Unsupported api_type '{api_type}' for keep‑alive; skipping."
+            )
+            return
+
+        try:
+            response = requests.post(
+                endpoint, json=payload, headers=headers, timeout=5
+            )
+
+            # self.logger.debug(response.text)
+
+            response.raise_for_status()
+            self.logger.debug(
+                f"Keep‑alive response from {model_name} ({api_type}): {response.status_code}"
+            )
+        except Exception as exc:
+            self.logger.error(
+                f"Keep‑alive request failed for model {model_name} ({api_type}): {exc}"
+            )
+            self.logger.exception(exc)
+
+        self.logger.info(
+            f"Sending keep‑alive prompt to {api_type} model {model_name} ({host})"
         )
 
     # -----------------------------------------------------------------
