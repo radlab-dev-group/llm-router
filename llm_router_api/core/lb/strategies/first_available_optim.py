@@ -191,9 +191,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             return
 
         try:
-            response = requests.post(
-                endpoint, json=payload, headers=headers, timeout=5
-            )
+            response = requests.post(endpoint, json=payload, headers=headers)
 
             # self.logger.debug(response.text)
 
