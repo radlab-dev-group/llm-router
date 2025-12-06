@@ -115,6 +115,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         """
         occ_key = self._host_occupancy_key(host)
         current_model = self._decode_redis(self.redis_client.hget(occ_key, "model"))
+        model_name = model_name.split(":")[-1]
+        if current_model:
+            current_model = self._host_key(current_model).replace("host:", "")
         return not current_model or current_model == model_name
 
     def _send_keepalive_prompt(self, model_name: str, prompt: str) -> None:
