@@ -109,12 +109,14 @@ class KeepAlive:
         """
         Returns: (provider_dict, api_model_name)
         """
-        normalized_model = (model_name or "").replace("model:", "")
+        normalized_model = (model_name or "").replace("model:", "").strip()
 
         # models_configs: {model_name: {..., "providers": [...]}}
         for original_model_name, cfg in (self._models_configs or {}).items():
             # match like in current logic: compare normalized names
-            normalized_cfg_name = str(original_model_name).replace("host:", "")
+            normalized_cfg_name = (
+                str(original_model_name).replace("model:", "").strip()
+            )
             if normalized_cfg_name != normalized_model:
                 continue
 
