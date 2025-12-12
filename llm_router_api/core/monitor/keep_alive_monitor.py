@@ -1,7 +1,7 @@
 """
 Idle monitor module.
 
-This module implements :class:`IdleMonitor`, a utility that runs a
+This module implements :class:`KeepAliveMonitor`, a utility that runs a
 background daemon thread to continuously monitor model usage stored in
 Redis.  When a model has been idle longer than a configurable threshold
 and its host is currently free, a user‑provided ``send_prompt_callback``
@@ -11,7 +11,7 @@ different services that rely on Redis for state tracking.
 
 Typical usage::
 
-    monitor = IdleMonitor(redis_client, idle_time_seconds=1800,
+    monitor = KeepAliveMonitor(redis_client, idle_time_seconds=1800,
                          send_prompt_callback=my_prompt_sender)
     monitor.start()
     ...
@@ -25,7 +25,7 @@ import threading
 from typing import Callable, Optional
 
 
-class IdleMonitor:
+class KeepAliveMonitor:
     """
     Background monitor that detects idle models and triggers keep‑alive prompts.
 
@@ -78,7 +78,7 @@ class IdleMonitor:
         clear_buffers: bool = False,
     ) -> None:
         """
-        Initialise a new :class:`IdleMonitor` instance.
+        Initialise a new :class:`KeepAliveMonitor` instance.
 
         All arguments are stored as attributes and default callbacks are
         provided when the corresponding user‑supplied callbacks are ``None``.
@@ -157,7 +157,7 @@ class IdleMonitor:
         """
         self._stop_event.set()
         self._thread.join()
-        self.logger.debug("IdleMonitor thread stopped")
+        self.logger.debug("KeepAliveMonitor thread stopped")
 
     def _clear_buffers(self) -> None:
         """
@@ -256,6 +256,6 @@ class IdleMonitor:
                     self.redis_client.set(ts_key, int(time.time()))
             except Exception as exc:
                 # pragma: no cover – rarely occurs
-                self.logger.exception(f"IdleMonitor error: {exc}")
+                self.logger.exception(f"KeepAliveMonitor error: {exc}")
 
             time.sleep(self.check_interval)

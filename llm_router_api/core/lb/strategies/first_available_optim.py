@@ -5,7 +5,7 @@ import requests
 from typing import List, Dict, Optional, Any, Callable
 
 from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
-from llm_router_api.core.monitor.idle_monitor import IdleMonitor
+from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
 
 
@@ -44,7 +44,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             self._clear_buffer()
 
         # Initialize and start the idle monitor
-        self.idle_monitor = IdleMonitor(
+        self.keep_alive_monitor = KeepAliveMonitor(
             redis_client=self.redis_client,
             idle_time_seconds=idle_time_seconds,
             check_interval=idle_monitor_check_interval,
@@ -55,7 +55,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             is_host_free_callback=self._is_host_free,
             clear_buffers=clear_buffers,
         )
-        # self.idle_monitor.start()
+        self.keep_alive_monitor.start()
 
     # -----------------------------------------------------------------
     # Overridden public API
@@ -118,7 +118,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
     def stop_idle_monitor(self) -> None:
         """Stop the idle monitor thread."""
-        self.idle_monitor.stop()
+        self.keep_alive_monitor.stop()
 
     # -----------------------------------------------------------------
     # Helper utilities
@@ -210,7 +210,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     def _send_keepalive_prompt(
         self, model_name: str, prompt: str, host: str
     ) -> None:
-        """Send a keep‑alive prompt to a model on a host (used by IdleMonitor)."""
+        """Send a keep‑alive prompt to a model on a host (used by KeepAliveMonitor)."""
         model_providers = []
         orig_model_name = None
         model_name = model_name.replace("model:", "")
@@ -368,7 +368,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         occ_key = self._host_occupancy_key(host)
         self.redis_client.hset(occ_key, "model", model_name)
 
-        # 4. Record the time of this usage – required by IdleMonitor.
+        # 4. Record the time of this usage – required by KeepAliveMonitor.
         self.redis_client.set(self._last_used_key(model_name), int(time.time()))
 
     # -----------------------------------------------------------------
