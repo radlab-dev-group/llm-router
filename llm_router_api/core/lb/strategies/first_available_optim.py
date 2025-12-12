@@ -108,7 +108,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         return self._host_key(host_name)
 
     # -----------------------------------------------------------------
-    # Occupancy check – **now decodes the stored model name**
+    # Occupancy check – now decodes the stored model name
     # -----------------------------------------------------------------
     def _is_host_free(self, host: str, model_name: str) -> bool:
         """
@@ -178,8 +178,6 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             "temperature": 0.0,
         }
 
-        # self.logger.debug(payload)
-
         if api_type in ("vllm", "openai"):
             endpoint = f"{api_host}/v1/chat/completions"
         elif api_type == "ollama":
@@ -192,9 +190,6 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         try:
             response = requests.post(endpoint, json=payload, headers=headers)
-
-            # self.logger.debug(response.text)
-
             response.raise_for_status()
             self.logger.debug(
                 f"Keep‑alive response from {model_name} ({api_type}): {response.status_code}"
@@ -404,26 +399,47 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         if not redis_key:
             return None
 
+        # Helper to verify that a provider is still considered active.
+        def _is_active(p: Dict) -> bool:
+            active = self._get_active_providers(
+                model_name=model_name, providers=providers
+            )
+            return any(p["id"] == act["id"] for act in active)
+
+        # ---- Step 1 ----------------------------------------------------
         provider = self._step1_last_host(model_name, providers)
         if provider:
-            self._record_selection(model_name, provider)
-            return provider
+            if _is_active(provider):
+                self._record_selection(model_name, provider)
+                return provider
+            # Provider not active → release lock and continue.
+            self.put_provider(model_name, provider)
 
+        # ---- Step 2 ----------------------------------------------------
         provider = self._step2_existing_hosts(model_name, providers)
         if provider:
-            self._record_selection(model_name, provider)
-            return provider
+            if _is_active(provider):
+                self._record_selection(model_name, provider)
+                return provider
+            self.put_provider(model_name, provider)
 
+        # ---- Step 3 ----------------------------------------------------
         provider = self._step3_unused_host(model_name, providers)
         if provider:
-            self._record_selection(model_name, provider)
-            return provider
+            if _is_active(provider):
+                self._record_selection(model_name, provider)
+                return provider
+            self.put_provider(model_name, provider)
 
+        # ---- Fallback --------------------------------------------------
+        # Only fall back if none of the optimized steps succeeded.
+        # (If a provider was found but not active, we do *not* fall back.)
         provider = super().get_provider(
             model_name=model_name, providers=providers, options=options
         )
         if provider:
             self._record_selection(model_name, provider)
+
         return provider
 
     def stop_idle_monitor(self) -> None:
