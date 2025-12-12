@@ -139,6 +139,20 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             return value.decode("utf-8", errors="ignore")
         return str(value)
 
+    def _normalize_model_name(self, name: Optional[str]) -> str:
+        """
+        Canonical model name used for comparisons/storage:
+        strips routing prefixes like 'model:' / 'host:' and trims whitespace.
+        """
+        if not name:
+            return ""
+        s = str(name).strip()
+        if s.startswith("model:"):
+            s = s[len("model:") :]
+        if s.startswith("host:"):
+            s = s[len("host:") :]
+        return s.strip()
+
     def _host_from_provider(self, provider: Dict) -> Optional[str]:
         """Extract the host identifier from a provider configuration."""
         return provider.get("api_host") or provider.get("host")
@@ -209,20 +223,21 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     def _is_host_free(self, host: str, model_name: str) -> bool:
         """Check if a host is free for a given model."""
         occ_key = self._host_occupancy_key(host)
-        current_model = self._decode_redis(self.redis_client.hget(occ_key, "model"))
-        # model_name = model_name.split(":")[-1]
-        if current_model:
-            current_model = self._host_key(current_model).replace("host:", "")
-
-        print(
-            "_is_host_free             current_model=",
-            current_model,
-            "model_name=",
-            model_name,
+        current_model_raw = self._decode_redis(
+            self.redis_client.hget(occ_key, "model")
         )
 
-        self._keep_alive
-        return not current_model or current_model == model_name
+        current_model = self._normalize_model_name(current_model_raw)
+        requested_model = self._normalize_model_name(model_name)
+
+        self.logger.debug(
+            "[keep-alive] _is_host_free current_model=%r requested_model=%r host=%s",
+            current_model,
+            requested_model,
+            host,
+        )
+
+        return (not current_model) or (current_model == requested_model)
 
     def _send_keepalive_prompt(
         self, model_name: str, prompt: str, host: str
@@ -383,7 +398,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         # 3. Mark the host as occupied by this model.
         occ_key = self._host_occupancy_key(host)
-        self.redis_client.hset(occ_key, "model", model_name)
+        self.redis_client.hset(
+            occ_key, "model", self._normalize_model_name(model_name)
+        )
 
         # 4. KeepAlive state is now owned by KeepAliveMonitor.
         keep_alive_value = provider.get("keep_alive")
