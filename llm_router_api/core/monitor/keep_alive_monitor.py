@@ -1,134 +1,45 @@
-"""
-Idle monitor module.
-
-This module implements :class:`KeepAliveMonitor`, a utility that runs a
-background daemon thread to continuously monitor model usage stored in
-Redis.  When a model has been idle longer than a configurable threshold
-and its host is currently free, a user‑provided ``send_prompt_callback``
-is invoked to issue a keep‑alive prompt.  The implementation is
-intentionally lightweight and fully typed so it can be reused across
-different services that rely on Redis for state tracking.
-
-Typical usage::
-
-    monitor = KeepAliveMonitor(redis_client, idle_time_seconds=1800,
-                         send_prompt_callback=my_prompt_sender)
-    monitor.start()
-    ...
-    monitor.stop()
-"""
-
 import time
 import redis
 import logging
 import threading
+import re
 from typing import Callable, Optional
 
 
 class KeepAliveMonitor:
     """
-    Background monitor that detects idle models and triggers keep‑alive prompts.
+    Keep-alive monitor that owns scheduling state in Redis.
 
-    The monitor polls Redis at a configurable interval, identifies models
-    whose ``last_used`` timestamp exceeds ``idle_time_seconds`` and whose
-    associated host is free, then calls ``send_prompt_callback`` with a
-    predefined prompt.  All Redis keys used by the monitor follow the
-    ``<model_name>:last_host`` and ``<model_name>:last_used`` naming scheme.
-
-    Parameters
-    ----------
-    redis_client : redis.Redis
-        Active Redis connection used for reading and writing monitor state.
-    idle_time_seconds : int, optional
-        Minimum number of seconds a model must be idle before a prompt is
-        sent.  Default is 3600 (one hour).
-    check_interval : float, optional
-        Frequency, in seconds, with which Redis is scanned.  Default is 0.1.
-    logger : logging.Logger, optional
-        Logger instance for diagnostic output; if omitted, a module‑level
-        logger is created.
-    send_prompt_callback : Callable[[str, str], None], optional
-        Function invoked to deliver the keep‑alive prompt.  It receives the
-        ``model_name`` and the ``prompt`` string.
-    get_last_host_key : Callable[[str], str], optional
-        Function that returns the Redis key storing the last host for a model.
-        Defaults to ``lambda model: f"{model}:last_host"``.
-    get_last_used_key : Callable[[str], str], optional
-        Function that returns the Redis key storing the last usage timestamp
-        for a model.  Defaults to ``lambda model: f"{model}:last_used"``.
-    is_host_free_callback : Callable[[str, str], bool], optional
-        Function that determines whether a host is free for a given model.
-        It receives ``host`` and ``model_name`` and returns ``True`` if the
-        host can accept a new prompt.
-    clear_buffers : bool, optional
-        If ``True``, all monitor‑related keys are removed from Redis during
-        initialization.
+    Scheduling is PER PROVIDER instance, i.e. per (model_name, host).
+    keep_alive can be a duration string like: "120s", "45m", "2h".
     """
 
     def __init__(
         self,
         redis_client: redis.Redis,
-        idle_time_seconds: int = 3600,
-        check_interval: float = 0.1,
+        check_interval: float = 1.0,
         logger: Optional[logging.Logger] = None,
         send_prompt_callback: Optional[Callable[[str, str, str], None]] = None,
-        get_last_host_key: Optional[Callable[[str], str]] = None,
-        get_last_used_key: Optional[Callable[[str], str]] = None,
         is_host_free_callback: Optional[Callable[[str, str], bool]] = None,
         clear_buffers: bool = False,
+        prompt: str = "W odpowiedzi wybierz tylko 1 lub 2",
+        redis_prefix: str = "keepalive",
     ) -> None:
-        """
-        Initialise a new :class:`KeepAliveMonitor` instance.
-
-        All arguments are stored as attributes and default callbacks are
-        provided when the corresponding user‑supplied callbacks are ``None``.
-        The monitor does **not** start automatically; call :meth:`start`
-        to begin background processing.
-
-        Parameters
-        ----------
-        redis_client : redis.Redis
-            Redis connection used by the monitoring strategy.
-        idle_time_seconds : int
-            Minimum idle time (seconds) before a model is considered idle.
-        check_interval : float
-            How often (seconds) to poll Redis for model state.
-        logger : logging.Logger, optional
-            Optional logger; defaults to a module‑level logger.
-        send_prompt_callback : Callable[[str, str, str], None], optional
-            Callback to send a keep‑alive prompt. Signature
-            ``(model_name: str, prompt: str) -> None``.
-        get_last_host_key : Callable[[str], str], optional
-            Callable returning the Redis key that stores the last host used
-            for a given model.
-        get_last_used_key : Callable[[str], str], optional
-            Callable returning the Redis key that stores the timestamp of the
-            last model usage.
-        is_host_free_callback : Callable[[str, str], bool], optional
-            Callable that checks whether a host is free for a given model.
-            Signature ``(host: str, model_name: str) -> bool``.
-        clear_buffers : bool, optional
-            When ``True``, all monitor‑related keys are removed from Redis at
-            construction time.
-        """
         self.redis_client = redis_client
-        self.idle_time_seconds = idle_time_seconds
         self.check_interval = check_interval
         self.logger = logger or logging.getLogger(__name__)
 
-        # Callbacks – allow avoiding circular imports.
         self._send_prompt = (
-            send_prompt_callback if send_prompt_callback else lambda m, p: None
-        )
-        self._get_last_host_key = (
-            get_last_host_key if get_last_host_key else lambda m: f"{m}:last_host"
-        )
-        self._get_last_used_key = (
-            get_last_used_key if get_last_used_key else lambda m: f"{m}:last_used"
+            send_prompt_callback
+            if send_prompt_callback
+            else (lambda model_name, prompt, host: None)
         )
         self._is_host_free = (
-            is_host_free_callback if is_host_free_callback else lambda h, m: False
+            is_host_free_callback if is_host_free_callback else (lambda h, m: False)
         )
+
+        self._prompt = prompt
+        self._redis_prefix = redis_prefix
 
         if clear_buffers:
             self._clear_buffers()
@@ -137,125 +48,178 @@ class KeepAliveMonitor:
         self._thread = threading.Thread(target=self._run, daemon=True)
 
     def start(self) -> None:
-        """
-        Start the monitoring thread.
-
-        The thread runs as a daemon; it will automatically terminate when
-        the main program exits.  Subsequent calls have no effect if the
-        thread is already alive.
-        """
         self._thread.start()
-        self.logger.debug("[idle-monitor] thread started")
+        self.logger.debug("[keep-alive] thread started")
 
     def stop(self) -> None:
-        """
-        Stop the monitoring thread.
-
-        This method signals the background loop to exit and then joins
-        the thread, ensuring a clean shutdown.  It is primarily intended
-        for use in unit tests or graceful application termination.
-        """
         self._stop_event.set()
         self._thread.join()
-        self.logger.debug("KeepAliveMonitor thread stopped")
+        self.logger.debug("[keep-alive] thread stopped")
+
+    def record_usage(
+        self, model_name: str, host: str, keep_alive: Optional[str]
+    ) -> None:
+        """
+        Called by strategy after selecting a provider.
+
+        keep_alive:
+          - None / "" / Falsey => do not schedule keep-alive for this provider
+          - "120s", "45m", "2h" => schedule wakeups every that many seconds
+        """
+        if not keep_alive or not model_name or not host:
+            return
+
+        seconds = self._parse_duration_seconds(keep_alive)
+        provider_key = self._provider_hash_key(model_name, host)
+        member = self._member(model_name, host)
+
+        pipe = self.redis_client.pipeline()
+        pipe.hset(
+            provider_key,
+            mapping={
+                "model_name": model_name,
+                "host": host,
+                "keep_alive_seconds": str(seconds or 0),
+            },
+        )
+
+        if seconds and seconds > 0:
+            next_wakeup = int(time.time()) + int(seconds)
+            pipe.zadd(self._next_wakeup_zset_key(), {member: next_wakeup})
+        else:
+            # not configured => ensure it's not scheduled
+            pipe.zrem(self._next_wakeup_zset_key(), member)
+
+        pipe.execute()
+
+    def _member(self, model_name: str, host: str) -> str:
+        # delimiter unlikely to appear in host; if it can, we can switch to JSON later
+        return f"{model_name}|{host}"
+
+    def _split_member(self, member: str) -> tuple[str, str]:
+        model_name, host = member.split("|", 1)
+        return model_name, host
+
+    def _provider_hash_key(self, model_name: str, host: str) -> str:
+        return f"{self._redis_prefix}:provider:{model_name}:{host}"
+
+    def _next_wakeup_zset_key(self) -> str:
+        return f"{self._redis_prefix}:providers:next_wakeup"
 
     def _clear_buffers(self) -> None:
-        """
-        Remove all Redis keys used by the idle monitor.
+        for key in self.redis_client.scan_iter(
+            match=f"{self._redis_prefix}:provider:*"
+        ):
+            self.redis_client.delete(key)
+        self.redis_client.delete(self._next_wakeup_zset_key())
 
-        The method scans Redis for keys matching the ``*:last_host`` and
-        ``*:last_used`` patterns and deletes them.  It is safe to call
-        repeatedly; missing keys are simply ignored.
+    def _decode_redis(self, value):
+        if value is None:
+            return None
+        if isinstance(value, (bytes, bytearray)):
+            return value.decode("utf-8", errors="ignore")
+        return str(value)
+
+    def _parse_duration_seconds(self, value: Optional[str]) -> Optional[int]:
         """
-        # Patterns for keys used by idle monitor
-        patterns = ["*:last_host", "*:last_used"]
-        for pattern in patterns:
-            for key in self.redis_client.scan_iter(match=pattern):
-                self.logger.debug(f"Removing idle monitor key from redis: {key}")
-                self.redis_client.delete(key)
+        Accepts "120s", "45m", "2h" (case-insensitive). Returns seconds or None.
+        """
+        if value is None:
+            return None
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode("utf-8", errors="ignore")
+
+        text = str(value).strip()
+        if not text:
+            return None
+
+        m = re.fullmatch(r"(?i)\s*(\d+)\s*([smh])\s*", text)
+        if not m:
+            self.logger.warning("[keep-alive] invalid keep_alive duration: %r", text)
+            return None
+
+        amount = int(m.group(1))
+        unit = m.group(2).lower()
+
+        if unit == "s":
+            return amount
+        if unit == "m":
+            return amount * 60
+        if unit == "h":
+            return amount * 3600
+
+        return None
 
     def _run(self) -> None:
-        """
-        Main monitoring loop executed in the background thread.
-
-        The loop iterates until ``self._stop_event`` is set.  For each
-        ``:last_used`` key found, it determines whether the associated model
-        has been idle for longer than ``idle_time_seconds`` and whether its
-        host is free.  If both conditions are met, the configured
-        ``send_prompt_callback`` is invoked and the ``last_used`` timestamp is
-        refreshed to avoid sending duplicate prompts.
-        """
         while not self._stop_event.is_set():
             try:
-                # Find all keys with the ':last_used' suffix
-                pattern = "*:last_used"
-                for key in self.redis_client.scan_iter(match=pattern):
-                    model_name = key.rsplit(":", 1)[0]
+                now = int(time.time())
 
-                    ts_raw = self.redis_client.get(key)
-                    self.logger.debug(
-                        f"[idle-monitor] {model_name} last used timestamp: {ts_raw}"
+                # providers whose next_wakeup <= now
+                due = self.redis_client.zrangebyscore(
+                    self._next_wakeup_zset_key(),
+                    min=0,
+                    max=now,
+                )
+
+                for raw_member in due:
+                    member = self._decode_redis(raw_member)
+                    if not member or "|" not in member:
+                        continue
+
+                    model_name, host = self._split_member(member)
+                    provider_key = self._provider_hash_key(model_name, host)
+
+                    keep_alive_seconds_raw = self.redis_client.hget(
+                        provider_key, "keep_alive_seconds"
                     )
-                    if ts_raw is None:
-                        continue
+                    keep_alive_seconds_txt = (
+                        self._decode_redis(keep_alive_seconds_raw) or "0"
+                    )
+
                     try:
-                        last_ts = int(ts_raw)
+                        keep_alive_seconds = int(keep_alive_seconds_txt)
                     except (ValueError, TypeError):
+                        keep_alive_seconds = 0
+
+                    if keep_alive_seconds <= 0:
+                        self.redis_client.zrem(self._next_wakeup_zset_key(), member)
                         continue
 
-                    idle_seconds = int(time.time()) - last_ts
-                    if idle_seconds < self.idle_time_seconds:
-                        self.logger.debug(
-                            f"[idle-monitor] {model_name} idle_seconds: {idle_seconds}"
-                        )
-                        continue
-
-                    host_key = key.replace(":last_used", ":last_host")
-                    host_raw = self.redis_client.get(host_key)
-                    if not host_raw:
-                        continue
-                    host = host_raw.strip()
-                    self.logger.debug(f"[idle-monitor] {model_name} host: {host}")
+                    print(
+                        member,
+                        "model_name=",
+                        model_name,
+                        "host=",
+                        host,
+                        "keep_alive_seconds====>",
+                        keep_alive_seconds,
+                    )
 
                     if not self._is_host_free(host, model_name):
-                        self.logger.debug(
-                            f"[idle-monitor]  {model_name} host: {host} is not free"
+                        # host busy => try again later (do not spam)
+                        next_wakeup = now + keep_alive_seconds
+                        self.redis_client.zadd(
+                            self._next_wakeup_zset_key(), {member: next_wakeup}
                         )
                         continue
 
-                    # Log that the host is free and we will send a prompt
-                    host_str = (
-                        host.decode("utf-8", errors="ignore")
-                        if isinstance(host, (bytes, bytearray))
-                        else str(host)
-                    )
                     self.logger.debug(
-                        f"[idle-monitor] host '{host_str}' is free for model "
-                        f"'{model_name}' – raising prompt"
+                        "[keep-alive] due provider model=%s host=%s -> sending prompt",
+                        model_name,
+                        host,
                     )
-
-                    # ---- send keep‑alive prompt ----
-                    prompt = "W odpowiedzi wybierz tylko 1 lub 2"
                     self._send_prompt(
-                        model_name=model_name, prompt=prompt, host=host
+                        model_name=model_name, prompt=self._prompt, host=host
                     )
 
-                    # Log that we have sent the keep‑alive prompt
-                    self.logger.debug(
-                        f"[idle-monitor] keep‑alive prompt sent to model "
-                        f"{model_name} on host '{host_str}'"
+                    # schedule next wakeup
+                    next_wakeup = int(time.time()) + keep_alive_seconds
+                    self.redis_client.zadd(
+                        self._next_wakeup_zset_key(), {member: next_wakeup}
                     )
 
-                    # ---- update timestamp to avoid spamming ----
-                    # ``key`` may be bytes; ensure we write back using a string key
-                    ts_key = (
-                        key.decode("utf-8")
-                        if isinstance(key, (bytes, bytearray))
-                        else key
-                    )
-                    self.redis_client.set(ts_key, int(time.time()))
             except Exception as exc:
-                # pragma: no cover – rarely occurs
-                self.logger.exception(f"KeepAliveMonitor error: {exc}")
+                self.logger.exception("KeepAliveMonitor error: %s", exc)
 
             time.sleep(self.check_interval)

@@ -5,6 +5,7 @@ import requests
 from typing import List, Dict, Optional, Any, Callable
 
 from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
+from llm_router_api.core.monitor.keep_alive import KeepAlive
 from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
 
@@ -26,8 +27,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         check_interval: float = 0.1,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
-        idle_time_seconds: int = 600,
-        idle_monitor_check_interval: float = 30,
+        keep_alive_monitor_check_interval: float = 1.0,
     ) -> None:
         super().__init__(
             models_config_path=models_config_path,
@@ -44,16 +44,24 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             self._clear_buffer()
 
         # Initialize and start the idle monitor
+        self._keep_alive = KeepAlive(
+            models_configs=self._api_model_config.models_configs,
+            logger=self.logger,
+        )
+
+        # 2) Monitor = harmonogram + Redis + warunek "czy host wolny"
         self.keep_alive_monitor = KeepAliveMonitor(
             redis_client=self.redis_client,
-            idle_time_seconds=idle_time_seconds,
-            check_interval=idle_monitor_check_interval,
+            check_interval=keep_alive_monitor_check_interval,
             logger=self.logger,
-            send_prompt_callback=self._send_keepalive_prompt,
-            get_last_host_key=self._last_host_key,
-            get_last_used_key=self._last_used_key,
+            send_prompt_callback=lambda model_name, prompt, host: self._keep_alive.send(
+                model_name=model_name,
+                host=host,
+                prompt=prompt,
+            ),
             is_host_free_callback=self._is_host_free,
             clear_buffers=clear_buffers,
+            redis_prefix="keepalive",
         )
         self.keep_alive_monitor.start()
 
@@ -202,9 +210,18 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         """Check if a host is free for a given model."""
         occ_key = self._host_occupancy_key(host)
         current_model = self._decode_redis(self.redis_client.hget(occ_key, "model"))
-        model_name = model_name.split(":")[-1]
+        # model_name = model_name.split(":")[-1]
         if current_model:
             current_model = self._host_key(current_model).replace("host:", "")
+
+        print(
+            "_is_host_free             current_model=",
+            current_model,
+            "model_name=",
+            model_name,
+        )
+
+        self._keep_alive
         return not current_model or current_model == model_name
 
     def _send_keepalive_prompt(
@@ -368,8 +385,13 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         occ_key = self._host_occupancy_key(host)
         self.redis_client.hset(occ_key, "model", model_name)
 
-        # 4. Record the time of this usage – required by KeepAliveMonitor.
-        self.redis_client.set(self._last_used_key(model_name), int(time.time()))
+        # 4. KeepAlive state is now owned by KeepAliveMonitor.
+        keep_alive_value = provider.get("keep_alive")
+        self.keep_alive_monitor.record_usage(
+            model_name=model_name,
+            host=host,
+            keep_alive=keep_alive_value,
+        )
 
     # -----------------------------------------------------------------
     # Buffer cleanup
