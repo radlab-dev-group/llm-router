@@ -1,3 +1,12 @@
+"""
+Provider monitoring module.
+
+Implements a background thread that periodically checks the health of each
+registered LLM provider and records its availability in Redis.  The module
+offers a thin wrapper class :class:`ProviderMonitorWrapper` that isolates the
+application code from the concrete Redis implementation.
+"""
+
 import json
 import logging
 import requests
@@ -15,12 +24,13 @@ except ImportError:
 
 class RedisProviderMonitor:
     """
-    Background thread that periodically checks the health of each known
-    provider and stores its availability in Redis.
+    Background thread that periodically checks the health of each known provider
+    and stores its availability in Redis.
 
-    For each model a separate Redis hash ``availability:<model_name>`` is
+    For every model a separate Redis hash ``availability:<model_name>`` is
     maintained where each field is the provider ``id`` and the value is
-    ``'true'`` (available) or ``'false'`` (unreachable).
+    ``'true'`` (available) or ``'false'`` (unreachable).  The monitor runs
+    continuously until :meth:`stop` is called.
     """
 
     def __init__(
@@ -30,10 +40,25 @@ class RedisProviderMonitor:
         clear_buffers: bool = False,
         logger: Optional[logging.Logger] = None,
     ) -> None:
+        """
+        Initialize the monitor and start its background thread.
+
+        Parameters
+        ----------
+        redis_client : redis.Redis
+            Connected Redis client used for storing provider status.
+        check_interval : float, optional
+            Seconds between successive health‑check cycles (default: 30).
+        clear_buffers : bool, optional
+            If ``True``, remove all existing monitoring keys from Redis on
+            start.
+        logger : logging.Logger, optional
+            Logger instance; if omitted, a module‑level logger is created.
+        """
         if not REDIS_IS_AVAILABLE:
             raise RuntimeError("Redis is not available. Please install it first.")
 
-        self.logger = logger
+        self.logger = logger or logging.getLogger(__name__)
 
         self._redis_client = redis_client
         if clear_buffers:
@@ -46,19 +71,34 @@ class RedisProviderMonitor:
 
     @property
     def check_interval(self):
+        """Return the current health‑check interval in seconds."""
         return self._check_interval
 
     def stop(self) -> None:
-        """Signal the background thread to stop and wait for it to finish."""
+        """
+        Signal the background thread to stop and wait for it to finish.
+
+        The method sets an internal event and joins the thread with a short
+        timeout to ensure a clean shutdown.
+        """
         self._stop_event.set()
         self._thread.join(timeout=1)
 
     def add_providers(self, model_name: str, providers: List[Dict]) -> None:
         """
-        Register providers for a model. Called once per model (the first
-        time :meth:`FirstAvailableStrategy.get_provider` is invoked).
-        Stores the providers list in Redis for monitoring and checks their
-        status immediately.
+        Register providers for a model.
+
+        Called once per model (the first time
+        :meth:`FirstAvailableStrategy.get_provider` is invoked).  The method
+        stores the providers list in Redis for monitoring and performs an
+        immediate health‑check for each provider.
+
+        Parameters
+        ----------
+        model_name : str
+            Name of the model to which the providers belong.
+        providers : List[Dict]
+            List of provider configuration dictionaries.
         """
         providers_key = self._monitor_model_key(model_name=model_name)
         if self._redis_client.exists(providers_key):
@@ -109,7 +149,7 @@ class RedisProviderMonitor:
             except Exception:
                 availability = {}
 
-            # Keep only providers whose status is 'true' (or missing → assume unavailable)
+            # Keep only providers whose status is 'true'
             providers = [
                 p
                 for p in providers
@@ -120,16 +160,27 @@ class RedisProviderMonitor:
 
     @staticmethod
     def _monitor_key():
+        """Base Redis key used for storing provider sets."""
         return "monitor:providers"
 
     def _monitor_model_key(self, model_name: str):
+        """Redis key for the set of providers belonging to *model_name*."""
         return f"{self._monitor_key()}:{model_name}"
 
     @staticmethod
     def _availability_key():
+        """Base Redis key used for availability hashes."""
         return "availability"
 
     def _run(self) -> None:
+        """
+        Background loop that periodically checks provider health.
+
+        The loop iterates over all registered model keys, loads the associated
+        providers, performs health checks via :meth:`_check_and_update_status`,
+        and then sleeps for ``self._check_interval`` seconds.  Any unexpected
+        exception is logged but does not terminate the thread.
+        """
         while not self._stop_event.is_set():
             try:
                 keys = self._redis_client.keys(f"{self._monitor_key()}:*")
@@ -154,7 +205,7 @@ class RedisProviderMonitor:
                     # Use the shared helper to perform the health‑check
                     self._check_and_update_status(provider, avail_key)
 
-            self._stop_event.wait(self._check_interval)
+                self._stop_event.wait(self._check_interval)
 
     def _clear_buffers(self) -> None:
         """
@@ -186,9 +237,9 @@ class RedisProviderMonitor:
 
         Parameters
         ----------
-        provider: Dict
+        provider : dict
             Provider definition containing at least ``id`` and ``api_host``.
-        avail_key: str
+        avail_key : str
             Redis hash key where the status should be stored
             (e.g. ``availability:<model_name>``).
         """
@@ -217,50 +268,3 @@ class RedisProviderMonitor:
             self._redis_client.hset(avail_key, provider_id, status)
         except Exception:
             pass
-
-
-# --------------------------------------------------------------------------- #
-# Wrapper around the existing RedisProviderMonitor
-# --------------------------------------------------------------------------- #
-class ProviderMonitorWrapper:
-    """
-    Thin wrapper around: class:`RedisProviderMonitor`
-    that isolates the strategy from the concrete monitor implementation.
-    """
-
-    def __init__(
-        self,
-        redis_client: redis.Redis,
-        check_interval: int = 30,
-        clear_buffers: bool = True,
-        logger: Optional[logging.Logger] = None,
-    ) -> None:
-        self._monitor = RedisProviderMonitor(
-            redis_client=redis_client,
-            check_interval=check_interval,
-            clear_buffers=clear_buffers,
-            logger=logger,
-        )
-
-    # ------------------------------------------------------------------- #
-    # Delegated methods
-    # ------------------------------------------------------------------- #
-    def add_providers(self, model_name: str, providers: List[Dict]) -> None:
-        """Register a list of providers for a given model."""
-        self._monitor.add_providers(model_name, providers)
-
-    def get_providers(
-        self, model_name: str, only_active: bool = False
-    ) -> List[Dict]:
-        """
-        Retrieve the provider list for *model_name*.
-
-        Parameters
-        ----------
-        only_active:
-            If ``True`` return only providers that are currently considered
-            healthy/active by the monitor.
-        """
-        return self._monitor.get_providers(
-            model_name=model_name, only_active=only_active
-        )
