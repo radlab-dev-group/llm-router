@@ -1,5 +1,4 @@
 import logging
-import requests
 
 from typing import List, Dict, Optional, Any, Callable
 
@@ -7,6 +6,7 @@ from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
 from llm_router_api.core.keep_alive import KeepAlive
 from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
+from llm_router_api.core.utils import StrategyHelpers
 
 
 class FirstAvailableOptimStrategy(FirstAvailableStrategy):
@@ -126,32 +126,6 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     # -----------------------------------------------------------------
     # Helper utilities
     # -----------------------------------------------------------------
-    def _decode_redis(self, value):
-        """Convert a Redis return value (bytes/bytearray/None) to a string or ``None``."""
-        if value is None:
-            return None
-        if isinstance(value, (bytes, bytearray)):
-            return value.decode("utf-8", errors="ignore")
-        return str(value)
-
-    def _normalize_model_name(self, name: Optional[str]) -> str:
-        """
-        Canonical model name used for comparisons/storage:
-        strips routing prefixes like 'model:' / 'host:' and trims whitespace.
-        """
-        if not name:
-            return ""
-        s = str(name).strip()
-        if s.startswith("model:"):
-            s = s[len("model:") :]
-        if s.startswith("host:"):
-            s = s[len("host:") :]
-        return s.strip()
-
-    def _host_from_provider(self, provider: Dict) -> Optional[str]:
-        """Extract the host identifier from a provider configuration."""
-        return provider.get("api_host") or provider.get("host")
-
     def _last_host_key(self, model_name: str) -> str:
         """Redis key that stores the last host used for a given model."""
         return f"{self._get_redis_key(model_name)}:last_host"
@@ -200,7 +174,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         provider that can be successfully acquired.
         """
         for provider in providers:
-            host = self._host_from_provider(provider)
+            host = StrategyHelpers.host_from_provider(provider)
             if not host:
                 continue
             if not host_predicate(host):
@@ -218,12 +192,12 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     def _is_host_free(self, host: str, model_name: str) -> bool:
         """Check if a host is free for a given model."""
         occ_key = self._host_occupancy_key(host)
-        current_model_raw = self._decode_redis(
+        current_model_raw = StrategyHelpers.decode_redis(
             self.redis_client.hget(occ_key, "model")
         )
 
-        current_model = self._normalize_model_name(current_model_raw)
-        requested_model = self._normalize_model_name(model_name)
+        current_model = StrategyHelpers.normalize_model_name(current_model_raw)
+        requested_model = StrategyHelpers.normalize_model_name(model_name)
 
         self.logger.debug(
             "[keep-alive] _is_host_free current_model=%r requested_model=%r host=%s",
@@ -241,7 +215,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         self, model_name: str, providers: List[Dict]
     ) -> Optional[Dict]:
         """Try to acquire a provider on the host that was used the last time this model was selected."""
-        last_host = self._decode_redis(
+        last_host = StrategyHelpers.decode_redis(
             self.redis_client.get(self._last_host_key(model_name))
         )
         if not last_host:
@@ -268,7 +242,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         host_bytes = self.redis_client.smembers(hosts_key)
         if not host_bytes:
             return None
-        known_hosts = {self._decode_redis(b) for b in host_bytes}
+        known_hosts = {StrategyHelpers.decode_redis(b) for b in host_bytes}
 
         return self._select_provider(
             model_name,
@@ -286,7 +260,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         known_hosts_key = self._model_hosts_set_key(model_name)
         known_hosts_bytes = self.redis_client.smembers(known_hosts_key)
         known_hosts = (
-            {self._decode_redis(b) for b in known_hosts_bytes}
+            {StrategyHelpers.decode_redis(b) for b in known_hosts_bytes}
             if known_hosts_bytes
             else set()
         )
@@ -302,7 +276,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     # -----------------------------------------------------------------
     def _record_selection(self, model_name: str, provider: Dict) -> None:
         """Store the chosen host as the *last host* and update bookkeeping structures."""
-        host = self._host_from_provider(provider)
+        host = StrategyHelpers.host_from_provider(provider)
         if not host:
             return
 
@@ -315,7 +289,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         # 3. Mark the host as occupied by this model.
         occ_key = self._host_occupancy_key(host)
         self.redis_client.hset(
-            occ_key, "model", self._normalize_model_name(model_name)
+            occ_key, "model", StrategyHelpers.normalize_model_name(model_name)
         )
 
         # 4. KeepAlive state is now owned by KeepAliveMonitor.
