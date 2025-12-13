@@ -166,6 +166,17 @@ The current list of available strategies, the interface description,
 and an example extension can be found at the link
 [load balancing strategies](LB_STRATEGIES.md#load-balancing-strategies)
 
+---
+
+## Keep‑Alive Mechanism
+
+The keep‑alive subsystem periodically pings model endpoints to keep them warm, reducing latency for the first request
+after idle periods. Configuration is driven by the `keep_alive` field in the provider definition
+(see [KEEPALIVE.md](KEEPALIVE.md)). Strategies that select providers can register usage with the `KeepAliveMonitor`,
+which handles scheduling and background execution.
+
+For details on how to enable and configure keep‑alive, refer to the dedicated documentation:
+[Keep‑Alive Overview](KEEPALIVE.md)
 
 ---
 
