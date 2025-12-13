@@ -40,10 +40,10 @@ from llm_router_api.base.constants import (
     REDIS_PASSWORD,
     REDIS_DB,
 )
-from llm_router_api.core.lb.redis_based_interface import RedisBasedStrategyInterface
+from llm_router_api.core.lb.redis_based_interface import RedisBasedStrategy
 
 
-class FirstAvailableStrategy(RedisBasedStrategyInterface):
+class FirstAvailableStrategy(RedisBasedStrategy):
     """
     Strategy that selects the first free provider for a model using Redis.
 
@@ -65,7 +65,7 @@ class FirstAvailableStrategy(RedisBasedStrategyInterface):
         redis_port: int = REDIS_PORT,
         redis_db: int = REDIS_DB,
         timeout: int = 60,
-        check_interval: float = 0.1,
+        monitor_check_interval: float = 10,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
         strategy_prefix: Optional[str] = None,
@@ -86,9 +86,9 @@ class FirstAvailableStrategy(RedisBasedStrategyInterface):
         timeout : int, optional
             Maximum time (in seconds) to wait for an available provider.
             Default is ``60``.
-        check_interval : float, optional
+        monitor_check_interval : float, optional
             Time to sleep between checks for available providers (in seconds).
-            Default is ``0.1``.
+            Default is ``10``.
         clear_buffers:
             Whether to clear all buffers when starting. Default is ``True``.
         """
@@ -98,12 +98,13 @@ class FirstAvailableStrategy(RedisBasedStrategyInterface):
             redis_password=redis_password,
             redis_port=redis_port,
             redis_db=redis_db,
-            timeout=timeout,
-            check_interval=check_interval,
+            monitor_check_interval=monitor_check_interval,
             clear_buffers=clear_buffers,
             logger=logger,
             strategy_prefix=strategy_prefix or "fa_",
         )
+
+        self.timeout = timeout
 
     def get_provider(
         self,
@@ -174,7 +175,7 @@ class FirstAvailableStrategy(RedisBasedStrategyInterface):
             if provider:
                 return provider
 
-            time.sleep(self.check_interval)
+            time.sleep(self.redis_health_check.check_interval)
 
     def put_provider(
         self,

@@ -33,6 +33,8 @@ class ApiModel:
         Maximum supported input size for the model.
     model_path : str
         Optional path to model (in case when local model is used)
+    keep_alive : str
+        Optional keep alive (time in s or m or h) model
     """
 
     id: str
@@ -42,6 +44,7 @@ class ApiModel:
     api_token: str
     input_size: int
     model_path: Optional[str] = None
+    keep_alive: Optional[str] = None
 
     @staticmethod
     def from_config(name: str, cfg: Dict) -> "ApiModel":
@@ -74,6 +77,7 @@ class ApiModel:
             api_token=str(cfg.get("api_token", "")),
             input_size=int(cfg.get("input_size", 0)),
             model_path=str(cfg.get("model_path", "")),
+            keep_alive=str(cfg.get("keep_alive", "")),
         )
 
     def as_dict(self) -> Dict[str, Any]:
@@ -85,6 +89,7 @@ class ApiModel:
             "api_token": self.api_token,
             "input_size": self.input_size,
             "model_path": self.model_path,
+            "keep_alive": self.keep_alive,
         }
 
 

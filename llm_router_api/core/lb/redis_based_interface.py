@@ -30,15 +30,11 @@ from llm_router_api.base.constants import (
     REDIS_DB,
     REDIS_PASSWORD,
 )
+from llm_router_api.core.monitor.provider_monitor import RedisProviderMonitor
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
-from llm_router_api.core.monitor.redis_health_interface import (
-    RedisBasedHealthCheckInterface,
-)
 
 
-class RedisBasedStrategyInterface(
-    ChooseProviderStrategyI, RedisBasedHealthCheckInterface, ABC
-):
+class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
     """
     Strategy that selects the first free provider for a model using Redis.
 
@@ -70,9 +66,7 @@ class RedisBasedStrategyInterface(
         redis_password: str = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
         redis_db: int = REDIS_DB,
-        timeout: int = 60,
-        check_interval: float = 0.1,
-        monitor_check_interval: float = 30,
+        monitor_check_interval: float = 15,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
         strategy_prefix: Optional[str] = "",
@@ -90,16 +84,10 @@ class RedisBasedStrategyInterface(
             Redis server port. Default is ``6379``.
         redis_db : int, optional
             Redis database number. Default is ``0``.
-        timeout : int, optional
-            Maximum time (in seconds) to wait for an available provider.
-            Default is ``60``.
-        check_interval : float, optional
-            Time to sleep between checks for available providers (in seconds).
-            Default is ``0.1``.
         monitor_check_interval : float, optional
             Time to sleep [in monitor module] between checks
             for available providers (in seconds).
-            Default is ``0.1``.
+            Default is ``15``.
         clear_buffers:
             Whether to clear all buffers when starting. Default is ``True``.
         """
@@ -107,19 +95,21 @@ class RedisBasedStrategyInterface(
             self=self, models_config_path=models_config_path, logger=logger
         )
 
-        RedisBasedHealthCheckInterface.__init__(
-            self=self,
-            redis_host=redis_host,
-            redis_port=redis_port,
-            redis_db=redis_db,
-            redis_password=redis_password,
+        self.redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            decode_responses=True,
+            password=redis_password,
+        )
+
+        self.redis_health_check = RedisProviderMonitor(
+            redis_client=self.redis_client,
             clear_buffers=clear_buffers,
             logger=logger,
             check_interval=monitor_check_interval,
         )
 
-        self.timeout = timeout
-        self.check_interval = check_interval
         self.strategy_prefix = strategy_prefix
 
         # Atomic acquire script – treat missing field as “available”
@@ -187,7 +177,7 @@ class RedisBasedStrategyInterface(
         if not providers:
             return None, False
         # Register providers for monitoring (only once per model)
-        self._monitor.add_providers(model_name, providers)
+        self.redis_health_check.add_providers(model_name, providers)
 
         redis_key = self._get_redis_key(model_name)
 
@@ -361,7 +351,7 @@ class RedisBasedStrategyInterface(
         List[Dict]
             A list containing the configuration dictionaries of active providers.
         """
-        active_providers = self._monitor.get_providers(
+        active_providers = self.redis_health_check.get_providers(
             model_name=model_name, only_active=True
         )
         return active_providers
