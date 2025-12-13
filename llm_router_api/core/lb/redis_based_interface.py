@@ -17,6 +17,8 @@ import logging
 from abc import ABC
 from typing import List, Dict, Optional, Any, Tuple
 
+from llm_router_api.core.monitor.provider_monitor import RedisProviderMonitor
+
 try:
     import redis
 
@@ -31,14 +33,9 @@ from llm_router_api.base.constants import (
     REDIS_PASSWORD,
 )
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
-from llm_router_api.core.monitor.redis_health_interface import (
-    RedisBasedHealthCheckInterface,
-)
 
 
-class RedisBasedStrategyInterface(
-    ChooseProviderStrategyI, RedisBasedHealthCheckInterface, ABC
-):
+class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
     """
     Strategy that selects the first free provider for a model using Redis.
 
@@ -99,12 +96,16 @@ class RedisBasedStrategyInterface(
             self=self, models_config_path=models_config_path, logger=logger
         )
 
-        RedisBasedHealthCheckInterface.__init__(
-            self=self,
-            redis_host=redis_host,
-            redis_port=redis_port,
-            redis_db=redis_db,
-            redis_password=redis_password,
+        self.redis_client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            db=redis_db,
+            decode_responses=True,
+            password=redis_password,
+        )
+
+        self.redis_health_check = RedisProviderMonitor(
+            redis_client=self.redis_client,
             clear_buffers=clear_buffers,
             logger=logger,
             check_interval=monitor_check_interval,
@@ -177,7 +178,7 @@ class RedisBasedStrategyInterface(
         if not providers:
             return None, False
         # Register providers for monitoring (only once per model)
-        self._monitor.add_providers(model_name, providers)
+        self.redis_health_check.add_providers(model_name, providers)
 
         redis_key = self._get_redis_key(model_name)
 
@@ -351,7 +352,7 @@ class RedisBasedStrategyInterface(
         List[Dict]
             A list containing the configuration dictionaries of active providers.
         """
-        active_providers = self._monitor.get_providers(
+        active_providers = self.redis_health_check.get_providers(
             model_name=model_name, only_active=True
         )
         return active_providers
