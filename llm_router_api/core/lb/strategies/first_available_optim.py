@@ -1,5 +1,11 @@
-import logging
+"""
+First Available Optimisation Strategy module.
 
+Provides an optimized load‑balancing strategy that reuses previously selected
+hosts when possible, reducing latency and improving cache utilisation.
+"""
+
+import logging
 from typing import List, Dict, Optional, Any, Callable
 
 from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
@@ -14,6 +20,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     Optimized version of :class:`FirstAvailableStrategy` that tries to reuse
     the previously used host for a model before falling back to the generic
     first‑available logic.
+
+    This strategy tracks host usage in Redis and prefers hosts that already
+    have the requested model loaded, aiming to minimise model loading time.
     """
 
     def __init__(
@@ -28,6 +37,30 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         logger: Optional[logging.Logger] = None,
         keep_alive_monitor_check_interval: float = 1.0,
     ) -> None:
+        """
+        Initialise the optimized first‑available strategy.
+
+        Parameters
+        ----------
+        models_config_path: str
+            Path to the models configuration file.
+        redis_host: str, optional
+            Hostname of the Redis server (default from :data:`REDIS_HOST`).
+        redis_port: int, optional
+            Port of the Redis server (default from :data:`REDIS_PORT`).
+        redis_db: int, optional
+            Redis database index to use.
+        timeout: int, optional
+            Request timeout in seconds.
+        monitor_check_interval: float, optional
+            Interval (seconds) between keep‑alive monitor checks.
+        clear_buffers: bool, optional
+            If ``True``, clear optimisation‑related Redis keys on start.
+        logger: logging.Logger, optional
+            Logger instance to use; a default logger is created if omitted.
+        keep_alive_monitor_check_interval: float, optional
+            Interval (seconds) for the internal keep‑alive monitor thread.
+        """
         super().__init__(
             models_config_path=models_config_path,
             redis_host=redis_host,
@@ -48,7 +81,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             logger=self.logger,
         )
 
-        # 2) Monitor = harmonogram + Redis + warunek "czy host wolny"
+        # Monitor = schedule + Redis + condition "whether host is free"
         self.keep_alive_monitor = KeepAliveMonitor(
             redis_client=self.redis_client,
             check_interval=keep_alive_monitor_check_interval,
@@ -69,7 +102,31 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
     ) -> Dict | None:
-        """Execute the optimisation steps before falling back to the base implementation."""
+        """
+        Choose a provider for *model_name* using the optimization steps.
+
+        The method attempts three optimization steps before falling back to the
+        base implementation:
+
+        1. Reuse the last host that served the model.
+        2. Reuse any host that already has the model loaded.
+        3. Pick a host that does not yet have the model.
+
+        Parameters
+        ----------
+        model_name: str
+            Name of the model to obtain a provider for.
+        providers: List[Dict]
+            List of candidate provider dictionaries.
+        options: dict, optional
+            Additional options that may influence provider selection.
+
+        Returns
+        -------
+        dict | None
+            The selected provider dictionary, or ``None`` if no provider
+            could be chosen.
+        """
         if not providers:
             return None
 
@@ -120,7 +177,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         return provider
 
     def stop_idle_monitor(self) -> None:
-        """Stop the idle monitor thread."""
+        """
+        Stop the idle monitor thread that checks host availability.
+        """
         self.keep_alive_monitor.stop()
 
     # -----------------------------------------------------------------
@@ -145,8 +204,22 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     def _try_acquire(self, model_name: str, provider: Dict) -> Optional[Dict]:
         """
         Attempt to acquire the provider for *model_name* using the Lua script.
+
         On success, the provider dict is enriched with ``__chosen_field`` and
         returned; otherwise ``None`` is returned.
+
+        Parameters
+        ----------
+        model_name: str
+            The model for which the provider is being acquired.
+        provider: dict
+            Provider description dictionary.
+
+        Returns
+        -------
+        dict | None
+            The enriched provider dictionary if acquisition succeeded,
+            otherwise ``None``.
         """
         field = self._provider_field(provider)
         try:
@@ -170,8 +243,23 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     ) -> Optional[Dict]:
         """
         Iterate over *providers*, keep only those whose host satisfies
-        ``host_predicate`` **and** is free for *model_name*.  Return the first
+        ``host_predicate`` **and** is free for *model_name*. Return the first
         provider that can be successfully acquired.
+
+        Parameters
+        ----------
+        model_name: str
+            Model name for which a provider is required.
+        providers: List[Dict]
+            Candidate providers.
+        host_predicate: Callable[[str], bool]
+            Function that returns ``True`` for acceptable hosts.
+
+        Returns
+        -------
+        dict | None
+            The first successfully acquired provider, or ``None`` if none
+            could be acquired.
         """
         for provider in providers:
             host = StrategyHelpers.host_from_provider(provider)
@@ -190,7 +278,25 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     # Occupancy check – now decodes the stored model name
     # -----------------------------------------------------------------
     def _is_host_free(self, host: str, model_name: str) -> bool:
-        """Check if a host is free for a given model."""
+        """
+        Check if a host is free for a given model.
+
+        The method reads the current model occupying the host from Redis,
+        normalizes both the stored and requested model names, and compares them.
+
+        Parameters
+        ----------
+        host: str
+            Host identifier.
+        model_name: str
+            Requested model name.
+
+        Returns
+        -------
+        bool
+            ``True`` if the host is either free or already occupied by the same
+            model, ``False`` otherwise.
+        """
         occ_key = self._host_occupancy_key(host)
         current_model_raw = StrategyHelpers.decode_redis(
             self.redis_client.hget(occ_key, "model")
@@ -214,7 +320,22 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     def _step1_last_host(
         self, model_name: str, providers: List[Dict]
     ) -> Optional[Dict]:
-        """Try to acquire a provider on the host that was used the last time this model was selected."""
+        """
+        Try to acquire a provider on the host that was used the last time this
+        model was selected.
+
+        Parameters
+        ----------
+        model_name: str
+            Model name.
+        providers: List[Dict]
+            Candidate providers.
+
+        Returns
+        -------
+        dict | None
+            Provider from the last host if it is free, otherwise ``None``.
+        """
         last_host = StrategyHelpers.decode_redis(
             self.redis_client.get(self._last_host_key(model_name))
         )
@@ -237,7 +358,22 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     def _step2_existing_hosts(
         self, model_name: str, providers: List[Dict]
     ) -> Optional[Dict]:
-        """Look for hosts that already have *model_name* loaded and try to acquire a free provider."""
+        """
+        Look for hosts that already have *model_name* loaded and try to acquire
+        a free provider.
+
+        Parameters
+        ----------
+        model_name: str
+            Model name.
+        providers: List[Dict]
+            Candidate providers.
+
+        Returns
+        -------
+        dict | None
+            Provider from a known host if one is free, otherwise ``None``.
+        """
         hosts_key = self._model_hosts_set_key(model_name)
         host_bytes = self.redis_client.smembers(hosts_key)
         if not host_bytes:
@@ -256,7 +392,22 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     def _step3_unused_host(
         self, model_name: str, providers: List[Dict]
     ) -> Optional[Dict]:
-        """Find a host that does **not** already run ``model_name`` and acquire a provider on it."""
+        """
+        Find a host that does **not** already run ``model_name`` and acquire a
+        provider on it.
+
+        Parameters
+        ----------
+        model_name: str
+            Model name.
+        providers: List[Dict]
+            Candidate providers.
+
+        Returns
+        -------
+        dict | None
+            Provider from an unused host if one is free, otherwise ``None``.
+        """
         known_hosts_key = self._model_hosts_set_key(model_name)
         known_hosts_bytes = self.redis_client.smembers(known_hosts_key)
         known_hosts = (
@@ -275,7 +426,17 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     # Step 5 – bookkeeping after a successful acquisition
     # -----------------------------------------------------------------
     def _record_selection(self, model_name: str, provider: Dict) -> None:
-        """Store the chosen host as the *last host* and update bookkeeping structures."""
+        """
+        Store the chosen host as the *last host* and update bookkeeping
+        structures.
+
+        Parameters
+        ----------
+        model_name: str
+            Model name that was selected.
+        provider: dict
+            Provider dictionary that was selected.
+        """
         host = StrategyHelpers.host_from_provider(provider)
         if not host:
             return
@@ -304,7 +465,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     # Buffer cleanup
     # -----------------------------------------------------------------
     def _clear_buffer(self) -> None:
-        """Remove all Redis keys used by this optimisation strategy."""
+        """
+        Remove all Redis keys used by this optimization strategy.
+        """
         suffixes = (":last_host", ":hosts", ":occupancy")
         for suffix in suffixes:
             for key in self.redis_client.scan_iter(match=f"*{suffix}"):
