@@ -1,8 +1,8 @@
 """
-First Available Optimisation Strategy module.
+First Available Optimization Strategy module.
 
 Provides an optimized load‑balancing strategy that reuses previously selected
-hosts when possible, reducing latency and improving cache utilisation.
+hosts when possible, reducing latency and improving cache utilization.
 """
 
 import logging
