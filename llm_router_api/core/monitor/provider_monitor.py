@@ -8,7 +8,6 @@ application code from the concrete Redis implementation.
 """
 
 import json
-import time
 import logging
 import requests
 import threading
@@ -201,14 +200,14 @@ class RedisProviderMonitor:
                     providers_json = self._redis_client.smembers(providers_key)
                     providers = [json.loads(p) for p in providers_json]
                 except Exception as e:
+                    self.logger.error(e)
                     continue
 
                 for provider in providers:
                     # Use the shared helper to perform the health‑check
                     self._check_and_update_status(provider, avail_key)
 
-                self._stop_event.wait(self._check_interval)
-            time.sleep(self._check_interval)
+            self._stop_event.wait(self._check_interval)
 
     def _clear_buffers(self) -> None:
         """
