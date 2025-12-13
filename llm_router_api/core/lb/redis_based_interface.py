@@ -70,9 +70,7 @@ class RedisBasedStrategyInterface(
         redis_password: str = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
         redis_db: int = REDIS_DB,
-        timeout: int = 60,
-        check_interval: float = 0.1,
-        monitor_check_interval: float = 30,
+        monitor_check_interval: float = 15,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
         strategy_prefix: Optional[str] = "",
@@ -90,16 +88,10 @@ class RedisBasedStrategyInterface(
             Redis server port. Default is ``6379``.
         redis_db : int, optional
             Redis database number. Default is ``0``.
-        timeout : int, optional
-            Maximum time (in seconds) to wait for an available provider.
-            Default is ``60``.
-        check_interval : float, optional
-            Time to sleep between checks for available providers (in seconds).
-            Default is ``0.1``.
         monitor_check_interval : float, optional
             Time to sleep [in monitor module] between checks
             for available providers (in seconds).
-            Default is ``0.1``.
+            Default is ``15``.
         clear_buffers:
             Whether to clear all buffers when starting. Default is ``True``.
         """
@@ -118,8 +110,6 @@ class RedisBasedStrategyInterface(
             check_interval=monitor_check_interval,
         )
 
-        self.timeout = timeout
-        self.check_interval = check_interval
         self.strategy_prefix = strategy_prefix
 
         # Atomic acquire script – treat missing field as “available”
