@@ -40,10 +40,10 @@ from llm_router_api.base.constants import (
     REDIS_PASSWORD,
     REDIS_DB,
 )
-from llm_router_api.core.lb.redis_based_interface import RedisBasedStrategyInterface
+from llm_router_api.core.lb.redis_based_interface import RedisBasedStrategy
 
 
-class FirstAvailableStrategy(RedisBasedStrategyInterface):
+class FirstAvailableStrategy(RedisBasedStrategy):
     """
     Strategy that selects the first free provider for a model using Redis.
 
