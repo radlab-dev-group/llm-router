@@ -22,7 +22,7 @@ class KeepAlive:
         self,
         models_configs: Dict[str, Any],
         logger: Optional[logging.Logger] = None,
-        prompt: str = "W odpowiedzi wybierz tylko 1 lub 2",
+        prompt: str = "Send an empty message.",
         max_tokens: int = 56,
         temperature: float = 0.0,
     ) -> None:
@@ -39,9 +39,8 @@ class KeepAlive:
         provider, api_model_name = self._find_provider(req.model_name, req.host)
         if not provider:
             self._logger.error(
-                "KeepAlive: provider not found for model=%s host=%s",
-                req.model_name,
-                req.host,
+                f"[keep-alive] provider not found for "
+                f"model={req.model_name} host={req.host}",
             )
             return
 
@@ -64,9 +63,8 @@ class KeepAlive:
         endpoint = self._endpoint_for(api_type, api_host)
         if not endpoint:
             self._logger.warning(
-                "KeepAlive: unsupported api_type=%s (model=%s)",
-                api_type,
-                req.model_name,
+                f"[keep-alive] unsupported "
+                f"api_type={api_type} (model={req.model_name})"
             )
             return
 
@@ -74,14 +72,12 @@ class KeepAlive:
             response = requests.post(endpoint, json=payload, headers=headers)
             response.raise_for_status()
             self._logger.debug(
-                "KeepAlive: response model=%s api_type=%s status=%s",
-                req.model_name,
-                api_type,
-                response.status_code,
+                f"[keep-alive] response model={req.model_name} "
+                f"api_type={req.model_name} status={response.status_code}",
             )
         except Exception as exc:
             self._logger.error(
-                "KeepAlive: request failed model=%s api_type=%s err=%s",
+                "[keep-alive] request failed model=%s api_type=%s err=%s",
                 req.model_name,
                 api_type,
                 exc,
@@ -90,13 +86,12 @@ class KeepAlive:
             return
 
         self._logger.info(
-            "Sending keep-alive prompt to %s model=%s host=%s",
-            api_type,
-            req.model_name,
-            req.host,
+            f"[keep-alive] Sending prompt to {api_type} "
+            f"model={req.model_name} host={req.host}"
         )
 
-    def _endpoint_for(self, api_type: str, api_host: str) -> Optional[str]:
+    @staticmethod
+    def _endpoint_for(api_type: str, api_host: str) -> Optional[str]:
         if api_type in ("vllm", "openai"):
             return f"{api_host}/v1/chat/completions"
         if api_type == "ollama":
