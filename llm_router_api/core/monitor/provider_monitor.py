@@ -8,9 +8,8 @@ application code from the concrete Redis implementation.
 """
 
 import json
-import logging
 import time
-
+import logging
 import requests
 import threading
 

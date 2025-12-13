@@ -8,11 +8,11 @@ hosts when possible, reducing latency and improving cache utilization.
 import logging
 from typing import List, Dict, Optional, Any, Callable
 
-from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
 from llm_router_api.core.keep_alive import KeepAlive
+from llm_router_api.core.utils import StrategyHelpers
+from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
 from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
-from llm_router_api.core.utils import StrategyHelpers
 
 
 class FirstAvailableOptimStrategy(FirstAvailableStrategy):

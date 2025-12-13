@@ -8,10 +8,10 @@ translated to English.
 """
 
 import logging
+import requests
+
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
-
-import requests
 
 
 @dataclass(frozen=True)
