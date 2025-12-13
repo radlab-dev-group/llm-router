@@ -1,3 +1,12 @@
+"""
+Keep‑alive utility module.
+
+Provides a small wrapper around HTTP calls that periodically ping a model
+endpoint to keep the underlying service warm.  The implementation is
+unchanged – only documentation strings and comments have been added or
+translated to English.
+"""
+
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -7,6 +16,10 @@ import requests
 
 @dataclass(frozen=True)
 class KeepAliveRequest:
+    """
+    Simple data holder for a keep‑alive request.
+    """
+
     model_name: str
     host: str
     prompt: str
@@ -14,8 +27,8 @@ class KeepAliveRequest:
 
 class KeepAlive:
     """
-    Encapsulates keep-alive logic: map (model_name, host) -> provider config,
-    then send HTTP request to the provider endpoint.
+    Encapsulates keep‑alive logic: map ``(model_name, host)`` → provider
+    configuration, then send an HTTP request to the provider endpoint.
     """
 
     def __init__(
@@ -26,6 +39,22 @@ class KeepAlive:
         max_tokens: int = 56,
         temperature: float = 0.0,
     ) -> None:
+        """
+        Initialize the keep‑alive helper.
+
+        Parameters
+        ----------
+        models_configs: dict
+            Mapping of model names to their configuration dictionaries.
+        logger: logging.Logger, optional
+            Logger instance; if omitted, a module‑level logger is created.
+        prompt: str, optional
+            Prompt sent to the model – by default a short empty message.
+        max_tokens: int, optional
+            Maximum number of tokens to request from the model.
+        temperature: float, optional
+            Sampling temperature for the request.
+        """
         self._models_configs = models_configs
         self._logger = logger or logging.getLogger(__name__)
         self._prompt = prompt
@@ -33,14 +62,31 @@ class KeepAlive:
         self._temperature = temperature
 
     def send(self, model_name: str, host: str, prompt: Optional[str] = None) -> None:
+        """
+        Send a keep‑alive request to the given *host* for *model_name*.
+
+        If the provider cannot be located, an error is logged and the method
+        returns silently.
+
+        Parameters
+        ----------
+        model_name: str
+            Name of the model.
+        host: str
+            Host address (e.g. ``http://localhost:8000``).
+        prompt: str, optional
+            Prompt to use; falls back to the default if ``None``.
+        """
         req = KeepAliveRequest(
-            model_name=model_name, host=host, prompt=prompt or self._prompt
+            model_name=model_name,
+            host=host,
+            prompt=prompt or self._prompt,
         )
         provider, api_model_name = self._find_provider(req.model_name, req.host)
         if not provider:
             self._logger.error(
-                f"[keep-alive] provider not found for "
-                f"model={req.model_name} host={req.host}",
+                f"[keep-alive] provider not found "
+                f"for model={req.model_name} host={req.host}"
             )
             return
 
@@ -92,6 +138,21 @@ class KeepAlive:
 
     @staticmethod
     def _endpoint_for(api_type: str, api_host: str) -> Optional[str]:
+        """
+        Resolve the full HTTP endpoint for a given ``api_type``.
+
+        Parameters
+        ----------
+        api_type: str
+            One of ``'vllm'``, ``'openai'``, or ``'ollama'``.
+        api_host: str
+            Base URL of the provider.
+
+        Returns
+        -------
+        str | None
+            Full endpoint URL or ``None`` if the ``api_type`` is unknown.
+        """
         if api_type in ("vllm", "openai"):
             return f"{api_host}/v1/chat/completions"
         if api_type == "ollama":
@@ -102,24 +163,41 @@ class KeepAlive:
         self, model_name: str, host: str
     ) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
         """
-        Returns: (provider_dict, api_model_name)
+        Locate the provider configuration for *model_name* on *host*.
+
+        Returns a tuple ``(provider_dict, api_model_name)`` where ``api_model_name``
+        is the name used in the provider's API (may differ from the logical model
+        name).
+
+        Parameters
+        ----------
+        model_name: str
+            Logical model name requested by the caller.
+        host: str
+            Host address to match against the provider's ``api_host`` field.
+
+        Returns
+        -------
+        (dict | None, str | None)
+            Provider configuration and the concrete API model name, or ``(None,
+            None)`` if no matching provider is found.
         """
         normalized_model = (model_name or "").replace("model:", "").strip()
 
-        # models_configs: {model_name: {..., "providers": [...]}}
+        # ``models_configs`` structure: {model_name: {..., "providers": [...]}}
         for original_model_name, cfg in (self._models_configs or {}).items():
-            # match like in current logic: compare normalized names
             normalized_cfg_name = (
                 str(original_model_name).replace("model:", "").strip()
             )
             if normalized_cfg_name != normalized_model:
                 continue
 
+            # ``cfg`` may be a dict; ensure we iterate over its providers safely
             for p in cfg.get("providers", []) if isinstance(cfg, dict) else []:
                 if p.get("api_host") == host:
                     api_model_name = p.get("model_path") or original_model_name
                     return p, api_model_name
 
+            # No matching provider for this model
             return None, None
-
         return None, None
