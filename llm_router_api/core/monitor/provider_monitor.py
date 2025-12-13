@@ -44,6 +44,10 @@ class RedisProviderMonitor:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
+    @property
+    def check_interval(self):
+        return self._check_interval
+
     def stop(self) -> None:
         """Signal the background thread to stop and wait for it to finish."""
         self._stop_event.set()
