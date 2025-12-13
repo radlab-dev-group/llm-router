@@ -17,8 +17,6 @@ import logging
 from abc import ABC
 from typing import List, Dict, Optional, Any, Tuple
 
-from llm_router_api.core.monitor.provider_monitor import RedisProviderMonitor
-
 try:
     import redis
 
@@ -32,6 +30,7 @@ from llm_router_api.base.constants import (
     REDIS_DB,
     REDIS_PASSWORD,
 )
+from llm_router_api.core.monitor.provider_monitor import RedisProviderMonitor
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
 
 
