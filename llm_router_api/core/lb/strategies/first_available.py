@@ -175,7 +175,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
             if provider:
                 return provider
 
-            time.sleep(self._monitor.check_interval)
+            time.sleep(self.redis_health_check.check_interval)
 
     def put_provider(
         self,
