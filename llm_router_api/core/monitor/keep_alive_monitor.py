@@ -5,6 +5,8 @@ import threading
 import re
 from typing import Callable, Optional
 
+from llm_router_api.core.keep_alive import KeepAlive
+
 
 class KeepAliveMonitor:
     """
@@ -17,28 +19,21 @@ class KeepAliveMonitor:
     def __init__(
         self,
         redis_client: redis.Redis,
+        keep_alive: KeepAlive,
         check_interval: float = 1.0,
         logger: Optional[logging.Logger] = None,
-        send_prompt_callback: Optional[Callable[[str, str, str], None]] = None,
         is_host_free_callback: Optional[Callable[[str, str], bool]] = None,
         clear_buffers: bool = False,
-        prompt: str = "W odpowiedzi wybierz tylko 1 lub 2",
         redis_prefix: str = "keepalive",
     ) -> None:
         self.redis_client = redis_client
+        self._keep_alive = keep_alive
+
         self.check_interval = check_interval
         self.logger = logger or logging.getLogger(__name__)
-
-        self._send_prompt = (
-            send_prompt_callback
-            if send_prompt_callback
-            else (lambda model_name, prompt, host: None)
-        )
         self._is_host_free = (
             is_host_free_callback if is_host_free_callback else (lambda h, m: False)
         )
-
-        self._prompt = prompt
         self._redis_prefix = redis_prefix
 
         if clear_buffers:
@@ -135,7 +130,7 @@ class KeepAliveMonitor:
 
         m = re.fullmatch(r"(?i)\s*(\d+)\s*([smh])\s*", text)
         if not m:
-            self.logger.warning("[keep-alive] invalid keep_alive duration: %r", text)
+            self.logger.warning(f"[keep-alive] invalid keep_alive duration: {text}")
             return None
 
         amount = int(m.group(1))
@@ -186,16 +181,6 @@ class KeepAliveMonitor:
                         self.redis_client.zrem(self._next_wakeup_zset_key(), member)
                         continue
 
-                    print(
-                        member,
-                        "model_name=",
-                        model_name,
-                        "host=",
-                        host,
-                        "keep_alive_seconds====>",
-                        keep_alive_seconds,
-                    )
-
                     if not self._is_host_free(host, model_name):
                         # host busy => try again later (do not spam)
                         next_wakeup = now + keep_alive_seconds
@@ -205,13 +190,10 @@ class KeepAliveMonitor:
                         continue
 
                     self.logger.debug(
-                        "[keep-alive] due provider model=%s host=%s -> sending prompt",
-                        model_name,
-                        host,
+                        f"[keep-alive] due provider model={model_name} "
+                        f"host={host} -> sending prompt"
                     )
-                    self._send_prompt(
-                        model_name=model_name, prompt=self._prompt, host=host
-                    )
+                    self._keep_alive.send(model_name=model_name, host=host)
 
                     # schedule next wakeup
                     next_wakeup = int(time.time()) + keep_alive_seconds

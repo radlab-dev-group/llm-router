@@ -1,11 +1,10 @@
-import time
 import logging
 import requests
 
 from typing import List, Dict, Optional, Any, Callable
 
 from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
-from llm_router_api.core.monitor.keep_alive import KeepAlive
+from llm_router_api.core.keep_alive import KeepAlive
 from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
 
@@ -54,11 +53,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             redis_client=self.redis_client,
             check_interval=keep_alive_monitor_check_interval,
             logger=self.logger,
-            send_prompt_callback=lambda model_name, prompt, host: self._keep_alive.send(
-                model_name=model_name,
-                host=host,
-                prompt=prompt,
-            ),
+            keep_alive=self._keep_alive,
             is_host_free_callback=self._is_host_free,
             clear_buffers=clear_buffers,
             redis_prefix="keepalive",
