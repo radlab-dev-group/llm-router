@@ -225,4 +225,4 @@ You can scrape this endpoint with a Prometheus server or query it manually.
 
 ## License
 
-`llm-router-api` is released under the **MIT License**. See the `LICENSE` file in the repository for full terms.  
+`llm-router-api` is released under the **Apache 2.0**. See the `LICENSE` file in the repository for full terms.  
