@@ -9,7 +9,7 @@ from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import LLMRouterError
 
 
-class _BaseConversationService(abc.ABC):
+class BaseConversationServiceInterface(abc.ABC):
     endpoint: str = ""
     model_cls: Type[Any] = None
 
@@ -26,11 +26,11 @@ class _BaseConversationService(abc.ABC):
         return j
 
 
-class ConversationService(_BaseConversationService):
+class ConversationService(BaseConversationServiceInterface):
     endpoint = "/api/conversation_with_model"
     model_cls = GenerativeConversationModel
 
 
-class ExtendedConversationService(_BaseConversationService):
+class ExtendedConversationService(BaseConversationServiceInterface):
     endpoint = "/api/extended_conversation_with_model"
     model_cls = ExtendedGenerativeConversationModel

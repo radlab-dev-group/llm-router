@@ -20,3 +20,8 @@ class ValidationError(LLMRouterError):
     """Błąd 400 – niepoprawne dane w żądaniu."""
 
     pass
+
+
+class NoArgsAndNoPayloadError(LLMRouterError):
+
+    pass

@@ -1124,7 +1124,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Dict[str, Any]
             The payload with internal keys removed.
         """
-        if type(payload) is str:
+        if type(payload) in [str, tuple]:
             return payload
 
         for k in CLEAR_PREDEFINED_PARAMS:
