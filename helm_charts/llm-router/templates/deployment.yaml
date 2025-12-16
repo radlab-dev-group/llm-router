@@ -18,7 +18,8 @@ spec:
         - name: llm-router
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          args: ["--debug"]
+          args:
+          {{- toYaml .Values.image.args | nindent 12 }}
           ports:
             - containerPort: {{ .Values.service.port }}
           envFrom:
@@ -34,7 +35,8 @@ spec:
             {{- end }}
           volumeMounts:
             - name: {{ include "llm-router.fullname" . }}-vol-config-models
-              mountPath: /srv/llm-router/resources/configs/
+              mountPath: /srv/llm-router/resources/configs/models-config.json
+              subPath: models-config.json
       volumes:
         - name: {{ include "llm-router.fullname" . }}-vol-config-models
           configMap:

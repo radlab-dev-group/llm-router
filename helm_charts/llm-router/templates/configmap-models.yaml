@@ -1,0 +1,10 @@
+# templates/configmap-models.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "llm-router.fullname" . }}-config-models
+  labels:
+    {{- include "llm-router.labels" . | nindent 4 }}
+data:
+  models-config.json: |
+    {{- .Files.Get "files/models-config.json" | nindent 4 }}
