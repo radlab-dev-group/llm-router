@@ -5,8 +5,10 @@ web_host: llm-router.local
 replicaCount: 1
 image:
   repository: quay.io/radlab/llm-router
-  tag: latest
+  tag: "{{ .Chart.AppVersion }}"
   pullPolicy: IfNotPresent
+#  args:
+#    - "--debug"
 
 # Redis dependencies
 redis:
@@ -50,29 +52,8 @@ config:
   #LLM_ROUTER_SERVER_WORKER_CLASS: uvicorn.workers.UvicornWorker
   #LLM_ROUTER_SERVER_WORKERS_COUNT: "1"
   #LLM_ROUTER_TIMEOUT: "30"
+  LLM_ROUTER_MASKING_WITH_AUDIT: "0"
 
-configModels:
-  models-config.json: |
-    {
-      "google_models": {
-        "google/gemma-3-12b-it": {
-          "providers": [
-            {
-              "id": "gemma3_12b-vllm-local:7000",
-              "api_host": "http://localhost:7000/",
-              "api_type": "vllm",
-              "input_size": 56000,
-              "weight": 1.0
-            }
-          ]
-        }
-      },
-      "active_models": {
-        "google_models": [
-          "google/gemma-3-12b-it"
-        ]
-      }
-    }
 
 # -------------------------------------------------
 # Service

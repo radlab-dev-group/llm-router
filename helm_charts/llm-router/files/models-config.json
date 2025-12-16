@@ -1,0 +1,20 @@
+{
+  "google_models": {
+    "google/gemma-3-12b-it": {
+      "providers": [
+        {
+          "id": "gemma3_12b-vllm-local:7000",
+          "api_host": "http://localhost:7000/",
+          "api_type": "vllm",
+          "input_size": 56000,
+          "weight": 1.0
+        }
+      ]
+    }
+  },
+  "active_models": {
+    "google_models": [
+      "google/gemma-3-12b-it"
+    ]
+  }
+}
