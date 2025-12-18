@@ -24,7 +24,6 @@ RUN pip3 install --upgrade pip
 RUN pip3 install --no-cache-dir .
 RUN pip3 install --no-cache-dir .[api]
 
-COPY entrypoint.sh entrypoint.sh
 RUN chmod +x run-rest-api.sh && chmod +x entrypoint.sh
 
 ENTRYPOINT ["/srv/llm-router/entrypoint.sh"]
