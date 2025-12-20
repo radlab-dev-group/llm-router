@@ -159,6 +159,19 @@ class PrometheusMetrics(object):
             ),
         )
 
+        # Number of times the guard‑rail blocked a request
+        self.GUARDRAIL_INCIDENTS = Counter(
+            "guardrail_incidents_total",
+            "Total number of guard‑rail incidents (blocked requests)",
+        )
+
+        # Number of times the masker transformed/masked a request
+        self.MASKER_INCIDENTS = Counter(
+            "masker_incidents_total",
+            "Total number of masker incidents (masked requests)",
+        )
+
+        # --------------------------------------------------------------------
         self.RESPONSE_SIZE = Histogram(
             "http_response_size_bytes",
             "Size of HTTP response bodies in bytes.",
