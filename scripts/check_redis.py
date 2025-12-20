@@ -8,7 +8,7 @@ r = Redis(
     host=redis_host,
     password=redis_password,
     socket_connect_timeout=1,
-    decode_responses=True
+    decode_responses=True,
 )
 
 r.ping()
