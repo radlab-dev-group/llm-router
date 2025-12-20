@@ -1,16 +1,19 @@
+import os
+import shutil
+import tempfile
 import threading
+
 from flask import current_app
 
 from llm_router_api.base.constants import USE_PROMETHEUS
 
-# ... existing imports and code ...
 
 class MetricsHandler:
     # ----------------------------------------------------------------------
     # Singleton machinery (process‑wide, thread‑safe)
     # ----------------------------------------------------------------------
-    _instance = None                # the one shared object
-    _instance_lock = threading.Lock()   # protects creation of the object
+    _instance = None  # the one shared object
+    _instance_lock = threading.Lock()  # protects creation of the object
 
     def __new__(cls, *args, **kwargs):
         """
@@ -20,7 +23,7 @@ class MetricsHandler:
         """
         if cls._instance is None:
             with cls._instance_lock:
-                if cls._instance is None:          # second check
+                if cls._instance is None:  # second check
                     cls._instance = super().__new__(cls)
         return cls._instance
 
@@ -34,9 +37,9 @@ class MetricsHandler:
         if getattr(self, "_initialized", False):
             return
 
-        self._lock = threading.Lock()   # protects metric updates
-        self._metrics = None            # will be fetched lazily from Flask
-        self._initialized = True        # flag that we have finished init
+        self._lock = threading.Lock()  # protects metric updates
+        self._metrics = None  # will be fetched lazily from Flask
+        self._initialized = True  # flag that we have finished init
 
     # ----------------------------------------------------------------------
     # Public helpers – unchanged semantics, now thread‑safe
@@ -65,3 +68,24 @@ class MetricsHandler:
             if not self._metrics:
                 self._metrics = current_app.extensions["prometheus_metrics"]
             self._metrics.MASKER_INCIDENTS.inc()
+
+    @staticmethod
+    def prepare_prometheus_multiproc_dir():
+        """
+        Ensure a clean directory for prometheus_client's multiprocess mode.
+        The directory is stored in the environment variable
+        ``PROMETHEUS_MULTIPROC_DIR`` – the client library reads it automatically.
+        """
+        dir_path = os.getenv("PROMETHEUS_MULTIPROC_DIR")
+        if not dir_path:
+            # Use a sub‑directory of the system temp dir; you can also set
+            # a fixed path via the env var if you prefer.
+            dir_path = os.path.join(
+                tempfile.gettempdir(), "./logs/prometheus_multiproc"
+            )
+            os.environ["PROMETHEUS_MULTIPROC_DIR"] = dir_path
+
+        # Remove any stale files from a previous run (important when hot‑reloading).
+        if os.path.isdir(dir_path):
+            shutil.rmtree(dir_path)
+        os.makedirs(dir_path, exist_ok=True)
