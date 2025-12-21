@@ -1,11 +1,15 @@
 """
 Metrics module that provides Prometheus integration for a Flask application.
-It defines a :class:`PrometheusMetrics` class that registers request count and
-latency metrics, and exposes them at the ``/metrics`` endpoint. The implementation
-handles optional Prometheus availability and configures a logger for metric
-operations.
+It defines a :class:`PrometheusMetrics` class that registers request count
+and latency metrics, and exposes them at the ``/metrics`` endpoint. The
+implementation now works in *multiprocess* mode, so the same counter is
+aggregated across all Gunicorn workers.
+
+The module also raises a clear error when Prometheus is requested but not
+installed.
 """
 
+import os
 import time
 from typing import Optional
 
@@ -14,23 +18,39 @@ from rdl_ml_utils.utils.logger import prepare_logger
 
 from llm_router_api.base.constants import USE_PROMETHEUS, REST_API_LOG_LEVEL
 
+# ----------------------------------------------------------------------
+# Multiprocess support – must be configured **before**
+# any metric objects are created.
+# ----------------------------------------------------------------------
 IS_PROMETHEUS_AVAILABLE = False
 try:
+    # Directory where each worker stores its own *.db* files.
+    # Rhe path can be changed (e.g. to ./logs/prometheus_multiproc) in
+    # your deployment script.
+    os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", "./logs/prometheus_multiproc")
+
+    from llm_router_api.core.metrics_handler import MetricsHandler
+
+    MetricsHandler.prepare_prometheus_multiproc_dir()
+
     from prometheus_client import (
-        Gauge,
+        CollectorRegistry,
+        multiprocess,
         Counter,
+        Gauge,
         Histogram,
         generate_latest,
         CONTENT_TYPE_LATEST,
     )
 
+    # Dedicated registry that will aggregate the per‑process data.
+    _REGISTRY = CollectorRegistry()
+    multiprocess.MultiProcessCollector(_REGISTRY)
+
     IS_PROMETHEUS_AVAILABLE = True
 except ImportError:
-    Gauge = None
-    Counter = None
-    Histogram = None
-    generate_latest = None
-    CONTENT_TYPE_LATEST = None
+    _REGISTRY = None
+    Counter = Gauge = Histogram = generate_latest = CONTENT_TYPE_LATEST = None
     IS_PROMETHEUS_AVAILABLE = False
 
 
@@ -41,12 +61,13 @@ if USE_PROMETHEUS and not IS_PROMETHEUS_AVAILABLE:
     )
 
 
-class PrometheusMetrics(object):
+class PrometheusMetrics:
     """
     Helper class that registers Prometheus metrics with a Flask app.
 
-    It creates request counters and latency histograms, adds Flask request
-    hooks to record metrics, and provides an endpoint to expose them.
+    All metric objects are created with the *custom* registry defined above,
+    which makes them work correctly when the application runs with multiple
+    Gunicorn workers (multiprocess mode).
     """
 
     METRICS_EP = "/metrics"
@@ -93,35 +114,29 @@ class PrometheusMetrics(object):
         self._prepare_request_hooks()
         self._register_request_hooks()
 
+    # ------------------------------------------------------------------
+    # Register the ``/metrics`` endpoint – it uses our custom registry.
+    # ------------------------------------------------------------------
     def register_metrics_ep(self):
-        """
-        Register the ``/metrics`` endpoint on the Flask app.
-
-        The endpoint returns the latest Prometheus metrics payload using
-        :func:`_metrics_endpoint`.  It is added dynamically when this method
-        is called.
-        """
+        """Register the ``/metrics`` endpoint on the Flask app."""
 
         @self.flask_app.route(self.METRICS_EP)
         def prometheus_metrics():
             data, content_type = self._metrics_endpoint()
             return Response(data, mimetype=content_type)
 
+    # ------------------------------------------------------------------
+    # Create all metric objects with the custom registry.
+    # ------------------------------------------------------------------
     def _prepare_request_hooks(self):
-        """
-        Initialise Prometheus metric objects for request counting and latency.
-
-        Creates a :class:`prometheus_client.Counter` named ``http_requests_total``
-        and a :class:`prometheus_client.Histogram` named
-        ``http_request_duration_seconds``.  These objects are stored on the
-        instance for later use by request hooks.
-        """
+        """Initialise Prometheus metric objects for request counting and latency."""
         self._logger.info("[Prometheus] preparing metrics request hooks")
 
         self.REQUEST_COUNT = Counter(
             "http_requests_total",
             "Total number of HTTP requests",
             ["method", "endpoint", "http_status"],
+            registry=_REGISTRY,
         )
 
         self.REQUEST_LATENCY = Histogram(
@@ -129,17 +144,20 @@ class PrometheusMetrics(object):
             "Histogram of request latency (seconds)",
             ["method", "endpoint"],
             buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+            registry=_REGISTRY,
         )
 
         self.REQUEST_IN_PROGRESS = Gauge(
             "http_requests_in_progress",
             "Number of HTTP requests currently being processed.",
+            registry=_REGISTRY,
         )
 
         self.REQUEST_EXCEPTIONS = Counter(
             "http_request_exceptions_total",
             "Total number of HTTP requests that resulted in an exception (5xx status).",
             ["method", "endpoint"],
+            registry=_REGISTRY,
         )
 
         self.REQUEST_SIZE = Histogram(
@@ -157,6 +175,19 @@ class PrometheusMetrics(object):
                 500_000,
                 1_000_000,
             ),
+            registry=_REGISTRY,
+        )
+
+        self.GUARDRAIL_INCIDENTS = Counter(
+            "guardrail_incidents_total",
+            "Total number of guard‑rail incidents (blocked requests)",
+            registry=_REGISTRY,
+        )
+
+        self.MASKER_INCIDENTS = Counter(
+            "masker_incidents_total",
+            "Total number of masker incidents (masked requests)",
+            registry=_REGISTRY,
         )
 
         self.RESPONSE_SIZE = Histogram(
@@ -174,17 +205,16 @@ class PrometheusMetrics(object):
                 500_000,
                 1_000_000,
             ),
+            registry=_REGISTRY,
         )
 
+    # ------------------------------------------------------------------
+    # Flask request hooks – unchanged logic, only the metric objects
+    # are now the multiprocess‑aware ones created above.
+    # ------------------------------------------------------------------
     def _register_request_hooks(self):
-        """
-        Attach Flask ``before_request`` and ``after_request`` hooks.
+        """Attach Flask ``before_request`` and ``after_request`` hooks."""
 
-        The ``before_request`` hook stores a start timestamp on the request
-        object.  The ``after_request`` hook calculates elapsed time, records it
-        in the latency histogram, increments the request counter, and returns
-        the original response.
-        """
         self._logger.info("[Prometheus] registering metrics request hooks")
 
         @self.flask_app.before_request
@@ -236,6 +266,9 @@ class PrometheusMetrics(object):
             ).inc()
             return response
 
+    # ------------------------------------------------------------------
+    # Generate the payload from the *custom* registry.
+    # ------------------------------------------------------------------
     @staticmethod
     def _metrics_endpoint():
         """
@@ -245,7 +278,10 @@ class PrometheusMetrics(object):
         -------
         tuple
             ``(data, content_type)`` where *data* is the byte string produced by
-            :func:`prometheus_client.generate_latest` and *content_type* is the
-            appropriate MIME type defined by ``CONTENT_TYPE_LATEST``.
+            ``prometheus_client.generate_latest`` and *content_type* is the MIME
+            type defined by ``CONTENT_TYPE_LATEST``.
         """
-        return generate_latest(), CONTENT_TYPE_LATEST
+        if not USE_PROMETHEUS:
+            return b"", CONTENT_TYPE_LATEST
+
+        return generate_latest(_REGISTRY), CONTENT_TYPE_LATEST

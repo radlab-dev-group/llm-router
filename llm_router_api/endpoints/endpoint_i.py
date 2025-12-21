@@ -38,6 +38,7 @@ from llm_router_lib.data_models.constants import (
 
 from llm_router_api.core.model_handler import ModelHandler, ApiModel
 from llm_router_api.base.constants import (
+    USE_PROMETHEUS,
     DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     EXTERNAL_API_TIMEOUT,
@@ -60,6 +61,9 @@ from llm_router_plugins.guardrails.pipeline import GuardrailPipeline
 
 from llm_router_plugins.maskers.pipeline import MaskerPipeline
 
+if USE_PROMETHEUS:
+    from llm_router_api.core.metrics_handler import MetricsHandler
+
 
 class SecureEndpointI(abc.ABC):
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = False
@@ -69,6 +73,7 @@ class SecureEndpointI(abc.ABC):
         self.logger = logger
         self._ep_name = ep_name
         self._ep_method = method
+        self._metrics = MetricsHandler() if USE_PROMETHEUS else None
 
         # --------------------------------------------------------------------------
         # ----------- MASKER SECTION
@@ -215,6 +220,9 @@ class SecureEndpointI(abc.ABC):
                 force_end=True,
             )
 
+        if not is_safe and self._metrics:
+            self._metrics.inc_guardrail_incident()
+
         return is_safe
 
     def _guardrail_response_if_needed(self, response):
@@ -237,10 +245,15 @@ class SecureEndpointI(abc.ABC):
             prepare_audit_log=MASKING_WITH_AUDIT,
             audit_type="masking",
         )
-        payload = self._mask_whole_payload(
+        masked_payload = self._mask_whole_payload(
             payload=payload,
             algorithms=MASKING_STRATEGY_PIPELINE,
         )
+
+        if masked_payload != payload and self._metrics:
+            self._metrics.inc_masker_incident()
+
+        payload = masked_payload
 
         self._end_audit_log_if_needed(
             payload=payload,

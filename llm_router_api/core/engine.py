@@ -162,6 +162,14 @@ class FlaskEngine:
                 logger_level=self.logger_level,
             )
             _m.register_metrics_ep()
+
+            # Store on the Flask app so any helper can fetch it via
+            # ``current_app.extensions['prometheus_metrics']``.
+            flask_app.extensions = getattr(flask_app, "extensions", {})
+            flask_app.extensions["prometheus_metrics"] = _m
+
+            # Also keep a reference on the engine instance for direct access.
+            self.prometheus_metrics = _m
         except Exception:
             raise RuntimeError(
                 f"Failed to register endpoints: {traceback.format_exc()}"
