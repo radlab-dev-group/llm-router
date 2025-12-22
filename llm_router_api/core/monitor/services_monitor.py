@@ -13,7 +13,10 @@ import threading
 
 from typing import Optional
 
-from llm_router_api.base.constants import GUARDRAIL_STRATEGY_PIPELINE_REQUEST
+from llm_router_api.base.constants import (
+    GUARDRAIL_STRATEGY_PIPELINE_REQUEST,
+    GUARDRAIL_WITH_AUDIT_RESPONSE,
+)
 from llm_router_plugins.guardrails.registry import GUARDRAILS_HOSTS_DEFINITION
 
 
@@ -33,10 +36,10 @@ class LLMRouterServicesMonitor:
     """
 
     def __init__(
-            self,
-            check_interval: float = 5.0,
-            logger: Optional[logging.Logger] = None,
-            request_timeout: float = 2.0,
+        self,
+        check_interval: float = 5.0,
+        logger: Optional[logging.Logger] = None,
+        request_timeout: float = 2.0,
     ) -> None:
         """
         Parameters
@@ -93,8 +96,12 @@ class LLMRouterServicesMonitor:
                 return False
             json_body = response.json()
             return json_body.get("response") == "pong"
-        except Exception as exc:  # noqa: BLE001 – any exception means the host is unavailable
-            self.logger.debug("[services-monitor] probe failed for %s: %s", host, exc)
+        except (
+            Exception
+        ) as exc:  # noqa: BLE001 – any exception means the host is unavailable
+            self.logger.debug(
+                "[services-monitor] probe failed for %s: %s", host, exc
+            )
             return False
 
     def _refresh_available_hosts(self) -> None:
@@ -102,8 +109,10 @@ class LLMRouterServicesMonitor:
         Iterate over all strategy names, check their hosts and update
         ``self.available_hosts`` accordingly.
         """
+        req = GUARDRAIL_STRATEGY_PIPELINE_REQUEST or []
+        resp = GUARDRAIL_WITH_AUDIT_RESPONSE or []
         new_available: dict[str, str] = {}
-        for strategy_name in GUARDRAIL_STRATEGY_PIPELINE_REQUEST:
+        for strategy_name in req + resp:
             host = GUARDRAILS_HOSTS_DEFINITION.get(strategy_name)
             if not host:
                 self.logger.warning(
