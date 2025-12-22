@@ -14,7 +14,7 @@ import threading
 
 from typing import Callable, Optional
 
-from llm_router_api.core.keep_alive import KeepAlive
+from llm_router_api.core.monitor.keep_alive import KeepAlive
 
 
 class KeepAliveMonitor:
