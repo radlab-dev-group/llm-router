@@ -18,6 +18,7 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
+from llm_router_api.endpoints.builtin.openai import OpenAIResponseHandler
 from llm_router_api.endpoints.passthrough import PassthroughI
 
 
@@ -96,3 +97,39 @@ class LmStudioModelsHandler(PassthroughI):
 
         _response = {"data": proper_models, "object": "list"}
         return _response
+
+
+class LLMStudioChatV0Handler(OpenAIResponseHandler):
+    """
+    Completion endpoint that re‑uses the chat implementation but targets the
+    ``/api/v0/chat/completions`` route of an OpenAI‑compatible service.
+    """
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name="v0/chat/completions",
+        direct_return=False,
+    ):
+        """
+        Initialize the completion endpoint.
+
+        Parameters are identical to :class:`OpenAIChat` except
+        that the route defaults to ``/api/v0/chat/completions``.
+        """
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            api_types=["openai", "lmstudio"],
+            direct_return=direct_return,
+            method="POST",
+        )
+
+        self._prepare_response_function = self.prepare_response_function
