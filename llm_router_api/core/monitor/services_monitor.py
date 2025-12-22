@@ -174,9 +174,13 @@ class LLMRouterServicesMonitor:
 
             if self._probe_host(host):
                 new_available[strategy_name] = host
-                self.logger.debug(f"[services-monitor] host {host} is available")
+                self.logger.debug(
+                    f"[services-monitor.status] host {host} is available"
+                )
             else:
-                self.logger.warning(f"[services-monitor] host {host} is unreachable")
+                self.logger.warning(
+                    f"[services-monitor.status] host {host} is unreachable"
+                )
 
         self.available_hosts = new_available
 
