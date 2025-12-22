@@ -22,6 +22,7 @@ from llm_router_api.base.constants import (
     REST_API_LOG_LEVEL,
 )
 from llm_router_plugins.maskers.registry import MASKERS_HOSTS_DEFINITION
+from llm_router_plugins.maskers.fast_masker_plugin import FastMaskerPlugin
 from llm_router_plugins.guardrails.registry import GUARDRAILS_HOSTS_DEFINITION
 
 
@@ -39,6 +40,8 @@ class LLMRouterServicesMonitor:
     The monitor runs in a background thread and updates an internal
     ``available_hosts`` dictionary that callers can query.
     """
+
+    EXCLUDE_PLUGINS_TO_CHECK_HOST = [FastMaskerPlugin.name]
 
     def __init__(
         self,
@@ -153,10 +156,12 @@ class LLMRouterServicesMonitor:
         Iterate over all strategy names, check their hosts and update
         ``self.available_hosts`` accordingly.
         """
-        req = GUARDRAIL_STRATEGY_PIPELINE_REQUEST or []
-        resp = GUARDRAIL_WITH_AUDIT_RESPONSE or []
         new_available: dict[str, str] = {}
         for strategy_name in self._all_strategies:
+            # Skip excluded plugins
+            if strategy_name in self.EXCLUDE_PLUGINS_TO_CHECK_HOST:
+                continue
+
             host = GUARDRAILS_HOSTS_DEFINITION.get(strategy_name)
             if not host:
                 host = MASKERS_HOSTS_DEFINITION.get(strategy_name)
