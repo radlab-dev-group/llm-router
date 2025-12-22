@@ -29,6 +29,7 @@ from llm_router_api.base.constants import (
     REDIS_HOST,
     REDIS_DB,
     REDIS_PASSWORD,
+    PROVIDER_MONITOR_INTERVAL_SECONDS,
 )
 from llm_router_api.core.monitor.provider_monitor import RedisProviderMonitor
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
@@ -66,7 +67,7 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
         redis_password: str = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
         redis_db: int = REDIS_DB,
-        monitor_check_interval: float = 15,
+        monitor_check_interval: float = PROVIDER_MONITOR_INTERVAL_SECONDS,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
         strategy_prefix: Optional[str] = "",
