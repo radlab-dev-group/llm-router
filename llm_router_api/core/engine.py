@@ -121,9 +121,9 @@ class FlaskEngine:
 
         self._services_monitor.start()
 
-    def __del__(self):
-        if self._services_monitor:
-            self._services_monitor.stop()
+    # def __del__(self):
+    #     if self._services_monitor:
+    #         self._services_monitor.stop()
 
     def prepare_flask_app(
         self,
