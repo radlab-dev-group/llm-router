@@ -985,12 +985,15 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
             if api_model_provider is None:
                 raise ValueError(f"API model not found in params {params}")
+
+            # Modify params specified for the chosen provider
+            params = self._prepare_params_for_provider(
+                params=params, model_provider=api_model_provider
+            )
+
             clear_chosen_provider_finally = True
 
-            _md = api_model_provider.as_dict().copy()
-            if "api_token" in _md:
-                _md["api_token"] = "***"
-            self.logger.debug(f"Request model config: {_md}")
+            self.logger.debug(f"Request model config id: {api_model_provider.id}")
 
             if not self.REQUIRED_ARGS:
                 if api_model_provider.api_type.lower() in self._ep_types_str:
@@ -1246,6 +1249,45 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     def _filter_params_to_acceptable(
         api_type: str, params: Dict[str, Any]
     ) -> Dict[str, Any]:
+        """
+        Filter a request payload so that it contains only the parameters
+        accepted by the downstream LLM provider.
+
+        Each provider (e.g. OpenAI) defines a whitelist of keys that it
+        understands.  Supplying unknown keys can lead to ``400 Bad Request``
+        errors from the external service.  This helper builds a new
+        dictionary containing **only** those keys that are part of the
+        provider‑specific whitelist.
+
+        Parameters
+        ----------
+        api_type: str
+            Identifier of the target provider (currently ``"openai"`` is
+            supported).  An unknown ``api_type`` raises an :class:`Exception`.
+
+        params: Dict[str, Any]
+            The original request payload supplied by the client.  It may
+            contain arbitrary keys.
+
+        Returns
+        -------
+        Dict[str, Any]
+            A dictionary with the subset of ``params`` that are listed in
+            :data:`OPENAI_ACCEPTABLE_PARAMS` when ``api_type`` is
+            ``"openai"``.  Keys not in the whitelist are omitted.
+
+        Raises
+        ------
+        Exception
+            If ``api_type`` is not recognised.
+
+        Notes
+        -----
+        The input ``params`` mapping is **not** mutated; a fresh dictionary
+        ``_params`` is constructed and returned.  This makes the function
+        safe to use in logging or audit trails where the original payload
+        must remain unchanged.
+        """
         _params = {}
         if api_type == "openai":
             for p in OPENAI_ACCEPTABLE_PARAMS:
@@ -1254,3 +1296,49 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         else:
             raise Exception(f"Unsupported API type: {api_type}")
         return _params
+
+    @staticmethod
+    def _prepare_params_for_provider(
+        params: Optional[Dict[str, Any]], model_provider: ApiModel
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Adjust the payload according to the capabilities of the selected
+        ``model_provider``.
+
+        Some providers (e.g. OpenAI) support *tool* / *function* calling via the
+        ``tools`` and ``functions`` keys.  If the chosen ``model_provider``
+        does **not** have ``tool_calling`` enabled, those keys must be
+        stripped to avoid validation errors from the downstream API.
+
+        Parameters
+        ----------
+        params : Optional[Dict[str, Any]]
+            The payload that will be sent to the downstream model.  May be
+            ``None`` if the endpoint does not require a request body.
+
+        model_provider : ApiModel
+            The concrete model configuration object.  Its ``tool_calling``
+            attribute indicates whether tool/function specifications are
+            expected by the provider.
+
+        Returns
+        -------
+        Optional[Dict[str, Any]]
+            The (potentially mutated) ``params`` dictionary.  If either
+            ``params`` or ``model_provider`` is ``None`` the original value
+            is returned unchanged.
+
+        Notes
+        -----
+        The function mutates ``params`` *in‑place* for efficiency; callers
+        should treat the returned mapping as the definitive payload to be
+        forwarded.
+        """
+        if model_provider is None or params is None:
+            return params
+
+        if not model_provider.tool_calling:
+            for _fc in ["tools", "functions"]:
+                params.pop(_fc, None)
+
+        return params

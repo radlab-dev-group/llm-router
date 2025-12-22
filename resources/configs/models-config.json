@@ -9,7 +9,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false
         },
         {
           "id": "gemma3_12b-vllm-71:7001",
@@ -18,7 +20,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false
         }
       ],
       "providers_sleep": [
@@ -29,7 +33,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 0.1
+          "weight": 0.1,
+          "keep_alive": null,
+          "tool_calling": false
         },
         {
           "id": "gemma3_12b-vllm-66:7001",
@@ -38,7 +44,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 0.1
+          "weight": 0.1,
+          "keep_alive": null,
+          "tool_calling": false
         },
         {
           "id": "gemma3_12b-vllm-66:7002",
@@ -47,7 +55,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 0.1
+          "weight": 0.1,
+          "keep_alive": null,
+          "tool_calling": false
         },
         {
           "id": "gemma3_12b-vllm-70:7000",
@@ -56,7 +66,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false
         },
         {
           "id": "gemma3_12b-vllm-70:7001",
@@ -65,7 +77,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false
         },
         {
           "id": "gemma3_12b-vllm-70:7002",
@@ -74,7 +88,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false
         }
       ]
     },
@@ -86,7 +102,9 @@
           "api_token": "AIzaSyDYjl8eVqO9LXOXe589xNWvBDXuEfJqITA",
           "api_type": "openai",
           "input_size": 512000,
-          "model_path": "gemini-2.5-flash-lite"
+          "model_path": "gemini-2.5-flash-lite",
+          "keep_alive": null,
+          "tool_calling": true
         }
       ]
     }
@@ -100,7 +118,9 @@
           "api_token": "",
           "api_type": "openai",
           "input_size": 256000,
-          "model_path": "gpt-3.5-turbo-0125"
+          "model_path": "gpt-3.5-turbo-0125",
+          "keep_alive": null,
+          "tool_calling": false
         }
       ]
     },
@@ -112,7 +132,9 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "35m",
+          "tool_calling": true
         }
       ]
     },
@@ -124,7 +146,9 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "35m",
+          "tool_calling": true
         },
         {
           "id": "gpt-oss-120b-ollama-70:11434",
@@ -132,7 +156,9 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "35m",
+          "tool_calling": true
         }
       ],
       "providers_sleep": [
@@ -148,7 +174,9 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "35m",
+          "tool_calling": true
         }
       ]
     },
@@ -160,7 +188,9 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "35m",
+          "tool_calling": true
         },
         {
           "id": "qwen3-coder-30b-70:11434",
@@ -168,7 +198,9 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "35m",
+          "tool_calling": true
         }
       ]
     }
