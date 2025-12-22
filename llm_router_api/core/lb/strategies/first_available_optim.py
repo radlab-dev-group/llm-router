@@ -10,7 +10,11 @@ from typing import List, Dict, Optional, Any, Callable
 
 from llm_router_api.core.monitor.keep_alive import KeepAlive
 from llm_router_api.core.utils import StrategyHelpers
-from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT
+from llm_router_api.base.constants import (
+    REDIS_HOST,
+    REDIS_PORT,
+    KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
+)
 from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
 
@@ -35,7 +39,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         monitor_check_interval: float = 10,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
-        keep_alive_monitor_check_interval: float = 1.0,
+        keep_alive_monitor_check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
     ) -> None:
         """
         Initialise the optimized first‑available strategy.
