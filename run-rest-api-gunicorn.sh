@@ -47,6 +47,14 @@ export LLM_ROUTER_REDIS_HOST=${LLM_ROUTER_REDIS_HOST:-"192.168.100.67"}
 export LLM_ROUTER_REDIS_PORT=${LLM_ROUTER_REDIS_PORT:-6379}
 
 # ==================================================================================
+# LLM Router services monitoring (if any services will be used)
+export LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS=${LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS:-5}
+# Keep alive model monitor interval
+export LLM_ROUTER_KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS=${LLM_ROUTER_KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS:-1}
+# Models providers monitoring interval (in seconds)
+export LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS=${LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS:-5}
+
+# ==================================================================================
 # Data protection (additional endpoints will be available)
 # ------------ Masker section
 export LLM_ROUTER_FORCE_MASKING=${LLM_ROUTER_FORCE_MASKING:-0}

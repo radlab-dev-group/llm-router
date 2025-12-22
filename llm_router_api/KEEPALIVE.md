@@ -65,7 +65,7 @@ If the `keep_alive` field is omitted or falsy, the provider will **not** be sche
 ## Example Usage
 
 ```python
-from llm_router_api.core.keep_alive import KeepAlive
+from llm_router_api.core.monitor.keep_alive import KeepAlive
 from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 
 # Assume `models_configs` has been loaded from the JSON config files.
