@@ -200,6 +200,14 @@ if GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
         if len(_s.strip())
     ]
 
+# Time in seconds between llm-router-services checks
+ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVICES_MONITOR_INTERVAL_SECONDS", 5
+    )
+)
+
+
 # =============================================================================
 
 

@@ -85,6 +85,7 @@ Configuration is driven primarily by environment variables and a JSON model‑co
 | `LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_RESPONSE` | Ordered list of guardrail strategies (response).                                                                                                                                                                                                                         | `-`                                    |
 | `LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST`            | Host and port where the `naskguard` service running, **NOTE!** Read the plugin license before use the proposed model!                                                                                                                                                    | `-`                                    |
 | `LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST`           | Host and port where the `sojkaguard` service running.                                                                                                                                                                                                                    | `-`                                    |
+| `LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS`    | Time interval to check services availability. Values lower than 1 will be treated as `not-use monitor` and monitor will not be started.                                                                                                                                  | `5` seconds                            |
 
 ### Model Configuration
 
