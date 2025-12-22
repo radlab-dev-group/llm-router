@@ -16,7 +16,10 @@ from typing import Optional
 from llm_router_api.base.constants import (
     GUARDRAIL_STRATEGY_PIPELINE_REQUEST,
     GUARDRAIL_WITH_AUDIT_RESPONSE,
+    MASKING_STRATEGY_PIPELINE,
+    ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
 )
+from llm_router_plugins.maskers.registry import MASKERS_HOSTS_DEFINITION
 from llm_router_plugins.guardrails.registry import GUARDRAILS_HOSTS_DEFINITION
 
 
@@ -55,6 +58,15 @@ class LLMRouterServicesMonitor:
         self.logger = logger or logging.getLogger(__name__)
         self.request_timeout = request_timeout
 
+        self._guard_req_strategies = GUARDRAIL_STRATEGY_PIPELINE_REQUEST or []
+        self._guard_resp_strategies = GUARDRAIL_WITH_AUDIT_RESPONSE or []
+        self._maskers_strategies = MASKING_STRATEGY_PIPELINE or []
+        self._all_strategies = (
+            self._guard_req_strategies
+            + self._guard_resp_strategies
+            + self._maskers_strategies
+        )
+
         # Mapping ``strategy_name -> host`` for hosts that responded correctly.
         self.available_hosts: dict[str, str] = {}
 
@@ -68,6 +80,17 @@ class LLMRouterServicesMonitor:
         """
         Start the background health‑check thread.
         """
+        if ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS <= 0:
+            return
+
+        if not len(self._all_strategies):
+            self.logger.warning(
+                "[services-monitor] There are no strategies to check health "
+                "(llm-router-services are not used). "
+                "Monitor thread will not be started!"
+            )
+            return
+
         self._thread.start()
         self.logger.debug("[services-monitor] thread started")
 
@@ -112,8 +135,10 @@ class LLMRouterServicesMonitor:
         req = GUARDRAIL_STRATEGY_PIPELINE_REQUEST or []
         resp = GUARDRAIL_WITH_AUDIT_RESPONSE or []
         new_available: dict[str, str] = {}
-        for strategy_name in req + resp:
+        for strategy_name in self._all_strategies:
             host = GUARDRAILS_HOSTS_DEFINITION.get(strategy_name)
+            if not host:
+                host = MASKERS_HOSTS_DEFINITION.get(strategy_name)
             if not host:
                 self.logger.warning(
                     "[services-monitor] no host defined for strategy %s",
