@@ -23,7 +23,7 @@ import traceback
 from flask import Flask
 from typing import List, Type, Optional
 
-
+from llm_router_api.core.monitor.services_monitor import LLMRouterServicesMonitor
 from llm_router_api.endpoints.endpoint_i import EndpointI
 from llm_router_api.register.auto_loader import EndpointAutoLoader
 from llm_router_api.register.register import FlaskEndpointRegistrar
@@ -32,6 +32,7 @@ from llm_router_api.base.constants import (
     REST_API_LOG_LEVEL,
     USE_PROMETHEUS,
     SERVER_BALANCE_STRATEGY,
+    ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
 )
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
 
@@ -110,6 +111,19 @@ class FlaskEngine:
             logger_level=logger_level,
             logger_file_name=logger_file_name,
         )
+
+        self._services_monitor = LLMRouterServicesMonitor(
+            check_interval=ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            request_timeout=2.0,
+        )
+
+        self._services_monitor.start()
+
+    def __del__(self):
+        if self._services_monitor:
+            self._services_monitor.stop()
 
     def prepare_flask_app(
         self,
