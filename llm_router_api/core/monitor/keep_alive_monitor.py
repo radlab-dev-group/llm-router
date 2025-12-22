@@ -78,7 +78,7 @@ class KeepAliveMonitor:
         Start the background monitor thread.
         """
         self._thread.start()
-        self.logger.debug("[keep-alive] thread started")
+        self.logger.debug("[keep-alive-monitor] thread started")
 
     def stop(self) -> None:
         """
@@ -86,7 +86,7 @@ class KeepAliveMonitor:
         """
         self._stop_event.set()
         self._thread.join()
-        self.logger.debug("[keep-alive] thread stopped")
+        self.logger.debug("[keep-alive-monitor] thread stopped")
 
     def record_usage(
         self, model_name: str, host: str, keep_alive: Optional[str]
@@ -200,7 +200,9 @@ class KeepAliveMonitor:
 
         m = re.fullmatch(r"(?i)\s*(\d+)\s*([smh])\s*", text)
         if not m:
-            self.logger.warning(f"[keep-alive] invalid keep_alive duration: {text}")
+            self.logger.warning(
+                f"[keep-alive-monitor] invalid keep_alive duration: {text}"
+            )
             return None
 
         amount = int(m.group(1))
@@ -263,8 +265,8 @@ class KeepAliveMonitor:
                         continue
 
                     self.logger.debug(
-                        f"[keep-alive] due provider model={model_name} "
-                        f"host={host} -> sending prompt"
+                        f"[keep-alive-monitor.sending_prompt] model={model_name} "
+                        f"host={host}"
                     )
                     self._keep_alive.send(model_name=model_name, host=host)
 
