@@ -14,6 +14,7 @@ from llm_router_api.base.constants import (
     REDIS_HOST,
     REDIS_PORT,
     KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
+    PROVIDER_MONITOR_INTERVAL_SECONDS,
 )
 from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
@@ -36,7 +37,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         redis_port: int = REDIS_PORT,
         redis_db: int = 0,
         timeout: int = 60,
-        monitor_check_interval: float = 10,
+        monitor_check_interval: float = PROVIDER_MONITOR_INTERVAL_SECONDS,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
         keep_alive_monitor_check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
