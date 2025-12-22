@@ -102,7 +102,7 @@ class LmStudioModelsHandler(PassthroughI):
 class LLMStudioChatV0Handler(OpenAIResponseHandler):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
-    ``/chat/completions`` route of an OpenAI‑compatible service.
+    ``/api/v0/chat/completions`` route of an OpenAI‑compatible service.
     """
 
     def __init__(
@@ -118,7 +118,7 @@ class LLMStudioChatV0Handler(OpenAIResponseHandler):
         Initialize the completion endpoint.
 
         Parameters are identical to :class:`OpenAIChat` except
-        that the route defaults to ``"/api/v0/chat/completions"``.
+        that the route defaults to ``/api/v0/chat/completions``.
         """
         super().__init__(
             ep_name=ep_name,
