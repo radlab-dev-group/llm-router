@@ -45,6 +45,7 @@ class ApiModel:
     input_size: int
     model_path: Optional[str] = None
     keep_alive: Optional[str] = None
+    tool_calling: Optional[bool] = False
 
     @staticmethod
     def from_config(name: str, cfg: Dict) -> "ApiModel":
@@ -78,6 +79,7 @@ class ApiModel:
             input_size=int(cfg.get("input_size", 0)),
             model_path=str(cfg.get("model_path", "")),
             keep_alive=str(cfg.get("keep_alive", "")),
+            tool_calling=bool(cfg.get("tool_calling", False)),
         )
 
     def as_dict(self) -> Dict[str, Any]:
@@ -90,6 +92,7 @@ class ApiModel:
             "input_size": self.input_size,
             "model_path": self.model_path,
             "keep_alive": self.keep_alive,
+            "tool_calling": self.tool_calling,
         }
 
 

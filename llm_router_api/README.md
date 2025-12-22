@@ -125,6 +125,8 @@ Configuration is driven primarily by environment variables and a JSON model‑co
 Only the fields required by the router are needed: `id`, `api_host`, `api_token` (optional), `api_type`, `input_size`,
 and optionally `model_path`.
 
+**Configuration Details** – see the full schema and a ready‑made example in [MODELS_CONFIG.md](MODELS_CONFIG.md).
+
 ---
 
 ## Running the Server
