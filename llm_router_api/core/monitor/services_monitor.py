@@ -7,17 +7,19 @@ docstrings and comments have been translated to English.
 """
 
 import time
-import logging
 import requests
 import threading
 
 from typing import Optional
+
+from rdl_ml_utils.utils.logger import prepare_logger
 
 from llm_router_api.base.constants import (
     GUARDRAIL_STRATEGY_PIPELINE_REQUEST,
     GUARDRAIL_WITH_AUDIT_RESPONSE,
     MASKING_STRATEGY_PIPELINE,
     ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
+    REST_API_LOG_LEVEL,
 )
 from llm_router_plugins.maskers.registry import MASKERS_HOSTS_DEFINITION
 from llm_router_plugins.guardrails.registry import GUARDRAILS_HOSTS_DEFINITION
@@ -40,22 +42,41 @@ class LLMRouterServicesMonitor:
 
     def __init__(
         self,
-        check_interval: float = 5.0,
-        logger: Optional[logging.Logger] = None,
+        check_interval: float = ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
         request_timeout: float = 2.0,
     ) -> None:
         """
-        Parameters
-        ----------
-        check_interval: float
-            Seconds to wait between successive health‑checks.
-        logger: logging.Logger, optional
-            Logger instance; defaults to a module‑level logger.
-        request_timeout: float
-            Timeout (seconds) for each ``GET /api/ping`` request.
+        Initializes the service monitor with configuration options for periodic checks,
+        logging, and request handling.  It also prepares internal strategy pipelines
+        and the thread infrastructure used for background execution.
+
+        :param check_interval: Interval, in seconds, between successive service checks.
+        :param logger_file_name: Destination file for log output; if ``None`` the
+            logger uses the default configuration without a file handler.
+        :param logger_level: Logging level for the prepared logger (e.g. ``\"INFO\"``).
+        :param request_timeout: Timeout, in seconds, applied to HTTP requests.
+
+        :Attributes:
+            check_interval (float): Interval between checks as provided at construction.
+            logger (logging.Logger): Logger instance configured via ``prepare_logger``.
+            request_timeout (float): Timeout used for outbound HTTP requests.
+            available_hosts (dict[str, str]): Mapping of ``strategy_name`` to host that
+                responded correctly.
+
+        :Returns:
+            None
+
         """
         self.check_interval = check_interval
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = prepare_logger(
+            logger_name=__name__,
+            logger_file_name=logger_file_name,
+            log_level=logger_level,
+            use_default_config=True,
+        )
+
         self.request_timeout = request_timeout
 
         self._guard_req_strategies = GUARDRAIL_STRATEGY_PIPELINE_REQUEST or []
