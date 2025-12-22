@@ -14,7 +14,8 @@ import threading
 
 from typing import Callable, Optional
 
-from llm_router_api.core.keep_alive import KeepAlive
+from llm_router_api.core.monitor.keep_alive import KeepAlive
+from llm_router_api.base.constants import KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS
 
 
 class KeepAliveMonitor:
@@ -30,7 +31,7 @@ class KeepAliveMonitor:
         self,
         redis_client: redis.Redis,
         keep_alive: KeepAlive,
-        check_interval: float = 1.0,
+        check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
         logger: Optional[logging.Logger] = None,
         is_host_free_callback: Optional[Callable[[str, str], bool]] = None,
         clear_buffers: bool = False,

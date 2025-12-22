@@ -201,6 +201,32 @@ if GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
     ]
 
 # =============================================================================
+# MONITORING DEFINITIONS
+# =============================================================================
+# Time in seconds between llm-router-services checks
+ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVICES_MONITOR_INTERVAL_SECONDS", 5
+    )
+)
+
+# Interval (in seconds) for model keepalive check
+KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS", 1
+    )
+)
+
+# Time in seconds between next checks of models providers
+PROVIDER_MONITOR_INTERVAL_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}PROVIDER_MONITOR_INTERVAL_SECONDS", 5
+    )
+)
+
+# =============================================================================
+# STARTUP
+# =============================================================================
 
 
 class _StartAppVerificator:
