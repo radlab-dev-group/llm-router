@@ -947,6 +947,26 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # ------------ BEGIN SECURE SECTION ------------
             # 1. Check payload using guardrails
             if not self._is_request_guardrail_safe(payload=params):
+                if use_streaming:
+                    api_model_provider = self.get_model_provider(
+                        params=params, options=options
+                    )
+
+                    is_generic_to_ollama, is_ollama_to_generic, is_ollama = (
+                        self._resolve_stream_type(api_model_provider)
+                    )
+
+                    return self._http_executor.stream_response(
+                        ep_url="",
+                        params=params,
+                        options=options,
+                        is_ollama=is_ollama,
+                        is_generic_to_ollama=is_generic_to_ollama,
+                        is_ollama_to_generic=is_ollama_to_generic,
+                        api_model_provider=api_model_provider,
+                        force_text="Content blocked by guardrail. Reason: Not safe content!",
+                    )
+
                 return self.return_response_not_ok(
                     body={"reason": "guardrail", "error": "Not safe content!"}
                 )
@@ -1038,18 +1058,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         "Streaming is available only for single message"
                     )
 
-                is_generic_to_ollama = False
-                is_ollama_to_generic = False
-                is_ollama = (
-                    "ollama" in self._ep_types_str
-                    and "ollama" in api_model_provider.api_type
+                is_generic_to_ollama, is_ollama_to_generic, is_ollama = (
+                    self._resolve_stream_type(api_model_provider)
                 )
-                if not is_ollama:
-                    if "ollama" in self._ep_types_str:
-                        is_generic_to_ollama = True
-
-                    if "ollama" in api_model_provider.api_type:
-                        is_ollama_to_generic = True
 
                 return self._http_executor.stream_response(
                     ep_url=ep_url,
@@ -1342,3 +1353,19 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 params.pop(_fc, None)
 
         return params
+
+    def _resolve_stream_type(self, api_model_provider: ApiModel):
+        is_generic_to_ollama = False
+        is_ollama_to_generic = False
+        is_ollama = (
+            "ollama" in self._ep_types_str
+            and "ollama" in api_model_provider.api_type
+        )
+        if not is_ollama:
+            if "ollama" in self._ep_types_str:
+                is_generic_to_ollama = True
+
+            if "ollama" in api_model_provider.api_type:
+                is_ollama_to_generic = True
+
+        return is_generic_to_ollama, is_ollama_to_generic, is_ollama
