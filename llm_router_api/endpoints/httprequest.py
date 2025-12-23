@@ -178,6 +178,7 @@ class HttpRequestExecutor:
         is_ollama: bool = False,
         is_generic_to_ollama: bool = False,
         is_ollama_to_generic: bool = False,
+        force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
         Perform a streaming request and yield byte chunks.
@@ -206,6 +207,9 @@ class HttpRequestExecutor:
         is_ollama_to_generic:
             Flag to stream a response from an OpenAI endpoint
             and convert it to the Ollama format
+        force_text:
+            If text is given then will be returned as-is
+            (without model provider usage).
 
         Returns
         -------
@@ -265,6 +269,7 @@ class HttpRequestExecutor:
                 headers=headers,
                 options=options,
                 api_model_provider=api_model_provider,
+                force_text=force_text,
             )
 
         if is_generic_to_ollama:
@@ -275,6 +280,7 @@ class HttpRequestExecutor:
                 headers=headers,
                 options=options,
                 api_model_provider=api_model_provider,
+                force_text=force_text,
             )
 
         if is_ollama_to_generic:
@@ -285,6 +291,7 @@ class HttpRequestExecutor:
                 headers=headers,
                 options=options,
                 api_model_provider=api_model_provider,
+                force_text=force_text,
             )
 
         if is_generic:
@@ -295,6 +302,7 @@ class HttpRequestExecutor:
                 headers=headers,
                 options=options,
                 api_model_provider=api_model_provider,
+                force_text=force_text,
             )
 
         raise Exception("Unknonw streaming type!")
@@ -478,13 +486,49 @@ class HttpRequestExecutor:
         headers: Dict[str, Any],
         options: Dict[str, Any],
         api_model_provider: ApiModel,
+        force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
         Perform a generic streaming request without Ollama conversion.
         Passes through the OpenAI SSE stream unchanged so that clients
         receive the standard Server-Sent Events format.
         """
-        # Ensure we accept SSE format
+        if force_text is not None:
+            base_chunk = {
+                "id": "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+                "object": "chat.completion.chunk",
+                "created": int(datetime.datetime.utcnow().timestamp()),
+                "model": api_model_provider.model_path or api_model_provider.name,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "content": force_text,
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            }
+            base_chunk_str = json.dumps(base_chunk)
+
+            def _force_iter() -> Iterator[bytes]:
+                # Emit the text as a data line
+                yield f"data: {base_chunk_str}\n\n".encode("utf-8")
+                # Emit the terminal DONE line
+                yield b"data: [DONE]\n\n"
+
+            try:
+                return _force_iter()
+            except Exception as exc:
+                pass
+            finally:
+                self._endpoint.unset_model(
+                    params=payload,
+                    api_model_provider=api_model_provider,
+                    options=options,
+                )
+
+        # Ensure we accept an SSE format
         headers["Accept"] = "text/event-stream"
 
         def _iter() -> Iterator[bytes]:
@@ -533,6 +577,7 @@ class HttpRequestExecutor:
         headers: Dict[str, Any],
         options: Dict[str, Any],
         api_model_provider: ApiModel,
+        force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
         Perform a streaming request and convert the stream to Ollama NDJSON.
@@ -554,12 +599,34 @@ class HttpRequestExecutor:
             HTTP headers, including authentication when configured.
         options: Dict
             Additional options to pass to stream
+        force_text:
+            If text is given, then it will be returned as-is
+            (without model provider usage).
 
         Returns
         -------
         Iterator[bytes]
             An iterator yielding Ollama‑compatible NDJSON lines.
         """
+        # If a forced text is supplied, emit it as a single Ollama chunk
+        # followed by a final “done” chunk (mirroring normal behaviour).
+        if force_text is not None:
+
+            def _force_iter() -> Iterator[bytes]:
+                # First chunk with the forced content
+                yield self._ollama_chunk(
+                    delta=force_text,
+                    done=False,
+                    api_model_provider=api_model_provider,
+                )
+                # Final done chunk (no usage info)
+                yield self._ollama_chunk(
+                    delta="",
+                    done=True,
+                    api_model_provider=api_model_provider,
+                )
+
+            return _force_iter()
 
         def _iter() -> Iterator[bytes]:
             try:
@@ -800,6 +867,7 @@ class HttpRequestExecutor:
         headers: Dict[str, Any],
         options: Dict[str, Any],
         api_model_provider: ApiModel,
+        force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
         Stream a response from an OpenAI-compatible endpoint and convert it to the
@@ -823,12 +891,31 @@ class HttpRequestExecutor:
             Additional options passed to stream
         api_model_provider:
             Model provider information.
+        force_text:
+            If the text is given, then it will be returned as-is
+            (without model provider usage).
 
         Returns
         -------
         Iterator[bytes]
             Byte chunks representing Ollama-style NDJSON responses.
         """
+        # If a forced text is supplied, emit it as an Ollama chunk and close the stream.
+        if force_text is not None:
+
+            def _force_iter() -> Iterator[bytes]:
+                yield self._ollama_chunk(
+                    delta=force_text,
+                    done=False,
+                    api_model_provider=api_model_provider,
+                )
+                yield self._ollama_chunk(
+                    delta="",
+                    done=True,
+                    api_model_provider=api_model_provider,
+                )
+
+            return _force_iter()
 
         def _iter() -> Iterator[bytes]:
             try:
@@ -983,6 +1070,7 @@ class HttpRequestExecutor:
         headers: Dict[str, Any],
         options: Dict[str, Any],
         api_model_provider: ApiModel,
+        force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
         Stream a response from an Ollama endpoint and convert it to the
@@ -1006,12 +1094,53 @@ class HttpRequestExecutor:
             Request headers, including authentication when configured.
         options: Dict
             Additional options passed to stream
+        force_text:
+            If the text is given, then it will be returned as-is
+            (without model provider usage).
 
         Returns
         -------
         Iterator[bytes]
             Byte chunks representing OpenAI‑style streaming responses.
         """
+
+        # If a forced text is supplied, return it as a single SSE data event
+        # followed by the DONE marker – matching the format produced by the
+        # normal OpenAI‑compatible branch.
+        if force_text is not None:
+            base_chunk = {
+                "id": "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+                "object": "chat.completion.chunk",
+                "created": int(datetime.datetime.utcnow().timestamp()),
+                "model": api_model_provider.model_path or api_model_provider.name,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {
+                            "content": force_text,
+                        },
+                        "finish_reason": None,
+                    }
+                ],
+            }
+            base_chunk_str = json.dumps(base_chunk)
+
+            def _force_iter() -> Iterator[bytes]:
+                # Emit the text as a data line
+                yield f"data: {base_chunk_str}\n\n".encode("utf-8")
+                # Emit the terminal DONE line
+                yield b"data: [DONE]\n\n"
+
+            try:
+                return _force_iter()
+            except Exception as exc:
+                pass
+            finally:
+                self._endpoint.unset_model(
+                    params=payload,
+                    api_model_provider=api_model_provider,
+                    options=options,
+                )
 
         def _iter() -> Iterator[bytes]:
             try:
