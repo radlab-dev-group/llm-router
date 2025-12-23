@@ -131,7 +131,10 @@ class ModelHandler:
         self.api_model_config: ApiModelConfig = ApiModelConfig(models_config_path)
 
     def get_model_provider(
-        self, model_name: str, options: Optional[Dict[str, Any]] = None
+        self,
+        model_name: str,
+        options: Optional[Dict[str, Any]] = None,
+        fake: bool = False,
     ) -> Optional[ApiModel]:
         """
         Return a model definition for the given name.
@@ -142,6 +145,8 @@ class ModelHandler:
             Model identifier present among active models.
         options: Dict[str, Any] Default is None
             Options passed to strategy
+        fake: bool, Default is False
+            If True, return a 'fake' provider model without allocating resources
 
         Returns
         -------
@@ -151,10 +156,15 @@ class ModelHandler:
         providers = self.api_model_config.models_configs[model_name].get(
             "providers", []
         )
+        if not len(providers):
+            return None
+
+        if fake:
+            return ApiModel.from_config(model_name, providers[0])
+
         model_host_cfg = self.provider_chooser.get_provider(
             model_name=model_name, providers=providers, options=options
         )
-
         if model_host_cfg is None:
             return None
 
