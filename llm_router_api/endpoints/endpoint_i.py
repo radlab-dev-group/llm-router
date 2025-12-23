@@ -584,7 +584,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
     # Model‑related helpers (used by proxy endpoints)
     # ------------------------------------------------------------------
     def get_model_provider(
-        self, params: Dict[str, Any], options: Optional[Dict[str, Any]] = None
+        self,
+        params: Dict[str, Any],
+        options: Optional[Dict[str, Any]] = None,
+        fake: bool = False,
     ) -> ApiModel:
         """
         Resolve the model identifier from *params* and store the matching
@@ -602,6 +605,9 @@ class EndpointI(SecureEndpointI, abc.ABC):
         options: Default: ``None``
             Options to use into the strategy
 
+        fake: Default: ``False``
+            If ``True``, a fake model will be returned, LB strategy does not matter
+
         Raises
         ------
         ValueError
@@ -612,7 +618,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         #     return
         model_name = self._model_name_from_params_or_model(params=params)
         api_model = self._model_handler.get_model_provider(
-            model_name=model_name, options=options
+            model_name=model_name, options=options, fake=fake
         )
         if api_model is None:
             raise ValueError(f"Model '{model_name}' not found in configuration")
@@ -949,7 +955,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             if not self._is_request_guardrail_safe(payload=params):
                 if use_streaming:
                     api_model_provider = self.get_model_provider(
-                        params=params, options=options
+                        params=params, options=options, fake=True
                     )
 
                     is_generic_to_ollama, is_ollama_to_generic, is_ollama = (
