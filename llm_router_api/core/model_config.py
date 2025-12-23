@@ -86,27 +86,26 @@ class ApiModelConfig:
 
     def _validate_unique_identifiers(self) -> None:
         """
-        Ensure that every provider 'id' across all active models is unique.
+        Ensure that every provider ``id`` across all active models is unique.
+        Checks both ``providers`` and ``providers_sleep`` sections.
 
         Raises
         ------
         ValueError
-            If any provider 'id' is duplicated.
+            If any provider ``id`` is duplicated.
         """
-        all_provider_ids = []
+        seen_ids = set()
+        duplicates = set()
 
         for model_cfg in self.models_configs.values():
-            for key in ["providers"]:
-                providers_list = model_cfg.get(key, [])
-                for provider in providers_list:
-                    provider_id = provider["id"]
-                    if provider_id:
-                        all_provider_ids.append(provider_id)
-
-        # Find duplicates
-        duplicates = {
-            pid for pid in all_provider_ids if all_provider_ids.count(pid) > 1
-        }
+            # Check the main providers list
+            for provider in model_cfg.get("providers", []):
+                pid = provider.get("id")
+                if pid:
+                    if pid in seen_ids:
+                        duplicates.add(pid)
+                    else:
+                        seen_ids.add(pid)
 
         if duplicates:
             dup_str = ", ".join(sorted(duplicates))
