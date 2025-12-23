@@ -46,6 +46,8 @@ class ApiModelConfig:
         self.active_models = self._read_active_models()
         self.models_configs = self._active_models_configuration()
 
+        self._validate_unique_identifiers()
+
     def _read_active_models(self) -> Dict[str, str]:
         """
         Read the JSON configuration and return a dictionary of active models.
@@ -81,3 +83,30 @@ class ApiModelConfig:
                     raise KeyError(f"{m_type}:{m_name} has no providers!")
                 models_configuration[m_name] = model_config
         return models_configuration
+
+    def _validate_unique_identifiers(self) -> None:
+        """
+        Ensure that every provider ``id`` across all active models is unique.
+        Checks both ``providers`` and ``providers_sleep`` sections.
+
+        Raises
+        ------
+        ValueError
+            If any provider ``id`` is duplicated.
+        """
+        seen_ids = set()
+        duplicates = set()
+
+        for model_cfg in self.models_configs.values():
+            # Check the main providers list
+            for provider in model_cfg.get("providers", []):
+                pid = provider.get("id")
+                if pid:
+                    if pid in seen_ids:
+                        duplicates.add(pid)
+                    else:
+                        seen_ids.add(pid)
+
+        if duplicates:
+            dup_str = ", ".join(sorted(duplicates))
+            raise ValueError(f"Duplicate provider identifiers found: {dup_str}")
