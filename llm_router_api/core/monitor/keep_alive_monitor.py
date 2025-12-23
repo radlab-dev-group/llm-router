@@ -133,6 +133,13 @@ class KeepAliveMonitor:
             # Not configured – ensure the provider is not scheduled
             pipe.zrem(self._next_wakeup_zset_key(), member)
 
+        # -----------------------------------------------------------------
+        # Keep a set of *all* hosts that have keep‑alive configured
+        # for this model.  This set is used only for bookkeeping – the
+        # actual scheduling still happens via the sorted‑set above.
+        hosts_set_key = f"{self._redis_prefix}:model:{model_name}:hosts"
+        pipe.sadd(hosts_set_key, host)
+
         pipe.execute()
 
     @staticmethod
@@ -169,7 +176,12 @@ class KeepAliveMonitor:
         for key in self.redis_client.scan_iter(
             match=f"{self._redis_prefix}:provider:*"
         ):
+            self.logger.debug(f"[keep-alive-monitor] deleting {key}")
             self.redis_client.delete(key)
+
+        self.logger.debug(
+            f"[keep-alive-monitor] deleting {self._next_wakeup_zset_key()}"
+        )
         self.redis_client.delete(self._next_wakeup_zset_key())
 
     @staticmethod
