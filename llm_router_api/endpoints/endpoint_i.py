@@ -30,13 +30,16 @@ from typing import Optional, Dict, Any, Iterator, Iterable, List
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_router_plugins.utils.pipeline import UtilsPipeline
+from llm_router_plugins.maskers.pipeline import MaskerPipeline
+from llm_router_plugins.guardrails.pipeline import GuardrailPipeline
+
 from llm_router_lib.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
     CLEAR_PREDEFINED_PARAMS,
 )
 
-from llm_router_api.core.model_handler import ModelHandler, ApiModel
 from llm_router_api.base.constants import (
     USE_PROMETHEUS,
     DEFAULT_EP_LANGUAGE,
@@ -51,15 +54,16 @@ from llm_router_api.base.constants import (
     FORCE_GUARDRAIL_RESPONSE,
     GUARDRAIL_STRATEGY_PIPELINE_RESPONSE,
     GUARDRAIL_WITH_AUDIT_RESPONSE,
+    UTILS_PLUGINS_PIPELINE,
 )
 
 from llm_router_api.core.auditor.auditor import AnyRequestAuditor
+from llm_router_api.core.model_handler import ModelHandler, ApiModel
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
-from llm_router_api.endpoints.httprequest import HttpRequestExecutor
-from llm_router_plugins.guardrails.pipeline import GuardrailPipeline
 
-from llm_router_plugins.maskers.pipeline import MaskerPipeline
+from llm_router_api.endpoints.httprequest import HttpRequestExecutor
+
 
 if USE_PROMETHEUS:
     from llm_router_api.core.metrics_handler import MetricsHandler
@@ -87,7 +91,6 @@ class SecureEndpointI(abc.ABC):
 
         # --------------------------------------------------------------------------
         # ----------- GUARDRAILS SECTION
-
         # Guardrails (request) pipeline definition
         self._guardrails_pipeline_request = None
         if FORCE_GUARDRAIL_REQUEST:
@@ -97,9 +100,7 @@ class SecureEndpointI(abc.ABC):
         self._guardrail_auditor_request = None
         if GUARDRAIL_WITH_AUDIT_REQUEST:
             self._guardrail_auditor_request = AnyRequestAuditor(logger=self.logger)
-
         # --------------------------------------------------------------------------
-
         # Guardrails (response) pipeline definition
         self._guardrails_pipeline_response = None
         if FORCE_GUARDRAIL_RESPONSE:
@@ -397,6 +398,14 @@ class EndpointI(SecureEndpointI, abc.ABC):
                 use_default_config=True,
             ),
         )
+
+        # --------------------------------------------------------------------------
+        # Add utils pipeline if needed
+        self._utils_pipeline = None
+        if UTILS_PLUGINS_PIPELINE:
+            self._prepare_utils_pipeline(plugins=UTILS_PLUGINS_PIPELINE)
+
+        # --------------------------------------------------------------------------
         self._model_handler = model_handler
 
         self.direct_return = direct_return
@@ -640,6 +649,60 @@ class EndpointI(SecureEndpointI, abc.ABC):
             provider=api_model_provider.as_dict(),
             options=options,
         )
+
+    # ------------------------------------------------------------------
+    # Pipelines creation and handling
+    # ------------------------------------------------------------------
+    def _prepare_utils_pipeline(self, plugins: List[str]):
+        """
+        Prepare the utils pipeline if it has not been initialized.
+
+        The method verifies whether the internal utils pipeline has already
+        been created. If it exists, the function returns immediately. Otherwise,
+        it creates a new ``UtilsPipeline`` using the supplied plugin names and
+        the instance logger and logs the configured plugins at debug level.
+
+        :param plugins: List of plugin identifiers to be loaded into the utils
+            pipeline.
+        :return: ``None`` – the method modifies the instance state as a side effect.
+        """
+        if self._utils_pipeline:
+            return
+
+        try:
+            self._utils_pipeline = UtilsPipeline(
+                plugin_names=plugins, logger=self.logger
+            )
+        except Exception as e:
+            raise e
+
+        self.logger.debug(f"llm-router utils pipeline: {plugins}")
+
+    def _run_utils_plugins(self, payload: Dict):
+        """
+        Run the optional *utils* pipeline on the request payload.
+
+        The ``UTILS_PLUGINS_PIPELINE`` setting can wire a series of
+        plug‑ins that perform generic preprocessing (e.g. enrichment,
+        validation, transformation).  If such a pipeline has been created
+        by ``_prepare_utils_pipeline`` this method forwards the payload to
+        it; otherwise the payload is returned untouched.
+
+        Parameters
+        ----------
+        payload : Dict
+            The normalized request payload produced by ``prepare_payload``
+            and possibly altered by guard‑rail or masking steps.
+
+        Returns
+        -------
+        Dict
+            The payload after all utils plugins have been applied, or the
+            original payload when no utils pipeline is configured.
+        """
+        if not self._utils_pipeline:
+            return payload
+        return self._utils_pipeline.apply(payload)
 
     # ------------------------------------------------------------------
     # Parameter validation and helper methods
@@ -947,8 +1010,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         self._start_time = time.time()
         try:
-            # 0. There user is able to prepare a payload to process
+            # ------------ BEGIN SECTION
+            # 0.0 There user is able to prepare a payload to process
             params = self.prepare_payload(params)
+            # 0.1 Run utils plugins which may modify the user context
+            params = self._run_utils_plugins(payload=params)
 
             # ------------ BEGIN SECURE SECTION ------------
             # 1. Check payload using guardrails

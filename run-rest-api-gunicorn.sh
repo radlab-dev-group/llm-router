@@ -23,11 +23,7 @@ export LLM_ROUTER_EP_PREFIX=${LLM_ROUTER_EP_PREFIX:-"/api"}
 export LLM_ROUTER_DEFAULT_EP_LANGUAGE=${LLM_ROUTER_DEFAULT_EP_LANGUAGE:-"pl"}
 
 # ==================================================================================
-# Routing strategies:
-#   balanced
-#   weighted
-#   first_available
-#   first_available_optim
+# Routing strategies: [balanced, weighted, first_available, first_available_optim]
 export LLM_ROUTER_BALANCE_STRATEGY=${LLM_ROUTER_BALANCE_STRATEGY:-"first_available"}
 
 # ==================================================================================
@@ -60,27 +56,36 @@ export LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS=${LLM_ROUTER_PROVIDER_MONITO
 export LLM_ROUTER_FORCE_MASKING=${LLM_ROUTER_FORCE_MASKING:-0}
 export LLM_ROUTER_MASKING_WITH_AUDIT=${LLM_ROUTER_MASKING_WITH_AUDIT:-0}
 export LLM_ROUTER_MASKING_STRATEGY_PIPELINE=${LLM_ROUTER_MASKING_STRATEGY_PIPELINE:-"fast_masker"}
-
 # ------------ Guardrails section (request)
+# Available guardrails types: [nask_guard, sojka_guard]
 export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=${LLM_ROUTER_FORCE_GUARDRAIL_REQUEST:-0}
 export LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=${LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST:-0}
-# Available guardrails types:
-#   nask_guard
-#   sojka_guard
 export LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_REQUEST=${LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_REQUEST:-"sojka_guard"}
-
 # ------------ Guardrails section (response)
 #export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=${LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE:-1}
 #export LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=${LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE:-1}
 #export LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_RESPONSE=${LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:-""}
-
 # ------------ Guardrails services (host)
 export LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST=${LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST:-"http://192.168.100.65:5000"}
 export LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST=${LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST:-"http://192.168.100.65:5000"}
 
+# ==================================================================================
+# Utilities/plugins available: [langchain_rag]
+#export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-""}
+export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"langchain_rag"}
+
+# ------------ LangChainRAG Configuration
+export LLM_ROUTER_LANGCHAIN_RAG_COLLECTION=${LLM_ROUTER_LANGCHAIN_RAG_COLLECTION:-"sample_collection"}
+export LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER=${LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER:-"/mnt/data2/llms/models/community/google/embeddinggemma-300m"}
+export LLM_ROUTER_LANGCHAIN_RAG_DEVICE=${LLM_ROUTER_LANGCHAIN_RAG_DEVICE:-"cpu"}
+export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE=${LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE:-400}
+export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP=${LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP:-100}
+export LLM_ROUTER_LANGCHAIN_RAG_PERSIST_DIR=${LLM_ROUTER_LANGCHAIN_RAG_PERSIST_DIR:-"./workdir/plugins/utils/rag/langchain/${LLM_ROUTER_LANGCHAIN_RAG_COLLECTION}"}
+
+# ==================================================================================
+export TOKENIZERS_PARALLELISM=${TOKENIZERS_PARALLELISM:-true}
 
 # ==================================================================================
 # RUN MAIN APPLICATION
 # ==================================================================================
 exec python3 -m llm_router_api.rest_api
-
