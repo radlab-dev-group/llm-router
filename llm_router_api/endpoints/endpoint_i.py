@@ -651,7 +651,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         )
 
     # ------------------------------------------------------------------
-    # Pipelines creation
+    # Pipelines creation and handling
     # ------------------------------------------------------------------
     def _prepare_utils_pipeline(self, plugins: List[str]):
         """
@@ -677,6 +677,32 @@ class EndpointI(SecureEndpointI, abc.ABC):
             raise e
 
         self.logger.debug(f"llm-router utils pipeline: {plugins}")
+
+    def _run_utils_plugins(self, payload: Dict):
+        """
+        Run the optional *utils* pipeline on the request payload.
+
+        The ``UTILS_PLUGINS_PIPELINE`` setting can wire a series of
+        plug‑ins that perform generic preprocessing (e.g. enrichment,
+        validation, transformation).  If such a pipeline has been created
+        by ``_prepare_utils_pipeline`` this method forwards the payload to
+        it; otherwise the payload is returned untouched.
+
+        Parameters
+        ----------
+        payload : Dict
+            The normalized request payload produced by ``prepare_payload``
+            and possibly altered by guard‑rail or masking steps.
+
+        Returns
+        -------
+        Dict
+            The payload after all utils plugins have been applied, or the
+            original payload when no utils pipeline is configured.
+        """
+        if not self._utils_pipeline:
+            return payload
+        return self._utils_pipeline.apply(payload)
 
     # ------------------------------------------------------------------
     # Parameter validation and helper methods
@@ -984,8 +1010,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         self._start_time = time.time()
         try:
-            # 0. There user is able to prepare a payload to process
+            # ------------ BEGIN SECTION
+            # 0.0 There user is able to prepare a payload to process
             params = self.prepare_payload(params)
+            # 0.1 Run utils plugins which may modify the user context
+            params = self._run_utils_plugins(payload=params)
 
             # ------------ BEGIN SECURE SECTION ------------
             # 1. Check payload using guardrails
