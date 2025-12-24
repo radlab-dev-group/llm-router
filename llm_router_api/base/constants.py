@@ -124,7 +124,6 @@ REDIS_PASSWORD = os.environ.get(
 if not len(REDIS_PASSWORD):
     REDIS_PASSWORD = None
 
-
 # =============================================================================
 # MASKING
 # =============================================================================
@@ -201,6 +200,20 @@ if GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
     ]
 
 # =============================================================================
+# PLUGINS
+# =============================================================================
+# ----------- Utils plugins
+UTILS_PLUGINS_PIPELINE = str(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}UTILS_PLUGINS_PIPELINE", "")
+)
+if UTILS_PLUGINS_PIPELINE:
+    UTILS_PLUGINS_PIPELINE = [
+        _s.strip()
+        for _s in UTILS_PLUGINS_PIPELINE.strip().split(",")
+        if len(_s.strip())
+    ]
+
+# =============================================================================
 # MONITORING DEFINITIONS
 # =============================================================================
 # Time in seconds between llm-router-services checks
@@ -223,6 +236,7 @@ PROVIDER_MONITOR_INTERVAL_SECONDS = int(
         f"{_DontChangeMe.MAIN_ENV_PREFIX}PROVIDER_MONITOR_INTERVAL_SECONDS", 5
     )
 )
+
 
 # =============================================================================
 # STARTUP
@@ -287,12 +301,69 @@ class _StartAppVerificator:
                 "pipeline of guardrail strategies for each response"
             )
 
+    @staticmethod
+    def __verify_utils_plugins_langchain_rag():
+        from llm_router_plugins.utils.rag.langchain_plugin import LangchainRAGPlugin
+
+        if LangchainRAGPlugin.name in UTILS_PLUGINS_PIPELINE:
+            _lp_name = LangchainRAGPlugin.name
+            from llm_router_plugins.utils.rag.engine.langchain import (
+                LANGCHAIN_RAG_COLLECTION,
+                LANGCHAIN_RAG_EMBEDDER,
+                LANGCHAIN_RAG_DEVICE,
+                LANGCHAIN_RAG_CHUNK_SIZE,
+                LANGCHAIN_RAG_CHUNK_OVERLAP,
+            )
+
+            if not LANGCHAIN_RAG_COLLECTION:
+                raise Exception(
+                    f"LANGCHAIN_RAG_COLLECTION is required when using "
+                    f"{_lp_name} plugin. "
+                    f"Export LLM_ROUTER_LANGCHAIN_RAG_COLLECTION "
+                    f"with your collection name"
+                )
+            if not LANGCHAIN_RAG_EMBEDDER:
+                raise Exception(
+                    f"LANGCHAIN_RAG_EMBEDDER is required when using "
+                    f"{_lp_name} plugin. "
+                    f"Export LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER "
+                    f"with chosen embedder name/path"
+                )
+            if not LANGCHAIN_RAG_DEVICE:
+                raise Exception(
+                    f"LANGCHAIN_RAG_DEVICE is required when using "
+                    f"{_lp_name} plugin. "
+                    f"Export LLM_ROUTER_LANGCHAIN_RAG_DEVICE "
+                    f"with chosen device (cpu, cuda:0, ...)"
+                )
+            if not LANGCHAIN_RAG_CHUNK_SIZE:
+                raise Exception(
+                    f"LANGCHAIN_RAG_CHUNK_SIZE is required when using "
+                    f"{_lp_name} plugin. "
+                    f"Export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE with size "
+                    f"(in tokens) of stored chunks in the vector database"
+                )
+            if not LANGCHAIN_RAG_CHUNK_OVERLAP:
+                raise Exception(
+                    f"LANGCHAIN_RAG_CHUNK_OVERLAP is required when using "
+                    f"{_lp_name} plugin. "
+                    f"Export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP with size (in"
+                    f" tokens) of overlapping stored chunks in the vector database"
+                )
+
+    def __verify_utils_plugins(self):
+        if not UTILS_PLUGINS_PIPELINE:
+            return
+
+        self.__verify_utils_plugins_langchain_rag()
+
     def dont_run_if_something_is_wrong(self):
         self.__verify_is_able_to_init()
         self.__verify_balancing_strategy()
         self.__verify_default_masking_strategy()
         self.__verify_default_request_guardrails()
         self.__verify_default_response_guardrails()
+        self.__verify_utils_plugins()
 
 
 _StartAppVerificator().dont_run_if_something_is_wrong()
