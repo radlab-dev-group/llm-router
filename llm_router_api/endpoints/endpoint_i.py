@@ -78,7 +78,7 @@ class SecureEndpointI(abc.ABC):
 
     * **Guardrail pipelines** – enforce content‑safety and policy checks on
       incoming requests and outgoing responses.
-    * **Masking pipelines** – optionally anonymise or redact sensitive data
+    * **Masking pipelines** – optionally anonymize or redact sensitive data
       in the payload before it is forwarded to a downstream model.
     * **Auditing helpers** – create start/end audit records when the relevant
       ``*_WITH_AUDIT`` flags are enabled.
@@ -107,7 +107,7 @@ class SecureEndpointI(abc.ABC):
             accessed through the ``method`` property.
         logger : logging.Logger
             A configured logger that will be used throughout the class for
-            debugging, info, warning and error messages.
+            debugging, info, warning, and error messages.
 
         The constructor also:
 
@@ -192,8 +192,8 @@ class SecureEndpointI(abc.ABC):
         ----------
         plugins : List[str]
             Ordered list of plugin identifiers that should be loaded into the
-            pipeline. The plugins define the masking strategies (e.g. redaction,
-            hashing, tokenisation) applied to the payload.
+            pipeline. The plugins define the masking strategies (e.g., redaction,
+            hashing, tokenization) applied to the payload.
 
         Returns
         -------
