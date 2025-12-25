@@ -1015,6 +1015,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             params = self.prepare_payload(params)
             # 0.1 Run utils plugins which may modify the user context
             params = self._run_utils_plugins(payload=params)
+            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
             # ------------ BEGIN SECURE SECTION ------------
             # 1. Check payload using guardrails
