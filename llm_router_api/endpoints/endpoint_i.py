@@ -226,9 +226,6 @@ class SecureEndpointI(abc.ABC):
 
         return is_safe
 
-    def _guardrail_response_if_needed(self, response):
-        return response
-
     def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if (
             self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
@@ -1327,7 +1324,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
             self.logger.error(f"Max reconnections exceeded: {reconnect_number}!")
 
-        return self._guardrail_response_if_needed(response=response)
+        return response
 
     @staticmethod
     def _filter_params_to_acceptable(
