@@ -1,4 +1,6 @@
+import os
 import time
+
 from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -28,6 +30,72 @@ from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI
+
+
+class ApiVersion(EndpointWithHttpRequestI):
+    VERSION_FILE = ".version"
+
+    EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
+
+    REQUIRED_ARGS = []
+    OPTIONAL_ARGS = []
+    SYSTEM_PROMPT_NAME = None
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        model_handler: Optional[ModelHandler] = None,
+        prompt_handler: Optional[PromptHandler] = None,
+        ep_name: str = "version",
+    ):
+        """
+        Create a ``Ping`` endpoint instance.
+
+        Args:
+            logger_file_name: Optional logger file name.
+                If not given, then a default logger file name will be used.
+            logger_level: Optional logger level. Defaults to ``REST_API_LOG_LEVEL``.
+            prompt_handler: Optional prompt handler instance. Defaults to ``None``.
+        """
+        super().__init__(
+            method="GET",
+            ep_name=ep_name,
+            logger_file_name=logger_file_name,
+            logger_level=logger_level,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            api_types=["ollama", "vllm", "openai", "llmstudio", "anthropic"],
+        )
+
+        self.version = "0.0.1"
+        if os.path.exists(self.VERSION_FILE):
+            with open(self.VERSION_FILE) as f:
+                self.version = f.read().strip()
+
+        self.logger.info(f"  -> Running LLM-Router version: {self.version}")
+
+    @EP.response_time
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any] | str]:
+        """
+        Execute the health‑check logic.
+
+        Parameters
+        ----------
+        params : Optional[Dict[str, Any]]
+            Ignored – the endpoint does not process query parameters.
+
+        Returns
+        -------
+        str
+            The string ``\"Ollama is running\"`` indicating
+            the successful health check.
+        """
+        self.direct_return = True
+        return {"version": self.version}
 
 
 class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
