@@ -70,10 +70,57 @@ if USE_PROMETHEUS:
 
 
 class SecureEndpointI(abc.ABC):
+    """
+    Base class that equips an endpoint with security‑related utilities.
+
+    The class centralises common functionality required by all concrete
+    endpoints, namely:
+
+    * **Guardrail pipelines** – enforce content‑safety and policy checks on
+      incoming requests and outgoing responses.
+    * **Masking pipelines** – optionally anonymize or redact sensitive data
+      in the payload before it is forwarded to a downstream model.
+    * **Auditing helpers** – create start/end audit records when the relevant
+      ``*_WITH_AUDIT`` flags are enabled.
+    * **Metrics integration** – increment counters for guardrail or masking
+      incidents when Prometheus metrics are active.
+
+    Sub‑classes (e.g. :class:`EndpointI` or :class:`EndpointWithHttpRequestI`)
+    inherit these capabilities and can focus on business‑logic handling.
+    """
+
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = False
 
     def __init__(self, ep_name: str, method: str, logger: logging.Logger):
+        """
+        Initialise the security scaffolding for a single HTTP endpoint.
 
+        Parameters
+        ----------
+        ep_name : str
+            The raw endpoint name (URL fragment) used by Flask to register the
+            route.  It is stored as ``self._ep_name`` and later exposed via the
+            ``name`` property.
+        method : str
+            HTTP verb expected by the endpoint – typically ``"GET"`` or
+            ``"POST"``.  The value is stored as ``self._ep_method`` and
+            accessed through the ``method`` property.
+        logger : logging.Logger
+            A configured logger that will be used throughout the class for
+            debugging, info, warning, and error messages.
+
+        The constructor also:
+
+        * Sets up an optional Prometheus ``MetricsHandler`` when
+          ``USE_PROMETHEUS`` is ``True``.
+        * Lazily creates masker and guardrail pipelines according to the
+          global configuration flags (e.g. ``FORCE_MASKING``,
+          ``FORCE_GUARDRAIL_REQUEST``).
+        * Instantiates audit‑log helpers when the corresponding ``*_WITH_AUDIT``
+          switches are active.
+
+        No return value; the instance is ready for use after construction.
+        """
         self.logger = logger
         self._ep_name = ep_name
         self._ep_method = method
@@ -133,6 +180,26 @@ class SecureEndpointI(abc.ABC):
 
     # ------------------------------------------------------------------
     def _prepare_masker_pipeline(self, plugins: List[str]):
+        """
+        Initialize the :class:`MaskerPipeline` used for payload anonymization.
+
+        This helper lazily creates a ``MaskerPipeline`` instance the first time it
+        is required. Subsequent calls are no‑ops, preventing duplicate
+        pipeline construction and ensuring that the same pipeline (with the
+        same configuration) is reused throughout the request lifecycle.
+
+        Parameters
+        ----------
+        plugins : List[str]
+            Ordered list of plugin identifiers that should be loaded into the
+            pipeline. The plugins define the masking strategies (e.g., redaction,
+            hashing, tokenization) applied to the payload.
+
+        Returns
+        -------
+        None
+            The method mutates ``self._masker_pipeline`` as a side effect.
+        """
         if self._masker_pipeline:
             return
 
@@ -146,6 +213,28 @@ class SecureEndpointI(abc.ABC):
     def _prepare_guardrails_pipeline(
         self, plugins: List[str], for_response_mode: bool
     ):
+        """
+        Initialize a :class:`GuardrailPipeline` for request or response validation.
+
+        Guardrails enforce policy checks (e.g., profanity filtering, content
+        safety, limiting) before a request is forwarded to a downstream
+        model or before a response is sent back to the client.  The pipeline is
+        created lazily; if it already exists, the method returns immediately.
+
+        Parameters
+        ----------
+        plugins : List[str]
+            List of plugin names that implement individual guardrail checks.
+        for_response_mode : bool
+            ``True`` creates/uses the response‑side guardrail pipeline,
+            ``False`` creates/uses the request‑side pipeline.
+
+        Returns
+        -------
+        None
+            The method mutates ``self._guardrails_pipeline_request`` or
+            ``self._guardrails_pipeline_response`` as a side effect.
+        """
         if for_response_mode and self._guardrails_pipeline_response:
             return
         elif not for_response_mode and self._guardrails_pipeline_request:
@@ -170,6 +259,31 @@ class SecureEndpointI(abc.ABC):
     def _begin_audit_log_if_needed(
         self, payload, prepare_audit_log: bool, audit_type: str
     ):
+        """
+        Create an audit log entry for the start of a guarded or masked operation.
+
+        The method is invoked only when the corresponding ``*_WITH_AUDIT``
+        flag is enabled.  It records the endpoint name, the type of audit
+        (e.g. ``"guardrail_request"``, ``"masking"``), a timestamp, and a deep
+        copy of the initial payload.  The returned dictionary is later passed
+        to :meth:`_end_audit_log_if_needed` to finalize the entry.
+
+        Parameters
+        ----------
+        payload : Any
+            The original request payload that will be audited.
+        prepare_audit_log : bool
+            Flag indicating whether auditing is enabled for this operation.
+        audit_type : str
+            Identifier describing the audit purpose (e.g. ``"masking"``).
+
+        Returns
+        -------
+        dict | None
+            A dictionary representing the beginning of the audit log, or
+            ``None`` if ``prepare_audit_log`` is ``False``.
+        """
+
         audit_log = None
         if prepare_audit_log:
             audit_log = {
@@ -186,6 +300,30 @@ class SecureEndpointI(abc.ABC):
     def _end_audit_log_if_needed(
         payload, audit_log, auditor: AnyRequestAuditor, force_end: bool
     ):
+        """
+        Finalize an audit log entry and persist it via the provided auditor.
+
+        If an audit log was created by :meth:`_begin_audit_log_if_needed`,
+        this method records the ending timestamp and the final payload.
+        It then delegates storage to ``auditor.add_log``.  When no audit log
+        exists, the call is a no‑op unless ``force_end`` is ``True``, in which
+        case an exception is raised to indicate a programming error.
+
+        Parameters
+        ----------
+        payload : Any
+            The payload at the end of the operation (may differ from the start).
+        audit_log : dict | None
+            The dictionary returned by ``_begin_audit_log_if_needed``.
+        auditor : AnyRequestAuditor
+            Auditor instance responsible for persisting the audit record.
+        force_end : bool
+            If ``True`` and ``audit_log`` is ``None``, raise an exception.
+
+        Returns
+        -------
+        None
+        """
         if not audit_log:
             if force_end:
                 raise Exception(f"Cannot end audit! Audit log is not set!")
@@ -199,6 +337,24 @@ class SecureEndpointI(abc.ABC):
             auditor.add_log(audit_log)
 
     def _is_request_guardrail_safe(self, payload: Dict):
+        """
+        Evaluate the request payload against configured guardrail plugins.
+
+        The method short‑circuits when guardrails are globally disabled or when
+        no guardrail pipeline has been instantiated.  Otherwise, it runs the
+        request‑side ``GuardrailPipeline`` and, if a violation is detected,
+        records an audit entry (when enabled) and updates metrics.
+
+        Parameters
+        ----------
+        payload : Dict
+            Normalised request payload to be checked.
+
+        Returns
+        -------
+        bool
+            ``True`` if the payload passes all guardrail checks, ``False`` otherwise.
+        """
         if (
             self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
             or not self._guardrails_pipeline_request
@@ -226,10 +382,27 @@ class SecureEndpointI(abc.ABC):
 
         return is_safe
 
-    def _guardrail_response_if_needed(self, response):
-        return response
-
     def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Apply masking to the payload when required by configuration or request.
+
+        Masking is performed if ``FORCE_MASKING`` is enabled globally or if the
+        incoming payload contains the ``"anonymize": True`` flag.  The method
+        creates an audit log (when ``MASKING_WITH_AUDIT`` is ``True``), runs the
+        masker pipeline, updates metrics on changes, and finalizes the audit
+        entry.
+
+        Parameters
+        ----------
+        payload : Dict[str, Any]
+            The request payload that may need to be anonymised.
+
+        Returns
+        -------
+        Dict[str, Any]
+            The (potentially) masked payload.  If masking is not required,
+            the original payload is returned unchanged.
+        """
         if (
             self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
             or not payload
@@ -1327,7 +1500,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
             self.logger.error(f"Max reconnections exceeded: {reconnect_number}!")
 
-        return self._guardrail_response_if_needed(response=response)
+        return response
 
     @staticmethod
     def _filter_params_to_acceptable(
