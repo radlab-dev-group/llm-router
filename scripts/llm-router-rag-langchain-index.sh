@@ -7,9 +7,9 @@ export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE=${LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE
 export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP=${LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP:-100}
 export LLM_ROUTER_LANGCHAIN_RAG_PERSIST_DIR=${LLM_ROUTER_LANGCHAIN_RAG_PERSIST_DIR:-"./workdir/plugins/utils/rag/langchain/${LLM_ROUTER_LANGCHAIN_RAG_COLLECTION}"}
 
-llm-router-rag-langchain index --path "../llm-router" --ext .py .md .txt .sh
-llm-router-rag-langchain index --path "../llm-router-plugins" --ext .py .md .txt .sh
-llm-router-rag-langchain index --path "../llm-router-services" --ext .py .md .txt .sh
-llm-router-rag-langchain index --path "../llm-router-utils" --ext .py .md .txt .sh
-llm-router-rag-langchain index --path "../llm-router-web" --ext .py .md .txt .sh
-llm-router-rag-langchain index --path "../.github/pages/llmrouter.cloud/" --ext .html .js .md .txt .py
+llm-router-rag-langchain index --path "../llm-router" --ext .md .txt
+llm-router-rag-langchain index --path "../llm-router-plugins" --ext .md .txt
+llm-router-rag-langchain index --path "../llm-router-services" --ext .md .txt
+llm-router-rag-langchain index --path "../llm-router-utils" --ext .md .txt
+llm-router-rag-langchain index --path "../llm-router-web" --ext .md .txt
+llm-router-rag-langchain index --path "../.github/pages/llmrouter.cloud/" --ext .html .md .txt
