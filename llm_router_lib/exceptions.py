@@ -1,27 +1,37 @@
+"""
+Custom exception hierarchy for the LLM‑Router library.
+
+All public exceptions inherit from :class:`LLMRouterError`, allowing callers
+to catch a single base class for any router‑related failure while still being
+able to differentiate specific error conditions when needed.
+"""
+
+
 class LLMRouterError(Exception):
-    """Bazowy wyjątek biblioteki."""
+    """Base exception for all LLM‑Router‑specific errors."""
 
     pass
 
 
 class AuthenticationError(LLMRouterError):
-    """Błąd 401 / 403 – nieprawidłowy token."""
+    """Raised when the server returns HTTP 401/403 – invalid or missing token."""
 
     pass
 
 
 class RateLimitError(LLMRouterError):
-    """Błąd 429 – limit zapytań przekroczony."""
+    """Raised when the server returns HTTP 429 – request rate limit exceeded."""
 
     pass
 
 
 class ValidationError(LLMRouterError):
-    """Błąd 400 – niepoprawne dane w żądaniu."""
+    """Raised when the server returns HTTP 400 – malformed request payload."""
 
     pass
 
 
 class NoArgsAndNoPayloadError(LLMRouterError):
+    """Raised when a client method receives neither a payload nor required arguments."""
 
     pass
