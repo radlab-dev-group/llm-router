@@ -1,3 +1,13 @@
+"""
+vLLM endpoint implementation.
+
+This module provides a concrete endpoint class that adapts the generic
+``OpenAIResponseHandler`` to the *vLLM* backend.  It wires together logging,
+prompt handling, and model resolution so that a Flask route can expose the
+``/v1/chat/completions`` OpenAI‑compatible API while delegating the actual
+generation to a locally‑hosted vLLM model server.
+"""
+
 from typing import Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -8,6 +18,26 @@ from llm_router_api.endpoints.builtin.openai import OpenAIResponseHandler
 
 
 class VllmChatCompletion(OpenAIResponseHandler):
+    """
+    OpenAI‑compatible chat endpoint backed by a vLLM model.
+
+    The class inherits the full request‑validation, guard‑rail, and response‑
+    handling logic from :class:`OpenAIResponseHandler`.  It only overrides the
+    constructor to configure the endpoint name, supported API type, and the
+    optional prompt/model handlers.
+
+    Class attributes
+    ----------------
+    REQUIRED_ARGS : None
+        vLLM does not enforce any mandatory request parameters beyond those
+        already validated by the base class.
+    OPTIONAL_ARGS : None
+        No additional optional arguments are defined for this endpoint.
+    SYSTEM_PROMPT_NAME : None
+        System‑prompt injection is delegated to the base handler; this endpoint
+        does not define a specific prompt name.
+    """
+
     REQUIRED_ARGS = None
     OPTIONAL_ARGS = None
     SYSTEM_PROMPT_NAME = None

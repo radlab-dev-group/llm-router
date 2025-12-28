@@ -1,10 +1,9 @@
 """
-llm_router_api.endpoints.builtin.openai
-================================================
+OpenAI‑compatible endpoint implementations.
 
-Endpoint implementations that proxy requests to OpenAI‑compatible back‑ends.
-The module defines a base chat endpoint (:class:`OpenAIChat`) and two
-derived classes for completions and model listing.
+The module provides a base response handler and concrete endpoint classes for
+chat completions, generic completions, and model listing.  All endpoints inherit
+common functionality from the ``PassthroughI`` abstract base class.
 """
 
 import abc
@@ -24,6 +23,25 @@ from llm_router_api.endpoints.passthrough import PassthroughI
 class OpenAIResponseHandler(PassthroughI, abc.ABC):
     @staticmethod
     def prepare_response_function(response):
+        """
+        Convert a raw ``requests.Response`` into the OpenAI‑compatible JSON format.
+
+        The helper checks whether the payload contains a ``"message"`` key – a
+        pattern used by Ollama – and, if present, applies the appropriate
+        conversion via :class:`OpenAIConverters.FromOllama`.  Otherwise the
+        original JSON body is returned unchanged.
+
+        Parameters
+        ----------
+        response : requests.Response
+            The HTTP response object received from the downstream service.
+
+        Returns
+        -------
+        dict
+            A dictionary ready to be returned to the client in OpenAI‑compatible
+            shape.
+        """
         response = response.json()
         if "message" in response:
             return OpenAIConverters.FromOllama.convert(response=response)
@@ -124,7 +142,7 @@ class OpenAIModelsHandler(PassthroughI):
         timestamp_as_int: bool = False,
     ):
         """
-        Initialise the models‑listing endpoint.
+        Initialize the models‑listing endpoint.
 
         Parameters
         ----------
@@ -163,23 +181,32 @@ class OpenAIModelsHandler(PassthroughI):
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
-        Execute the model‑listing logic.
+        Return a static payload describing the model list.
 
-        Parameters
-        ----------
-        params : Optional[Dict[str, Any]]
-            Ignored – the endpoint does not accept query parameters.
+        The endpoint does not accept any query parameters; ``params`` is ignored.
 
         Returns
         -------
         dict
-            A response containing the object type ``"list"`` and a ``data``
-            field with the available model tags.
+            ``{"object": "list", "data": <list_of_models>}``.
         """
         # self.direct_return = True
         return {"object": "list", "data": self.__proper_models_list_format()}
 
     def __proper_models_list_format(self):
+        """
+        Transform the internal model registry into the OpenAI ``/models`` schema.
+
+        The method gathers active model tags from the configured ``ModelHandler``,
+        merges them into a flat list, and adds a creation timestamp (optionally
+        as an integer) for each model entry.
+
+        Returns
+        -------
+        list[dict]
+            A list of model descriptors containing ``id``, ``object``, ``created``,
+            and ``owned_by`` fields.
+        """
         _models_data = self._api_type_dispatcher.tags(
             models_config=self._model_handler.list_active_models(),
             merge_to_list=True,
