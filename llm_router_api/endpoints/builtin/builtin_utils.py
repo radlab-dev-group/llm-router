@@ -81,7 +81,14 @@ class ApiVersion(EndpointWithHttpRequestI):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
-            api_types=["ollama", "vllm", "openai", "llmstudio", "anthropic"],
+            api_types=[
+                "builtin",
+                "ollama",
+                "vllm",
+                "openai",
+                "llmstudio",
+                "anthropic",
+            ],
         )
 
         self.version = "0.0.1"
