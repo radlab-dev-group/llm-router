@@ -618,6 +618,14 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
     @property
     def model_handler(self):
+        """
+        Return the :class:`ModelHandler` instance associated with this endpoint.
+
+        The handler is responsible for resolving model identifiers supplied by
+        the client into concrete :class:`ApiModel` objects.  It may be ``None``
+        when the endpoint does not interact with a model (e.g. a health‑check
+        endpoint).
+        """
         return self._model_handler
 
     # ------------------------------------------------------------------
@@ -812,6 +820,25 @@ class EndpointI(SecureEndpointI, abc.ABC):
         params: Dict[str, Any],
         options: Optional[Dict[str, Any]] = None,
     ) -> None:
+        """
+        Release a previously‑acquired model provider back to the pool.
+
+        This method is a thin wrapper around :meth:`ModelHandler.put_model_provider`
+        that ensures the model is correctly deregistered even if the request
+        processing raised an exception.
+
+        Parameters
+        ----------
+        api_model_provider : ApiModel
+            The model provider that was previously obtained via
+            :meth:`get_model_provider`.
+        params : Dict[str, Any]
+            The request payload that was used to obtain the model.  It is used to
+            re‑derive the model name if necessary.
+        options : Optional[Dict[str, Any]], default ``None``
+            Additional options that were passed to the model handler when the
+            model was fetched.  They are forwarded unchanged to the ``put`` call.
+        """
         if not api_model_provider:
             return
         model_name = self._model_name_from_params_or_model(
