@@ -182,6 +182,21 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
         return _payload
 
     def __prepare_response_function(self, responses, contents):
+        """
+        Collate the generated questions and compute total processing time.
+
+        Parameters
+        ----------
+        responses : list[requests.Response]
+            Raw HTTP responses from the model service.
+        contents : list[str]
+            Original source texts that were sent to the model.
+
+        Returns
+        -------
+        dict
+            ``{"response": <list_of_questions>, "generation_time": <seconds>}``.
+        """
         assert len(responses) == len(contents)
 
         questions = []
@@ -273,6 +288,11 @@ class TranslateTexts(EndpointWithHttpRequestI):
         model_handler: Optional[ModelHandler] = None,
         ep_name: str = "translate",
     ):
+        """
+        Initialise the translation endpoint.
+
+        Parameters follow the same pattern as other builtin endpoints.
+        """
         super().__init__(
             ep_name=ep_name,
             api_types=["builtin"],
@@ -292,7 +312,17 @@ class TranslateTexts(EndpointWithHttpRequestI):
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
+        """
+        Build a payload that asks the model to translate each input text.
 
+        The request contains a ``model`` field, optional ``stream`` flag, and a
+        list of ``user`` messages – one per source text.
+
+        Returns
+        -------
+        dict
+            Normalised payload for the downstream service.
+        """
         options = TranslateTextModel(**params)
         _payload = options.model_dump()
         _payload["stream"] = _payload.get("stream", False)
@@ -309,6 +339,22 @@ class TranslateTexts(EndpointWithHttpRequestI):
         return _payload
 
     def __prepare_response_function(self, responses, contents):
+        """
+        Pair each original text with its translation and report elapsed time.
+
+        Parameters
+        ----------
+        responses : list[requests.Response]
+            Responses from the translation model.
+        contents : list[str]
+            Original source texts.
+
+        Returns
+        -------
+        dict
+            ``{"response": <list_of_dicts>, "generation_time": <seconds>}``.
+        """
+
         assert len(responses) == len(contents)
 
         translations = []
@@ -345,6 +391,9 @@ class SimplifyTexts(EndpointWithHttpRequestI):
         model_handler: Optional[ModelHandler] = None,
         ep_name: str = "simplify_text",
     ):
+        """
+        Initialise the text‑simplification endpoint.
+        """
         super().__init__(
             ep_name=ep_name,
             api_types=["builtin"],
@@ -364,7 +413,14 @@ class SimplifyTexts(EndpointWithHttpRequestI):
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
+        """
+        Validate input and construct a payload that asks the model to simplify text.
 
+        Returns
+        -------
+        dict
+            Normalised request payload.
+        """
         options = SimplifyTextModel(**params)
         _payload = options.model_dump()
         _payload["model"] = _payload["model_name"]
@@ -381,6 +437,21 @@ class SimplifyTexts(EndpointWithHttpRequestI):
         return _payload
 
     def __prepare_response_function(self, responses, contents):
+        """
+        Return the simplified versions of the original texts.
+
+        Parameters
+        ----------
+        responses : list[requests.Response]
+            Model responses containing the simplified text.
+        contents : list[str]
+            Original texts (unused beyond timing).
+
+        Returns
+        -------
+        dict
+            ``{"response": <list_of_simplified_texts>, "generation_time": <seconds>}``.
+        """
         assert len(responses) == len(contents)
 
         simplifications = []
@@ -410,6 +481,9 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
         model_handler: Optional[ModelHandler] = None,
         ep_name: str = "generate_article_from_text",
     ):
+        """
+        Initialise the news‑generation endpoint.
+        """
         super().__init__(
             ep_name=ep_name,
             api_types=["builtin"],
@@ -429,6 +503,14 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
+        """
+        Convert the incoming request into a payload that asks the model to write a news article.
+
+        Returns
+        -------
+        dict
+            Normalised payload for the downstream model.
+        """
         options = GenerateArticleFromTextModel(**params)
         _payload = options.model_dump()
         _payload["stream"] = _payload.get("stream", False)
@@ -442,6 +524,19 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
         return _payload
 
     def __prepare_response_function(self, response):
+        """
+        Extract the generated article text and report processing time.
+
+        Parameters
+        ----------
+        response : requests.Response
+            Raw response from the model service.
+
+        Returns
+        -------
+        dict
+            ``{"response": {"article_text": <text>}, "generation_time": <seconds>}``.
+        """
         j_response, choices, assistant_response = self._get_choices_from_response(
             response=response
         )
@@ -470,6 +565,9 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
         model_handler: Optional[ModelHandler] = None,
         ep_name: str = "create_full_article_from_texts",
     ):
+        """
+        Initialize the “full article” endpoint, extending the basic news generator.
+        """
         super().__init__(
             ep_name=ep_name,
             logger_level=logger_level,
@@ -482,7 +580,17 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
+        """
+        Build a payload that combines multiple source texts into a single article.
 
+        The method also injects optional prompt mapping and postfix strings
+        used by the model’s system prompt.
+
+        Returns
+        -------
+        dict
+            Normalised request payload.
+        """
         options = CreateArticleFromNewsList(**params)
         _payload = options.model_dump()
 
@@ -529,6 +637,9 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
         model_handler: Optional[ModelHandler] = None,
         ep_name: str = "generative_answer",
     ):
+        """
+        Initialize the context‑aware answer endpoint.
+        """
         super().__init__(
             ep_name=ep_name,
             logger_level=logger_level,
@@ -543,7 +654,18 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
+        """
+        Assemble a payload that provides the model with a context and a question.
 
+        The method concatenates all supplied texts (optionally prefixing each
+        with its document name), injects prompt mapping, and prepares optional
+        forced or postfix system prompts.
+
+        Returns
+        -------
+        dict
+            Normalised request payload for the downstream model.
+        """
         options = AnswerBasedOnTheContextModel(**params)
         _payload = options.model_dump()
         _payload["stream"] = _payload.get("stream", False)
@@ -586,6 +708,19 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
         return _payload
 
     def __prepare_response_function(self, response):
+        """
+        Return the answer extracted from the model’s response.
+
+        Parameters
+        ----------
+        response : requests.Response
+            Raw response from the model service.
+
+        Returns
+        -------
+        dict
+            ``{"response": <answer_text>, "generation_time": <seconds>}``.
+        """
         j_response, choices, assistant_response = self._get_choices_from_response(
             response=response
         )
