@@ -171,10 +171,11 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
         options = GenerateQuestionFromTextsModel(**params)
         _payload = options.model_dump()
 
-        self._map_prompt = {
+        map_prompt = {
             "##QUESTION_NUM_STR##": f"{_payload['number_of_questions']} question(s)",
         }
 
+        _payload["map_prompt"] = map_prompt
         _payload["model"] = _payload["model_name"]
         _payload["stream"] = _payload.get("stream", False)
         _payload["messages"] = [
