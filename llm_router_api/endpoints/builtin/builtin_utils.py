@@ -297,7 +297,7 @@ class TranslateTexts(EndpointWithHttpRequestI):
         ep_name: str = "translate",
     ):
         """
-        Initialise the translation endpoint.
+        Initialize the translation endpoint.
 
         Parameters follow the same pattern as other builtin endpoints.
         """
@@ -400,7 +400,7 @@ class SimplifyTexts(EndpointWithHttpRequestI):
         ep_name: str = "simplify_text",
     ):
         """
-        Initialise the text‑simplification endpoint.
+        Initialize the text‑simplification endpoint.
         """
         super().__init__(
             ep_name=ep_name,
@@ -490,7 +490,7 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
         ep_name: str = "generate_article_from_text",
     ):
         """
-        Initialise the news‑generation endpoint.
+        Initialize the news‑generation endpoint.
         """
         super().__init__(
             ep_name=ep_name,
@@ -512,7 +512,8 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
-        Convert the incoming request into a payload that asks the model to write a news article.
+        Convert the incoming request into a payload
+        that asks the model to write a news article.
 
         Returns
         -------
