@@ -187,6 +187,39 @@ class ProviderStrategyFacade:
     def put_provider(
         self, model_name: str, provider: Dict, options: Optional[Dict] = None
     ) -> None:
+        """
+        Register or update a provider configuration for a given model.
+
+        This method forwards the call to the currently selected load‑balancing
+        strategy’s ``put_provider`` implementation.  It allows the strategy to
+        store, cache, or otherwise manage provider metadata (e.g., health
+        status, weighting, or custom attributes).  No value is returned; any
+        error handling is delegated to the underlying strategy.
+
+        Parameters
+        ----------
+        model_name : str
+            The identifier of the model for which the provider is being added
+            or updated (e.g., ``"google/gemma-3-12b-it"``).
+
+        provider : dict
+            A dictionary describing the provider configuration.  The exact
+            schema is strategy‑specific but typically includes keys such as
+            ``"url"``, ``"api_key"``, ``"weight"``, and optional health‑check
+            information.
+
+        options : dict, optional
+            Additional options that are passed straight through to the strategy’s
+            ``put_provider`` method.  This can be used for flags like
+            ``force_update=True`` or to convey custom metadata.
+
+        Raises
+        ------
+        RuntimeError
+            Propagated from the strategy when the provider cannot be stored,
+            for example if the strategy is read‑only or the supplied data is
+            malformed.
+        """
         self.strategy.put_provider(
             model_name=model_name, provider=provider, options=options
         )
