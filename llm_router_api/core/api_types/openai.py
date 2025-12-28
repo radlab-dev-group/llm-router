@@ -19,9 +19,15 @@ OPENAI_ACCEPTABLE_PARAMS = [
 
 class OpenAIApiType(ApiTypesI):
     """
-    OpenAI API implementation.
+    Concrete API descriptor for OpenAI endpoints.
+    The class implements the abstract methods defined in
+    :class:`~llm_router_api.core.api_types.types_i.ApiTypesI`.  Each method
+    returns the relative URL path (``*_ep``) or the HTTP verb (``*_method``) that
+    should be used when invoking the corresponding OpenAI service.
 
-    Endpoints match OpenAI REST API paths.
+    The OpenAI API treats ``/v1/chat/completions`` as the canonical endpoint
+    for both chat‑based interactions and standard completions, which is why
+    ``completions_ep`` simply forwards to ``chat_ep``.
     """
 
     #
@@ -32,15 +38,52 @@ class OpenAIApiType(ApiTypesI):
     #     return "GET"
 
     def chat_ep(self) -> str:
+        """
+        Return the URL path for the chat completions endpoint.
+
+            Returns
+            -------
+            str
+                The relative path ``/v1/chat/completions``.
+        """
         return "/v1/chat/completions"
 
     def chat_method(self) -> str:
+        """
+        Return the HTTP method used for the chat completions endpoint.
+
+            Returns
+            -------
+            str
+                ``"POST"``, as the OpenAI API expects a POST request for chat.
+        """
         return "POST"
 
     def completions_ep(self) -> str:
+        """
+        Return the URL path for the completions' endpoint.
+
+            The OpenAI service re‑uses the chat completions endpoint for standard
+            completions, so this method simply forwards to :meth:`chat_ep`.
+
+            Returns
+            -------
+            str
+                The same path as :meth:`chat_ep`.
+        """
         return self.chat_ep()
 
     def completions_method(self) -> str:
+        """
+        Return the HTTP method for the completions endpoint.
+
+            Mirrors :meth:`chat_method` because both endpoints share the same verb.
+
+            Returns
+            -------
+            str
+                ``"POST"``
+        """
         return "POST"
 
 
