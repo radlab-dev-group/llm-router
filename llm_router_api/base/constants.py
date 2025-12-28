@@ -1,3 +1,13 @@
+"""
+Constants and configuration for the llm‑router service.
+
+All values are loaded from environment variables, allowing the deployment
+environment to control behaviour without code changes.  The module groups the
+settings by purpose (paths, server, Redis, masking, guardrails, plugins, etc.)
+and validates the configuration at import time via the ``_StartAppVerificator``
+class.
+"""
+
 import os
 
 from rdl_ml_utils.utils.env import bool_env_value
@@ -239,11 +249,19 @@ PROVIDER_MONITOR_INTERVAL_SECONDS = int(
 
 
 # =============================================================================
-# STARTUP
+# STARTUP VALIDATION
 # =============================================================================
 
 
 class _StartAppVerificator:
+    """
+    Validate configuration at import time.
+
+        The ``dont_run_if_something_is_wrong`` method raises informative
+        exceptions when required environment variables are missing or contain
+        invalid values.
+    """
+
     @staticmethod
     def __verify_is_able_to_init():
         if not SERVICE_AS_PROXY:
