@@ -1,3 +1,11 @@
+"""
+Utility endpoints that expose built‑in generative capabilities.
+
+Each endpoint validates its input via a pydantic model, forwards the request to
+the generic ``EndpointWithHttpRequestI`` machinery, and post‑processes the
+response into a clean JSON payload.
+"""
+
 import os
 import time
 
@@ -50,13 +58,20 @@ class ApiVersion(EndpointWithHttpRequestI):
         ep_name: str = "version",
     ):
         """
-        Create a ``Ping`` endpoint instance.
+        Create a health‑check endpoint that returns the router version.
 
-        Args:
-            logger_file_name: Optional logger file name.
-                If not given, then a default logger file name will be used.
-            logger_level: Optional logger level. Defaults to ``REST_API_LOG_LEVEL``.
-            prompt_handler: Optional prompt handler instance. Defaults to ``None``.
+        Parameters
+        ----------
+        logger_file_name : Optional[str]
+            Optional file name for the logger.
+        logger_level : Optional[str]
+            Logging verbosity; defaults to :data:`REST_API_LOG_LEVEL`.
+        model_handler : Optional[ModelHandler]
+            Unused for this endpoint but required by the base class.
+        prompt_handler : Optional[PromptHandler]
+            Unused for this endpoint but required by the base class.
+        ep_name : str
+            URL fragment for the endpoint (default ``"version"``).
         """
         super().__init__(
             method="GET",
@@ -81,18 +96,15 @@ class ApiVersion(EndpointWithHttpRequestI):
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any] | str]:
         """
-        Execute the health‑check logic.
+        Return the router version as a JSON payload.
 
-        Parameters
-        ----------
-        params : Optional[Dict[str, Any]]
-            Ignored – the endpoint does not process query parameters.
+        The method sets ``direct_return`` so that the Flask registrar sends the
+        dictionary directly without additional wrapping.
 
         Returns
         -------
-        str
-            The string ``\"Ollama is running\"`` indicating
-            the successful health check.
+        dict
+            ``{"version": "<semver>"}``.
         """
         self.direct_return = True
         return {"version": self.version}
@@ -114,6 +126,11 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
         model_handler: Optional[ModelHandler] = None,
         ep_name: str = "generate_questions",
     ):
+        """
+        Initialize the “generate questions” endpoint.
+
+        Parameters are analogous to other builtin endpoints.
+        """
         super().__init__(
             ep_name=ep_name,
             api_types=["builtin"],
@@ -133,7 +150,17 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
+        """
+        Validate input and build the request payload for question generation.
 
+        The method extracts the model name, optional streaming flag, and
+        converts each source text into a separate ``user`` message.
+
+        Returns
+        -------
+        dict
+            Normalised payload ready for the downstream model.
+        """
         options = GenerateQuestionFromTextsModel(**params)
         _payload = options.model_dump()
 
