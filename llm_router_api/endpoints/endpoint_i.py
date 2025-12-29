@@ -14,7 +14,7 @@ The classes expose a small public API:
 * ``prepare_payload`` – conversion of raw request parameters into the
   payload that will be sent to the downstream model or external API.
 
-When ``SERVICE_AS_PROXY`` is ``True`` the endpoint also contains helper
+When ``SERVICE_AS_PROXY`` is ``True`,` the endpoint also contains helper
 methods for performing outbound HTTP requests to an external service.
 """
 
@@ -85,7 +85,7 @@ class SecureEndpointI(abc.ABC):
     * **Metrics integration** – increment counters for guardrail or masking
       incidents when Prometheus metrics are active.
 
-    Sub‑classes (e.g. :class:`EndpointI` or :class:`EndpointWithHttpRequestI`)
+    Sub‑classes (e.g.: class:`EndpointI` or: class:`EndpointWithHttpRequestI`)
     inherit these capabilities and can focus on business‑logic handling.
     """
 
@@ -306,7 +306,7 @@ class SecureEndpointI(abc.ABC):
         If an audit log was created by :meth:`_begin_audit_log_if_needed`,
         this method records the ending timestamp and the final payload.
         It then delegates storage to ``auditor.add_log``.  When no audit log
-        exists, the call is a no‑op unless ``force_end`` is ``True``, in which
+        exists, the call is no‑op unless ``force_end`` is ``True``, in which
         case an exception is raised to indicate a programming error.
 
         Parameters
@@ -395,7 +395,7 @@ class SecureEndpointI(abc.ABC):
         Parameters
         ----------
         payload : Dict[str, Any]
-            The request payload that may need to be anonymised.
+            The request payload that may need to be anonymized.
 
         Returns
         -------
@@ -534,8 +534,8 @@ class EndpointI(SecureEndpointI, abc.ABC):
             HTTP verb the endpoint will respond to; defaults to ``"POST"``.
             Must be one of :attr:`METHODS`.
         logger_level :
-            Logging level name (``"INFO"``, ``"DEBUG"``, …).  If omitted the
-            library default is used.
+            Logging level name (``"INFO"``, ``"DEBUG"``, …).  If omitted,
+            the library default is used.
         logger_file_name :
             Path to a file where log records will be written.  When
             ``None`` the default ``llm-router.log`` is used.
@@ -623,7 +623,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
         The handler is responsible for resolving model identifiers supplied by
         the client into concrete :class:`ApiModel` objects.  It may be ``None``
-        when the endpoint does not interact with a model (e.g. a health‑check
+        when the endpoint does not interact with a model (e.g., a health check
         endpoint).
         """
         return self._model_handler
@@ -647,7 +647,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         ----------
         params :
             Dictionary of request parameters extracted by the Flask
-            registrar.  May be ``None`` for endpoints that do not expect
+            registrar.  Maybe ``None`` for endpoints that do not expect
             any input.
 
         Returns
@@ -659,7 +659,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         Raises
         ------
         NotImplementedError
-            Always raised in the base class – concrete subclasses must
+            Always rise in the base class – concrete subclasses must
             provide an implementation.
         """
         raise NotImplementedError(
@@ -736,7 +736,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         Returns
         -------
         Tuple[dict, int]
-            A tuple where the first element is a JSON‑serialisable dictionary
+            A tuple where the first element is a JSON‑serializable dictionary
             representing the error payload and the second element is the HTTP
             status code. Flask interprets this as ``(Response, Status)``.
         """
@@ -749,7 +749,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
             # e.g., for OpenAI ``APIError`` exceptions
             status_code = body.status_code
         elif str(body).lower().find("not found") != -1:
-            # Heuristic for plain text (if body is a string)
+            # Heuristic for plain text (if the body is a string)
             status_code = 404
 
         error_message = str(body) if body else "Error while processing"
@@ -801,7 +801,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         Raises
         ------
         ValueError
-            If the payload does not contain a recognised model key or the
+            If the payload does not contain a recognized model key or the
             model name cannot be resolved via ``self._model_handler``.
         """
         # if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
@@ -1074,7 +1074,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
 
         # Code - definition
-        #  * 400 - Raised by internal httprequest
+        #  * 400 - Rise by internal httprequest
         #  * 404 - Not Found
         #  * 503 - Service Unavailable
         #  * 504 - Gateway Timeout
@@ -1105,7 +1105,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         All arguments are forwarded to :class:`EndpointI`.  In addition,
         the constructor creates a few attributes used for dispatching chat
-        and completions endpoints and stores the request timeout.
+        and completion endpoints and stores the request timeout.
 
         Parameters
         ----------
@@ -1169,9 +1169,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         Execute the endpoint logic for a request.
 
-        The method first normalises the incoming parameters via
-        :meth:`prepare_payload`.  When ``self.direct_return`` is set the
-        normalised payload is returned verbatim.  Otherwise the method
+        The method first normalizes the incoming parameters via
+        :meth:`prepare_payload`.  When ``self.direct_return`` is set, the
+        normalized payload is returned verbatim.  Otherwise, the method
         attempts to act as a *simple proxy*: if the endpoint's API type
         matches the model's API type, the request is forwarded to the
         downstream service (optionally as a streaming request).
@@ -1191,7 +1191,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Returns
         -------
         dict | Iterator[bytes] | None
-            Either a normal JSON‑serialisable dictionary, a streaming NDJSON
+            Either a normal JSON‑serializable dictionary, a streaming NDJSON
             iterator, or ``None`` when the endpoint does not produce a
             response.
 
@@ -1265,7 +1265,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             if self.direct_return:
                 return params
 
-            # In case when the endpoint type is same as model endpoint type
+            # In case when the endpoint type is the same as a model endpoint type,
             # Then llms is used as a simple proxy with forwarding params
             # and response from external api
             simple_proxy = False
@@ -1372,7 +1372,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         If the response status code indicates an error, a
         :class:`RuntimeError` is raised.  When the body cannot be parsed as
-        JSON a ``{"raw_response": <text>}`` mapping is returned instead.
+         JSON, a ``{"raw_response": <text>}`` mapping is returned instead.
 
         Parameters
         ----------
@@ -1411,7 +1411,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Remove internal‑only keys from the payload before it is sent to the
         downstream model.
 
-        Currently the method strips the ``response_time`` key, which is used
+        Currently, the method strips the ``response_time`` key, which is used
         internally for logging and should not be forwarded.
 
         Parameters
@@ -1556,7 +1556,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Returns
         -------
         Dict[str, Any]
-            A dictionary with the subset of ``params`` that are listed in
+            A dictionary with the subset of ``params`` that is listed in
             :data:`OPENAI_ACCEPTABLE_PARAMS` when ``api_type`` is
             ``"openai"``.  Keys not in the whitelist are omitted.
 
