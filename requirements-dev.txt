@@ -1,0 +1,12 @@
+black
+bandit
+
+
+
+flake8
+flake8-bugbear
+pylint
+mypy
+
+safety
+pre-commit

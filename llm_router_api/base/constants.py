@@ -98,10 +98,8 @@ SERVER_WORKERS_CLASS = os.environ.get(
 if not len(SERVER_WORKERS_CLASS):
     SERVER_WORKERS_CLASS = None
 
-# Server host, default is 0.0.0.0
-SERVER_HOST = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_HOST", "0.0.0.0"
-).strip()
+# Server host, default is localhost
+SERVER_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_HOST").strip()
 
 # Run server in debug mode
 RUN_IN_DEBUG_MODE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}IN_DEBUG")

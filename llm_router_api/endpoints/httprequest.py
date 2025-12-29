@@ -541,10 +541,12 @@ class HttpRequestExecutor:
                 )
                 if method == "POST":
                     request_kwargs["json"] = payload
-                    req = requests.post(**request_kwargs)
+                    timeout = request_kwargs.get("timeout", 60)
+                    req = requests.post(**request_kwargs, timeout=timeout)
                 else:
                     request_kwargs["params"] = payload
-                    req = requests.get(**request_kwargs)
+                    timeout = request_kwargs.get("timeout", 60)
+                    req = requests.get(**request_kwargs, timeout=timeout)
 
                 with req as r:
                     r.raise_for_status()
