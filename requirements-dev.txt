@@ -1,10 +1,8 @@
 black
 flake8
 bandit
-
-flake8-bugbear
 pylint
 mypy
 
-safety
-pre-commit
+# safety
+# pre-commit
