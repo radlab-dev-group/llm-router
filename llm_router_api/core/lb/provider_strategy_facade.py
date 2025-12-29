@@ -154,7 +154,8 @@ class ProviderStrategyFacade:
         self, model_name: str, providers: List[Dict], options: Optional[Dict] = None
     ) -> Dict:
         """
-        Choose a provider for *model_name* from *providers* using the configured strategy.
+        Choose a provider for *model_name* from
+        *providers* using the configured strategy.
 
         The method validates that the ``providers`` list is non‑empty and then
         delegates the actual selection to ``self.strategy.choose``.

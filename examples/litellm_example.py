@@ -132,13 +132,20 @@ class LiteLLMExamples:
     #
     #     response = completion(
     #         model=f"openai/{self.models[0]}",
-    #         messages=[{"role": "user", "content": "Brief answer about cost optimization."}],
+    #         messages=[
+    #           {
+    #               "role": "user",
+    #               "content": "Brief answer about cost optimization."
+    #           }
+    #         ],
     #         api_base=self.base_url,
     #         api_key="not-needed",
     #     )
     #     print("Response:", response.choices[0].message.content)
     #     if hasattr(response, "_hidden_params"):
-    #         print("Cost info:", response._hidden_params.get("response_cost", "N/A"))
+    #         print(
+    #           "Cost info:", response._hidden_params.get("response_cost", "N/A")
+    #         )
     #     return response
 
     # ------------ 7. Batch Completion Example ------------
@@ -240,7 +247,7 @@ class LiteLLMExamples:
     def error_handling_example(self):
         """Demonstrates error handling for LiteLLM calls"""
         try:
-            response = completion(
+            completion(
                 model="openai/nonexistent-model",
                 messages=[{"role": "user", "content": "Test"}],
                 api_base=self.base_url,

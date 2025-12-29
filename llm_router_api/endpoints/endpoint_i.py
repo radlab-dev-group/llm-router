@@ -25,7 +25,7 @@ import logging
 import datetime
 
 from copy import deepcopy
-from typing import Optional, Dict, Any, Iterator, Iterable, List
+from typing import Optional, Dict, Any, Iterable, List
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -326,7 +326,7 @@ class SecureEndpointI(abc.ABC):
         """
         if not audit_log:
             if force_end:
-                raise Exception(f"Cannot end audit! Audit log is not set!")
+                raise Exception("Cannot end audit! Audit log is not set!")
             return
 
         if force_end or audit_log["begin"]["payload"] != payload:
@@ -1237,7 +1237,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         is_generic_to_ollama=is_generic_to_ollama,
                         is_ollama_to_generic=is_ollama_to_generic,
                         api_model_provider=api_model_provider,
-                        force_text="Content blocked by guardrail. Reason: Not safe content!",
+                        force_text="Content blocked by guardrail. "
+                        "Reason: Not safe content!",
                     )
 
                 return self.return_response_not_ok(

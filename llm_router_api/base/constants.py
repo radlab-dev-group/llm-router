@@ -291,8 +291,8 @@ class _StartAppVerificator:
         if GUARDRAIL_WITH_AUDIT_REQUEST:
             if not FORCE_GUARDRAIL_REQUEST:
                 raise Exception(
-                    f"`export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=1` environment is "
-                    f"required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=1`\n\n"
+                    "`export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=1` environment is "
+                    "required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=1`\n\n"
                 )
 
         if FORCE_GUARDRAIL_REQUEST and not len(GUARDRAIL_STRATEGY_PIPELINE_REQUEST):
@@ -306,8 +306,8 @@ class _StartAppVerificator:
         if GUARDRAIL_WITH_AUDIT_RESPONSE:
             if not FORCE_GUARDRAIL_RESPONSE:
                 raise Exception(
-                    f"`export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=1` environment is "
-                    f"required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=1`\n\n"
+                    "`export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=1` environment is "
+                    "required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=1`\n\n"
                 )
         if FORCE_GUARDRAIL_RESPONSE and not len(
             GUARDRAIL_STRATEGY_PIPELINE_RESPONSE

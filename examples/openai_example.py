@@ -106,7 +106,8 @@ class OpenAIExamples:
         # Combine system prompt with the first user message (Gemma dislikes 'system')
         initial_prompt = (
             "You are a helpful weather assistant. "
-            "If the user asks about weather, you must use the get_current_weather tool.\n\n"
+            "If the user asks about weather, "
+            "you must use the get_current_weather tool.\n\n"
             "What is the weather in Warsaw?"
         )
         messages = [{"role": "user", "content": initial_prompt}]
@@ -147,7 +148,8 @@ class OpenAIExamples:
                         "role": "user",
                         "content": (
                             f"Here is the result from get_current_weather: "
-                            f"{json.dumps(weather_data)}. Please answer my original question based on this."
+                            f"{json.dumps(weather_data)}. Please answer "
+                            f"my original question based on this."
                         ),
                     }
                     messages.append(tool_result_message)

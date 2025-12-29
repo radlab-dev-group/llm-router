@@ -25,13 +25,6 @@ Typical usage::
 import time
 import logging
 
-try:
-    import redis
-
-    REDIS_IS_AVAILABLE = True
-except ImportError:
-    REDIS_IS_AVAILABLE = False
-
 from typing import List, Dict, Optional, Any
 
 from llm_router_api.base.constants import (

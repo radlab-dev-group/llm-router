@@ -20,10 +20,10 @@ class _DontChangeMe:
     MAIN_ENV_PREFIX = "LLM_ROUTER_"
 
 
-""" 
-Default language for endpoint‑specific prompts. The value can be overridden 
-with the environment variable LLM_ROUTER_DEFAULT_EP_LANGUAGE. 
-If the variable is absent, Polish ("pl") is used as the fallback language. 
+"""
+Default language for endpoint‑specific prompts. The value can be overridden
+with the environment variable LLM_ROUTER_DEFAULT_EP_LANGUAGE.
+If the variable is absent, Polish ("pl") is used as the fallback language.
 """
 DEFAULT_EP_LANGUAGE = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}DEFAULT_EP_LANGUAGE", "pl"
@@ -47,11 +47,11 @@ class BalanceStrategies:
     FIRST_AVAILABLE_OPTIM = "first_available_optim"
 
 
-""" 
+"""
 List of all valid balance‑strategy identifiers.
 
-The router validates the user‑provided strategy against this collection 
-and raises an informative error if an unknown value is supplied. 
+The router validates the user‑provided strategy against this collection
+and raises an informative error if an unknown value is supplied.
 """
 POSSIBLE_BALANCE_STRATEGIES = [
     BalanceStrategies.BALANCED,
