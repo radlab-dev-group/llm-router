@@ -115,7 +115,7 @@ class KeepAlive:
             return
 
         try:
-            timeout = payload.get("timeout", 60)
+            timeout = payload.pop("timeout", 60)
             response = requests.post(
                 endpoint, json=payload, headers=headers, timeout=timeout
             )
