@@ -119,8 +119,8 @@ class EP:
         Measure how long the wrapped endpoint method takes to execute.
 
         The decorator records a start time before invoking *func* and an end time
-        afterwards.  If the wrapped method returns a ``dict`` (the typical JSON
-        payload for a successful endpoint) the decorator adds a new key
+        afterward.  If the wrapped method returns a ``dict`` (the typical JSON
+        payload for a successful endpoint), the decorator adds a new key
         ``response_time`` whose value is the elapsed time in **seconds** (float).
 
         Parameters
