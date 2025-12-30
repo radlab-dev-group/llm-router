@@ -98,10 +98,8 @@ SERVER_WORKERS_CLASS = os.environ.get(
 if not len(SERVER_WORKERS_CLASS):
     SERVER_WORKERS_CLASS = None
 
-# Server host, default is 0.0.0.0
-SERVER_HOST = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_HOST", "0.0.0.0"
-).strip()
+# Server host, default is localhost
+SERVER_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_HOST").strip()
 
 # Run server in debug mode
 RUN_IN_DEBUG_MODE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}IN_DEBUG")
@@ -293,8 +291,8 @@ class _StartAppVerificator:
         if GUARDRAIL_WITH_AUDIT_REQUEST:
             if not FORCE_GUARDRAIL_REQUEST:
                 raise Exception(
-                    f"`export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=1` environment is "
-                    f"required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=1`\n\n"
+                    "`export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=1` environment is "
+                    "required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=1`\n\n"
                 )
 
         if FORCE_GUARDRAIL_REQUEST and not len(GUARDRAIL_STRATEGY_PIPELINE_REQUEST):
@@ -308,8 +306,8 @@ class _StartAppVerificator:
         if GUARDRAIL_WITH_AUDIT_RESPONSE:
             if not FORCE_GUARDRAIL_RESPONSE:
                 raise Exception(
-                    f"`export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=1` environment is "
-                    f"required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=1`\n\n"
+                    "`export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=1` environment is "
+                    "required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=1`\n\n"
                 )
         if FORCE_GUARDRAIL_RESPONSE and not len(
             GUARDRAIL_STRATEGY_PIPELINE_RESPONSE

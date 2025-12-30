@@ -53,7 +53,7 @@ class HttpRequestExecutor:
     resources itself and can be instantiated per‑request if desired.
     """
 
-    def __init__(self, endpoint: "EndpointWithHttpRequestI"):
+    def __init__(self, endpoint):
         """
         Initialise the executor with a reference to its endpoint.
 
@@ -162,7 +162,7 @@ class HttpRequestExecutor:
                 params=params,
                 headers=headers,
             )
-        except Exception as e:
+        except Exception:
             raise
             # response = Response()
             # response.status_code = 400
@@ -519,7 +519,7 @@ class HttpRequestExecutor:
 
             try:
                 return _force_iter()
-            except Exception as exc:
+            except Exception:
                 pass
             finally:
                 self._endpoint.unset_model(
@@ -541,10 +541,12 @@ class HttpRequestExecutor:
                 )
                 if method == "POST":
                     request_kwargs["json"] = payload
-                    req = requests.post(**request_kwargs)
+                    timeout = request_kwargs.pop("timeout", 60)
+                    req = requests.post(**request_kwargs, timeout=timeout)
                 else:
                     request_kwargs["params"] = payload
-                    req = requests.get(**request_kwargs)
+                    timeout = request_kwargs.pop("timeout", 60)
+                    req = requests.get(**request_kwargs, timeout=timeout)
 
                 with req as r:
                     r.raise_for_status()
@@ -1133,7 +1135,7 @@ class HttpRequestExecutor:
 
             try:
                 return _force_iter()
-            except Exception as exc:
+            except Exception:
                 pass
             finally:
                 self._endpoint.unset_model(
@@ -1249,7 +1251,7 @@ class HttpRequestExecutor:
             The possibly‑modified payload with a correctly ordered
             ``messages`` list.
         """
-        if not "messages" in params:
+        if "messages" not in params:
             return params
 
         messages = params["messages"]

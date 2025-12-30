@@ -88,7 +88,8 @@ class EP:
         -----
         * The wrapper treats a ``None`` ``params`` argument as an empty dictionary,
           because some endpoints do not require any input.
-        * The error payload is built with :func:`llm_router_api.core.errors.error_as_dict`
+        * The error payload is built with
+          :func:`llm_router_api.core.errors.error_as_dict`
           using the constant ``ERROR_NO_REQUIRED_PARAMS``.
         * The wrapper returns the result of *func* unchanged when validation passes.
         """

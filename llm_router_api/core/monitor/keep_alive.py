@@ -115,7 +115,10 @@ class KeepAlive:
             return
 
         try:
-            response = requests.post(endpoint, json=payload, headers=headers)
+            timeout = payload.pop("timeout", 60)
+            response = requests.post(
+                endpoint, json=payload, headers=headers, timeout=timeout
+            )
             response.raise_for_status()
             self._logger.debug(
                 f"[keep-alive] response model={req.model_name} "

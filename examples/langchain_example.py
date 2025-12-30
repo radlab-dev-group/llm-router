@@ -5,18 +5,16 @@ Demonstrates how to integrate LangChain with an LLM Router.
 Simply change the base_url in the constants module!
 """
 
-import json
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.documents import Document
-from langchain_community.vectorstores import FAISS
-from langchain.chains import RetrievalQA
-from langchain.agents import create_react_agent, AgentExecutor
+
 from langchain import hub
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
+
+# from langchain.chains import RetrievalQA
+from langchain.agents import create_react_agent, AgentExecutor
 
 from constants import HOST, MODELS
 
@@ -97,15 +95,18 @@ class LangChainExamples:
     #     # Documents to index
     #     docs = [
     #         Document(
-    #             page_content="LLM Router is an open‑source gateway for LLM infrastructure."
+    #             page_content="LLM Router is an
+    #             open‑source gateway for LLM infrastructure."
     #         ),
     #         Document(
-    #             page_content="Router handles load balancing across multiple providers."
+    #             page_content="Router handles load
+    #             balancing across multiple providers."
     #         ),
     #         Document(
     #             page_content="Supports OpenAI, Ollama, vLLM and other back‑ends."
     #         ),
-    #         Document(page_content="Offers streaming, health checks and monitoring."),
+    #         Document(page_content="Offers streaming,
+    #         health checks and monitoring."),
     #     ]
     #
     #     # LLM via router
@@ -184,7 +185,10 @@ class LangChainExamples:
         # 1. Definicja narzędzia
         @tool
         def get_router_status(query: str) -> str:
-            """Returns the status of the LLM Router. Use this for any questions regarding router status."""
+            """
+            Returns the status of the LLM Router.
+            Use this for any questions regarding router status.
+            """
             # Model czasem przekazuje tu zbędne argumenty, więc warto,
             # by funkcja przyjmowała stringa, nawet jeśli go nie używa.
             return "LLM Router is operational and serving 3 models."
@@ -200,7 +204,8 @@ class LangChainExamples:
         tools = [get_router_status]
 
         # 3. Pobranie promptu ReAct
-        # To pobiera standardowy szablon: "Answer the following questions as best you can..."
+        # To pobiera standardowy szablon:
+        # "Answer the following questions as best you can..."
         # Wymaga: pip install langchainhub
         prompt = hub.pull("hwchase17/react")
 

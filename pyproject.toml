@@ -1,0 +1,19 @@
+[tool.black]
+line-length = 85
+target-version = ['py310', 'py311', 'py312']
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | build
+  | dist
+)/
+'''
+
+[tool.bandit]
+skips = ["B101", "B110", "B112"]

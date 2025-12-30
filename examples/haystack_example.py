@@ -5,8 +5,6 @@ Pokazuje jak zintegrować Haystack (deepset) z LLM Router.
 Wymaga: pip install haystack-ai
 """
 
-from typing import List, Optional
-
 from haystack import Pipeline
 from haystack.utils import Secret
 from haystack.components.builders import PromptBuilder
@@ -57,11 +55,11 @@ class HaystackExamples:
 
         template = """
         Odpowiedz na pytanie na podstawie kontekstu.
-        
+
         Kontekst: {{ context }}
-        
+
         Pytanie: {{ question }}
-        
+
         Odpowiedź:
         """
 
@@ -86,8 +84,9 @@ class HaystackExamples:
         result = pipe.run(
             {
                 "prompt_builder": {
-                    "context": "LLM Router to open-source gateway dla infrastruktury LLM. "
-                    "Oferuje load balancing, health checks i monitoring.",
+                    "context": "LLM Router to open-source gateway "
+                    "dla infrastruktury LLM. Oferuje load balancing, "
+                    "health checks i monitoring.",
                     "question": "Jakie funkcje oferuje LLM Router?",
                 }
             }
@@ -155,11 +154,13 @@ class HaystackExamples:
                 content="LLM Router to open-source gateway dla infrastruktury LLM."
             ),
             Document(
-                content="Router obsługuje load balancing między wieloma dostawcami (OpenAI, Ollama)."
+                content="Router obsługuje load balancing "
+                "między wieloma dostawcami (OpenAI, Ollama)."
             ),
             Document(content="Wspiera backendy takie jak vLLM, TGI i inne."),
             Document(
-                content="Router oferuje streaming, health checks i monitoring metryk."
+                content="Router oferuje streaming, "
+                "health checks i monitoring metryk."
             ),
         ]
         document_store.write_documents(documents)
@@ -167,12 +168,12 @@ class HaystackExamples:
         template = """
         Na podstawie poniższych dokumentów odpowiedz na pytanie.
         Jeżeli odpowiedzi nie ma w dokumentach, napisz "Nie wiem".
-        
+
         Dokumenty:
         {% for doc in documents %}
         - {{ doc.content }}
         {% endfor %}
-        
+
         Pytanie: {{ question }}
         Odpowiedź:
         """

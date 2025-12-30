@@ -18,7 +18,8 @@ router to pick a provider for a given model request:
   :meth:`DynamicWeightedStrategy.get_latency_history` for further analysis
   or adaptive routing decisions.
 
-Both strategies conform to the :class:`~llm_router_api.core.lb.strategy.ChooseProviderStrategyI`
+Both strategies conform to the
+:class:`~llm_router_api.core.lb.strategy.ChooseProviderStrategyI`
 interface.
 """
 

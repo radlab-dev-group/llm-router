@@ -11,8 +11,8 @@ The dispatcher is used by the endpoint layer (`EndpointI` /
 `EndpointWithHttpRequestI`) to stay agnostic of the concrete API‑type
 implementation.  Adding a new backend only requires:
 
-1. creating a class that implements the :class:`~llm_router_api.core.api_types.types_i.ApiTypesI`
-   interface, and
+1. creating a class that implements the
+  :class:`~llm_router_api.core.api_types.types_i.ApiTypesI` interface, and
 2. registering that class in the ``_REGISTRY`` dictionary below.
 
 All methods are ``@classmethod``s so they can be called without instantiating the

@@ -46,7 +46,9 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
         self._enable_decision_logging = enable_decision_logging
 
         # Stan per provider: cechy i parametry modelu liniowego
-        # θ: wektor wag dla cech [bias, ema_interval, ema_trend, recent_fail_rate, cooldown, load_proxy]
+        # θ: wektor wag dla cech [
+        #   bias, ema_interval, ema_trend, recent_fail_rate, cooldown, load_proxy
+        # ]
         self._theta: Dict[str, List[float]] = {}
         self._bias_init = 0.0
 
@@ -67,7 +69,9 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
 
     def _ensure_provider_state(self, key: str) -> None:
         if key not in self._theta:
-            # 6 cech: bias, ema_interval, ema_trend, recent_fail_rate, cooldown, load_proxy
+            # 6 cech:
+            #   bias, ema_interval, ema_trend,
+            #   recent_fail_rate, cooldown, load_proxy
             self._theta[key] = [0.0, 0.0, 0.0, 0.0, 0.2, -0.2]
         self._ema_interval.setdefault(key, 0.0)
         self._ema_trend.setdefault(key, 0.0)
@@ -141,9 +145,11 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
         - Oblicza cechy i logity dla aktualnych providerów.
         - Mapuje na prawdopodobieństwa (softmax z temperaturą i p_min).
         - Deleguje wybór do WeightedStrategy (deterministyczna pseudo-losowość),
-          ale zaktualizowanymi wagami dynamicznymi na podstawie przewidywanego kosztu.
-        - Po wyborze rejestruje interwał w DynamicWeightedStrategy; faktyczna aktualizacja
-          uczenia następuje przy kolejnym wywołaniu choose (gdy znany jest interwał).
+          ale zaktualizowanymi wagami dynamicznymi
+          na podstawie przewidywanego kosztu.
+        - Po wyborze rejestruje interwał w DynamicWeightedStrategy;
+          faktyczna aktualizacja uczenia następuje przy kolejnym wywołaniu
+          choose (gdy znany jest interwał).
         """
         if not providers:
             raise ValueError(f"No providers configured for model '{model_name}'")
@@ -256,8 +262,8 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
                     # Minimalny, bezpieczny log na stdout; w praktyce można dodać logger
                     print(
                         f"[AB] key={key} interval={interval:.3f} fail={fail_flag:.0f} "
-                        f"bad_turn={bad_turn:.0f} target={target_cost:.3f} pred={pred:.3f} "
-                        f"err={error:.3f}"
+                        f"bad_turn={bad_turn:.0f} target={target_cost:.3f} "
+                        f"pred={pred:.3f} err={error:.3f}"
                     )
                 except Exception:
                     pass

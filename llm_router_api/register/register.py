@@ -127,7 +127,9 @@ class FlaskEndpointRegistrar:
                 methods=[method],
             )
         else:
-            assert self._app is not None
+            if self._app is None:
+                raise RuntimeError("App is not defined!")
+
             self._app.add_url_rule(
                 full_rule,
                 endpoint=endpoint_name,

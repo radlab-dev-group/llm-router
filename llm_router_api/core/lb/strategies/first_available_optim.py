@@ -40,7 +40,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         monitor_check_interval: float = PROVIDER_MONITOR_INTERVAL_SECONDS,
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
-        keep_alive_monitor_check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
+        ka_monitor_check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
     ) -> None:
         """
         Initialise the optimized first‑available strategy.
@@ -63,7 +63,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             If ``True``, clear optimisation‑related Redis keys on start.
         logger: logging.Logger, optional
             Logger instance to use; a default logger is created if omitted.
-        keep_alive_monitor_check_interval: float, optional
+        ka_monitor_check_interval: float, optional
             Interval (seconds) for the internal keep‑alive monitor thread.
         """
         super().__init__(
@@ -89,7 +89,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         # Monitor = schedule + Redis + condition "whether host is free"
         self.keep_alive_monitor = KeepAliveMonitor(
             redis_client=self.redis_client,
-            check_interval=keep_alive_monitor_check_interval,
+            check_interval=ka_monitor_check_interval,
             logger=self.logger,
             keep_alive=self._keep_alive,
             is_host_free_callback=self._is_host_free,
