@@ -79,52 +79,53 @@ class ApiTypesI(ABC):
     def get_models_list(m: Dict[str, Any]) -> Dict[str, Any]:
         """
         Convert a raw model configuration dict into a normalized model descriptor.
-            The OpenAI routing layer expects each model to be represented by a
-            dictionary containing a fixed set of keys (``id``, ``name``, ``object``,
-            ``owned_by`` …).  ``get_models_list`` extracts the relevant fields from
-            the source configuration supplied by the user (or a configuration file)
-            and populates missing entries with sensible defaults.
 
-            Parameters
-            ----------
-            m : dict
-                A single model configuration entry.  Expected keys include
-                ``name``, ``api_type``, ``input_size``, ``api_host``, and
-                ``model_path``.  Any missing keys are replaced with empty strings or
-                zero values.
+        The OpenAI routing layer expects each model to be represented by a
+        dictionary containing a fixed set of keys (``id``, ``name``, ``object``,
+        ``owned_by`` …).  ``get_models_list`` extracts the relevant fields from
+        the source configuration supplied by the user (or a configuration file)
+        and populates missing entries with sensible defaults.
 
-            Returns
-            -------
-            dict
-                A normalized model description compatible with the internal API.
-                Example output::
+        Parameters
+        ----------
+        m : dict
+            A single model configuration entry.  Expected keys include
+            ``name``, ``api_type``, ``input_size``, ``api_host``, and
+            ``model_path``.  Any missing keys are replaced with empty strings or
+            zero values.
 
-                    {
-                        "id": "gpt-oss:20b",
-                        "name": "gpt-oss:20b",
-                        "model": "gpt-oss:20b",
-                        "object": "model",
-                        "owned_by": "ollama",
-                        "input_size": 256000,
-                        "max_context_length": 256000,
-                        "root": "gpt-oss:20b",
-                        "host": "https://api.example.com",
-                        "path": "",
-                        "type": "vllm",
-                        "publisher": "ollama",
-                        "state": "not-loaded",
-                        "arch": "gpt-oss:20b",
-                        "compatibility_type": "mlx",
-                        "quantization": "4bit",
-                    }
+        Returns
+        -------
+        dict
+            A normalized model description compatible with the internal API.
+            Example output::
 
-            Notes
-            -----
-            * The function does **not** perform any validation beyond basic type
-              coercion; callers should ensure the input dictionary follows the
-              expected schema.
-            * The returned mapping mirrors the structure used by the OpenAI API
-              client libraries, facilitating seamless integration downstream.
+                {
+                    "id": "gpt-oss:20b",
+                    "name": "gpt-oss:20b",
+                    "model": "gpt-oss:20b",
+                    "object": "model",
+                    "owned_by": "ollama",
+                    "input_size": 256000,
+                    "max_context_length": 256000,
+                    "root": "gpt-oss:20b",
+                    "host": "https://api.example.com",
+                    "path": "",
+                    "type": "vllm",
+                    "publisher": "ollama",
+                    "state": "not-loaded",
+                    "arch": "gpt-oss:20b",
+                    "compatibility_type": "mlx",
+                    "quantization": "4bit",
+                }
+
+        Notes
+        -----
+        * The function does **not** perform any validation beyond basic type
+          coercion; callers should ensure the input dictionary follows the
+          expected schema.
+        * The returned mapping mirrors the structure used by the OpenAI API
+          client libraries, facilitating seamless integration downstream.
         """
 
         return {

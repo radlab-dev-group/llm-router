@@ -22,7 +22,7 @@ class VllmType(ApiTypesI):
         """
         Return the URL path for the chat completions endpoint.
 
-            The vLLM server mirrors the OpenAI chat endpoint.
+        The vLLM server mirrors the OpenAI chat endpoint.
         """
         return "v1/chat/completions"
 
