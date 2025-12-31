@@ -104,21 +104,59 @@ class ApiTypesDispatcher:
         return impl()
 
     def get_proper_endpoint(self, api_type: str, endpoint_url: str) -> str:
-        endpoint_url = endpoint_url.strip("/")
-        if endpoint_url in [
-            "chat/completions",
-            "api/chat/completions",
-            "v1/chat/completions",
-        ]:
-            return self.completions_ep(api_type=api_type)
-        elif endpoint_url in [
-            "responses",
-            "v1/responses",
-            "api/responses",
-            "api/v1/responses",
-        ]:
-            return self.responses_ep(api_type=api_type)
+        """
+        Resolve a raw endpoint fragment to the canonical endpoint path for the
+        specified ``api_type``.
 
+        The method inspects ``endpoint_url`` (after stripping leading/trailing
+        ``/`` characters) for known keywords and forwards the request to the
+        appropriate concrete implementation registered in
+        :class:`ApiTypesDispatcher`.
+
+        Parameters
+        ----------
+        api_type : str
+            Identifier of the external LLM API (e.g. ``"openai"``, ``"ollama"``,
+            ``"vllm"``).  The lookup is case‑insensitive and ignores surrounding
+            whitespace; an unknown identifier raises :class:`ValueError`.
+
+        endpoint_url : str
+            A raw URL fragment that may contain one of the following substrings:
+
+            * ``"completions"`` – selects the *completions* endpoint.
+            * ``"responses"``   – selects the *responses* endpoint.
+            * otherwise – defaults to the *chat* endpoint.
+
+            Leading and trailing ``/`` characters are removed before the check.
+
+        Returns
+        -------
+        str
+            The canonical endpoint path for ``api_type`` (e.g. ``"/v1/completions"``,
+            ``"/api/chat"``, etc.).  The returned string does **not** include the
+            host or version prefix; it is the path that the backend client will
+            append to its base URL.
+
+        Raises
+        ------
+        ValueError
+            If ``api_type`` is ``None``, empty, or not present in the internal
+            ``_REGISTRY``.  The error message lists the supported identifiers.
+
+        Notes
+        -----
+        * The check order is: ``"completions"``, then ``"responses"``, then fallback
+          to ``chat``.  If both ``"completions"`` and ``"responses"`` appear, the
+          completions endpoint wins.
+        * This method is a thin wrapper around the class methods
+          :meth:`chat_ep`, :meth:`responses_ep`, and :meth:`completions_ep`,
+          which each delegates to the concrete ``ApiTypesI`` implementation.
+        """
+        endpoint_url = endpoint_url.strip("/")
+        if "completions" in endpoint_url:
+            return self.completions_ep(api_type=api_type)
+        elif "responses" in endpoint_url:
+            return self.responses_ep(api_type=api_type)
         return self.chat_ep(api_type=api_type)
 
     @classmethod
