@@ -13,6 +13,7 @@ OPENAI_ACCEPTABLE_PARAMS = [
     "reasoning_effort",
     "extra_body",
     "tools",
+    "input",
     "tool_choice",
 ]
 
