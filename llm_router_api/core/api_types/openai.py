@@ -35,10 +35,10 @@ class OpenAIApiType(ApiTypesI):
         """
         Return the URL path for the chat completions endpoint.
 
-            Returns
-            -------
-            str
-                The relative path ``/v1/chat/completions``.
+        Returns
+        -------
+        str
+            The relative path ``/v1/chat/completions``.
         """
         return "/v1/chat/completions"
 
@@ -46,13 +46,13 @@ class OpenAIApiType(ApiTypesI):
         """
         Return the URL path for the completions' endpoint.
 
-            The OpenAI service re‑uses the chat completions endpoint for standard
-            completions, so this method simply forwards to :meth:`chat_ep`.
+        The OpenAI service re‑uses the chat completions endpoint for standard
+        completions, so this method simply forwards to :meth:`chat_ep`.
 
-            Returns
-            -------
-            str
-                The same path as :meth:`chat_ep`.
+        Returns
+        -------
+        str
+            The same path as :meth:`chat_ep`.
         """
         return self.chat_ep()
 
@@ -81,17 +81,17 @@ class OpenAIConverters:
         """
         Convert Ollama response objects to OpenAI‑compatible format.
 
-           The conversion extracts the relevant fields, normalises timestamps to
-           Unix epoch seconds, and builds the ``choices`` list expected by the
-           OpenAI client libraries.  Missing fields fall back to sensible defaults
-           (e.g. current time for ``created_at``).
+        The conversion extracts the relevant fields, normalises timestamps to
+        Unix epoch seconds, and builds the ``choices`` list expected by the
+        OpenAI client libraries.  Missing fields fall back to sensible defaults
+        (e.g. current time for ``created_at``).
 
-           Notes
-           -----
-           * ``response`` is assumed to be a ``dict`` produced by Ollama's HTTP
-             API.  Keys that are not present are handled gracefully.
-           * The resulting dictionary mirrors the shape described in the
-             `OpenAI Chat Completion`_ documentation.
+        Notes
+        -----
+        * ``response`` is assumed to be a ``dict`` produced by Ollama's HTTP
+          API.  Keys that are not present are handled gracefully.
+        * The resulting dictionary mirrors the shape described in the
+          `OpenAI Chat Completion`_ documentation.
         """
 
         @staticmethod
@@ -99,25 +99,25 @@ class OpenAIConverters:
             """
             Convert an Ollama response to the OpenAI chat‑completion format.
 
-                    Parameters
-                    ----------
-                    response : dict
-                        The raw response dictionary returned by an Ollama request.
+            Parameters
+            ----------
+            response : dict
+                The raw response dictionary returned by an Ollama request.
 
-                    Returns
-                    -------
-                    dict
-                        A dictionary that follows the OpenAI Chat Completion schema,
-                        ready to be returned to a downstream consumer.
+            Returns
+            -------
+            dict
+                A dictionary that follows the OpenAI Chat Completion schema,
+                ready to be returned to a downstream consumer.
 
-                    Details
-                    -------
-                    * ``created`` – Unix timestamp derived from ``created_at`` if
-                      present; otherwise the current time.
-                    * Token counts – ``prompt_eval_count`` maps to ``prompt_tokens`` and
-                      ``eval_count`` maps to ``completion_tokens``.
-                    * The ``choices`` list contains a single entry with the assistant's
-                      message, optional reasoning content, and finish reason.
+            Details
+            -------
+            * ``created`` – Unix timestamp derived from ``created_at`` if
+              present; otherwise the current time.
+            * Token counts – ``prompt_eval_count`` maps to ``prompt_tokens`` and
+              ``eval_count`` maps to ``completion_tokens``.
+            * The ``choices`` list contains a single entry with the assistant's
+              message, optional reasoning content, and finish reason.
             """
 
             created_at = response.get("created_at")
