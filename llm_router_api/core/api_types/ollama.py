@@ -12,7 +12,8 @@ from llm_router_api.core.api_types.types_i import ApiTypesI
 
 class OllamaType(ApiTypesI):
     """
-        Concrete API descriptor for Ollama endpoints.
+    Concrete API descriptor for Ollama endpoints.
+
     The methods return the relative URL paths and HTTP verbs required to
     interact with Ollama's chat and completion routes.  Ollama re‑uses the
     same ``/api/chat`` endpoint for both chat and completion requests,
