@@ -30,13 +30,6 @@ class OpenAIApiType(ApiTypesI):
     ``completions_ep`` simply forwards to ``chat_ep``.
     """
 
-    #
-    # def models_list_ep(self) -> str:
-    #     return "/v1/models"
-    #
-    # def models_list_method(self) -> str:
-    #     return "GET"
-
     def chat_ep(self) -> str:
         """
         Return the URL path for the chat completions endpoint.
@@ -47,17 +40,6 @@ class OpenAIApiType(ApiTypesI):
                 The relative path ``/v1/chat/completions``.
         """
         return "/v1/chat/completions"
-
-    def chat_method(self) -> str:
-        """
-        Return the HTTP method used for the chat completions endpoint.
-
-            Returns
-            -------
-            str
-                ``"POST"``, as the OpenAI API expects a POST request for chat.
-        """
-        return "POST"
 
     def completions_ep(self) -> str:
         """
@@ -73,18 +55,19 @@ class OpenAIApiType(ApiTypesI):
         """
         return self.chat_ep()
 
-    def completions_method(self) -> str:
+    def responses_ep(self) -> str:
         """
-        Return the HTTP method for the completions endpoint.
+        Return the URL path for the responses' endpoint.
 
-            Mirrors :meth:`chat_method` because both endpoints share the same verb.
+        The OpenAI service re‑uses the responses endpoint,
+        so this method simply forwards to :meth:`responses`.
 
-            Returns
-            -------
-            str
-                ``"POST"``
+        Returns
+        -------
+        str
+            The relative path ``/v1/responses``.
         """
-        return "POST"
+        return "v1/responses"
 
 
 class OpenAIConverters:

@@ -70,7 +70,37 @@ class OpenAIResponsesHandler(OpenAIResponseHandler):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=True,
-            api_types=["openai", "lmstudio", "vllm"],
+            api_types=["openai", "ollama", "vllm"],
+            direct_return=direct_return,
+            method="POST",
+        )
+
+        # self._prepare_response_function = self.prepare_response_function
+
+
+class OpenAIResponsesV1Handler(OpenAIResponseHandler):
+    """
+    Responses endpoint that re‑uses the chat implementation but targets the
+    ``/responses`` route of an OpenAI‑compatible service.
+    """
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name="v1/responses",
+        direct_return=False,
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=True,
+            api_types=["openai", "ollama", "vllm"],
             direct_return=direct_return,
             method="POST",
         )
@@ -142,7 +172,7 @@ class OpenAICompletionHandlerWOApi(OpenAIResponseHandler):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=True,
-            api_types=["openai", "lmstudio"],
+            api_types=["openai", "lmstudio", "vllm"],
             direct_return=direct_return,
             method="POST",
         )

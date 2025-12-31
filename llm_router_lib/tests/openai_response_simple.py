@@ -7,8 +7,8 @@ client = OpenAI(
 )
 
 responses_result = client.responses.create(
-    # model="google/gemma-3-12b-it",
-    model="gpt-oss:120b",
+    model="google/gemma-3-12b-it",
+    # model="gpt-oss:120b",
     input="Write a short poem about the color blue",
 )
 print(responses_result.output_text)

@@ -24,15 +24,7 @@ class VllmType(ApiTypesI):
 
             The vLLM server mirrors the OpenAI chat endpoint.
         """
-        return "/v1/chat/completions"
-
-    def chat_method(self) -> str:
-        """
-        Return the HTTP method used for the chat completions endpoint.
-
-            vLLM expects a POST request for chat completions.
-        """
-        return "POST"
+        return "v1/chat/completions"
 
     def completions_ep(self) -> str:
         """
@@ -42,10 +34,13 @@ class VllmType(ApiTypesI):
         """
         return self.chat_ep()
 
-    def completions_method(self) -> str:
+    def responses_ep(self) -> str:
         """
-        Return the HTTP method for the completions endpoint.
+        Return the URL path for the responses' endpoint.
 
-            Mirrors :meth:`chat_method` because the underlying HTTP verb is the same.
+        Returns
+        -------
+        str
+            The relative path ``/v1/responses``.
         """
-        return "POST"
+        return "v1/responses"
