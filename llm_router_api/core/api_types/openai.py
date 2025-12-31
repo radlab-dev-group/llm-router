@@ -59,9 +59,6 @@ class OpenAIApiType(ApiTypesI):
         """
         Return the URL path for the responses' endpoint.
 
-        The OpenAI service re‑uses the responses endpoint,
-        so this method simply forwards to :meth:`responses`.
-
         Returns
         -------
         str
