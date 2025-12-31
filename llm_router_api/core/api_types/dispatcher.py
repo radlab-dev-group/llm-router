@@ -105,10 +105,21 @@ class ApiTypesDispatcher:
 
     def get_proper_endpoint(self, api_type: str, endpoint_url: str) -> str:
         endpoint_url = endpoint_url.strip("/")
-        if endpoint_url in ["chat/completions", "api/chat/completions"]:
-            return self.chat_ep(api_type=api_type)
+        if endpoint_url in [
+            "chat/completions",
+            "api/chat/completions",
+            "v1/chat/completions",
+        ]:
+            return self.completions_ep(api_type=api_type)
+        elif endpoint_url in [
+            "responses",
+            "v1/responses",
+            "api/responses",
+            "api/v1/responses",
+        ]:
+            return self.responses_ep(api_type=api_type)
 
-        return self.completions_ep(api_type=api_type)
+        return self.chat_ep(api_type=api_type)
 
     @classmethod
     def chat_ep(cls, api_type: str) -> str:
@@ -118,25 +129,15 @@ class ApiTypesDispatcher:
         return cls._get_impl(api_type).chat_ep()
 
     @classmethod
+    def responses_ep(cls, api_type: str) -> str:
+        return cls._get_impl(api_type).responses_ep()
+
+    @classmethod
     def completions_ep(cls, api_type: str) -> str:
         """
         Delegate to the proper implementation to get completion endpoint path.
         """
         return cls._get_impl(api_type).completions_ep()
-
-    @classmethod
-    def chat_method(cls, api_type: str) -> str:
-        """
-        Delegate to the proper implementation to get chat HTTP method.
-        """
-        return cls._get_impl(api_type).chat_method()
-
-    @classmethod
-    def completions_method(cls, api_type: str) -> str:
-        """
-        Delegate to the proper implementation to get completion HTTP method.
-        """
-        return cls._get_impl(api_type).completions_method()
 
     @classmethod
     def tags(

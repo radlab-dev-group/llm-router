@@ -159,18 +159,6 @@ class ApiTypesI(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def chat_method(self) -> str:
-        """
-        Return the HTTP method used by the chat endpoint.
-
-        Returns
-        -------
-        str
-            HTTP method name (e.g., "POST").
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def completions_ep(self) -> str:
         """
         Return the relative URL path for the completion endpoint.
@@ -183,13 +171,13 @@ class ApiTypesI(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def completions_method(self) -> str:
+    def responses_ep(self) -> str:
         """
-        Return the HTTP method used by the completion endpoint.
+        Return the URL path for the responses' endpoint.
 
         Returns
         -------
         str
-            HTTP method name (e.g., "POST").
+            Endpoint path (e.g., "/v1/responses").
         """
         raise NotImplementedError

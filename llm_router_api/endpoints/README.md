@@ -17,6 +17,7 @@ JSON.
 - **POST** `LLM_ROUTER_EP_PREFIX/api/chat/completions` – OpenAI‑style chat completion.
 - **POST** `LLM_ROUTER_EP_PREFIX/chat/completions` – OpenAI‑style chat completion (alternative path).
 - **POST** `LLM_ROUTER_EP_PREFIX/v1/chat/completions` – vLLM‑like chat completion.
+- **POST** `LLM_ROUTER_EP_PREFIX/v1/responses` – OpenAI‑like responsesendpoint.
 
 ### Chat & Completions (Built‑in)
 
