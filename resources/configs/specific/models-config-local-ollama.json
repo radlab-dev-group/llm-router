@@ -1,0 +1,23 @@
+{
+  "openai_models": {
+    "gpt-oss-120b": {
+      "providers": [
+        {
+          "id": "openai_gpt-oss-120b-ollama-localhost:11434",
+          "api_host": "http://localhost:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 256000,
+          "model_path": "gpt-oss:120b",
+          "keep_alive": "45m",
+          "tool_calling": false
+        }
+      ]
+    }
+  },
+  "active_models": {
+    "openai_models": [
+      "gpt-oss:120b"
+    ]
+  }
+}
