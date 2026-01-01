@@ -5,5 +5,5 @@ prometheus_client
 python-dateutil
 # gevent
 
-
+requests
 python-gnupg
