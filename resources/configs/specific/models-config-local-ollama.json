@@ -1,6 +1,6 @@
 {
   "openai_models": {
-    "gpt-oss-120b": {
+    "gpt-oss:120b": {
       "providers": [
         {
           "id": "openai_gpt-oss-120b-ollama-localhost:11434",
