@@ -246,7 +246,7 @@ class HttpRequestExecutor:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        params = self._convert_ollama_messages_if_needed(params=params)
+        # params = self._convert_ollama_messages_if_needed(params=params)
 
         is_generic = True not in [
             is_ollama,
@@ -1229,54 +1229,3 @@ class HttpRequestExecutor:
                 )
 
         return _iter()
-
-    @staticmethod
-    def _convert_ollama_messages_if_needed(params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Normalise a ``messages`` payload for Ollama compatibility.
-
-        Ollama expects an alternating ``user``/``assistant`` sequence.
-        This helper inserts empty ``assistant`` messages where necessary
-        so that a consecutive series of user messages is transformed
-        into a valid dialogue.
-
-        Parameters
-        ----------
-        params:
-            Request payload possibly containing a ``messages`` list.
-
-        Returns
-        -------
-        dict
-            The possibly‑modified payload with a correctly ordered
-            ``messages`` list.
-        """
-        if "messages" not in params:
-            return params
-
-        messages = params["messages"]
-        if len(messages) == 1:
-            return params
-
-        if messages[0].get("role") == "user" and messages[1].get("role") == "user":
-            skip_last = False
-            _messages = []
-            _msg_count = len(messages)
-            for _num, message in enumerate(messages):
-                skip_last = False
-                _messages.append(message)
-                if message["role"] == "assistant":
-                    continue
-
-                if _num + 1 < _msg_count:
-                    if messages[_num + 1]["role"] == "assistant":
-                        continue
-                _messages.append({"role": "assistant", "content": ""})
-                skip_last = True
-
-            if skip_last:
-                _messages.pop(-1)
-
-            params["messages"] = _messages
-
-        return params
