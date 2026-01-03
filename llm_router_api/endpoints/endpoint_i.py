@@ -1288,6 +1288,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 params=params, model_provider=api_model_provider
             )
             params = self._ensure_alternating_roles(params=params)
+            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
             clear_chosen_provider_finally = True
 
@@ -1691,6 +1692,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if not model_provider.tool_calling:
             for _fc in ["tools", "functions"]:
                 params.pop(_fc, None)
+
+        if model_provider.api_type in ["vllm"]:
+            if "max_tokens" in params and params["max_tokens"] < 1:
+                params.pop("max_tokens", None)
 
         return params
 
