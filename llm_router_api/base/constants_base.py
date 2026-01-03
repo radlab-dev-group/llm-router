@@ -64,3 +64,6 @@ POSSIBLE_BALANCE_STRATEGIES = [
 #
 # DEFAULT_ANONYMIZE_STRATEGY = "fast_masker"
 # POSSIBLE_ANONYMIZE_STRATEGIES = ["fast_masker", "genai"]
+
+# List of OpenAI compatible provides
+OPENAI_COMPATIBLE_PROVIDERS = ["openai", "lmstudio", "vllm"]

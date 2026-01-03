@@ -1207,6 +1207,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         use_streaming = bool((params or {}).get("stream", False))
 
         # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+        self.logger.debug(
+            f"[{self._ep_method}] {self._ep_name} => {self._ep_types_str}"
+        )
 
         self._start_time = time.time()
         try:
@@ -1284,10 +1287,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             params = self._prepare_params_for_provider(
                 params=params, model_provider=api_model_provider
             )
+            params = self._ensure_alternating_roles(params=params)
+            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
             clear_chosen_provider_finally = True
 
-            self.logger.debug(f"Request model config id: {api_model_provider.id}")
+            self.logger.debug(
+                f"Request model {api_model_provider.name} "
+                f"with config id: {api_model_provider.id} "
+                f"[{api_model_provider.api_type}: {api_model_provider.api_host}]"
+            )
 
             if not self.REQUIRED_ARGS:
                 if api_model_provider.api_type.lower() in self._ep_types_str:
@@ -1433,6 +1442,64 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         # If stream param is not given, then set as False
         payload["stream"] = payload.get("stream", False)
         return payload
+
+    @staticmethod
+    def _ensure_alternating_roles(params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize a ``messages`` payload for compatibility with any
+        service that expects an alternating ``user``/``assistant`` (or
+        ``system`` → ``user``) sequence.
+
+        The function inserts empty placeholder messages whenever the
+        expected alternation is broken, e.g. two consecutive ``user``
+        messages become ``user`` → ``assistant`` (empty) → ``user``.
+        This guarantees a valid dialogue structure.
+
+        Parameters
+        ----------
+        params:
+            Request payload possibly containing a ``messages`` list.
+
+        Returns
+        -------
+        dict
+            The possibly‑modified payload with a correctly ordered
+            ``messages`` list.
+        """
+        if "messages" not in params:
+            return params
+
+        messages = params["messages"]
+        if len(messages) <= 1:
+            return params
+
+        # Build a new list, inserting empty placeholders whenever the
+        # expected alternating pattern is broken.
+        new_messages: List[Dict[str, Any]] = []
+        for idx, msg in enumerate(messages):
+            role = msg.get("role")
+            new_messages.append(msg)
+
+            # Determine which role we expect next.
+            expected_next: str | None = None
+            if role == "system":
+                expected_next = "user"
+            elif role == "user":
+                expected_next = "assistant"
+            elif role == "assistant":
+                expected_next = "user"
+
+            if not expected_next:
+                continue  # unknown role – skip checks
+
+            # Look ahead to the next original message, if any.
+            if idx + 1 < len(messages):
+                next_role = messages[idx + 1].get("role")
+                if next_role != expected_next:
+                    # Insert an empty placeholder to restore the pattern.
+                    new_messages.append({"role": expected_next, "content": ""})
+        params["messages"] = new_messages
+        return params
 
     def _return_response_or_rerun(
         self,
@@ -1626,6 +1693,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             for _fc in ["tools", "functions"]:
                 params.pop(_fc, None)
 
+        if model_provider.api_type in ["vllm"]:
+            if "max_tokens" in params and params["max_tokens"] < 1:
+                params.pop("max_tokens", None)
+
         return params
 
     def _resolve_stream_type(self, api_model_provider: ApiModel):
@@ -1643,3 +1714,47 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 is_ollama_to_generic = True
 
         return is_generic_to_ollama, is_ollama_to_generic, is_ollama
+
+    #
+    # def _resolve_stream_type(self, api_model_provider: ApiModel) -> Dict[str, bool]:
+    #     resolved_stream = {
+    #         "is_ollama": False,
+    #         "is_lm_studio": False,
+    #         "is_lm_studio_to_ollama": False,
+    #         "is_generic_to_ollama": False,
+    #         "is_generic_to_llmstudio": False,
+    #         "is_ollama_to_generic": False,
+    #         "is_lmstudio_to_generic": False,
+    #         "is_ollama_to_lm_studio": False,
+    #     }
+    #
+    #     # is ollama -> ollama?
+    #     if (
+    #         "ollama" in self._ep_types_str
+    #         and "ollama" in api_model_provider.api_type
+    #     ):
+    #         resolved_stream["is_ollama"] = True
+    #         return resolved_stream
+    #
+    #     # is lm_studio -> lm_studio?
+    #     if (
+    #         "lm_studio" in self._ep_types_str
+    #         and "lm_studio" in api_model_provider.api_type
+    #     ):
+    #         resolved_stream["is_lm_studio"] = True
+    #         return resolved_stream
+    #
+    #     # lm_studio -> ollama
+    #     if "ollama" in self._ep_types_str and "lm_studio" in api_model_provider:
+    #         resolved_stream["is_lm_studio_to_ollama"] = True
+    #         return resolved_stream
+    #
+    #     #
+    #     #     if "ollama" in self._ep_types_str:
+    #     #         is_generic_to_ollama = True
+    #     #
+    #     #     if "ollama" in api_model_provider.api_type:
+    #     #         is_ollama_to_generic = True
+    #     #
+    #     # return is_generic_to_ollama, is_ollama_to_generic, is_ollama
+    #     return resolved_stream

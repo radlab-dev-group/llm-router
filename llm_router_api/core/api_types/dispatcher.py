@@ -28,6 +28,7 @@ from llm_router_api.core.api_types.types_i import ApiTypesI
 from llm_router_api.core.api_types.vllm import VllmType
 from llm_router_api.core.api_types.ollama import OllamaType
 from llm_router_api.core.api_types.openai import OpenAIApiType
+from llm_router_api.core.api_types.lmstudio import LMStudioApiType
 
 # ----------------------------------------------------------------------------------
 # Public constant – the full list of API‑type identifiers recognised by the library.
@@ -65,6 +66,7 @@ class ApiTypesDispatcher:
         "ollama": OllamaType,
         "vllm": VllmType,
         "openai": OpenAIApiType,
+        "lmstudio": LMStudioApiType,
     }
 
     # -----------------------------------------------------------------------
