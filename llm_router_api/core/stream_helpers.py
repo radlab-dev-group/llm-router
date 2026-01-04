@@ -8,10 +8,75 @@ that they can use its timeout, logger and ``unset_model`` hook.
 
 import json
 import datetime
+import contextlib
 from typing import Iterator, Dict, Any, Optional
 
 import requests
 from requests import Response
+
+# --------------------------------------------------------------------------- #
+# Internal utilities – extracted to avoid repetition
+# --------------------------------------------------------------------------- #
+
+
+@contextlib.contextmanager
+def _model_unsetter(endpoint, payload, api_model_provider, options):
+    """
+    Guarantees that ``endpoint.unset_model`` is called exactly once,
+    regardless of how the surrounding generator exits.
+    """
+    try:
+        yield
+    finally:
+        endpoint.unset_model(
+            params=payload,
+            api_model_provider=api_model_provider,
+            options=options,
+        )
+
+
+def _force_iter_generic(force_text: str, api_model_provider) -> Iterator[bytes]:
+    """
+    Generates a single forced chunk followed by a DONE marker for
+    OpenAI‑style streams.
+    """
+    base_chunk = {
+        "id": "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+        "object": "chat.completion.chunk",
+        "created": int(datetime.datetime.utcnow().timestamp()),
+        "model": api_model_provider.model_path or api_model_provider.name,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": force_text},
+                "finish_reason": None,
+            }
+        ],
+    }
+    base_chunk_str = json.dumps(base_chunk)
+
+    def _iter() -> Iterator[bytes]:
+        yield f"data: {base_chunk_str}\n\n".encode("utf-8")
+        yield b"data: [DONE]\n\n"
+
+    return _iter()
+
+
+def _force_iter_ollama(force_text: str, api_model_provider) -> Iterator[bytes]:
+    """
+    Generates forced chunks for Ollama‑style NDJSON streams.
+    """
+
+    def _iter() -> Iterator[bytes]:
+        yield _ollama_chunk(
+            delta=force_text, done=False, api_model_provider=api_model_provider
+        )
+        yield _ollama_chunk(
+            delta="", done=True, api_model_provider=api_model_provider
+        )
+
+    return _iter()
+
 
 # --------------------------------------------------------------------------- #
 # Public streaming entry points
@@ -32,67 +97,36 @@ def stream_generic(
     Generic (OpenAI‑style) streaming – returns the raw SSE bytes unchanged.
     """
     if force_text is not None:
-        # Emit a single forced chunk then a DONE marker
-        base_chunk = {
-            "id": "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
-            "object": "chat.completion.chunk",
-            "created": int(datetime.datetime.utcnow().timestamp()),
-            "model": api_model_provider.model_path or api_model_provider.name,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": force_text},
-                    "finish_reason": None,
-                }
-            ],
-        }
-        base_chunk_str = json.dumps(base_chunk)
-
-        def _force_iter() -> Iterator[bytes]:
-            yield f"data: {base_chunk_str}\n\n".encode("utf-8")
-            yield b"data: [DONE]\n\n"
-
-        try:
-            return _force_iter()
-        finally:
-            endpoint.unset_model(
-                params=payload,
-                api_model_provider=api_model_provider,
-                options=options,
-            )
+        with _model_unsetter(endpoint, payload, api_model_provider, options):
+            return _force_iter_generic(force_text, api_model_provider)
 
     # Ensure we accept SSE format
     headers["Accept"] = "text/event-stream"
 
     def _iter() -> Iterator[bytes]:
-        try:
-            request_kwargs = {
-                "url": url,
-                "timeout": endpoint.timeout,
-                "stream": True,
-                "headers": headers,
-            }
-            if method == "POST":
-                request_kwargs["json"] = payload
-                req = requests.post(**request_kwargs)
-            else:
-                request_kwargs["params"] = payload
-                req = requests.get(**request_kwargs)
+        with _model_unsetter(endpoint, payload, api_model_provider, options):
+            try:
+                request_kwargs = {
+                    "url": url,
+                    "timeout": endpoint.timeout,
+                    "stream": True,
+                    "headers": headers,
+                }
+                if method == "POST":
+                    request_kwargs["json"] = payload
+                    req = requests.post(**request_kwargs)
+                else:
+                    request_kwargs["params"] = payload
+                    req = requests.get(**request_kwargs)
 
-            with req as r:
-                r.raise_for_status()
-                for chunk in r.iter_content(chunk_size=None):
-                    if chunk:
-                        yield chunk
-        except requests.RequestException as exc:
-            err = {"error": str(exc)}
-            yield (f"data: {json.dumps(err)}\n\n").encode("utf-8")
-        finally:
-            endpoint.unset_model(
-                params=payload,
-                api_model_provider=api_model_provider,
-                options=options,
-            )
+                with req as r:
+                    r.raise_for_status()
+                    for chunk in r.iter_content(chunk_size=None):
+                        if chunk:
+                            yield chunk
+            except requests.RequestException as exc:
+                err = {"error": str(exc)}
+                yield (f"data: {json.dumps(err)}\n\n").encode("utf-8")
 
     return _iter()
 
@@ -111,47 +145,34 @@ def stream_ollama(
     Streaming from an Ollama endpoint – converts the stream to Ollama NDJSON.
     """
     if force_text is not None:
-
-        def _force_iter() -> Iterator[bytes]:
-            yield _ollama_chunk(
-                delta=force_text, done=False, api_model_provider=api_model_provider
-            )
-            yield _ollama_chunk(
-                delta="", done=True, api_model_provider=api_model_provider
-            )
-
-        return _force_iter()
+        with _model_unsetter(endpoint, payload, api_model_provider, options):
+            return _force_iter_ollama(force_text, api_model_provider)
 
     def _iter() -> Iterator[bytes]:
-        try:
-            if method == "POST":
-                resp_ctx = requests.post(
-                    url,
-                    json=payload,
-                    headers=headers,
-                    timeout=endpoint.timeout,
-                    stream=True,
-                )
-            else:
-                resp_ctx = requests.get(
-                    url,
-                    params=payload,
-                    headers=headers,
-                    timeout=endpoint.timeout,
-                    stream=True,
-                )
-            with resp_ctx as resp:
-                resp.raise_for_status()
-                for chunk in _parse_ollama_stream(resp, api_model_provider):
-                    yield chunk
-        except requests.RequestException as exc:
-            yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
-        finally:
-            endpoint.unset_model(
-                params=payload,
-                api_model_provider=api_model_provider,
-                options=options,
-            )
+        with _model_unsetter(endpoint, payload, api_model_provider, options):
+            try:
+                if method == "POST":
+                    resp_ctx = requests.post(
+                        url,
+                        json=payload,
+                        headers=headers,
+                        timeout=endpoint.timeout,
+                        stream=True,
+                    )
+                else:
+                    resp_ctx = requests.get(
+                        url,
+                        params=payload,
+                        headers=headers,
+                        timeout=endpoint.timeout,
+                        stream=True,
+                    )
+                with resp_ctx as resp:
+                    resp.raise_for_status()
+                    for chunk in _parse_ollama_stream(resp, api_model_provider):
+                        yield chunk
+            except requests.RequestException as exc:
+                yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
 
     return _iter()
 
@@ -170,143 +191,36 @@ def stream_generic_to_ollama(
     Convert an OpenAI‑style stream to Ollama NDJSON.
     """
     if force_text is not None:
-
-        def _force_iter() -> Iterator[bytes]:
-            yield _ollama_chunk(
-                delta=force_text, done=False, api_model_provider=api_model_provider
-            )
-            yield _ollama_chunk(
-                delta="", done=True, api_model_provider=api_model_provider
-            )
-
-        return _force_iter()
+        with _model_unsetter(endpoint, payload, api_model_provider, options):
+            return _force_iter_ollama(force_text, api_model_provider)
 
     def _iter() -> Iterator[bytes]:
-        try:
-            if method == "POST":
-                req = requests.post(
-                    url,
-                    json=payload,
-                    timeout=endpoint.timeout,
-                    stream=True,
-                    headers=headers,
-                )
-            else:
-                req = requests.get(
-                    url,
-                    params=payload,
-                    timeout=endpoint.timeout,
-                    stream=True,
-                    headers=headers,
-                )
-            with req as resp:
-                resp.raise_for_status()
-                sent_done = False
-                usage_data = None
-
-                for raw_line in resp.iter_lines(decode_unicode=False):
-                    if not raw_line:
-                        continue
-                    line = raw_line.decode("utf-8", errors="replace").strip()
-
-                    # ---- SSE “data:” lines ----
-                    if line.startswith("data:"):
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            if not sent_done:
-                                yield _ollama_chunk(
-                                    delta="",
-                                    done=True,
-                                    usage=usage_data,
-                                    api_model_provider=api_model_provider,
-                                )
-                                sent_done = True
-                            continue
-                        try:
-                            chunk = json.loads(data)
-                        except Exception:
-                            continue
-
-                        if "usage" in chunk:
-                            usage_data = chunk["usage"]
-
-                        delta = ""
-                        choices = chunk.get("choices", [])
-                        if choices:
-                            delta_obj = choices[0].get("delta", {})
-                            if isinstance(delta_obj, dict):
-                                delta = delta_obj.get("content", "")
-
-                        if delta:
-                            yield _ollama_chunk(
-                                delta=delta,
-                                done=False,
-                                api_model_provider=api_model_provider,
-                            )
-
-                        if (
-                            choices
-                            and choices[0].get("finish_reason")
-                            and not sent_done
-                        ):
-                            yield _ollama_chunk(
-                                delta="",
-                                done=True,
-                                usage=usage_data,
-                                api_model_provider=api_model_provider,
-                            )
-                            sent_done = True
-                        continue
-
-                    # ---- Plain JSON line ----
-                    try:
-                        chunk = json.loads(line)
-                    except Exception:
-                        continue
-
-                    if "usage" in chunk:
-                        usage_data = chunk["usage"]
-
-                    delta = ""
-                    choices = chunk.get("choices", [])
-                    if choices:
-                        delta_obj = choices[0].get("delta", {})
-                        if isinstance(delta_obj, dict):
-                            delta = delta_obj.get("content", "")
-
-                    if delta:
-                        yield _ollama_chunk(
-                            delta=delta,
-                            done=False,
-                            api_model_provider=api_model_provider,
-                        )
-
-                    if choices and choices[0].get("finish_reason") and not sent_done:
-                        yield _ollama_chunk(
-                            delta="",
-                            done=True,
-                            usage=usage_data,
-                            api_model_provider=api_model_provider,
-                        )
-                        sent_done = True
-
-                if not sent_done:
-                    yield _ollama_chunk(
-                        delta="",
-                        done=True,
-                        usage=usage_data,
-                        api_model_provider=api_model_provider,
+        with _model_unsetter(endpoint, payload, api_model_provider, options):
+            try:
+                if method == "POST":
+                    req = requests.post(
+                        url,
+                        json=payload,
+                        timeout=endpoint.timeout,
+                        stream=True,
+                        headers=headers,
                     )
-
-        except requests.RequestException as exc:
-            err = {"error": str(exc)}
-            yield (json.dumps(err) + "\n").encode("utf-8")
-        finally:
-            endpoint.unset_model(
-                params=payload,
-                api_model_provider=api_model_provider,
-                options=options,
-            )
+                else:
+                    req = requests.get(
+                        url,
+                        params=payload,
+                        timeout=endpoint.timeout,
+                        stream=True,
+                        headers=headers,
+                    )
+                with req as resp:
+                    resp.raise_for_status()
+                    # Re‑use the existing robust parser for Ollama NDJSON
+                    for chunk in _parse_ollama_stream(resp, api_model_provider):
+                        yield chunk
+            except requests.RequestException as exc:
+                err = {"error": str(exc)}
+                yield (json.dumps(err) + "\n").encode("utf-8")
 
     return _iter()
 
@@ -325,106 +239,80 @@ def stream_ollama_to_generic(
     Convert an Ollama NDJSON stream to OpenAI‑compatible SSE.
     """
     if force_text is not None:
-        base_chunk = {
-            "id": "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
-            "object": "chat.completion.chunk",
-            "created": int(datetime.datetime.utcnow().timestamp()),
-            "model": api_model_provider.model_path or api_model_provider.name,
-            "choices": [
-                {
-                    "index": 0,
-                    "delta": {"content": force_text},
-                    "finish_reason": None,
-                }
-            ],
-        }
-        base_chunk_str = json.dumps(base_chunk)
-
-        def _force_iter() -> Iterator[bytes]:
-            yield f"data: {base_chunk_str}\n\n".encode("utf-8")
-            yield b"data: [DONE]\n\n"
-
-        try:
-            return _force_iter()
-        finally:
-            endpoint.unset_model(
-                params=payload,
-                api_model_provider=api_model_provider,
-                options=options,
-            )
+        with _model_unsetter(endpoint, payload, api_model_provider, options):
+            return _force_iter_generic(force_text, api_model_provider)
 
     def _iter() -> Iterator[bytes]:
-        try:
-            if method == "POST":
-                ctx = requests.post(
-                    url,
-                    json=payload,
-                    timeout=endpoint.timeout,
-                    stream=True,
-                    headers=headers,
-                )
-            else:
-                ctx = requests.get(
-                    url,
-                    params=payload,
-                    timeout=endpoint.timeout,
-                    stream=True,
-                    headers=headers,
-                )
-            with ctx as resp:
-                resp.raise_for_status()
-                for raw_line in resp.iter_lines(decode_unicode=False):
-                    if not raw_line:
-                        continue
-                    try:
-                        ollama_obj = json.loads(
-                            raw_line.decode("utf-8", errors="replace")
-                        )
-                    except Exception:
-                        # Forward unparseable line unchanged
-                        yield (raw_line + b"\n")
-                        continue
+        with _model_unsetter(endpoint, payload, api_model_provider, options):
+            try:
+                if method == "POST":
+                    ctx = requests.post(
+                        url,
+                        json=payload,
+                        timeout=endpoint.timeout,
+                        stream=True,
+                        headers=headers,
+                    )
+                else:
+                    ctx = requests.get(
+                        url,
+                        params=payload,
+                        timeout=endpoint.timeout,
+                        stream=True,
+                        headers=headers,
+                    )
+                with ctx as resp:
+                    resp.raise_for_status()
+                    for raw_line in resp.iter_lines(decode_unicode=False):
+                        if not raw_line:
+                            continue
+                        try:
+                            ollama_obj = json.loads(
+                                raw_line.decode("utf-8", errors="replace")
+                            )
+                        except Exception:
+                            # Forward unparseable line unchanged
+                            yield (raw_line + b"\n")
+                            continue
 
-                    # Build a base SSE chunk
-                    base = {
-                        "id": "chatcmpl-"
-                        + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
-                        "object": "chat.completion.chunk",
-                        "created": int(datetime.datetime.utcnow().timestamp()),
-                        "model": api_model_provider.model_path
-                        or api_model_provider.name,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {},
-                                "finish_reason": None,
-                            }
-                        ],
-                    }
+                        # Build a base SSE chunk
+                        base = {
+                            "id": "chatcmpl-"
+                            + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
+                            "object": "chat.completion.chunk",
+                            "created": int(datetime.datetime.utcnow().timestamp()),
+                            "model": api_model_provider.model_path
+                            or api_model_provider.name,
+                            "choices": [
+                                {
+                                    "index": 0,
+                                    "delta": {},
+                                    "finish_reason": None,
+                                }
+                            ],
+                        }
 
-                    if ollama_obj.get("done"):
-                        base["choices"][0]["finish_reason"] = "stop"
-                        yield (
-                            "data: " + json.dumps(base, ensure_ascii=False) + "\n\n"
-                        ).encode("utf-8")
-                        yield b"data: [DONE]\n\n"
-                        continue
+                        if ollama_obj.get("done"):
+                            base["choices"][0]["finish_reason"] = "stop"
+                            yield (
+                                "data: "
+                                + json.dumps(base, ensure_ascii=False)
+                                + "\n\n"
+                            ).encode("utf-8")
+                            yield b"data: [DONE]\n\n"
+                            continue
 
-                    delta_text = ollama_obj.get("message", {}).get("content", "")
-                    if delta_text:
-                        base["choices"][0]["delta"] = {"content": delta_text}
-                        yield (
-                            "data: " + json.dumps(base, ensure_ascii=False) + "\n\n"
-                        ).encode("utf-8")
-        except requests.RequestException as exc:
-            err = {"error": str(exc)}
-            yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
-        finally:
-            endpoint.unset_model(
-                params=payload,
-                api_model_provider=api_model_provider,
-                options=options,
-            )
+                        delta_text = ollama_obj.get("message", {}).get("content", "")
+                        if delta_text:
+                            base["choices"][0]["delta"] = {"content": delta_text}
+                            yield (
+                                "data: "
+                                + json.dumps(base, ensure_ascii=False)
+                                + "\n\n"
+                            ).encode("utf-8")
+            except requests.RequestException as exc:
+                err = {"error": str(exc)}
+                yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
 
     return _iter()
 
