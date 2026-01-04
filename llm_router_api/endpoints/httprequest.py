@@ -26,7 +26,7 @@ from typing import Optional, Dict, Any, Iterator
 
 from llm_router_api.core.model_handler import ApiModel
 
-from llm_router_api.core.stream_helpers import (
+from llm_router_api.core.stream_handler import (
     stream_generic,
     stream_ollama,
     stream_generic_to_ollama,
