@@ -1,23 +1,9 @@
 """
 Top‑level utilities for executing outbound HTTP calls.
 
-The module defines :class:`HttpRequestExecutor`, a helper that centralises
-all HTTP interactions performed by ``EndpointWithHttpRequestI`` instances.
-It supports regular (blocking) requests as well as streaming responses,
-including special handling for Ollama‑compatible NDJSON streams.
-
-Typical usage:
-
-    executor = HttpRequestExecutor(endpoint)
-    response = executor.call_http_request(
-        ep_url="/v1/chat/completions",
-        params={...},
-        prompt_str="You are a helpful assistant.",
-    )
-
-The executor pulls configuration such as timeout, authentication token,
-default headers and the model identifier from the owning endpoint, so
-callers only need to supply endpoint‑specific parameters.
+`HttpRequestExecutor` now owns a `StreamHandler` instance, which centralises
+all streaming logic.  This keeps the executor lightweight and makes the
+stream‑handling code easier to test/mocks.
 """
 
 import requests
@@ -25,51 +11,30 @@ from requests import Response
 from typing import Optional, Dict, Any, Iterator
 
 from llm_router_api.core.model_handler import ApiModel
-
-from llm_router_api.core.stream_handler import (
-    stream_generic,
-    stream_ollama,
-    stream_generic_to_ollama,
-    stream_ollama_to_generic,
-)
+from llm_router_api.core.stream_handler import StreamHandler
 
 
 class HttpRequestExecutor:
     """
     Centralised helper for performing outbound HTTP calls.
 
-    It aggregates the logic that was previously duplicated across several
-    private helpers (``_call_http_request``, ``_call_http_request_stream``,
-    ``_call_http_request_stream_ollama``).  The executor obtains the
-    timeout, logger, authentication token and model information from the
-    owning ``EndpointWithHttpRequestI`` instance and exposes a small public
-    API:
-
-    * :meth:`call_http_request` – synchronous request returning a parsed
-      JSON payload or the raw :class:`requests.Response`.
-    * :meth:`stream_response` – generator yielding byte chunks from a
-      streaming endpoint, optionally converting the stream to Ollama‑compatible
-      NDJSON.
-    * Several ``_``‑prefixed private helpers that perform the actual
-      ``GET``/``POST`` calls and stream processing.
-
-    The class is deliberately lightweight – it does not hold any network
-    resources itself and can be instantiated per‑request if desired.
+    The executor aggregates the logic that was previously duplicated across
+    several private helpers.  It now also contains a `StreamHandler`
+    instance used for all streaming interactions.
     """
 
     def __init__(self, endpoint):
         """
         Initialise the executor with a reference to its endpoint.
-
-        Parameters
-        ----------
-        endpoint:
-            The ``EndpointWithHttpRequestI`` instance whose configuration
-            (timeout, logger, model handler, etc.) will be used for all
-            HTTP interactions performed by this executor.
         """
         self._endpoint = endpoint
         self.logger = endpoint.logger
+        # New: a dedicated stream handler object
+        self._stream_handler = StreamHandler()
+
+    @property
+    def stream_handler(self):
+        return self._stream_handler
 
     # --------------------------------------------------------------------- #
     # Public synchronous request
@@ -85,43 +50,6 @@ class HttpRequestExecutor:
     ) -> Optional[Dict[str, Any] | Response]:
         """
         Execute a regular (non‑streaming) HTTP request.
-
-        The model identifier is injected into *params* and the full URL is
-        constructed from the endpoint's host and the supplied ``ep_url``.
-        If ``call_for_each_user_msg`` is ``True`` a separate request is
-        sent for each user‑role message in ``params["messages"]``.  The
-        method returns either a parsed JSON dictionary or the raw
-        :class:`requests.Response` object, depending on the endpoint's
-        configuration.
-
-        Parameters
-        ----------
-        ep_url:
-            Relative path (e.g. ``"/v1/chat/completions"``) appended to the
-            model host.
-        params:
-            Dictionary of request parameters; will be mutated to include the
-            model name and, optionally, the system prompt.
-        api_model_provider:
-            Model provider used to construct API requests.
-        prompt_str:
-            Optional system‑prompt text to prepend to the conversation.
-        call_for_each_user_msg:
-            When ``True`` the request is split per user message.
-        headers:
-            Optional additional HTTP headers; ``Authorization`` is added
-            automatically when an API token is configured.
-
-        Returns
-        -------
-        dict | Response | None
-            Parsed JSON payload, the raw ``Response`` object, or ``None`` if
-            the endpoint decides not to return a value.
-
-        Raises
-        ------
-        RuntimeError
-            Propagated from underlying ``requests`` exceptions.
         """
         # inject model name
         params["model"] = (
@@ -171,13 +99,9 @@ class HttpRequestExecutor:
             )
         except Exception:
             raise
-            # response = Response()
-            # response.status_code = 400
-            # response._content = str(e).encode("utf-8")
-            # return response
 
     # --------------------------------------------------------------------- #
-    # Public streaming request – dispatcher to helpers in ``stream_helpers``
+    # Public streaming request – dispatcher to StreamHandler helpers
     # --------------------------------------------------------------------- #
     def stream_response(
         self,
@@ -192,44 +116,6 @@ class HttpRequestExecutor:
     ) -> Iterator[bytes]:
         """
         Perform a streaming request and yield byte chunks.
-
-        ``params`` is enriched with ``model`` and ``stream=True`` before the
-        request is issued.  If ``is_ollama`` is ``True`` the raw stream is
-        transformed into Ollama‑compatible NDJSON; otherwise the raw bytes
-        from the remote service are yielded unchanged.
-
-        Parameters
-        ----------
-        ep_url:
-            Relative endpoint path to which the request is sent.
-        params:
-            Payload parameters; ``model`` and ``stream`` are added automatically.
-        api_model_provider:
-            Model provider used to construct API requests.
-        options: Optional Dict
-            Additional options passed to stream.
-        is_ollama:
-            Flag indicating whether Ollama‑specific conversion should be
-            applied to the incoming stream.
-        is_generic_to_ollama:
-            Flag to stream a response from an Ollama endpoint
-            and convert it to the OpenAI‑compatible format
-        is_ollama_to_generic:
-            Flag to stream a response from an OpenAI endpoint
-            and convert it to the Ollama format
-        force_text:
-            If text is given then will be returned as‑is
-            (without model provider usage).
-
-        Returns
-        -------
-        Iterator[bytes]
-            An iterator yielding chunks of the HTTP response body.
-
-        Raises
-        ------
-        RuntimeError
-            When is_ollama and is_generic_to_ollama are ``True``.
         """
         if is_ollama and is_generic_to_ollama:
             raise RuntimeError(
@@ -253,13 +139,7 @@ class HttpRequestExecutor:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        # params = self._convert_ollama_messages_if_needed(params=params)
-
-        is_generic = True not in [
-            is_ollama,
-            is_generic_to_ollama,
-            is_ollama_to_generic,
-        ]
+        is_generic = not any([is_ollama, is_generic_to_ollama, is_ollama_to_generic])
         self.logger.debug(
             f"Stream type: \n"
             f"  * is_ollama={is_ollama} \n"
@@ -269,7 +149,7 @@ class HttpRequestExecutor:
         )
 
         if is_ollama:
-            return stream_ollama(
+            return self._stream_handler.stream_ollama(
                 url=full_url,
                 payload=params,
                 method=method,
@@ -281,7 +161,7 @@ class HttpRequestExecutor:
             )
 
         if is_generic_to_ollama:
-            return stream_generic_to_ollama(
+            return self._stream_handler.stream_generic_to_ollama(
                 url=full_url,
                 payload=params,
                 method=method,
@@ -293,7 +173,7 @@ class HttpRequestExecutor:
             )
 
         if is_ollama_to_generic:
-            return stream_ollama_to_generic(
+            return self._stream_handler.stream_ollama_to_generic(
                 url=full_url,
                 payload=params,
                 method=method,
@@ -305,7 +185,7 @@ class HttpRequestExecutor:
             )
 
         if is_generic:
-            return stream_generic(
+            return self._stream_handler.stream_generic(
                 url=full_url,
                 payload=params,
                 method=method,
@@ -316,11 +196,11 @@ class HttpRequestExecutor:
                 force_text=force_text,
             )
 
-        raise Exception("Unknonw streaming type!")
+        raise Exception("Unknown streaming type!")
 
-    # ------------------------------------------
+    # --------------------------------------------------------------------- #
     # Private helpers
-    # ------------------------------------------
+    # --------------------------------------------------------------------- #
     @staticmethod
     def _prepare_full_url_ep(ep_url: str, api_model_provider: ApiModel) -> str:
         full_url = api_model_provider.api_host.rstrip("/") + "/" + ep_url.lstrip("/")

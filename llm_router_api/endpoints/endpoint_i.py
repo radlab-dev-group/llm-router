@@ -1229,7 +1229,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     )
 
                     is_generic_to_ollama, is_ollama_to_generic, is_ollama = (
-                        self._resolve_stream_type(api_model_provider)
+                        self._http_executor.stream_handler.resolve_stream_type(
+                            endpoint_ep_types=self._ep_types_str,
+                            api_model_provider=api_model_provider,
+                        )
                     )
 
                     return self._http_executor.stream_response(
@@ -1342,7 +1345,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     )
 
                 is_generic_to_ollama, is_ollama_to_generic, is_ollama = (
-                    self._resolve_stream_type(api_model_provider)
+                    self._http_executor.stream_handler.resolve_stream_type(
+                        endpoint_ep_types=self._ep_types_str,
+                        api_model_provider=api_model_provider,
+                    )
                 )
 
                 return self._http_executor.stream_response(
@@ -1698,63 +1704,3 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 params.pop("max_tokens", None)
 
         return params
-
-    def _resolve_stream_type(self, api_model_provider: ApiModel):
-        is_generic_to_ollama = False
-        is_ollama_to_generic = False
-        is_ollama = (
-            "ollama" in self._ep_types_str
-            and "ollama" in api_model_provider.api_type
-        )
-        if not is_ollama:
-            if "ollama" in self._ep_types_str:
-                is_generic_to_ollama = True
-
-            if "ollama" in api_model_provider.api_type:
-                is_ollama_to_generic = True
-
-        return is_generic_to_ollama, is_ollama_to_generic, is_ollama
-
-    #
-    # def _resolve_stream_type(self, api_model_provider: ApiModel) -> Dict[str, bool]:
-    #     resolved_stream = {
-    #         "is_ollama": False,
-    #         "is_lm_studio": False,
-    #         "is_lm_studio_to_ollama": False,
-    #         "is_generic_to_ollama": False,
-    #         "is_generic_to_llmstudio": False,
-    #         "is_ollama_to_generic": False,
-    #         "is_lmstudio_to_generic": False,
-    #         "is_ollama_to_lm_studio": False,
-    #     }
-    #
-    #     # is ollama -> ollama?
-    #     if (
-    #         "ollama" in self._ep_types_str
-    #         and "ollama" in api_model_provider.api_type
-    #     ):
-    #         resolved_stream["is_ollama"] = True
-    #         return resolved_stream
-    #
-    #     # is lm_studio -> lm_studio?
-    #     if (
-    #         "lm_studio" in self._ep_types_str
-    #         and "lm_studio" in api_model_provider.api_type
-    #     ):
-    #         resolved_stream["is_lm_studio"] = True
-    #         return resolved_stream
-    #
-    #     # lm_studio -> ollama
-    #     if "ollama" in self._ep_types_str and "lm_studio" in api_model_provider:
-    #         resolved_stream["is_lm_studio_to_ollama"] = True
-    #         return resolved_stream
-    #
-    #     #
-    #     #     if "ollama" in self._ep_types_str:
-    #     #         is_generic_to_ollama = True
-    #     #
-    #     #     if "ollama" in api_model_provider.api_type:
-    #     #         is_ollama_to_generic = True
-    #     #
-    #     # return is_generic_to_ollama, is_ollama_to_generic, is_ollama
-    #     return resolved_stream
