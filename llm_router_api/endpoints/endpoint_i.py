@@ -1692,7 +1692,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         should treat the returned mapping as the definitive payload to be
         forwarded.
         """
-        if model_provider is None or params is None:
+        if model_provider is None or params is None or type(params) is not dict:
             return params
 
         if not model_provider.tool_calling:
