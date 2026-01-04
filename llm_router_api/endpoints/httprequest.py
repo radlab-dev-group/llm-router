@@ -29,7 +29,7 @@ class HttpRequestExecutor:
         """
         self._endpoint = endpoint
         self.logger = endpoint.logger
-        # New: a dedicated stream handler object
+
         self._stream_handler = StreamHandler()
 
     @property
