@@ -137,7 +137,6 @@ class HttpRequestExecutor:
             raise RuntimeError(
                 "Exactly one streaming mode must be selected: "
                 "is_ollama | is_openai | is_openai_to_ollama | is_ollama_to_openai "
-                "(optionally is_lmstudio which implies is_openai)."
             )
 
         # common preparation
