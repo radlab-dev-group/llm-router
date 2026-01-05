@@ -136,11 +136,19 @@ class HttpRequestExecutor:
             f"  * is_ollama_to_lmstudio={is_ollama_to_lmstudio}\n"
         )
 
-        selected = [is_ollama, is_openai_to_ollama, is_ollama_to_openai, is_openai]
+        selected = [
+            is_openai,
+            is_ollama,
+            is_openai_to_ollama,
+            is_ollama_to_openai,
+            is_openai_to_lmstudio,
+            is_ollama_to_lmstudio,
+        ]
         if sum(1 for x in selected if x) != 1:
             raise RuntimeError(
                 "Exactly one streaming mode must be selected: "
-                "is_ollama | is_openai | is_openai_to_ollama | is_ollama_to_openai "
+                "is_ollama | is_openai | is_openai_to_ollama | is_ollama_to_openai | "
+                "is_openai_to_lmstudio | is_ollama_to_lmstudio"
             )
 
         # common preparation
@@ -197,10 +205,28 @@ class HttpRequestExecutor:
             )
 
         if is_openai_to_lmstudio:
-            pass
+            return self._stream_handler.stream_openai_to_lmstudio(
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
+                endpoint=self._endpoint,
+                api_model_provider=api_model_provider,
+                force_text=force_text,
+            )
 
         if is_ollama_to_lmstudio:
-            pass
+            return self._stream_handler.stream_ollama_to_lmstudio(
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
+                endpoint=self._endpoint,
+                api_model_provider=api_model_provider,
+                force_text=force_text,
+            )
 
         # is_openai
         return self._stream_handler.stream_openai(
