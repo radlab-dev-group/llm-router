@@ -15,6 +15,8 @@ import contextlib
 from requests import Response
 from typing import Iterator, Dict, Any, Optional
 
+from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
+
 
 class StreamHandler:
     """
@@ -46,10 +48,11 @@ class StreamHandler:
             )
 
     @staticmethod
-    def _force_iter_generic(force_text: str, api_model_provider) -> Iterator[bytes]:
+    def _force_iter_openai(force_text: str, api_model_provider) -> Iterator[bytes]:
         """
         Generates a single forced chunk followed by a DONE marker for
-        OpenAI‑style streams.
+        OpenAI-style (SSE) streams. This format is also compatible with
+        LM Studio's OpenAI-compatible API.
         """
         base_chunk = {
             "id": "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -76,7 +79,7 @@ class StreamHandler:
         self, force_text: str, api_model_provider
     ) -> Iterator[bytes]:
         """
-        Generates forced chunks for Ollama‑style NDJSON streams.
+        Generates forced chunks for Ollama-style NDJSON streams.
         """
 
         def _iter() -> Iterator[bytes]:
@@ -93,7 +96,7 @@ class StreamHandler:
     # Public streaming entry points
     # --------------------------------------------------------------------- #
 
-    def stream_generic(
+    def stream_openai(
         self,
         url: str,
         payload: Dict[str, Any],
@@ -105,13 +108,15 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Generic (OpenAI‑style) streaming – returns the raw SSE bytes unchanged.
+        OpenAI-style streaming (SSE) – returns the raw SSE bytes unchanged.
+
+        Note: This is also suitable for LM Studio when using its OpenAI-compatible API.
         """
         if force_text is not None:
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
             ):
-                return self._force_iter_generic(force_text, api_model_provider)
+                return self._force_iter_openai(force_text, api_model_provider)
 
         # Ensure we accept an SSE format
         headers["Accept"] = "text/event-stream"
@@ -197,7 +202,7 @@ class StreamHandler:
 
         return _iter()
 
-    def stream_generic_to_ollama(
+    def stream_openai_to_ollama(
         self,
         url: str,
         payload: Dict[str, Any],
@@ -209,7 +214,9 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an OpenAI‑style stream to Ollama NDJSON.
+        Convert an OpenAI-style (SSE) stream to Ollama NDJSON.
+
+        This also covers: LM Studio (OpenAI-compatible) -> Ollama.
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -250,7 +257,7 @@ class StreamHandler:
 
         return _iter()
 
-    def stream_ollama_to_generic(
+    def stream_ollama_to_openai(
         self,
         url: str,
         payload: Dict[str, Any],
@@ -262,13 +269,16 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an Ollama NDJSON stream to OpenAI‑compatible SSE.
+        Convert an Ollama NDJSON stream to OpenAI-compatible SSE.
+
+        This enables: Ollama -> OpenAI endpoint and Ollama -> LM Studio
+        (because LM Studio expects OpenAI-compatible SSE).
         """
         if force_text is not None:
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
             ):
-                return self._force_iter_generic(force_text, api_model_provider)
+                return self._force_iter_openai(force_text, api_model_provider)
 
         def _iter() -> Iterator[bytes]:
             with self._model_unsetter(
@@ -351,6 +361,10 @@ class StreamHandler:
 
         return _iter()
 
+    # Backward compatibility (old name used "ollama_to_generic")
+    def stream_ollama_to_generic(self, *args, **kwargs) -> Iterator[bytes]:
+        return self.stream_ollama_to_openai(*args, **kwargs)
+
     # --------------------------------------------------------------------- #
     # Helper utilities (kept private to this class)
     # --------------------------------------------------------------------- #
@@ -362,7 +376,7 @@ class StreamHandler:
         api_model_provider=None,
     ) -> bytes:
         """
-        Build a single Ollama‑compatible NDJSON line.
+        Build a single Ollama-compatible NDJSON line.
         """
         obj = {
             "model": api_model_provider.model_path or api_model_provider.name,
@@ -391,7 +405,7 @@ class StreamHandler:
         self, response: Response, api_model_provider
     ) -> Iterator[bytes]:
         """
-        Convert an OpenAI‑style SSE/NDJSON stream into Ollama NDJSON chunks.
+        Convert an OpenAI-style SSE/NDJSON stream into Ollama NDJSON chunks.
         """
         sent_done = False
         usage_data = None
@@ -508,71 +522,126 @@ class StreamHandler:
             )
 
     # --------------------------------------------------------------------- #
-    # Stream‑type resolution – moved from EndpointWithHttpRequestI
+    # Stream-type resolution – moved from EndpointWithHttpRequestI
     # --------------------------------------------------------------------- #
-
     @staticmethod
     def resolve_stream_type(
         endpoint_ep_types: list, api_model_provider
-    ) -> tuple[bool, bool, bool]:
+    ) -> tuple[bool, bool, bool, bool]:
         """
         Determine which streaming conversion should be applied.
 
-        Returns a tuple:
-        (is_generic_to_ollama, is_ollama_to_generic, is_ollama)
-        """
-        is_generic_to_ollama = False
-        is_ollama_to_generic = False
-        is_ollama = (
-            "ollama" in endpoint_ep_types and "ollama" in api_model_provider.api_type
-        )
-        if not is_ollama:
-            if "ollama" in endpoint_ep_types:
-                is_generic_to_ollama = True
-            if "ollama" in api_model_provider.api_type:
-                is_ollama_to_generic = True
-        return is_generic_to_ollama, is_ollama_to_generic, is_ollama
+        Supports LM Studio as OpenAI-compatible target/source:
+        - Ollama -> LM Studio   uses: is_ollama_to_openai
+        - OpenAI -> LM Studio   uses: is_openai (passthrough)
+        - OpenAI/LM Studio -> Ollama uses: is_openai_to_ollama
 
-    #
-    # def _resolve_stream_type(self, api_model_provider: ApiModel) -> Dict[str, bool]:
-    #     resolved_stream = {
-    #         "is_ollama": False,
-    #         "is_lm_studio": False,
-    #         "is_lm_studio_to_ollama": False,
-    #         "is_generic_to_ollama": False,
-    #         "is_generic_to_llmstudio": False,
-    #         "is_ollama_to_generic": False,
-    #         "is_lmstudio_to_generic": False,
-    #         "is_ollama_to_lm_studio": False,
-    #     }
-    #
-    #     # is ollama -> ollama?
-    #     if (
-    #         "ollama" in self._ep_types_str
-    #         and "ollama" in api_model_provider.api_type
-    #     ):
-    #         resolved_stream["is_ollama"] = True
-    #         return resolved_stream
-    #
-    #     # is lm_studio -> lm_studio?
-    #     if (
-    #         "lm_studio" in self._ep_types_str
-    #         and "lm_studio" in api_model_provider.api_type
-    #     ):
-    #         resolved_stream["is_lm_studio"] = True
-    #         return resolved_stream
-    #
-    #     # lm_studio -> ollama
-    #     if "ollama" in self._ep_types_str and "lm_studio" in api_model_provider:
-    #         resolved_stream["is_lm_studio_to_ollama"] = True
-    #         return resolved_stream
-    #
-    #     #
-    #     #     if "ollama" in self._ep_types_str:
-    #     #         is_generic_to_ollama = True
-    #     #
-    #     #     if "ollama" in api_model_provider.api_type:
-    #     #         is_ollama_to_generic = True
-    #     #
-    #     # return is_generic_to_ollama, is_ollama_to_generic, is_ollama
-    #     return resolved_stream
+        Returns a tuple:
+        (is_openai_to_ollama, is_ollama_to_openai, is_ollama, is_openai)
+        """
+        provider_type = str(api_model_provider.api_type)
+
+        # Endpoint expectations
+        endpoint_wants_ollama = "ollama" in endpoint_ep_types
+        endpoint_wants_lmstudio = endpoint_ep_types == ["lmstudio"]
+        if endpoint_wants_lmstudio:
+            endpoint_wants_openai = False
+        else:
+            endpoint_wants_openai = (
+                len(
+                    set(OPENAI_COMPATIBLE_PROVIDERS).intersection(
+                        set(endpoint_ep_types)
+                    )
+                )
+                > 0
+            )
+
+        provider_is_ollama = provider_type == "ollama"
+        provider_is_lmstudio = provider_type == "lmstudio"
+        if provider_is_lmstudio:
+            provider_is_openai = False
+        else:
+            provider_is_openai = provider_type in OPENAI_COMPATIBLE_PROVIDERS
+        #
+        # print("endpoint_ep_types=", endpoint_ep_types)
+        # print("endpoint_ep_types=", endpoint_ep_types)
+        # print("provider_types=", provider_type)
+        # print("provider_types=", provider_type)
+        # print("provider_is_ollama=", provider_is_ollama)
+        # print("provider_is_ollama=", provider_is_ollama)
+        # print("provider_is_lmstudio=", provider_is_lmstudio)
+        # print("provider_is_lmstudio=", provider_is_lmstudio)
+        # print("provider_is_openai=", provider_is_openai)
+        # print("provider_is_openai=", provider_is_openai)
+        # print("endpoint_wants_lmstudio=", endpoint_wants_lmstudio)
+        # print("endpoint_wants_lmstudio=", endpoint_wants_lmstudio)
+        # print("endpoint_wants_ollama=", endpoint_wants_ollama)
+        # print("endpoint_wants_ollama=", endpoint_wants_ollama)
+        # print("endpoint_wants_openai=", endpoint_wants_openai)
+        # print("endpoint_wants_openai=", endpoint_wants_openai)
+        # print("OPENAI_COMPATIBLE_PROVIDERS=", OPENAI_COMPATIBLE_PROVIDERS)
+        # print(
+        #     "provider_type",
+        #     provider_type,
+        #     "in OPENAI_COMPATIBLE_PROVIDERS",
+        #     provider_type in [OPENAI_COMPATIBLE_PROVIDERS],
+        # )
+
+        is_openai_to_ollama = False
+        is_ollama_to_openai = False
+        is_ollama = False
+        is_openai = False
+
+        # passthrough types
+        if endpoint_wants_ollama and provider_is_ollama:
+            is_ollama = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+            )
+
+        if endpoint_wants_openai and provider_is_openai:
+            is_openai = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+            )
+
+        if endpoint_wants_lmstudio and provider_is_lmstudio:
+            is_openai = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+            )
+
+        if endpoint_wants_ollama and provider_is_openai:
+            is_openai_to_ollama = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+            )
+
+        if endpoint_wants_openai and provider_is_ollama:
+            is_ollama_to_openai = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+            )
+
+        # default: no special conversion flags
+        return (
+            is_openai_to_ollama,
+            is_ollama_to_openai,
+            is_ollama,
+            is_openai,
+        )

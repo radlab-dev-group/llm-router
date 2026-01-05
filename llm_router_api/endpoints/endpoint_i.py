@@ -1228,11 +1228,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         params=params, options=options, fake=True
                     )
 
-                    is_generic_to_ollama, is_ollama_to_generic, is_ollama = (
-                        self._http_executor.stream_handler.resolve_stream_type(
-                            endpoint_ep_types=self._ep_types_str,
-                            api_model_provider=api_model_provider,
-                        )
+                    (
+                        is_openai_to_ollama,
+                        is_ollama_to_openai,
+                        is_ollama,
+                        is_openai,
+                    ) = self._http_executor.stream_handler.resolve_stream_type(
+                        endpoint_ep_types=self._ep_types_str,
+                        api_model_provider=api_model_provider,
                     )
 
                     return self._http_executor.stream_response(
@@ -1240,8 +1243,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         params=params,
                         options=options,
                         is_ollama=is_ollama,
-                        is_generic_to_ollama=is_generic_to_ollama,
-                        is_ollama_to_generic=is_ollama_to_generic,
+                        is_openai_to_ollama=is_openai_to_ollama,
+                        is_ollama_to_openai=is_ollama_to_openai,
+                        is_openai=is_openai,
                         api_model_provider=api_model_provider,
                         force_text="Content blocked by guardrail. "
                         "Reason: Not safe content!",
@@ -1344,11 +1348,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         "Streaming is available only for single message"
                     )
 
-                is_generic_to_ollama, is_ollama_to_generic, is_ollama = (
-                    self._http_executor.stream_handler.resolve_stream_type(
-                        endpoint_ep_types=self._ep_types_str,
-                        api_model_provider=api_model_provider,
-                    )
+                (
+                    is_openai_to_ollama,
+                    is_ollama_to_openai,
+                    is_ollama,
+                    is_openai,
+                ) = self._http_executor.stream_handler.resolve_stream_type(
+                    endpoint_ep_types=self._ep_types_str,
+                    api_model_provider=api_model_provider,
                 )
 
                 return self._http_executor.stream_response(
@@ -1356,8 +1363,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     params=params,
                     options=options,
                     is_ollama=is_ollama,
-                    is_generic_to_ollama=is_generic_to_ollama,
-                    is_ollama_to_generic=is_ollama_to_generic,
+                    is_openai_to_ollama=is_openai_to_ollama,
+                    is_ollama_to_openai=is_ollama_to_openai,
+                    is_openai=is_openai,
                     api_model_provider=api_model_provider,
                 )
 
