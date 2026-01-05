@@ -113,6 +113,8 @@ class HttpRequestExecutor:
         is_openai_to_ollama: bool = False,
         is_ollama_to_openai: bool = False,
         is_openai: bool = False,
+        is_openai_to_lmstudio: bool = False,
+        is_ollama_to_lmstudio: bool = False,
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
@@ -129,7 +131,9 @@ class HttpRequestExecutor:
             f"  * is_ollama={is_ollama}\n"
             f"  * is_openai={is_openai}\n"
             f"  * is_openai_to_ollama={is_openai_to_ollama}\n"
+            f"  * is_openai_to_lmstudio={is_openai_to_lmstudio}\n"
             f"  * is_ollama_to_openai={is_ollama_to_openai}\n"
+            f"  * is_ollama_to_lmstudio={is_ollama_to_lmstudio}\n"
         )
 
         selected = [is_ollama, is_openai_to_ollama, is_ollama_to_openai, is_openai]
@@ -191,6 +195,12 @@ class HttpRequestExecutor:
                 api_model_provider=api_model_provider,
                 force_text=force_text,
             )
+
+        if is_openai_to_lmstudio:
+            pass
+
+        if is_ollama_to_lmstudio:
+            pass
 
         # is_openai
         return self._stream_handler.stream_openai(

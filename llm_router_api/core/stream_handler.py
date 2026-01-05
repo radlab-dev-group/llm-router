@@ -523,17 +523,21 @@ class StreamHandler:
     @staticmethod
     def resolve_stream_type(
         endpoint_ep_types: list, api_model_provider
-    ) -> tuple[bool, bool, bool, bool]:
+    ) -> tuple[bool, bool, bool, bool, bool, bool]:
         """
         Determine which streaming conversion should be applied.
 
-        Supports LM Studio as OpenAI-compatible target/source:
-        - Ollama -> LM Studio   uses: is_ollama_to_openai
-        - OpenAI -> LM Studio   uses: is_openai (passthrough)
-        - OpenAI/LM Studio -> Ollama uses: is_openai_to_ollama
+        Existing conversions remain:
+        - Ollama → LMStudio (via OpenAI‑compatible API) → ``is_ollama_to_openai``
+        - OpenAI‑compatible → Ollama               → ``is_openai_to_ollama``
+        - Direct passthrough for Ollama, OpenAI‑compatible or LMStudio
+        - OpenAI‑style → LMStudio   → ``is_openai_to_lmstudio``
+        - Ollama      → LMStudio   → ``is_ollama_to_lmstudio``
 
         Returns a tuple:
-        (is_openai_to_ollama, is_ollama_to_openai, is_ollama, is_openai)
+        (is_openai_to_ollama, is_ollama_to_openai,
+         is_ollama, is_openai,
+         is_openai_to_lmstudio, is_ollama_to_lmstudio)
         """
         provider_type = str(api_model_provider.api_type)
 
@@ -559,37 +563,16 @@ class StreamHandler:
         else:
             provider_is_openai = provider_type in OPENAI_COMPATIBLE_PROVIDERS
 
-        # print("endpoint_ep_types=", endpoint_ep_types)
-        # print("endpoint_ep_types=", endpoint_ep_types)
-        # print("provider_types=", provider_type)
-        # print("provider_types=", provider_type)
-        # print("provider_is_ollama=", provider_is_ollama)
-        # print("provider_is_ollama=", provider_is_ollama)
-        # print("provider_is_lmstudio=", provider_is_lmstudio)
-        # print("provider_is_lmstudio=", provider_is_lmstudio)
-        # print("provider_is_openai=", provider_is_openai)
-        # print("provider_is_openai=", provider_is_openai)
-        # print("endpoint_wants_lmstudio=", endpoint_wants_lmstudio)
-        # print("endpoint_wants_lmstudio=", endpoint_wants_lmstudio)
-        # print("endpoint_wants_ollama=", endpoint_wants_ollama)
-        # print("endpoint_wants_ollama=", endpoint_wants_ollama)
-        # print("endpoint_wants_openai=", endpoint_wants_openai)
-        # print("endpoint_wants_openai=", endpoint_wants_openai)
-        # print("OPENAI_COMPATIBLE_PROVIDERS=", OPENAI_COMPATIBLE_PROVIDERS)
-        # print(
-        #     "provider_type",
-        #     provider_type,
-        #     "in OPENAI_COMPATIBLE_PROVIDERS",
-        #     provider_type in [OPENAI_COMPATIBLE_PROVIDERS],
-        # )
-
-        is_openai_to_ollama = False
-        is_ollama_to_openai = False
+        # Conversion flags
         is_ollama = False
         is_openai = False
+        is_openai_to_ollama = False
+        is_ollama_to_openai = False
+        is_openai_to_lmstudio = False
+        is_ollama_to_lmstudio = False
 
-        # --------------------------------------------------------------------------
-        # passthrough types
+        # -----------------------------------------------------------------
+        # Passthrough types
         # Ollama -> Ollama
         if endpoint_wants_ollama and provider_is_ollama:
             is_ollama = True
@@ -598,6 +581,8 @@ class StreamHandler:
                 is_ollama_to_openai,
                 is_ollama,
                 is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
             )
         # OpenAI-like -> OpenAI-like
         if endpoint_wants_openai and provider_is_openai:
@@ -607,6 +592,8 @@ class StreamHandler:
                 is_ollama_to_openai,
                 is_ollama,
                 is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
             )
         # LMStudio -> LMStudio
         if endpoint_wants_lmstudio and provider_is_lmstudio:
@@ -616,9 +603,11 @@ class StreamHandler:
                 is_ollama_to_openai,
                 is_ollama,
                 is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
             )
 
-        # --------------------------------------------------------------------------
+        # -----------------------------------------------------------------
         # Conversions
         # OpenAI-like -> Ollama
         if endpoint_wants_ollama and provider_is_openai:
@@ -628,6 +617,8 @@ class StreamHandler:
                 is_ollama_to_openai,
                 is_ollama,
                 is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
             )
         # LMStudio -> Ollama
         if endpoint_wants_ollama and provider_is_lmstudio:
@@ -637,8 +628,9 @@ class StreamHandler:
                 is_ollama_to_openai,
                 is_ollama,
                 is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
             )
-
         # Ollama -> OpenAI-like
         if endpoint_wants_openai and provider_is_ollama:
             is_ollama_to_openai = True
@@ -647,6 +639,8 @@ class StreamHandler:
                 is_ollama_to_openai,
                 is_ollama,
                 is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
             )
         # LMStudio -> OpenAI-like
         if endpoint_wants_openai and provider_is_lmstudio:
@@ -656,11 +650,40 @@ class StreamHandler:
                 is_ollama_to_openai,
                 is_ollama,
                 is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
             )
+
+        # -----------------------------------------------------------------
+        # OpenAI‑compatible → LMStudio (native)
+        if endpoint_wants_lmstudio and provider_is_openai:
+            is_openai_to_lmstudio = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
+            )
+        # Ollama → LMStudio (native)
+        if endpoint_wants_lmstudio and provider_is_ollama:
+            is_ollama_to_lmstudio = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+                is_openai_to_lmstudio,
+                is_ollama_to_lmstudio,
+            )
+
         # default: no special conversion flags
         return (
             is_openai_to_ollama,
             is_ollama_to_openai,
             is_ollama,
             is_openai,
+            is_openai_to_lmstudio,
+            is_ollama_to_lmstudio,
         )
