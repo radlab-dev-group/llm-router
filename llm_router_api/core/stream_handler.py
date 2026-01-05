@@ -126,24 +126,14 @@ class StreamHandler:
                 endpoint, payload, api_model_provider, options
             ):
                 try:
-                    request_kwargs = {
-                        "url": url,
-                        "timeout": endpoint.timeout,
-                        "stream": True,
-                        "headers": headers,
-                    }
-                    if method == "POST":
-                        request_kwargs["json"] = payload
-                        req = requests.post(**request_kwargs)
-                    else:
-                        request_kwargs["params"] = payload
-                        req = requests.get(**request_kwargs)
-
-                    with req as r:
-                        r.raise_for_status()
-                        for chunk in r.iter_content(chunk_size=None):
-                            if chunk:
-                                yield chunk
+                    for _ch in self._passthrough_stream(
+                        method=method,
+                        url=url,
+                        endpoint=endpoint,
+                        payload=payload,
+                        headers=headers,
+                    ):
+                        yield _ch
                 except requests.RequestException as exc:
                     err = {"error": str(exc)}
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
@@ -162,7 +152,7 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Streaming from an Ollama endpoint – converts the stream to Ollama NDJSON.
+        Streaming from an Ollama endpoint – **passes the stream through unchanged**.
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -175,32 +165,42 @@ class StreamHandler:
                 endpoint, payload, api_model_provider, options
             ):
                 try:
-                    if method == "POST":
-                        resp_ctx = requests.post(
-                            url,
-                            json=payload,
-                            headers=headers,
-                            timeout=endpoint.timeout,
-                            stream=True,
-                        )
-                    else:
-                        resp_ctx = requests.get(
-                            url,
-                            params=payload,
-                            headers=headers,
-                            timeout=endpoint.timeout,
-                            stream=True,
-                        )
-                    with resp_ctx as resp:
-                        resp.raise_for_status()
-                        for chunk in self._parse_ollama_stream(
-                            resp, api_model_provider
-                        ):
-                            yield chunk
+                    for _ch in self._passthrough_stream(
+                        method=method,
+                        url=url,
+                        endpoint=endpoint,
+                        payload=payload,
+                        headers=headers,
+                    ):
+                        yield _ch
                 except requests.RequestException as exc:
-                    yield (json.dumps({"error": str(exc)}) + "\n").encode("utf-8")
+                    err = {"error": str(exc)}
+                    yield (json.dumps(err) + "\n").encode("utf-8")
 
         return _iter()
+
+    @staticmethod
+    def _passthrough_stream(
+        method, url, endpoint, payload, headers
+    ) -> Iterator[bytes]:
+        request_kwargs = {
+            "url": url,
+            "timeout": endpoint.timeout,
+            "stream": True,
+            "headers": headers,
+        }
+        if method == "POST":
+            request_kwargs["json"] = payload
+            resp = requests.post(**request_kwargs)
+        else:
+            request_kwargs["params"] = payload
+            resp = requests.get(**request_kwargs)
+
+        with resp as r:
+            r.raise_for_status()
+            for chunk in r.iter_content(chunk_size=None):
+                if chunk:
+                    yield chunk
 
     def stream_openai_to_ollama(
         self,
@@ -360,10 +360,6 @@ class StreamHandler:
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
 
         return _iter()
-
-    # Backward compatibility (old name used "ollama_to_generic")
-    def stream_ollama_to_generic(self, *args, **kwargs) -> Iterator[bytes]:
-        return self.stream_ollama_to_openai(*args, **kwargs)
 
     # --------------------------------------------------------------------- #
     # Helper utilities (kept private to this class)
@@ -562,7 +558,7 @@ class StreamHandler:
             provider_is_openai = False
         else:
             provider_is_openai = provider_type in OPENAI_COMPATIBLE_PROVIDERS
-        #
+
         # print("endpoint_ep_types=", endpoint_ep_types)
         # print("endpoint_ep_types=", endpoint_ep_types)
         # print("provider_types=", provider_type)
@@ -592,7 +588,9 @@ class StreamHandler:
         is_ollama = False
         is_openai = False
 
+        # --------------------------------------------------------------------------
         # passthrough types
+        # Ollama -> Ollama
         if endpoint_wants_ollama and provider_is_ollama:
             is_ollama = True
             return (
@@ -601,7 +599,7 @@ class StreamHandler:
                 is_ollama,
                 is_openai,
             )
-
+        # OpenAI-like -> OpenAI-like
         if endpoint_wants_openai and provider_is_openai:
             is_openai = True
             return (
@@ -610,7 +608,7 @@ class StreamHandler:
                 is_ollama,
                 is_openai,
             )
-
+        # LMStudio -> LMStudio
         if endpoint_wants_lmstudio and provider_is_lmstudio:
             is_openai = True
             return (
@@ -620,6 +618,9 @@ class StreamHandler:
                 is_openai,
             )
 
+        # --------------------------------------------------------------------------
+        # Conversions
+        # OpenAI-like -> Ollama
         if endpoint_wants_ollama and provider_is_openai:
             is_openai_to_ollama = True
             return (
@@ -628,7 +629,17 @@ class StreamHandler:
                 is_ollama,
                 is_openai,
             )
+        # LMStudio -> Ollama
+        if endpoint_wants_ollama and provider_is_lmstudio:
+            is_openai_to_ollama = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+            )
 
+        # Ollama -> OpenAI-like
         if endpoint_wants_openai and provider_is_ollama:
             is_ollama_to_openai = True
             return (
@@ -637,7 +648,15 @@ class StreamHandler:
                 is_ollama,
                 is_openai,
             )
-
+        # LMStudio -> OpenAI-like
+        if endpoint_wants_openai and provider_is_lmstudio:
+            is_openai = True
+            return (
+                is_openai_to_ollama,
+                is_ollama_to_openai,
+                is_ollama,
+                is_openai,
+            )
         # default: no special conversion flags
         return (
             is_openai_to_ollama,
