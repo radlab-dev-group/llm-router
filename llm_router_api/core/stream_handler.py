@@ -361,10 +361,6 @@ class StreamHandler:
 
         return _iter()
 
-    # --------------------------------------------------------------------- #
-    # New helpers – stream directly to LMStudio's native (OpenAI‑compatible) format
-    # --------------------------------------------------------------------- #
-
     def stream_openai_to_lmstudio(
         self,
         url: str,
@@ -383,33 +379,79 @@ class StreamHandler:
         format that the OpenAI API provides, so no conversion is required.
         """
         if force_text is not None:
-            # Use the same forced‑chunk helper that produces OpenAI‑compatible SSE.
+            # Forced‑chunk (useful for tests / UI “thinking” state)
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
             ):
                 return self._force_iter_openai(force_text, api_model_provider)
 
-        # Ensure LMStudio receives an SSE stream – the same header we use for
-        # plain OpenAI streaming.
-        headers["Accept"] = "text/event-stream"
+        # ----- SSE‑specific request headers -----
+        headers.update(
+            {
+                "Accept": "text/event-stream",
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+            }
+        )
 
-        # No special Accept header – LMStudio will understand the raw SSE.
         def _iter() -> Iterator[bytes]:
+            print(
+                f"stream_openai_to_lmstudio START – url={url} method={method} payload={payload}"
+            )
+            done_sent = False  # track whether the upstream sent [DONE]
+
+            # -------------------------------------------------
+            # 1️⃣  Stream the upstream SSE inside the unsetter.
+            # -------------------------------------------------
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
             ):
                 try:
-                    for _ch in self._passthrough_stream(
+                    for chunk in self._passthrough_stream(
                         method=method,
                         url=url,
                         endpoint=endpoint,
                         payload=payload,
                         headers=headers,
                     ):
-                        yield _ch
+                        if chunk:
+                            print(
+                                f"stream_openai_to_lmstudio RECEIVED chunk: {chunk.decode('utf-8', errors='replace')}"
+                            )
+                            if b"data: [DONE]" in chunk:
+                                done_sent = True
+                                print(
+                                    "stream_openai_to_lmstudio DETECTED upstream DONE"
+                                )
+                            yield chunk
                 except requests.RequestException as exc:
                     err = {"error": str(exc)}
+                    print(f"stream_openai_to_lmstudio RequestException: {exc}")
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+                    return
+                except Exception as exc:
+                    err = {"error": f"Connection error: {str(exc)}"}
+                    print("stream_openai_to_lmstudio Unexpected exception")
+                    yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+                    return
+
+            # -------------------------------------------------
+            # 2️⃣  Emit the final DONE marker **only** if the upstream
+            #     didn’t already send one, then terminate the generator.
+            # -------------------------------------------------
+            if not done_sent:
+                print(
+                    "stream_openai_to_lmstudio EMIT final DONE (upstream lacked it)"
+                )
+                yield b"data: [DONE]\n\n"
+            else:
+                print(
+                    "stream_openai_to_lmstudio SKIP final DONE (already sent upstream)"
+                )
+
+            print("stream_openai_to_lmstudio END")
+            # Explicitly stop the generator – no extra bytes are sent.
+            return
 
         return _iter()
 
