@@ -59,7 +59,7 @@ class HttpRequestExecutor:
         )
 
         full_url = self._prepare_full_url_ep(
-            ep_url, api_model_provider=api_model_provider
+            ep_url=ep_url, api_model_provider=api_model_provider
         )
         if not headers:
             headers = {"Content-Type": "application/json"}
@@ -110,16 +110,45 @@ class HttpRequestExecutor:
         api_model_provider: ApiModel,
         options: Optional[Dict[str, Any]] = None,
         is_ollama: bool = False,
-        is_generic_to_ollama: bool = False,
-        is_ollama_to_generic: bool = False,
+        is_openai_to_ollama: bool = False,
+        is_ollama_to_openai: bool = False,
+        is_openai: bool = False,
+        is_openai_to_lmstudio: bool = False,
+        is_ollama_to_lmstudio: bool = False,
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
         Perform a streaming request and yield byte chunks.
+
+        Conventions:
+        - "openai" means OpenAI-style SSE streaming (also used by LM Studio).
+        - "ollama" means Ollama NDJSON streaming.
+        - *_to_* flags indicate stream conversion direction.
         """
-        if is_ollama and is_generic_to_ollama:
+
+        self.logger.debug(
+            "Stream type:\n"
+            f"  * is_ollama={is_ollama}\n"
+            f"  * is_openai={is_openai}\n"
+            f"  * is_openai_to_ollama={is_openai_to_ollama}\n"
+            f"  * is_openai_to_lmstudio={is_openai_to_lmstudio}\n"
+            f"  * is_ollama_to_openai={is_ollama_to_openai}\n"
+            f"  * is_ollama_to_lmstudio={is_ollama_to_lmstudio}\n"
+        )
+
+        selected = [
+            is_openai,
+            is_ollama,
+            is_openai_to_ollama,
+            is_ollama_to_openai,
+            is_openai_to_lmstudio,
+            is_ollama_to_lmstudio,
+        ]
+        if sum(1 for x in selected if x) != 1:
             raise RuntimeError(
-                "is_ollama and is_generic_to_ollama are mutually exclusive!"
+                "Exactly one streaming mode must be selected: "
+                "is_ollama | is_openai | is_openai_to_ollama | is_ollama_to_openai | "
+                "is_openai_to_lmstudio | is_ollama_to_lmstudio"
             )
 
         # common preparation
@@ -139,15 +168,6 @@ class HttpRequestExecutor:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
-        is_generic = not any([is_ollama, is_generic_to_ollama, is_ollama_to_generic])
-        self.logger.debug(
-            f"Stream type: \n"
-            f"  * is_ollama={is_ollama} \n"
-            f"  * is_generic_to_ollama={is_generic_to_ollama} \n"
-            f"  * is_ollama_to_generic={is_ollama_to_generic} \n"
-            f"  * is_generic={is_generic}"
-        )
-
         if is_ollama:
             return self._stream_handler.stream_ollama(
                 url=full_url,
@@ -160,8 +180,8 @@ class HttpRequestExecutor:
                 force_text=force_text,
             )
 
-        if is_generic_to_ollama:
-            return self._stream_handler.stream_generic_to_ollama(
+        if is_openai_to_ollama:
+            return self._stream_handler.stream_openai_to_ollama(
                 url=full_url,
                 payload=params,
                 method=method,
@@ -172,8 +192,8 @@ class HttpRequestExecutor:
                 force_text=force_text,
             )
 
-        if is_ollama_to_generic:
-            return self._stream_handler.stream_ollama_to_generic(
+        if is_ollama_to_openai:
+            return self._stream_handler.stream_ollama_to_openai(
                 url=full_url,
                 payload=params,
                 method=method,
@@ -184,8 +204,8 @@ class HttpRequestExecutor:
                 force_text=force_text,
             )
 
-        if is_generic:
-            return self._stream_handler.stream_generic(
+        if is_openai_to_lmstudio:
+            return self._stream_handler.stream_openai_to_lmstudio(
                 url=full_url,
                 payload=params,
                 method=method,
@@ -196,7 +216,29 @@ class HttpRequestExecutor:
                 force_text=force_text,
             )
 
-        raise Exception("Unknown streaming type!")
+        if is_ollama_to_lmstudio:
+            return self._stream_handler.stream_ollama_to_lmstudio(
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
+                endpoint=self._endpoint,
+                api_model_provider=api_model_provider,
+                force_text=force_text,
+            )
+
+        # is_openai
+        return self._stream_handler.stream_openai(
+            url=full_url,
+            payload=params,
+            method=method,
+            headers=headers,
+            options=options,
+            endpoint=self._endpoint,
+            api_model_provider=api_model_provider,
+            force_text=force_text,
+        )
 
     # --------------------------------------------------------------------- #
     # Private helpers

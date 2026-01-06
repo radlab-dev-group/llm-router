@@ -127,7 +127,7 @@ class LLMStudioChatV0Handler(OpenAIResponseHandler):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=False,
-            api_types=["openai", "lmstudio"],
+            api_types=["lmstudio"],
             direct_return=direct_return,
             method="POST",
         )

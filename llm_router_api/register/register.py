@@ -166,6 +166,7 @@ class FlaskEndpointRegistrar:
                         headers={
                             "Transfer-Encoding": "chunked",
                             "X-Accel-Buffering": "no",
+                            "Connection": "close",
                         },
                     )
                     response.implicit_sequence_conversion = False
@@ -186,8 +187,7 @@ class FlaskEndpointRegistrar:
                 return jsonify({"error": "bad_request", "details": str(ve)}), 400
             except Exception as exc:
                 self._logger.exception(
-                    f"Unhandled exception in endpoint: "
-                    f"{endpoint.__class__.__name__}",
+                    f"Unhandled exception in endpoint: {endpoint.__class__.__name__}",
                 )
                 return jsonify({"error": "internal_error", "details": str(exc)}), 500
 

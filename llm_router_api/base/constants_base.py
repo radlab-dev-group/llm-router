@@ -66,4 +66,4 @@ POSSIBLE_BALANCE_STRATEGIES = [
 # POSSIBLE_ANONYMIZE_STRATEGIES = ["fast_masker", "genai"]
 
 # List of OpenAI compatible provides
-OPENAI_COMPATIBLE_PROVIDERS = ["openai", "lmstudio", "vllm"]
+OPENAI_COMPATIBLE_PROVIDERS = ["openai", "lmstudio", "vllm", "llama.cpp"]
