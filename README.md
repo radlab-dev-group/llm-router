@@ -49,6 +49,7 @@ project README:
 | **Request validation**              | Pydantic models guarantee correct payloads; errors are returned with clear messages.                                                                    |
 | **Structured logging**              | Configurable log level, filename, and optional JSON formatting.                                                                                         |
 | **Health & metadata endpoints**     | `/ping` (simple 200 OK) and `/tags` (available model tags/metadata).                                                                                    |
+| **Embeddings support**              | Dedicated endpoints for generating text embeddings across all supported providers.                                                                      |
 | **Simple deployment**               | One‑liner run script or `python -m llm_proxy_rest.rest_api`.                                                                                            |
 | **Extensible conversation formats** | Basic chat, conversation with system prompt, and extended conversation with richer options (e.g., temperature, top‑k, custom system prompt).            |
 | **Multi‑provider model support**    | Each model can be backed by multiple providers (VLLM, Ollama, OpenAI) defined in `models-config.json`.                                                  |

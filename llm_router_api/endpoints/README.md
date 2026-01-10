@@ -18,6 +18,9 @@ JSON.
 - **POST** `LLM_ROUTER_EP_PREFIX/chat/completions` – OpenAI‑style chat completion (alternative path).
 - **POST** `LLM_ROUTER_EP_PREFIX/v1/chat/completions` – vLLM‑like chat completion.
 - **POST** `LLM_ROUTER_EP_PREFIX/v1/responses` – OpenAI‑like responsesendpoint.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/embeddings` – Standard embeddings endpoint.
+- **POST** `LLM_ROUTER_EP_PREFIX/v1/embeddings` – OpenAI‑compatible embeddings endpoint.
+- **POST** `LLM_ROUTER_EP_PREFIX/api/embed` – Ollama‑native embeddings endpoint.
 
 ### Chat & Completions (Built‑in)
 

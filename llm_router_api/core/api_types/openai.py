@@ -1,3 +1,24 @@
+"""
+OpenAI API helpers.
+
+This module provides two main utilities for working with the OpenAI API
+in the *llm‑router* code‑base:
+
+1. **OpenAIApiType** – a concrete implementation of
+   :class:`llm_router_api.core.api_types.types_i.ApiTypesI`.  It supplies the
+   relative URL paths and HTTP verbs required to call the various OpenAI
+   endpoints (chat completions, embeddings, etc.).
+
+2. **OpenAIConverters** – a namespace that groups conversion helpers which
+   translate third‑party payloads (currently Ollama) into a format that
+   conforms to the OpenAI *Chat Completion* schema.  Adding support for new
+   providers simply means adding a nested ``From<Provider>`` class with a
+   static ``convert`` method.
+
+Both utilities are deliberately lightweight and contain no external
+dependencies beyond what the rest of the project already uses.
+"""
+
 from __future__ import annotations
 
 import datetime
@@ -5,6 +26,9 @@ from dateutil import parser
 
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
+# ---------------------------------------------------------------------------
+# Public constants
+# ---------------------------------------------------------------------------
 
 OPENAI_ACCEPTABLE_PARAMS = [
     "model",
@@ -16,24 +40,38 @@ OPENAI_ACCEPTABLE_PARAMS = [
     "input",
     "tool_choice",
 ]
+"""
+List of request parameters that the OpenAI client recognises.
+
+The list mirrors the official OpenAI specification and can be used for
+validation or filtering of user‑provided dictionaries before they are sent
+to the API.
+"""
+
+
+# ---------------------------------------------------------------------------
+# API descriptor
+# ---------------------------------------------------------------------------
 
 
 class OpenAIApiType(ApiTypesI):
     """
-    Concrete API descriptor for OpenAI endpoints.
-    The class implements the abstract methods defined in
-    :class:`~llm_router_api.core.api_types.types_i.ApiTypesI`.  Each method
-    returns the relative URL path (``*_ep``) or the HTTP verb (``*_method``) that
-    should be used when invoking the corresponding OpenAI service.
+    Concrete descriptor for OpenAI endpoints.
 
-    The OpenAI API treats ``/v1/chat/completions`` as the canonical endpoint
-    for both chat‑based interactions and standard completions, which is why
-    ``completions_ep`` simply forwards to ``chat_ep``.
+    The abstract base class :class:`~llm_router_api.core.api_types.types_i.ApiTypesI`
+    defines a contract for obtaining endpoint URLs and HTTP methods.  This
+    implementation supplies the *relative* paths used by the OpenAI service
+    (the caller is responsible for prefixing them with the base URL
+    ``https://api.openai.com``).
+
+    The OpenAI service re‑uses the same endpoint for both chat‑based
+    completions and standard completions; therefore :meth:`completions_ep`
+    simply forwards to :meth:`chat_ep`.
     """
 
     def chat_ep(self) -> str:
         """
-        Return the URL path for the chat completions endpoint.
+        Return the URL path for the *chat completions* endpoint.
 
         Returns
         -------
@@ -44,10 +82,10 @@ class OpenAIApiType(ApiTypesI):
 
     def completions_ep(self) -> str:
         """
-        Return the URL path for the completions' endpoint.
+        Return the URL path for the *standard completions* endpoint.
 
-        The OpenAI service re‑uses the chat completions endpoint for standard
-        completions, so this method simply forwards to :meth:`chat_ep`.
+        OpenAI routes normal completions through the same endpoint as chat
+        completions, so this method forwards to :meth:`chat_ep`.
 
         Returns
         -------
@@ -58,7 +96,7 @@ class OpenAIApiType(ApiTypesI):
 
     def responses_ep(self) -> str:
         """
-        Return the URL path for the responses' endpoint.
+        Return the URL path for the *responses* endpoint.
 
         Returns
         -------
@@ -67,63 +105,141 @@ class OpenAIApiType(ApiTypesI):
         """
         return "v1/responses"
 
+    def embeddings_ep(self) -> str:
+        """
+        Return the URL path for the *embeddings* endpoint.
+
+        Returns
+        -------
+        str
+            The relative path ``v1/embeddings``.
+        """
+        return "v1/embeddings"
+
+
+# ---------------------------------------------------------------------------
+# Converters namespace
+# ---------------------------------------------------------------------------
+
 
 class OpenAIConverters:
     """
     Namespace for response‑conversion utilities.
-    Converters transform third‑party payloads into a structure that conforms
-    to the OpenAI Chat Completion schema.  Adding new providers is as simple
-    as creating a nested ``From<Provider>`` class with a static ``convert``
-    method.
+
+    Each nested ``From<Provider>`` class knows how to translate a third‑party
+    payload into a dictionary that matches the OpenAI *Chat Completion* schema.
+    The static ``convert`` method is the entry point; an optional
+    ``convert_embedding`` helper is provided for providers that expose
+    embedding vectors.
     """
 
     class FromOllama:
         """
-        Convert Ollama response objects to OpenAI‑compatible format.
+        Converters for Ollama responses.
 
-        The conversion extracts the relevant fields, normalises timestamps to
-        Unix epoch seconds, and builds the ``choices`` list expected by the
-        OpenAI client libraries.  Missing fields fall back to sensible defaults
-        (e.g. current time for ``created_at``).
-
-        Notes
-        -----
-        * ``response`` is assumed to be a ``dict`` produced by Ollama's HTTP
-          API.  Keys that are not present are handled gracefully.
-        * The resulting dictionary mirrors the shape described in the
-          `OpenAI Chat Completion`_ documentation.
+        The methods in this class assume that the incoming payload is a
+        plain ``dict`` returned by Ollama's HTTP API.  Missing fields are
+        handled gracefully and sensible defaults (e.g. the current timestamp)
+        are supplied where required.
         """
 
         @staticmethod
-        def convert(response):
+        def convert_embedding(response: dict) -> dict:
             """
-            Convert an Ollama response to the OpenAI chat‑completion format.
+            Transform an Ollama *embedding* response to OpenAI format.
 
             Parameters
             ----------
             response : dict
-                The raw response dictionary returned by an Ollama request.
+                The raw Ollama payload.  Expected keys are:
+                ``model`` (str) and ``embeddings`` (list of vectors).  Optional
+                ``prompt_eval_count`` is used for the ``usage`` block.
 
             Returns
             -------
             dict
-                A dictionary that follows the OpenAI Chat Completion schema,
-                ready to be returned to a downstream consumer.
+                A dictionary that follows the OpenAI *embeddings* response
+                schema:
+
+                - ``object`` – always ``"list"``.
+                - ``data`` – a list of ``{"object": "embedding", "index": i,
+                  "embedding": <vector>}`` items.
+                - ``model`` – the model name taken from the input.
+                - ``usage`` – token usage information (mirrored from the
+                  Ollama request).
+
+            Notes
+            -----
+            The OpenAI spec expects ``prompt_tokens`` and ``total_tokens``.
+            Because Ollama only reports ``prompt_eval_count``, we duplicate that
+            value for both fields.
+            """
+            _resp = {
+                "object": "list",
+                "data": [],
+                "model": response["model"],
+                "usage": {
+                    "prompt_tokens": response["prompt_eval_count"],
+                    "total_tokens": response["prompt_eval_count"],
+                },
+            }
+
+            for idx, e in enumerate(response["embeddings"]):
+                _e = {"object": "embedding", "index": idx, "embedding": e}
+                _resp["data"].append(_e)
+
+            return _resp
+
+        @staticmethod
+        def convert(response: dict) -> dict:
+            """
+            Convert an Ollama chat response to the OpenAI *Chat Completion* format.
+
+            Parameters
+            ----------
+            response : dict
+                The raw response dictionary from Ollama.  The function extracts
+                the fields required by the OpenAI schema and supplies defaults
+                for optional items.
+
+            Returns
+            -------
+            dict
+                A dictionary that complies with the OpenAI Chat Completion
+                specification.  The structure contains:
+
+                - ``id`` – the original Ollama request identifier (if present).
+                - ``object`` – always ``"chat.completion"``.
+                - ``created`` – Unix epoch timestamp (derived from ``created_at``
+                  or the current time).
+                - ``model`` – the model name.
+                - ``choices`` – a list with a single element describing the
+                  assistant's message, optional reasoning content, and finish
+                  reason.
+                - ``usage`` – token usage breakdown.
+                - Several optional OpenAI fields set to ``None`` for forward
+                  compatibility.
 
             Details
             -------
-            * ``created`` – Unix timestamp derived from ``created_at`` if
-              present; otherwise the current time.
+            * ``created`` – derived from ``created_at`` (ISO‑8601) when present,
+              otherwise uses ``datetime.datetime.now().timestamp()``.
             * Token counts – ``prompt_eval_count`` maps to ``prompt_tokens`` and
               ``eval_count`` maps to ``completion_tokens``.
-            * The ``choices`` list contains a single entry with the assistant's
-              message, optional reasoning content, and finish reason.
+            * The ``choices[0]["message"]`` dictionary mirrors the OpenAI
+              message object, exposing ``role``, ``content`` and a placeholder for
+              future fields such as ``refusal`` or ``annotations``.
+            * ``finish_reason`` defaults to ``"stop"`` when Ollama does not
+              provide a ``done_reason``.
             """
-
+            # -----------------------------------------------------------------
+            # Timestamp handling
+            # -----------------------------------------------------------------
             created_at = response.get("created_at")
             if not created_at:
                 created_at = datetime.datetime.now().timestamp()
             else:
+                # Parse ISO‑8601 string to a POSIX timestamp.
                 created_at = parser.isoparse(created_at).timestamp()
             prompt_tokens = int(response.get("prompt_eval_count", 0))
             completion_tokens = int(response.get("eval_count", 0))

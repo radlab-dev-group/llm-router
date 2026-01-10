@@ -166,6 +166,18 @@
     }
   },
   "qwen_models": {
+    "nomic-embed-text": {
+      "providers": [
+        {
+          "id": "nomic-embed-text-ollama",
+          "api_host": "http://192.168.100.66:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 2048,
+          "is_embedding": true
+        }
+      ]
+    },
     "qwen3:235b": {
       "providers": [
         {
@@ -216,7 +228,8 @@
       "gpt-oss:120b"
     ],
     "qwen_models": [
-      "qwen3-coder:30b"
+      "qwen3-coder:30b",
+      "nomic-embed-text"
     ]
   }
 }

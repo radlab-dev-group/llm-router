@@ -46,6 +46,7 @@ class ApiModel:
     model_path: Optional[str] = None
     keep_alive: Optional[str] = None
     tool_calling: Optional[bool] = False
+    is_embedding: Optional[bool] = False
 
     @staticmethod
     def from_config(name: str, cfg: Dict) -> "ApiModel":
@@ -80,6 +81,7 @@ class ApiModel:
             model_path=str(cfg.get("model_path", "")),
             keep_alive=str(cfg.get("keep_alive", "")),
             tool_calling=bool(cfg.get("tool_calling", False)),
+            is_embedding=bool(cfg.get("is_embedding", False)),
         )
 
     def as_dict(self) -> Dict[str, Any]:
@@ -93,6 +95,7 @@ class ApiModel:
             "model_path": self.model_path,
             "keep_alive": self.keep_alive,
             "tool_calling": self.tool_calling,
+            "is_embedding": self.is_embedding,
         }
 
 

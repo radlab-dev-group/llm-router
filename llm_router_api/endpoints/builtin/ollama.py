@@ -17,11 +17,69 @@ from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_router_api.core.api_types.ollama import OllamaConverters
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.endpoints.passthrough import PassthroughI
 from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI
+
+
+class OllamaEmbeddingsHandler(PassthroughI):
+    """
+    Embeddings endpoint that targets the ``/api/embed``
+    route of an Ollama‑compatible service.
+    """
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name="embed",
+        direct_return=False,
+    ):
+        """
+        Initialize the embed endpoint.
+        """
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            api_types=["ollama"],
+            direct_return=direct_return,
+            method="POST",
+        )
+
+    @staticmethod
+    def prepare_response_function(response):
+        """
+        Convert a raw ``requests.Response`` into the OpenAI‑compatible JSON format.
+
+        The helper checks whether the payload contains a ``"message"`` key – a
+        pattern used by Ollama – and, if present, applies the appropriate
+        conversion via :class:`OpenAIConverters.FromOllama`.  Otherwise the
+        original JSON body is returned unchanged.
+
+        Parameters
+        ----------
+        response : requests.Response
+            The HTTP response object received from the downstream service.
+
+        Returns
+        -------
+        dict
+            A dictionary ready to be returned to the client in OpenAI‑compatible
+            shape.
+        """
+        response = response.json()
+        if "embeddings" not in response:
+            return OllamaConverters.FromOpenAI.convert_embedding(response=response)
+        return response
 
 
 class OllamaHomeHandler(EndpointWithHttpRequestI):

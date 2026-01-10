@@ -57,6 +57,7 @@ Having a single source of truth for model definitions makes it easy to:
 | `weight`       | `float`                   | Relative weight for **weighted‑random** load‑balancing strategies. Default `1.0`.                                                   | `0.1`                           |
 | `keep_alive`   | `str`                     | Optional keep‑alive duration (e.g. `"35m"`). Empty or `null` means the provider is not kept alive.                                  | `"35m"`                         |
 | `tool_calling` | `bool`                    | Whether the provider supports tool‑calling (function calling).                                                                      | `true`                          |
+| `is_embedding` | `bool`                    | Whether the model is an embedding model (determines use of embedding endpoints).                                                    | `true`                          |
 
 ### `active_models` section
 
@@ -203,6 +204,18 @@ Copy it to your own configuration directory and adjust the values to match your 
     /* … other OpenAI/Ollama models … */
   },
   "qwen_models": {
+    "nomic-embed-text": {
+      "providers": [
+        {
+          "id": "nomic-embed-text-ollama",
+          "api_host": "http://192.168.100.66:11434",
+          "api_token": "",
+          "api_type": "ollama",
+          "input_size": 2048,
+          "is_embedding": true
+        }
+      ]
+    },
     "qwen3-coder:30b": {
       "providers": [
         {
@@ -228,7 +241,8 @@ Copy it to your own configuration directory and adjust the values to match your 
       "openai/gpt-3.5-turbo-0125"
     ],
     "qwen_models": [
-      "qwen3-coder:30b"
+      "qwen3-coder:30b",
+      "nomic-embed-text"
     ]
   }
 }
