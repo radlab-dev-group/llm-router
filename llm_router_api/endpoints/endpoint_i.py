@@ -1235,6 +1235,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         is_openai,
                         is_openai_to_lmstudio,
                         is_ollama_to_lmstudio,
+                        is_lmstudio_passthrough,
                     ) = self._http_executor.stream_handler.resolve_stream_type(
                         endpoint_ep_types=self._ep_types_str,
                         api_model_provider=api_model_provider,
@@ -1250,6 +1251,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         is_openai=is_openai,
                         is_openai_to_lmstudio=is_openai_to_lmstudio,
                         is_ollama_to_lmstudio=is_ollama_to_lmstudio,
+                        is_lmstudio=is_lmstudio_passthrough,
                         api_model_provider=api_model_provider,
                         force_text="Content blocked by guardrail. "
                         "Reason: Not safe content!",
@@ -1359,6 +1361,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     is_openai,
                     is_openai_to_lmstudio,
                     is_ollama_to_lmstudio,
+                    is_lmstudio_passthrough,
                 ) = self._http_executor.stream_handler.resolve_stream_type(
                     endpoint_ep_types=self._ep_types_str,
                     api_model_provider=api_model_provider,
@@ -1374,6 +1377,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     is_openai=is_openai,
                     is_openai_to_lmstudio=is_openai_to_lmstudio,
                     is_ollama_to_lmstudio=is_ollama_to_lmstudio,
+                    is_lmstudio=is_lmstudio_passthrough,
                     api_model_provider=api_model_provider,
                 )
 

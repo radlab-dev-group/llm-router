@@ -11,11 +11,26 @@ import json
 import datetime
 import requests
 import contextlib
-
+from enum import Enum, auto
 from requests import Response
 from typing import Iterator, Dict, Any, Optional
 
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
+
+
+# ------------------------------------------------#
+# Helper enum for stream‑type resolution
+# ------------------------------------------------#
+class StreamConversion(Enum):
+    """Flags indicating which conversion path should be taken."""
+
+    OPENAI_TO_OLLAMA = auto()
+    OLLAMA_TO_OPENAI = auto()
+    OLLAMA = auto()
+    OPENAI = auto()
+    OPENAI_TO_LMSTUDIO = auto()
+    OLLAMA_TO_LMSTUDIO = auto()
+    LMSTUDIO_PASSTHROUGH = auto()  # <-- new flag for LM Studio → LM Studio
 
 
 class StreamHandler:
@@ -27,9 +42,9 @@ class StreamHandler:
     that timeout, logging and model‑unset logic stay unchanged.
     """
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
     # Internal utilities – extracted to avoid repetition
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
 
     @staticmethod
     @contextlib.contextmanager
@@ -51,8 +66,8 @@ class StreamHandler:
     def _force_iter_openai(force_text: str, api_model_provider) -> Iterator[bytes]:
         """
         Generates a single forced chunk followed by a DONE marker for
-        OpenAI-style (SSE) streams. This format is also compatible with
-        LM Studio's OpenAI-compatible API.
+        OpenAI‑style (SSE) streams.  This format is also compatible with
+        LM Studio's OpenAI‑compatible API.
         """
         base_chunk = {
             "id": "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -75,11 +90,66 @@ class StreamHandler:
 
         return _iter()
 
+    @staticmethod
+    def _force_iter_lmstudio(force_text: str, api_model_provider) -> Iterator[bytes]:
+        """
+        Generates forced chunks in LM Studio *native* SSE format:
+        - first chunk includes delta.role="assistant" and delta.content
+        - final chunk has finish_reason="stop" and empty delta
+        - then emits [DONE]
+        """
+        stable_id = "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        stable_created = int(datetime.datetime.now().timestamp())
+        stable_model = api_model_provider.model_path or api_model_provider.name
+
+        first_chunk = {
+            "id": stable_id,
+            "object": "chat.completion.chunk",
+            "created": stable_created,
+            "model": stable_model,
+            "system_fingerprint": stable_model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": force_text},
+                    "logprobs": None,
+                    "finish_reason": None,
+                }
+            ],
+        }
+
+        final_chunk = {
+            "id": stable_id,
+            "object": "chat.completion.chunk",
+            "created": stable_created,
+            "model": stable_model,
+            "system_fingerprint": stable_model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "logprobs": None,
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        def _iter() -> Iterator[bytes]:
+            yield (
+                "data: " + json.dumps(first_chunk, ensure_ascii=False) + "\n\n"
+            ).encode("utf-8")
+            yield (
+                "data: " + json.dumps(final_chunk, ensure_ascii=False) + "\n\n"
+            ).encode("utf-8")
+            yield b"data: [DONE]\n\n"
+
+        return _iter()
+
     def _force_iter_ollama(
         self, force_text: str, api_model_provider
     ) -> Iterator[bytes]:
         """
-        Generates forced chunks for Ollama-style NDJSON streams.
+        Generates forced chunks for Ollama‑style NDJSON streams.
         """
 
         def _iter() -> Iterator[bytes]:
@@ -92,9 +162,43 @@ class StreamHandler:
 
         return _iter()
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
+    # Shared helper for passthrough streaming
+    # ------------------------------------------------#
+
+    def _passthrough_generator(
+        self,
+        method: str,
+        url: str,
+        payload: Dict[str, Any],
+        headers: Dict[str, Any],
+        endpoint,
+        api_model_provider,
+        options: Optional[Dict[str, Any]],
+    ) -> Iterator[bytes]:
+        """
+        Shared generator used by ``stream_openai`` and ``stream_ollama``.
+        Handles the ``_model_unsetter`` context and maps request errors
+        to a simple JSON error payload.
+        """
+        with self._model_unsetter(endpoint, payload, api_model_provider, options):
+            try:
+                for _ch in self._passthrough_stream(
+                    method=method,
+                    url=url,
+                    endpoint=endpoint,
+                    payload=payload,
+                    headers=headers,
+                ):
+                    yield _ch
+            except requests.RequestException as exc:
+                err = {"error": str(exc)}
+                # Preserve the original formatting used in the two callers
+                yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+
+    # ------------------------------------------------#
     # Public streaming entry points
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
 
     def stream_openai(
         self,
@@ -108,37 +212,69 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        OpenAI-style streaming (SSE) – returns the raw SSE bytes unchanged.
-
-        Note: This is also suitable for LM Studio when using its OpenAI-compatible API.
+        OpenAI‑style streaming (SSE) – returns the raw SSE bytes unchanged.
         """
         if force_text is not None:
-            with self._model_unsetter(
-                endpoint, payload, api_model_provider, options
-            ):
-                return self._force_iter_openai(force_text, api_model_provider)
 
-        # Ensure we accept an SSE format
+            def _iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_openai(
+                        force_text, api_model_provider
+                    )
+
+            return _iter()
+
         headers["Accept"] = "text/event-stream"
 
-        def _iter() -> Iterator[bytes]:
-            with self._model_unsetter(
-                endpoint, payload, api_model_provider, options
-            ):
-                try:
-                    for _ch in self._passthrough_stream(
-                        method=method,
-                        url=url,
-                        endpoint=endpoint,
-                        payload=payload,
-                        headers=headers,
-                    ):
-                        yield _ch
-                except requests.RequestException as exc:
-                    err = {"error": str(exc)}
-                    yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+        # Use the shared generator – removes duplicated try/except boilerplate
+        return self._passthrough_generator(
+            method=method,
+            url=url,
+            payload=payload,
+            headers=headers,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            options=options,
+        )
 
-        return _iter()
+    def stream_lmstudio(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Optional[Dict[str, Any]],
+        endpoint,
+        api_model_provider,
+        force_text: Optional[str] = None,
+    ) -> Iterator[bytes]:
+        """
+        LMStudio-native streaming (SSE) – returns the raw SSE bytes unchanged.
+        """
+        if force_text is not None:
+
+            def _iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_lmstudio(
+                        force_text, api_model_provider
+                    )
+
+            return _iter()
+
+        return self.stream_openai(
+            url=url,
+            payload=payload,
+            method=method,
+            headers=headers,
+            options=options,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            force_text=force_text,
+        )
 
     def stream_ollama(
         self,
@@ -155,29 +291,27 @@ class StreamHandler:
         Streaming from an Ollama endpoint – **passes the stream through unchanged**.
         """
         if force_text is not None:
-            with self._model_unsetter(
-                endpoint, payload, api_model_provider, options
-            ):
-                return self._force_iter_ollama(force_text, api_model_provider)
 
-        def _iter() -> Iterator[bytes]:
-            with self._model_unsetter(
-                endpoint, payload, api_model_provider, options
-            ):
-                try:
-                    for _ch in self._passthrough_stream(
-                        method=method,
-                        url=url,
-                        endpoint=endpoint,
-                        payload=payload,
-                        headers=headers,
-                    ):
-                        yield _ch
-                except requests.RequestException as exc:
-                    err = {"error": str(exc)}
-                    yield (json.dumps(err) + "\n").encode("utf-8")
+            def _iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_ollama(
+                        force_text, api_model_provider
+                    )
 
-        return _iter()
+            return _iter()
+
+        # Re‑use the generic passthrough logic
+        return self._passthrough_generator(
+            method=method,
+            url=url,
+            payload=payload,
+            headers=headers,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            options=options,
+        )
 
     @staticmethod
     def _passthrough_stream(
@@ -214,9 +348,9 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an OpenAI-style (SSE) stream to Ollama NDJSON.
+        Convert an OpenAI‑style (SSE) stream to Ollama NDJSON.
 
-        This also covers: LM Studio (OpenAI-compatible) -> Ollama.
+        This also covers: LM Studio (OpenAI‑compatible) → Ollama.
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -269,10 +403,10 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an Ollama NDJSON stream to OpenAI-compatible SSE.
+        Convert an Ollama NDJSON stream to OpenAI‑compatible SSE.
 
-        This enables: Ollama -> OpenAI endpoint and Ollama -> LM Studio
-        (because LM Studio expects OpenAI-compatible SSE).
+        This enables: Ollama → OpenAI endpoint and Ollama → LM Studio
+        (because LM Studio expects OpenAI‑compatible SSE).
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -373,19 +507,20 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Stream an OpenAI‑style SSE response **as‑is** to LMStudio.
+        Convert an OpenAI‑compatible SSE stream (e.g. vLLM) into LM Studio's *native*
+        SSE chunk shape.
 
-        LMStudio’s native streaming endpoint expects the same Server‑Sent‑Events
-        format that the OpenAI API provides, so no conversion is required.
+        Key differences we normalise:
+        - LM Studio usually includes ``system_fingerprint``
+        - LM Studio sends ``delta.role="assistant"`` in the first emitted chunk
+        - Keep only the fields LM Studio expects (but do **not** break SSE framing)
         """
         if force_text is not None:
-            # Forced‑chunk (useful for tests / UI “thinking” state)
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
             ):
                 return self._force_iter_openai(force_text, api_model_provider)
 
-        # ----- SSE‑specific request headers -----
         headers.update(
             {
                 "Accept": "text/event-stream",
@@ -395,63 +530,148 @@ class StreamHandler:
         )
 
         def _iter() -> Iterator[bytes]:
-            print(
-                f"stream_openai_to_lmstudio START – url={url} method={method} payload={payload}"
-            )
-            done_sent = False  # track whether the upstream sent [DONE]
+            stable_id: Optional[str] = None
+            stable_created: Optional[int] = None
+            stable_model: Optional[str] = None
+            role_sent = False
 
-            # -------------------------------------------------
-            # 1️⃣  Stream the upstream SSE inside the unsetter.
-            # -------------------------------------------------
+            def _as_lmstudio_sse(event_obj_i: Dict[str, Any]) -> bytes:
+                nonlocal stable_id, stable_created, stable_model, role_sent
+
+                # Capture stable metadata from the first parsable chunk
+                if stable_id is None and isinstance(event_obj_i.get("id"), str):
+                    stable_id = event_obj_i["id"]
+                if stable_created is None and isinstance(
+                    event_obj_i.get("created"), int
+                ):
+                    stable_created = event_obj_i["created"]
+                if stable_model is None and isinstance(
+                    event_obj_i.get("model"), str
+                ):
+                    stable_model = event_obj_i["model"]
+
+                out: Dict[str, Any] = {
+                    "id": stable_id
+                    or event_obj_i.get("id")
+                    or (
+                        "chatcmpl-"
+                        + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                    ),
+                    "object": event_obj_i.get("object") or "chat.completion.chunk",
+                    "created": (
+                        stable_created
+                        if stable_created is not None
+                        else int(datetime.datetime.now().timestamp())
+                    ),
+                    "model": stable_model
+                    or (api_model_provider.model_path or api_model_provider.name),
+                    "system_fingerprint": api_model_provider.model_path
+                    or api_model_provider.name,
+                    "choices": [],
+                }
+
+                choices = event_obj_i.get("choices") or []
+                if not isinstance(choices, list) or not choices:
+                    out["choices"] = [
+                        {
+                            "index": 0,
+                            "delta": {},
+                            "logprobs": None,
+                            "finish_reason": None,
+                        }
+                    ]
+                else:
+                    new_choices = []
+                    for ch in choices:
+                        if not isinstance(ch, dict):
+                            continue
+                        new_choice = {
+                            "index": ch.get("index", 0),
+                            "delta": ch.get("delta") or {},
+                            "logprobs": ch.get("logprobs", None),
+                            "finish_reason": ch.get("finish_reason", None),
+                        }
+
+                        # Normalise delta shape
+                        if not isinstance(new_choice["delta"], dict):
+                            new_choice["delta"] = {}
+
+                        # LM Studio expects a role on the first emitted chunk
+                        if not role_sent:
+                            if "role" not in new_choice["delta"]:
+                                new_choice["delta"]["role"] = "assistant"
+                            role_sent = True
+
+                        # Keep only role/content
+                        allowed_delta = {}
+                        if "role" in new_choice["delta"]:
+                            allowed_delta["role"] = new_choice["delta"]["role"]
+                        if "content" in new_choice["delta"]:
+                            allowed_delta["content"] = new_choice["delta"]["content"]
+                        new_choice["delta"] = allowed_delta
+
+                        new_choices.append(new_choice)
+
+                    out["choices"] = new_choices or [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant"} if not role_sent else {},
+                            "logprobs": None,
+                            "finish_reason": None,
+                        }
+                    ]
+
+                return (
+                    "data: " + json.dumps(out, ensure_ascii=False) + "\n\n"
+                ).encode("utf-8")
+
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
             ):
                 try:
-                    for chunk in self._passthrough_stream(
-                        method=method,
-                        url=url,
-                        endpoint=endpoint,
-                        payload=payload,
-                        headers=headers,
-                    ):
-                        if chunk:
-                            print(
-                                f"stream_openai_to_lmstudio RECEIVED chunk: {chunk.decode('utf-8', errors='replace')}"
-                            )
-                            if b"data: [DONE]" in chunk:
-                                done_sent = True
-                                print(
-                                    "stream_openai_to_lmstudio DETECTED upstream DONE"
+                    req_kwargs = {
+                        "url": url,
+                        "timeout": endpoint.timeout,
+                        "stream": True,
+                        "headers": headers,
+                    }
+                    if method == "POST":
+                        req_kwargs["json"] = payload
+                        resp = requests.post(**req_kwargs)
+                    else:
+                        req_kwargs["params"] = payload
+                        resp = requests.get(**req_kwargs)
+
+                    with resp:
+                        resp.raise_for_status()
+                        for raw_line in resp.iter_lines(decode_unicode=False):
+                            if not raw_line:
+                                continue
+                            line = raw_line.strip()
+
+                            # Pass‑through non‑data lines unchanged
+                            if not line.startswith(b"data:"):
+                                yield b"data: " + line + b"\n\n"
+                                continue
+
+                            data = line[5:].strip()
+                            if data == b"[DONE]":
+                                yield b"data: [DONE]\n\n"
+                                continue
+
+                            try:
+                                event_obj = json.loads(
+                                    data.decode("utf-8", errors="replace")
                                 )
-                            yield chunk
+                            except Exception:
+                                yield b"data: " + data + b"\n\n"
+                                continue
+
+                            yield _as_lmstudio_sse(event_obj)
+
                 except requests.RequestException as exc:
                     err = {"error": str(exc)}
-                    print(f"stream_openai_to_lmstudio RequestException: {exc}")
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
-                    return
-                except Exception as exc:
-                    err = {"error": f"Connection error: {str(exc)}"}
-                    print("stream_openai_to_lmstudio Unexpected exception")
-                    yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
-                    return
-
-            # -------------------------------------------------
-            # 2️⃣  Emit the final DONE marker **only** if the upstream
-            #     didn’t already send one, then terminate the generator.
-            # -------------------------------------------------
-            if not done_sent:
-                print(
-                    "stream_openai_to_lmstudio EMIT final DONE (upstream lacked it)"
-                )
-                yield b"data: [DONE]\n\n"
-            else:
-                print(
-                    "stream_openai_to_lmstudio SKIP final DONE (already sent upstream)"
-                )
-
-            print("stream_openai_to_lmstudio END")
-            # Explicitly stop the generator – no extra bytes are sent.
-            return
 
         return _iter()
 
@@ -467,11 +687,12 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an Ollama NDJSON stream into LMStudio’s native SSE format.
+        Convert an Ollama NDJSON stream into LM Studio’s native SSE format.
 
-        This is essentially the same conversion performed by
-        ``stream_ollama_to_openai``, because LMStudio’s native format
-        matches the OpenAI‑compatible SSE layout.
+        LM Studio’s native format is *very close* to OpenAI SSE, but in practice:
+        - it typically includes ``system_fingerprint``
+        - it often emits ``delta.role="assistant"`` on the first chunk
+        - Metadata like ``id``/``created``/``model`` stays stable across chunks
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -479,8 +700,6 @@ class StreamHandler:
             ):
                 return self._force_iter_openai(force_text, api_model_provider)
 
-        # LMStudio expects SSE, so we keep the usual JSON‑NDJSON request
-        # headers unchanged; the conversion logic below builds proper SSE chunks.
         def _iter() -> Iterator[bytes]:
             with self._model_unsetter(
                 endpoint=endpoint,
@@ -488,6 +707,43 @@ class StreamHandler:
                 api_model_provider=api_model_provider,
                 options=options,
             ):
+                stable_id = "chatcmpl-" + datetime.datetime.now().strftime(
+                    "%Y%m%d%H%M%S"
+                )
+                stable_created = int(datetime.datetime.now().timestamp())
+                stable_model = (
+                    api_model_provider.model_path or api_model_provider.name
+                )
+                role_sent = False
+
+                def _lmstudio_event(
+                    delta: Dict[str, Any], finish_reason: Optional[str]
+                ) -> bytes:
+                    nonlocal role_sent
+                    if not role_sent:
+                        if "role" not in delta:
+                            delta = {"role": "assistant", **delta}
+                        role_sent = True
+
+                    obj = {
+                        "id": stable_id,
+                        "object": "chat.completion.chunk",
+                        "created": stable_created,
+                        "model": stable_model,
+                        "system_fingerprint": stable_model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": delta,
+                                "logprobs": None,
+                                "finish_reason": finish_reason,
+                            }
+                        ],
+                    }
+                    return (
+                        "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+                    ).encode("utf-8")
+
                 try:
                     if method == "POST":
                         ctx = requests.post(
@@ -505,6 +761,7 @@ class StreamHandler:
                             stream=True,
                             headers=headers,
                         )
+
                     with ctx as resp:
                         resp.raise_for_status()
                         for raw_line in resp.iter_lines(decode_unicode=False):
@@ -515,56 +772,31 @@ class StreamHandler:
                                     raw_line.decode("utf-8", errors="replace")
                                 )
                             except Exception:
-                                # Forward unparseable line unchanged
-                                yield (raw_line + b"\n")
+                                yield b"data: " + raw_line + b"\n\n"
                                 continue
-
-                            # Build a base SSE chunk (same as in stream_ollama_to_openai)
-                            base = {
-                                "id": "chatcmpl-"
-                                + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
-                                "object": "chat.completion.chunk",
-                                "created": int(datetime.datetime.now().timestamp()),
-                                "model": api_model_provider.model_path
-                                or api_model_provider.name,
-                                "choices": [
-                                    {
-                                        "index": 0,
-                                        "delta": {},
-                                        "finish_reason": None,
-                                    }
-                                ],
-                            }
 
                             if ollama_obj.get("done"):
-                                base["choices"][0]["finish_reason"] = "stop"
-                                yield (
-                                    "data: "
-                                    + json.dumps(base, ensure_ascii=False)
-                                    + "\n\n"
-                                ).encode("utf-8")
+                                yield _lmstudio_event(delta={}, finish_reason="stop")
                                 yield b"data: [DONE]\n\n"
-                                continue
+                                return
 
                             delta_text = ollama_obj.get("message", {}).get(
                                 "content", ""
                             )
                             if delta_text:
-                                base["choices"][0]["delta"] = {"content": delta_text}
-                                yield (
-                                    "data: "
-                                    + json.dumps(base, ensure_ascii=False)
-                                    + "\n\n"
-                                ).encode("utf-8")
+                                yield _lmstudio_event(
+                                    delta={"content": delta_text}, finish_reason=None
+                                )
+
                 except requests.RequestException as exc:
                     err = {"error": str(exc)}
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
 
         return _iter()
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
     # Helper utilities (kept private to this class)
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
 
     @staticmethod
     def _ollama_chunk(
@@ -574,7 +806,7 @@ class StreamHandler:
         api_model_provider=None,
     ) -> bytes:
         """
-        Build a single Ollama-compatible NDJSON line.
+        Build a single Ollama‑compatible NDJSON line.
         """
         obj = {
             "model": api_model_provider.model_path or api_model_provider.name,
@@ -603,7 +835,7 @@ class StreamHandler:
         self, response: Response, api_model_provider
     ) -> Iterator[bytes]:
         """
-        Convert an OpenAI-style SSE/NDJSON stream into Ollama NDJSON chunks.
+        Convert an OpenAI‑style SSE/NDJSON stream into Ollama NDJSON chunks.
         """
         sent_done = False
         usage_data = None
@@ -719,178 +951,101 @@ class StreamHandler:
                 api_model_provider=api_model_provider,
             )
 
-    # --------------------------------------------------------------------- #
-    # Stream-type resolution – moved from EndpointWithHttpRequestI
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
+    # Stream‑type resolution – moved from EndpointWithHttpRequestI
+    # ------------------------------------------------#
 
     @staticmethod
     def resolve_stream_type(
         endpoint_ep_types: list, api_model_provider
-    ) -> tuple[bool, bool, bool, bool, bool, bool]:
+    ) -> tuple[bool, bool, bool, bool, bool, bool, bool]:
         """
         Determine which streaming conversion should be applied.
-
-        New support added for *native* LMStudio streaming:
-        - OpenAI‑style → LMStudio   → ``is_openai_to_lmstudio``
-        - Ollama      → LMStudio   → ``is_ollama_to_lmstudio``
-
-        Existing conversions remain:
-        - Ollama → LMStudio (via OpenAI‑compatible API) → ``is_ollama_to_openai``
-        - OpenAI‑compatible → Ollama               → ``is_openai_to_ollama``
-        - Direct passthrough for Ollama, OpenAI‑compatible or LMStudio
 
         Returns a tuple:
         (is_openai_to_ollama, is_ollama_to_openai,
          is_ollama, is_openai,
-         is_openai_to_lmstudio, is_ollama_to_lmstudio)
+         is_openai_to_lmstudio, is_ollama_to_lmstudio,
+         is_lmstudio_passthrough)
         """
         provider_type = str(api_model_provider.api_type)
 
-        # Endpoint expectations
+        # ------------------------------------#
+        # Determine what the endpoint expects
+        # ------------------------------------#
         endpoint_wants_ollama = "ollama" in endpoint_ep_types
         endpoint_wants_lmstudio = endpoint_ep_types == ["lmstudio"]
         if endpoint_wants_lmstudio:
             endpoint_wants_openai = False
         else:
-            endpoint_wants_openai = (
-                len(
-                    set(OPENAI_COMPATIBLE_PROVIDERS).intersection(
-                        set(endpoint_ep_types)
-                    )
-                )
-                > 0
+            endpoint_wants_openai = bool(
+                set(OPENAI_COMPATIBLE_PROVIDERS).intersection(endpoint_ep_types)
             )
 
+        # ------------------------------------#
+        # Provider capabilities
+        # ------------------------------------#
         provider_is_ollama = provider_type == "ollama"
         provider_is_lmstudio = provider_type == "lmstudio"
-        if provider_is_lmstudio:
-            provider_is_openai = False
-        else:
-            provider_is_openai = provider_type in OPENAI_COMPATIBLE_PROVIDERS
+        provider_is_openai = (
+            provider_type in OPENAI_COMPATIBLE_PROVIDERS
+            if not provider_is_lmstudio
+            else False
+        )
 
-        # Conversion flags
-        is_openai_to_ollama = False
-        is_ollama_to_openai = False
-        is_ollama = False
-        is_openai = False
-        # New native LMStudio conversion flags
-        is_openai_to_lmstudio = False
-        is_ollama_to_lmstudio = False
+        # ------------------------------------#
+        # Initialise flags – all start as ``False``
+        # ------------------------------------#
+        flags = {
+            StreamConversion.OPENAI_TO_OLLAMA: False,
+            StreamConversion.OLLAMA_TO_OPENAI: False,
+            StreamConversion.OLLAMA: False,
+            StreamConversion.OPENAI: False,
+            StreamConversion.OPENAI_TO_LMSTUDIO: False,
+            StreamConversion.OLLAMA_TO_LMSTUDIO: False,
+            StreamConversion.LMSTUDIO_PASSTHROUGH: False,
+        }
 
-        # -----------------------------------------------------------------
-        # Passthrough types
-        # Ollama -> Ollama
+        # ------------------------------------#
+        # Passthrough cases
+        # ------------------------------------#
         if endpoint_wants_ollama and provider_is_ollama:
-            is_ollama = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        # OpenAI-like -> OpenAI-like
-        if endpoint_wants_openai and provider_is_openai:
-            is_openai = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        # LMStudio -> LMStudio
-        if endpoint_wants_lmstudio and provider_is_lmstudio:
-            is_openai = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
+            flags[StreamConversion.OLLAMA] = True
+        elif endpoint_wants_openai and provider_is_openai:
+            flags[StreamConversion.OPENAI] = True
+        elif endpoint_wants_lmstudio and provider_is_lmstudio:
+            # LMStudio → LMStudio (passthrough)
+            flags[StreamConversion.LMSTUDIO_PASSTHROUGH] = True
 
-        # -----------------------------------------------------------------
-        # Conversions
-        # OpenAI-like -> Ollama
-        if endpoint_wants_ollama and provider_is_openai:
-            is_openai_to_ollama = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        # LMStudio -> Ollama
-        if endpoint_wants_ollama and provider_is_lmstudio:
-            is_openai_to_ollama = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        # Ollama -> OpenAI-like
-        if endpoint_wants_openai and provider_is_ollama:
-            is_ollama_to_openai = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        # LMStudio -> OpenAI-like
-        if endpoint_wants_openai and provider_is_lmstudio:
-            is_openai = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
+        # ------------------------------------#
+        # Conversion cases
+        # ------------------------------------#
+        elif endpoint_wants_ollama and provider_is_openai:
+            flags[StreamConversion.OPENAI_TO_OLLAMA] = True
+        elif endpoint_wants_ollama and provider_is_lmstudio:
+            flags[StreamConversion.OPENAI_TO_OLLAMA] = True
+        elif endpoint_wants_openai and provider_is_ollama:
+            flags[StreamConversion.OLLAMA_TO_OPENAI] = True
+        elif endpoint_wants_openai and provider_is_lmstudio:
+            flags[StreamConversion.OPENAI] = True
 
-        # -----------------------------------------------------------------
-        # New native LMStudio conversion checks (must come after the
-        # passthrough branches above)
-        # OpenAI‑compatible → LMStudio (native)
-        if endpoint_wants_lmstudio and provider_is_openai:
-            is_openai_to_lmstudio = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        # Ollama → LMStudio (native)
-        if endpoint_wants_lmstudio and provider_is_ollama:
-            is_ollama_to_lmstudio = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        # default: no special conversion flags
+        # ------------------------------------#
+        # Native LMStudio conversion checks (must be after passthrough)
+        # ------------------------------------#
+        elif endpoint_wants_lmstudio and provider_is_openai:
+            flags[StreamConversion.OPENAI_TO_LMSTUDIO] = True
+        elif endpoint_wants_lmstudio and provider_is_ollama:
+            flags[StreamConversion.OLLAMA_TO_LMSTUDIO] = True
+
+        # ------------------------------------#
+        # Return the tuple in the original (now extended) order
+        # ------------------------------------#
         return (
-            is_openai_to_ollama,
-            is_ollama_to_openai,
-            is_ollama,
-            is_openai,
-            is_openai_to_lmstudio,
-            is_ollama_to_lmstudio,
+            flags[StreamConversion.OPENAI_TO_OLLAMA],
+            flags[StreamConversion.OLLAMA_TO_OPENAI],
+            flags[StreamConversion.OLLAMA],
+            flags[StreamConversion.OPENAI],
+            flags[StreamConversion.OPENAI_TO_LMSTUDIO],
+            flags[StreamConversion.OLLAMA_TO_LMSTUDIO],
+            flags[StreamConversion.LMSTUDIO_PASSTHROUGH],
         )
