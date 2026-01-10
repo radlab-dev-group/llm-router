@@ -12,10 +12,25 @@ import datetime
 import requests
 import contextlib
 
+from enum import Enum, auto
 from requests import Response
 from typing import Iterator, Dict, Any, Optional
 
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
+
+
+# --------------------------------------------------------------------------- #
+# Helper enum for stream‑type resolution
+# --------------------------------------------------------------------------- #
+class StreamConversion(Enum):
+    """Flags indicating which conversion path should be taken."""
+
+    OPENAI_TO_OLLAMA = auto()
+    OLLAMA_TO_OPENAI = auto()
+    OLLAMA = auto()
+    OPENAI = auto()
+    OPENAI_TO_LMSTUDIO = auto()
+    OLLAMA_TO_LMSTUDIO = auto()
 
 
 class StreamHandler:
@@ -93,6 +108,41 @@ class StreamHandler:
         return _iter()
 
     # --------------------------------------------------------------------- #
+    # Shared helper for passthrough streaming
+    # --------------------------------------------------------------------- #
+
+    def _passthrough_generator(
+        self,
+        method: str,
+        url: str,
+        payload: Dict[str, Any],
+        headers: Dict[str, Any],
+        endpoint,
+        options: Optional[Dict[str, Any]],
+    ) -> Iterator[bytes]:
+        """
+        Shared generator used by ``stream_openai`` and ``stream_ollama``.
+        Handles the ``_model_unsetter`` context and maps request errors
+        to a simple JSON error payload.
+        """
+        with self._model_unsetter(
+            endpoint, payload, api_model_provider=None, options=options
+        ):
+            try:
+                for _ch in self._passthrough_stream(
+                    method=method,
+                    url=url,
+                    endpoint=endpoint,
+                    payload=payload,
+                    headers=headers,
+                ):
+                    yield _ch
+            except requests.RequestException as exc:
+                err = {"error": str(exc)}
+                # Preserve the original formatting used in the two callers
+                yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+
+    # --------------------------------------------------------------------- #
     # Public streaming entry points
     # --------------------------------------------------------------------- #
 
@@ -109,9 +159,6 @@ class StreamHandler:
     ) -> Iterator[bytes]:
         """
         OpenAI‑style streaming (SSE) – returns the raw SSE bytes unchanged.
-
-        Note: This is also suitable for LM Studio when using its
-        OpenAI‑compatible API.
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -121,24 +168,10 @@ class StreamHandler:
 
         headers["Accept"] = "text/event-stream"
 
-        def _iter() -> Iterator[bytes]:
-            with self._model_unsetter(
-                endpoint, payload, api_model_provider, options
-            ):
-                try:
-                    for _ch in self._passthrough_stream(
-                        method=method,
-                        url=url,
-                        endpoint=endpoint,
-                        payload=payload,
-                        headers=headers,
-                    ):
-                        yield _ch
-                except requests.RequestException as exc:
-                    err = {"error": str(exc)}
-                    yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
-
-        return _iter()
+        # Use the shared generator – removes duplicated try/except boilerplate
+        return self._passthrough_generator(
+            method, url, payload, headers, endpoint, options
+        )
 
     def stream_ollama(
         self,
@@ -160,24 +193,10 @@ class StreamHandler:
             ):
                 return self._force_iter_ollama(force_text, api_model_provider)
 
-        def _iter() -> Iterator[bytes]:
-            with self._model_unsetter(
-                endpoint, payload, api_model_provider, options
-            ):
-                try:
-                    for _ch in self._passthrough_stream(
-                        method=method,
-                        url=url,
-                        endpoint=endpoint,
-                        payload=payload,
-                        headers=headers,
-                    ):
-                        yield _ch
-                except requests.RequestException as exc:
-                    err = {"error": str(exc)}
-                    yield (json.dumps(err) + "\n").encode("utf-8")
-
-        return _iter()
+        # Re‑use the generic passthrough logic
+        return self._passthrough_generator(
+            method, url, payload, headers, endpoint, options
+        )
 
     @staticmethod
     def _passthrough_stream(
@@ -828,15 +847,6 @@ class StreamHandler:
         """
         Determine which streaming conversion should be applied.
 
-        New support added for *native* LMStudio streaming:
-        - OpenAI‑style → LMStudio   → ``is_openai_to_lmstudio``
-        - Ollama      → LMStudio   → ``is_ollama_to_lmstudio``
-
-        Existing conversions remain:
-        - Ollama → LMStudio (via OpenAI‑compatible API) → ``is_ollama_to_openai``
-        - OpenAI‑compatible → Ollama               → ``is_openai_to_ollama``
-        - Direct passthrough for Ollama, OpenAI‑compatible or LMStudio
-
         Returns a tuple:
         (is_openai_to_ollama, is_ollama_to_openai,
          is_ollama, is_openai,
@@ -844,141 +854,81 @@ class StreamHandler:
         """
         provider_type = str(api_model_provider.api_type)
 
-        # Endpoint expectations
+        # ------------------------------------------------------------- #
+        # Determine what the endpoint expects
+        # ------------------------------------------------------------- #
         endpoint_wants_ollama = "ollama" in endpoint_ep_types
         endpoint_wants_lmstudio = endpoint_ep_types == ["lmstudio"]
         if endpoint_wants_lmstudio:
             endpoint_wants_openai = False
         else:
-            endpoint_wants_openai = (
-                len(
-                    set(OPENAI_COMPATIBLE_PROVIDERS).intersection(
-                        set(endpoint_ep_types)
-                    )
-                )
-                > 0
+            endpoint_wants_openai = bool(
+                set(OPENAI_COMPATIBLE_PROVIDERS).intersection(endpoint_ep_types)
             )
 
+        # ------------------------------------------------------------- #
+        # Provider capabilities
+        # ------------------------------------------------------------- #
         provider_is_ollama = provider_type == "ollama"
         provider_is_lmstudio = provider_type == "lmstudio"
-        if provider_is_lmstudio:
-            provider_is_openai = False
-        else:
-            provider_is_openai = provider_type in OPENAI_COMPATIBLE_PROVIDERS
+        provider_is_openai = (
+            provider_type in OPENAI_COMPATIBLE_PROVIDERS
+            if not provider_is_lmstudio
+            else False
+        )
 
-        # Conversion flags
-        is_openai_to_ollama = False
-        is_ollama_to_openai = False
-        is_ollama = False
-        is_openai = False
-        is_openai_to_lmstudio = False
-        is_ollama_to_lmstudio = False
+        # ------------------------------------------------------------- #
+        # Initialise flags – all start as ``False``
+        # ------------------------------------------------------------- #
+        flags = {
+            StreamConversion.OPENAI_TO_OLLAMA: False,
+            StreamConversion.OLLAMA_TO_OPENAI: False,
+            StreamConversion.OLLAMA: False,
+            StreamConversion.OPENAI: False,
+            StreamConversion.OPENAI_TO_LMSTUDIO: False,
+            StreamConversion.OLLAMA_TO_LMSTUDIO: False,
+        }
 
-        # -------------------------------------------------
-        # Passthrough types
+        # ------------------------------------------------------------- #
+        # Passthrough cases
+        # ------------------------------------------------------------- #
         if endpoint_wants_ollama and provider_is_ollama:
-            is_ollama = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        if endpoint_wants_openai and provider_is_openai:
-            is_openai = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        if endpoint_wants_lmstudio and provider_is_lmstudio:
-            is_openai = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
+            flags[StreamConversion.OLLAMA] = True
+        elif endpoint_wants_openai and provider_is_openai:
+            flags[StreamConversion.OPENAI] = True
+        elif endpoint_wants_lmstudio and provider_is_lmstudio:
+            flags[StreamConversion.OPENAI] = (
+                True  # LMStudio behaves like OpenAI here
             )
 
-        # -------------------------------------------------
-        # Conversions
-        if endpoint_wants_ollama and provider_is_openai:
-            is_openai_to_ollama = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        if endpoint_wants_ollama and provider_is_lmstudio:
-            is_openai_to_ollama = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        if endpoint_wants_openai and provider_is_ollama:
-            is_ollama_to_openai = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        if endpoint_wants_openai and provider_is_lmstudio:
-            is_openai = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
+        # ------------------------------------------------------------- #
+        # Conversion cases
+        # ------------------------------------------------------------- #
+        elif endpoint_wants_ollama and provider_is_openai:
+            flags[StreamConversion.OPENAI_TO_OLLAMA] = True
+        elif endpoint_wants_ollama and provider_is_lmstudio:
+            flags[StreamConversion.OPENAI_TO_OLLAMA] = True
+        elif endpoint_wants_openai and provider_is_ollama:
+            flags[StreamConversion.OLLAMA_TO_OPENAI] = True
+        elif endpoint_wants_openai and provider_is_lmstudio:
+            flags[StreamConversion.OPENAI] = True
 
-        # -------------------------------------------------
-        # Native LMStudio conversion checks (must come after the
-        # passthrough branches above)
-        if endpoint_wants_lmstudio and provider_is_openai:
-            is_openai_to_lmstudio = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        if endpoint_wants_lmstudio and provider_is_ollama:
-            is_ollama_to_lmstudio = True
-            return (
-                is_openai_to_ollama,
-                is_ollama_to_openai,
-                is_ollama,
-                is_openai,
-                is_openai_to_lmstudio,
-                is_ollama_to_lmstudio,
-            )
-        # Default: no special conversion flags
+        # ------------------------------------------------------------- #
+        # Native LMStudio conversion checks (must be after passthrough)
+        # ------------------------------------------------------------- #
+        elif endpoint_wants_lmstudio and provider_is_openai:
+            flags[StreamConversion.OPENAI_TO_LMSTUDIO] = True
+        elif endpoint_wants_lmstudio and provider_is_ollama:
+            flags[StreamConversion.OLLAMA_TO_LMSTUDIO] = True
+
+        # ------------------------------------------------------------- #
+        # Return the tuple in the original order
+        # ------------------------------------------------------------- #
         return (
-            is_openai_to_ollama,
-            is_ollama_to_openai,
-            is_ollama,
-            is_openai,
-            is_openai_to_lmstudio,
-            is_ollama_to_lmstudio,
+            flags[StreamConversion.OPENAI_TO_OLLAMA],
+            flags[StreamConversion.OLLAMA_TO_OPENAI],
+            flags[StreamConversion.OLLAMA],
+            flags[StreamConversion.OPENAI],
+            flags[StreamConversion.OPENAI_TO_LMSTUDIO],
+            flags[StreamConversion.OLLAMA_TO_LMSTUDIO],
         )
