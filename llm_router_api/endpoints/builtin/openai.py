@@ -178,6 +178,34 @@ class OpenAIEmbeddingsHandler(PassthroughI):
             method="POST",
         )
 
+        self._prepare_response_function = self.prepare_response_function
+
+    @staticmethod
+    def prepare_response_function(response):
+        """
+        Convert a raw ``requests.Response`` into the OpenAI‑compatible JSON format.
+
+        The helper checks whether the payload contains a ``"message"`` key – a
+        pattern used by Ollama – and, if present, applies the appropriate
+        conversion via :class:`OpenAIConverters.FromOllama`.  Otherwise the
+        original JSON body is returned unchanged.
+
+        Parameters
+        ----------
+        response : requests.Response
+            The HTTP response object received from the downstream service.
+
+        Returns
+        -------
+        dict
+            A dictionary ready to be returned to the client in OpenAI‑compatible
+            shape.
+        """
+        response = response.json()
+        if "embeddings" in response:
+            return OpenAIConverters.FromOllama.convert_embedding(response=response)
+        return response
+
 
 class OpenAIEmbeddingsV1Handler(PassthroughI):
     """

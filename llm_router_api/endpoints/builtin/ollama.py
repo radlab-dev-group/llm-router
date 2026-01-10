@@ -17,6 +17,7 @@ from typing import Optional, Dict, Any, List
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from llm_router_api.core.api_types.ollama import OllamaConverters
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
@@ -53,6 +54,32 @@ class OllamaEmbeddingsHandler(PassthroughI):
             direct_return=direct_return,
             method="POST",
         )
+
+    @staticmethod
+    def prepare_response_function(response):
+        """
+        Convert a raw ``requests.Response`` into the OpenAI‑compatible JSON format.
+
+        The helper checks whether the payload contains a ``"message"`` key – a
+        pattern used by Ollama – and, if present, applies the appropriate
+        conversion via :class:`OpenAIConverters.FromOllama`.  Otherwise the
+        original JSON body is returned unchanged.
+
+        Parameters
+        ----------
+        response : requests.Response
+            The HTTP response object received from the downstream service.
+
+        Returns
+        -------
+        dict
+            A dictionary ready to be returned to the client in OpenAI‑compatible
+            shape.
+        """
+        response = response.json()
+        if "embeddings" not in response:
+            return OllamaConverters.FromOpenAI.convert_embedding(response=response)
+        return response
 
 
 class OllamaHomeHandler(EndpointWithHttpRequestI):

@@ -106,6 +106,22 @@ class OpenAIConverters:
         """
 
         @staticmethod
+        def convert_embedding(response):
+            _resp = {
+                "object": "list",
+                "data": [],
+                "model": response["model"],
+                "usage": {
+                    "prompt_tokens": response["prompt_eval_count"],
+                    "total_tokens": response["prompt_eval_count"],
+                },
+            }
+            for idx, e in enumerate(response["embeddings"]):
+                _e = {"object": "embedding", "index": idx, "embedding": e}
+                _resp["data"].append(_e)
+            return _resp
+
+        @staticmethod
         def convert(response):
             """
             Convert an Ollama response to the OpenAI chat‑completion format.

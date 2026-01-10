@@ -1,11 +1,10 @@
 """
-Ollama API integration utilities. This module defines :class:OllamaType,
-a concrete implementation of :class:~llm_router_api.core.api_types.types_i.ApiTypesI
+Ollama API integration utilities. This module defines :class:`OllamaType`,
+a concrete implementation of :class:`~llm_router_api.core.api_types.types_i.ApiTypesI`
 that maps the internal routing logic to the Ollama HTTP API endpoints.
 """
 
 from __future__ import annotations
-
 
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
@@ -67,3 +66,40 @@ class OllamaType(ApiTypesI):
             ``"api/embed"``
         """
         return "api/embed"
+
+
+class OllamaConverters:
+    class FromOpenAI:
+        @staticmethod
+        def convert_embedding(response):
+            """
+            Convert an OpenAI‑style embedding response into the format expected by
+            Ollama's ``/api/embed`` endpoint.
+
+            Parameters
+            ----------
+            response : dict
+                The OpenAI embedding payload (e.g. the JSON you posted).
+
+            Returns
+            -------
+            dict
+                A dictionary compatible with Ollama's embedding API, containing:
+                - ``model`` – the model identifier,
+                - ``embeddings`` – a list of embedding vectors,
+                - ``prompt_eval_count`` – token count for the prompt,
+                - ``total_tokens`` – total token count (prompt + completion).
+            """
+            # OpenAI returns embeddings under the "data" key.
+            # Ollama expects a top‑level "embeddings" list and usage fields.
+            _resp = {
+                "model": response.get("model", ""),
+                "embeddings": [
+                    item.get("embedding", []) for item in response.get("data", [])
+                ],
+                "prompt_eval_count": response.get("usage", {}).get(
+                    "prompt_tokens", 0
+                ),
+                "total_tokens": response.get("usage", {}).get("total_tokens", 0),
+            }
+            return _resp
