@@ -76,7 +76,7 @@ class OpenAIResponsesHandler(OpenAIResponseHandler):
             method="POST",
         )
 
-        # self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self.prepare_response_function
 
 
 class OpenAIResponsesV1Handler(OpenAIResponseHandler):
@@ -106,7 +106,7 @@ class OpenAIResponsesV1Handler(OpenAIResponseHandler):
             method="POST",
         )
 
-        # self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self.prepare_response_function
 
 
 class OpenAICompletionHandler(OpenAIResponseHandler):
@@ -143,6 +143,74 @@ class OpenAICompletionHandler(OpenAIResponseHandler):
         )
 
         self._prepare_response_function = self.prepare_response_function
+
+
+class OpenAIEmbeddingsHandler(PassthroughI):
+    """
+    Embeddings endpoint that targets the ``/api/embeddings``
+    route of an OpenAI‑compatible service.
+    """
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name="embeddings",
+        direct_return=False,
+    ):
+        """
+        Initialize the embeddings endpoint.
+
+        Parameters are identical to :class:`OpenAIChat` except
+        that the route defaults to ``"embeddings"``.
+        """
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            api_types=OPENAI_COMPATIBLE_PROVIDERS,
+            direct_return=direct_return,
+            method="POST",
+        )
+
+
+class OpenAIEmbeddingsV1Handler(PassthroughI):
+    """
+    Embeddings endpoint that targets the ``/v1/embeddings``
+    route of an OpenAI‑compatible service.
+    """
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name="v1/embeddings",
+        direct_return=False,
+    ):
+        """
+        Initialize the embeddings endpoint.
+
+        Parameters are identical to :class:`OpenAIChat` except
+        that the route defaults to ``"v1/embeddings"``.
+        """
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=True,
+            api_types=OPENAI_COMPATIBLE_PROVIDERS,
+            direct_return=direct_return,
+            method="POST",
+        )
 
 
 class OpenAICompletionHandlerWOApi(OpenAIResponseHandler):
