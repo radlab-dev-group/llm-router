@@ -39,7 +39,7 @@ def test_embeddings(model: str, texts: List[str]):
     print(f"{'=' * 60}")
 
     # Try both possible endpoint versions
-    endpoints = ["/api/embeddings", "/v1/embeddings"]
+    endpoints = ["/embeddings", "/v1/embeddings"]
 
     for ep in endpoints:
         url = f"{BASE_URL.rstrip('/')}{ep}"

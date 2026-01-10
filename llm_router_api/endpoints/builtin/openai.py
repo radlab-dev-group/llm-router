@@ -147,7 +147,7 @@ class OpenAICompletionHandler(OpenAIResponseHandler):
 
 class OpenAIEmbeddingsHandler(PassthroughI):
     """
-    Embeddings endpoint that targets the ``/api/embeddings``
+    Embeddings endpoint that targets the ``/embeddings``
     route of an OpenAI‑compatible service.
     """
 
@@ -172,7 +172,7 @@ class OpenAIEmbeddingsHandler(PassthroughI):
             logger_file_name=logger_file_name,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
-            dont_add_api_prefix=False,
+            dont_add_api_prefix=True,
             api_types=OPENAI_COMPATIBLE_PROVIDERS,
             direct_return=direct_return,
             method="POST",
