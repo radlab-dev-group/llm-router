@@ -29,7 +29,6 @@ class HttpRequestExecutor:
         """
         self._endpoint = endpoint
         self.logger = endpoint.logger
-
         self._stream_handler = StreamHandler()
 
     @property
@@ -121,11 +120,10 @@ class HttpRequestExecutor:
         Perform a streaming request and yield byte chunks.
 
         Conventions:
-        - "openai" means OpenAI-style SSE streaming (also used by LM Studio).
-        - "ollama" means Ollama NDJSON streaming.
-        - *_to_* flags indicate stream conversion direction.
+        - ``openai`` means OpenAI‑style SSE streaming (also used by LM Studio).
+        - ``ollama`` means Ollama NDJSON streaming.
+        - ``*_to_*`` flags indicate stream conversion direction.
         """
-
         self.logger.debug(
             "Stream type:\n"
             f"  * is_ollama={is_ollama}\n"
@@ -147,8 +145,9 @@ class HttpRequestExecutor:
         if sum(1 for x in selected if x) != 1:
             raise RuntimeError(
                 "Exactly one streaming mode must be selected: "
-                "is_ollama | is_openai | is_openai_to_ollama | is_ollama_to_openai | "
-                "is_openai_to_lmstudio | is_ollama_to_lmstudio"
+                "is_ollama | is_openai | is_openai_to_ollama | "
+                "is_ollama_to_openai | is_openai_to_lmstudio | "
+                "is_ollama_to_lmstudio"
             )
 
         # common preparation
@@ -228,7 +227,7 @@ class HttpRequestExecutor:
                 force_text=force_text,
             )
 
-        # is_openai
+        # is_openai (default)
         return self._stream_handler.stream_openai(
             url=full_url,
             payload=params,
@@ -245,8 +244,10 @@ class HttpRequestExecutor:
     # --------------------------------------------------------------------- #
     @staticmethod
     def _prepare_full_url_ep(ep_url: str, api_model_provider: ApiModel) -> str:
-        full_url = api_model_provider.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
-        return full_url
+        """
+        Build the absolute URL for a given endpoint path.
+        """
+        return api_model_provider.api_host.rstrip("/") + "/" + ep_url.lstrip("/")
 
     def _call_for_each_user_message(
         self,
@@ -256,42 +257,17 @@ class HttpRequestExecutor:
         headers: Optional[Dict[str, Any]] = None,
     ):
         """
-        Send a separate request for each user‑role message.
+        Send a separate request for each ``user``‑role message.
 
         The helper builds a list of payloads, each containing the system
         prompt (if any) and a single user message.  Only ``POST`` is
         supported; a ``GET`` will raise an exception.
-
-        Parameters
-        ----------
-        ep_url:
-            Fully‑qualified request URL.
-        system_message:
-            Optional system‑prompt dictionary injected into each payload.
-        params:
-            Original request parameters containing the ``messages`` list.
-        headers:
-            Optional HTTP headers to include with each request.
-
-        Returns
-        -------
-        Any
-            The value returned by the endpoint's
-            ``_prepare_response_function`` – typically a list of processed
-            responses.
-
-        Raises
-        ------
-        Exception
-            If the endpoint method is not ``POST`` or if the required
-            ``_prepare_response_function`` is missing.
         """
         if self._endpoint._prepare_response_function is None:
             raise Exception(
                 "_prepare_response_function must be implemented "
                 "when calling api for each user message"
             )
-
         if self._endpoint.method != "POST":
             raise Exception(
                 "_call_http_request_for_each_user_message "
@@ -308,8 +284,6 @@ class HttpRequestExecutor:
         contents = []
         responses = []
         for payload, content in _payloads:
-            # self.logger.debug(f"Request payload: {payload}")
-
             response = self._call_post_with_payload(
                 ep_url=ep_url,
                 params=payload,
@@ -320,7 +294,6 @@ class HttpRequestExecutor:
             contents.append(content)
             responses.append(response)
 
-            # self.logger.debug(response.json())
         return self._endpoint._prepare_response_function(responses, contents)
 
     def _call_post_with_payload(
@@ -332,30 +305,6 @@ class HttpRequestExecutor:
     ) -> Optional[Dict[str, Any] | Response]:
         """
         Issue a ``POST`` request with a JSON payload.
-
-        Parameters
-        ----------
-        ep_url:
-            Destination URL.
-        params:
-            JSON‑serialisable payload to be sent in the request body.
-        return_raw_response:
-            When ``True`` the raw :class:`requests.Response` is returned
-            without invoking ``EndpointWithHttpRequestI.return_http_response``.
-        headers:
-            Optional HTTP headers; ``Content‑Type`` and ``Authorization``
-            are added automatically when appropriate.
-
-        Returns
-        -------
-        dict | Response | None
-            Parsed response (via ``return_http_response``) or the raw
-            ``Response`` when ``return_raw_response`` is ``True``.
-
-        Raises
-        ------
-        RuntimeError
-            If the underlying ``requests.post`` call fails.
         """
         try:
             response = requests.post(
@@ -380,25 +329,6 @@ class HttpRequestExecutor:
     ) -> Optional[Dict[str, Any]]:
         """
         Issue a ``GET`` request with query parameters.
-
-        Parameters
-        ----------
-        ep_url:
-            Destination URL.
-        params:
-            Mapping of query string parameters.
-        headers:
-            Optional HTTP headers; authentication is added automatically.
-
-        Returns
-        -------
-        dict | None
-            Parsed JSON response as processed by the endpoint.
-
-        Raises
-        ------
-        RuntimeError
-            If the underlying ``requests.get`` call raises an exception.
         """
         try:
             response = requests.get(

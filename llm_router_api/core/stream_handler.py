@@ -51,8 +51,8 @@ class StreamHandler:
     def _force_iter_openai(force_text: str, api_model_provider) -> Iterator[bytes]:
         """
         Generates a single forced chunk followed by a DONE marker for
-        OpenAI-style (SSE) streams. This format is also compatible with
-        LM Studio's OpenAI-compatible API.
+        OpenAI‑style (SSE) streams.  This format is also compatible with
+        LM Studio's OpenAI‑compatible API.
         """
         base_chunk = {
             "id": "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
@@ -79,7 +79,7 @@ class StreamHandler:
         self, force_text: str, api_model_provider
     ) -> Iterator[bytes]:
         """
-        Generates forced chunks for Ollama-style NDJSON streams.
+        Generates forced chunks for Ollama‑style NDJSON streams.
         """
 
         def _iter() -> Iterator[bytes]:
@@ -108,9 +108,10 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        OpenAI-style streaming (SSE) – returns the raw SSE bytes unchanged.
+        OpenAI‑style streaming (SSE) – returns the raw SSE bytes unchanged.
 
-        Note: This is also suitable for LM Studio when using its OpenAI-compatible API.
+        Note: This is also suitable for LM Studio when using its
+        OpenAI‑compatible API.
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -118,7 +119,6 @@ class StreamHandler:
             ):
                 return self._force_iter_openai(force_text, api_model_provider)
 
-        # Ensure we accept an SSE format
         headers["Accept"] = "text/event-stream"
 
         def _iter() -> Iterator[bytes]:
@@ -214,9 +214,9 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an OpenAI-style (SSE) stream to Ollama NDJSON.
+        Convert an OpenAI‑style (SSE) stream to Ollama NDJSON.
 
-        This also covers: LM Studio (OpenAI-compatible) -> Ollama.
+        This also covers: LM Studio (OpenAI‑compatible) → Ollama.
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -269,10 +269,10 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an Ollama NDJSON stream to OpenAI-compatible SSE.
+        Convert an Ollama NDJSON stream to OpenAI‑compatible SSE.
 
-        This enables: Ollama -> OpenAI endpoint and Ollama -> LM Studio
-        (because LM Studio expects OpenAI-compatible SSE).
+        This enables: Ollama → OpenAI endpoint and Ollama → LM Studio
+        (because LM Studio expects OpenAI‑compatible SSE).
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -373,15 +373,14 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an OpenAI-compatible SSE stream (e.g. vLLM) into LM Studio's *native*
+        Convert an OpenAI‑compatible SSE stream (e.g. vLLM) into LM Studio's *native*
         SSE chunk shape.
 
-        Key differences we normalize:
-        - LM Studio usually includes `system_fingerprint`
-        - LM Studio sends `delta.role="assistant"` in the first emitted chunk
-        - Keep only the fields LM Studio expects (but do NOT break SSE framing)
+        Key differences we normalise:
+        - LM Studio usually includes ``system_fingerprint``
+        - LM Studio sends ``delta.role="assistant"`` in the first emitted chunk
+        - Keep only the fields LM Studio expects (but do **not** break SSE framing)
         """
-
         if force_text is not None:
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
@@ -397,8 +396,6 @@ class StreamHandler:
         )
 
         def _iter() -> Iterator[bytes]:
-            # We want stable metadata across chunks
-            # (LM Studio tends to keep it stable)
             stable_id: Optional[str] = None
             stable_created: Optional[int] = None
             stable_model: Optional[str] = None
@@ -461,18 +458,17 @@ class StreamHandler:
                             "finish_reason": ch.get("finish_reason", None),
                         }
 
-                        # Normalize delta shape
+                        # Normalise delta shape
                         if not isinstance(new_choice["delta"], dict):
                             new_choice["delta"] = {}
 
-                        # LM Studio typically expects a role
-                        # on the first emitted chunk
+                        # LM Studio expects a role on the first emitted chunk
                         if not role_sent:
                             if "role" not in new_choice["delta"]:
                                 new_choice["delta"]["role"] = "assistant"
                             role_sent = True
 
-                        # Allow only role/content in delta (LM Studio-like)
+                        # Keep only role/content
                         allowed_delta = {}
                         if "role" in new_choice["delta"]:
                             allowed_delta["role"] = new_choice["delta"]["role"]
@@ -514,22 +510,17 @@ class StreamHandler:
 
                     with resp:
                         resp.raise_for_status()
-
-                        # SSE: we read line-by-line; each event is on a `data:` line,
-                        # separated by blank lines. iter_lines() is perfect for that.
                         for raw_line in resp.iter_lines(decode_unicode=False):
                             if not raw_line:
                                 continue
-
                             line = raw_line.strip()
 
-                            # Pass through anything that's
-                            # not a data line as an SSE event
+                            # Pass‑through non‑data lines unchanged
                             if not line.startswith(b"data:"):
                                 yield b"data: " + line + b"\n\n"
                                 continue
 
-                            data = line[5:].strip()  # remove leading b"data:"
+                            data = line[5:].strip()
                             if data == b"[DONE]":
                                 yield b"data: [DONE]\n\n"
                                 continue
@@ -539,8 +530,6 @@ class StreamHandler:
                                     data.decode("utf-8", errors="replace")
                                 )
                             except Exception:
-                                # If we can't parse it, forward the original
-                                # event as-is (still valid SSE)
                                 yield b"data: " + data + b"\n\n"
                                 continue
 
@@ -564,12 +553,12 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Convert an Ollama NDJSON stream into LMStudio’s native SSE format.
+        Convert an Ollama NDJSON stream into LM Studio’s native SSE format.
 
-        LM Studio’s native format is *very close* to OpenAI SSE, but in practice:
-        - it typically includes `system_fingerprint`
-        - it often emits `delta.role="assistant"` on the first chunk
-        - Metadata like id/created/model stays stable across chunks
+        LM Studio’s native format is *very close* to OpenAI SSE, but in practice:
+        - it typically includes ``system_fingerprint``
+        - it often emits ``delta.role="assistant"`` on the first chunk
+        - Metadata like ``id``/``created``/``model`` stays stable across chunks
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -597,8 +586,6 @@ class StreamHandler:
                     delta: Dict[str, Any], finish_reason: Optional[str]
                 ) -> bytes:
                     nonlocal role_sent
-
-                    # Ensure role is present on the first event LM Studio sees
                     if not role_sent:
                         if "role" not in delta:
                             delta = {"role": "assistant", **delta}
@@ -643,23 +630,18 @@ class StreamHandler:
 
                     with ctx as resp:
                         resp.raise_for_status()
-
                         for raw_line in resp.iter_lines(decode_unicode=False):
                             if not raw_line:
                                 continue
-
                             try:
                                 ollama_obj = json.loads(
                                     raw_line.decode("utf-8", errors="replace")
                                 )
                             except Exception:
-                                # If it's not JSON, forward
-                                # it as a best-effort SSE data event
                                 yield b"data: " + raw_line + b"\n\n"
                                 continue
 
-                            # Ollama "done" -> LM Studio stop + DONE
-                            if ollama_obj.get("done") is True:
+                            if ollama_obj.get("done"):
                                 yield _lmstudio_event(delta={}, finish_reason="stop")
                                 yield b"data: [DONE]\n\n"
                                 return
@@ -690,7 +672,7 @@ class StreamHandler:
         api_model_provider=None,
     ) -> bytes:
         """
-        Build a single Ollama-compatible NDJSON line.
+        Build a single Ollama‑compatible NDJSON line.
         """
         obj = {
             "model": api_model_provider.model_path or api_model_provider.name,
@@ -719,7 +701,7 @@ class StreamHandler:
         self, response: Response, api_model_provider
     ) -> Iterator[bytes]:
         """
-        Convert an OpenAI-style SSE/NDJSON stream into Ollama NDJSON chunks.
+        Convert an OpenAI‑style SSE/NDJSON stream into Ollama NDJSON chunks.
         """
         sent_done = False
         usage_data = None
@@ -836,7 +818,7 @@ class StreamHandler:
             )
 
     # --------------------------------------------------------------------- #
-    # Stream-type resolution – moved from EndpointWithHttpRequestI
+    # Stream‑type resolution – moved from EndpointWithHttpRequestI
     # --------------------------------------------------------------------- #
 
     @staticmethod
@@ -889,13 +871,11 @@ class StreamHandler:
         is_ollama_to_openai = False
         is_ollama = False
         is_openai = False
-        # New native LMStudio conversion flags
         is_openai_to_lmstudio = False
         is_ollama_to_lmstudio = False
 
-        # -----------------------------------------------------------------
+        # -------------------------------------------------
         # Passthrough types
-        # Ollama -> Ollama
         if endpoint_wants_ollama and provider_is_ollama:
             is_ollama = True
             return (
@@ -906,7 +886,6 @@ class StreamHandler:
                 is_openai_to_lmstudio,
                 is_ollama_to_lmstudio,
             )
-        # OpenAI-like -> OpenAI-like
         if endpoint_wants_openai and provider_is_openai:
             is_openai = True
             return (
@@ -917,7 +896,6 @@ class StreamHandler:
                 is_openai_to_lmstudio,
                 is_ollama_to_lmstudio,
             )
-        # LMStudio -> LMStudio
         if endpoint_wants_lmstudio and provider_is_lmstudio:
             is_openai = True
             return (
@@ -929,9 +907,8 @@ class StreamHandler:
                 is_ollama_to_lmstudio,
             )
 
-        # -----------------------------------------------------------------
+        # -------------------------------------------------
         # Conversions
-        # OpenAI-like -> Ollama
         if endpoint_wants_ollama and provider_is_openai:
             is_openai_to_ollama = True
             return (
@@ -942,7 +919,6 @@ class StreamHandler:
                 is_openai_to_lmstudio,
                 is_ollama_to_lmstudio,
             )
-        # LMStudio -> Ollama
         if endpoint_wants_ollama and provider_is_lmstudio:
             is_openai_to_ollama = True
             return (
@@ -953,7 +929,6 @@ class StreamHandler:
                 is_openai_to_lmstudio,
                 is_ollama_to_lmstudio,
             )
-        # Ollama -> OpenAI-like
         if endpoint_wants_openai and provider_is_ollama:
             is_ollama_to_openai = True
             return (
@@ -964,7 +939,6 @@ class StreamHandler:
                 is_openai_to_lmstudio,
                 is_ollama_to_lmstudio,
             )
-        # LMStudio -> OpenAI-like
         if endpoint_wants_openai and provider_is_lmstudio:
             is_openai = True
             return (
@@ -976,10 +950,9 @@ class StreamHandler:
                 is_ollama_to_lmstudio,
             )
 
-        # -----------------------------------------------------------------
-        # New native LMStudio conversion checks (must come after the
+        # -------------------------------------------------
+        # Native LMStudio conversion checks (must come after the
         # passthrough branches above)
-        # OpenAI‑compatible → LMStudio (native)
         if endpoint_wants_lmstudio and provider_is_openai:
             is_openai_to_lmstudio = True
             return (
@@ -990,7 +963,6 @@ class StreamHandler:
                 is_openai_to_lmstudio,
                 is_ollama_to_lmstudio,
             )
-        # Ollama → LMStudio (native)
         if endpoint_wants_lmstudio and provider_is_ollama:
             is_ollama_to_lmstudio = True
             return (
@@ -1001,7 +973,7 @@ class StreamHandler:
                 is_openai_to_lmstudio,
                 is_ollama_to_lmstudio,
             )
-        # default: no special conversion flags
+        # Default: no special conversion flags
         return (
             is_openai_to_ollama,
             is_ollama_to_openai,
