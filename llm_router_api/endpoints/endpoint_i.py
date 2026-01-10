@@ -1362,6 +1362,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     is_openai_to_lmstudio,
                     is_ollama_to_lmstudio,
                     is_lmstudio_passthrough,
+                    is_anthropic_to_openai,
+                    is_openai_to_anthropic,
+                    is_anthropic,
                 ) = self._http_executor.stream_handler.resolve_stream_type(
                     endpoint_ep_types=self._ep_types_str,
                     api_model_provider=api_model_provider,
@@ -1378,6 +1381,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     is_openai_to_lmstudio=is_openai_to_lmstudio,
                     is_ollama_to_lmstudio=is_ollama_to_lmstudio,
                     is_lmstudio=is_lmstudio_passthrough,
+                    is_anthropic_to_openai=is_anthropic_to_openai,
+                    is_openai_to_anthropic=is_openai_to_anthropic,
+                    is_anthropic=is_anthropic,
                     api_model_provider=api_model_provider,
                 )
 
@@ -1722,5 +1728,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if model_provider.api_type in ["vllm"]:
             if "max_tokens" in params and params["max_tokens"] < 1:
                 params.pop("max_tokens", None)
+
+        if model_provider.api_type == "anthropic":
+            from llm_router_api.core.api_types.anthropic import AnthropicConverters
+
+            params = AnthropicConverters.FromOpenAI.convert_payload(params)
 
         return params

@@ -115,6 +115,9 @@ class HttpRequestExecutor:
         is_openai_to_lmstudio: bool = False,
         is_ollama_to_lmstudio: bool = False,
         is_lmstudio: bool = False,
+        is_anthropic_to_openai: bool = False,
+        is_openai_to_anthropic: bool = False,
+        is_anthropic: bool = False,
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
@@ -123,6 +126,7 @@ class HttpRequestExecutor:
         Conventions:
         - ``openai`` means OpenAI‑style SSE streaming (also used by LM Studio).
         - ``ollama`` means Ollama NDJSON streaming.
+        - ``anthropic`` means Anthropic Messages SSE streaming.
         - ``*_to_*`` flags indicate stream conversion direction.
         - ``is_lmstudio_passthrough`` means the provider and endpoint are both
           LM Studio, so we simply forward the raw stream (identical to the
@@ -137,6 +141,9 @@ class HttpRequestExecutor:
             f"  * is_ollama_to_openai={is_ollama_to_openai}\n"
             f"  * is_ollama_to_lmstudio={is_ollama_to_lmstudio}\n"
             f"  * is_lmstudio_passthrough={is_lmstudio}\n"
+            f"  * is_anthropic_to_openai={is_anthropic_to_openai}\n"
+            f"  * is_openai_to_anthropic={is_openai_to_anthropic}\n"
+            f"  * is_anthropic={is_anthropic}\n"
         )
 
         if force_text:
@@ -151,7 +158,7 @@ class HttpRequestExecutor:
                     api_model_provider=api_model_provider,
                     force_text=force_text,
                 )
-            elif is_openai or is_ollama_to_openai:
+            elif is_openai or is_ollama_to_openai or is_anthropic_to_openai:
                 return self._stream_handler.stream_openai(
                     url="",
                     payload=params,
@@ -173,6 +180,7 @@ class HttpRequestExecutor:
                     api_model_provider=api_model_provider,
                     force_text=force_text,
                 )
+            # Add anthropic force_text if needed
 
         # Exactly one mode must be selected
         selected = [
@@ -183,13 +191,17 @@ class HttpRequestExecutor:
             is_openai_to_lmstudio,
             is_ollama_to_lmstudio,
             is_lmstudio,
+            is_anthropic_to_openai,
+            is_openai_to_anthropic,
+            is_anthropic,
         ]
         if sum(1 for x in selected if x) != 1:
             raise RuntimeError(
                 "Exactly one streaming mode must be selected: "
                 "is_ollama | is_openai | is_openai_to_ollama | "
                 "is_ollama_to_openai | is_openai_to_lmstudio | "
-                "is_ollama_to_lmstudio | is_lmstudio_passthrough"
+                "is_ollama_to_lmstudio | is_lmstudio_passthrough | "
+                "is_anthropic_to_openai | is_openai_to_anthropic | is_anthropic"
             )
 
         # common preparation
@@ -276,6 +288,30 @@ class HttpRequestExecutor:
             # LMStudio ↔ LMStudio – the stream format is already OpenAI‑compatible,
             # so we can forward it unchanged.
             return self._stream_handler.stream_lmstudio(
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
+                endpoint=self._endpoint,
+                api_model_provider=api_model_provider,
+                force_text=force_text,
+            )
+
+        if is_anthropic_to_openai:
+            return self._stream_handler.stream_anthropic_to_openai(
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
+                endpoint=self._endpoint,
+                api_model_provider=api_model_provider,
+                force_text=force_text,
+            )
+
+        if is_anthropic:
+            return self._stream_handler.stream_anthropic(
                 url=full_url,
                 payload=params,
                 method=method,

@@ -31,6 +31,9 @@ class StreamConversion(Enum):
     OPENAI_TO_LMSTUDIO = auto()
     OLLAMA_TO_LMSTUDIO = auto()
     LMSTUDIO_PASSTHROUGH = auto()  # <-- new flag for LM Studio → LM Studio
+    ANTHROPIC_TO_OPENAI = auto()
+    OPENAI_TO_ANTHROPIC = auto()
+    ANTHROPIC = auto()
 
 
 class StreamHandler:
@@ -303,6 +306,130 @@ class StreamHandler:
             return _iter()
 
         # Re‑use the generic passthrough logic
+        return self._passthrough_generator(
+            method=method,
+            url=url,
+            payload=payload,
+            headers=headers,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            options=options,
+        )
+
+    def stream_anthropic(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Optional[Dict[str, Any]],
+        endpoint,
+        api_model_provider,
+        force_text: Optional[str] = None,
+    ) -> Iterator[bytes]:
+        """
+        Anthropic-native streaming – returns the raw SSE bytes unchanged.
+        """
+        # Anthropic doesn't have a simple 'force_text' iteration yet, but we can add it if needed
+        headers["Accept"] = "text/event-stream"
+        headers["anthropic-version"] = "2023-06-01"
+
+        return self._passthrough_generator(
+            method=method,
+            url=url,
+            payload=payload,
+            headers=headers,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            options=options,
+        )
+
+    def stream_anthropic_to_openai(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Optional[Dict[str, Any]],
+        endpoint,
+        api_model_provider,
+        force_text: Optional[str] = None,
+    ) -> Iterator[bytes]:
+        """
+        Convert Anthropic SSE stream to OpenAI-compatible SSE stream.
+        """
+        headers["Accept"] = "text/event-stream"
+        headers["anthropic-version"] = "2023-06-01"
+
+        def _iter() -> Iterator[bytes]:
+            with self._model_unsetter(
+                endpoint, payload, api_model_provider, options
+            ):
+                try:
+                    response = requests.request(
+                        method=method,
+                        url=url,
+                        json=payload,
+                        headers=headers,
+                        stream=True,
+                    )
+                    response.raise_for_status()
+
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+
+                        line_str = line.decode("utf-8")
+                        if line_str.startswith("event: "):
+                            continue
+
+                        if line_str.startswith("data: "):
+                            data_str = line_str[6:]
+                            if data_str == "[DONE]":
+                                yield b"data: [DONE]\n\n"
+                                continue
+
+                            try:
+                                chunk = json.loads(data_str)
+                                from llm_router_api.core.api_types.openai import (
+                                    OpenAIConverters,
+                                )
+
+                                converted = OpenAIConverters.FromAnthropic.convert_stream_chunk(
+                                    chunk
+                                )
+                                if converted:
+                                    yield f"data: {json.dumps(converted)}\n\n".encode(
+                                        "utf-8"
+                                    )
+                            except json.JSONDecodeError:
+                                continue
+
+                except requests.RequestException as exc:
+                    err = {"error": str(exc)}
+                    yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+
+        return _iter()
+
+    def stream_openai_to_anthropic(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Optional[Dict[str, Any]],
+        endpoint,
+        api_model_provider,
+        force_text: Optional[str] = None,
+    ) -> Iterator[bytes]:
+        """
+        Convert OpenAI SSE stream to Anthropic-compatible SSE stream.
+        """
+        # Note: Implementation of OpenAI -> Anthropic stream conversion is more complex
+        # because OpenAI doesn't map 1:1 to Anthropic events.
+        # For now, we use passthrough if possible, or raise error if conversion is strictly required.
+        # In most cases, we want to go TO OpenAI format.
+        headers["Accept"] = "text/event-stream"
         return self._passthrough_generator(
             method=method,
             url=url,
@@ -958,7 +1085,7 @@ class StreamHandler:
     @staticmethod
     def resolve_stream_type(
         endpoint_ep_types: list, api_model_provider
-    ) -> tuple[bool, bool, bool, bool, bool, bool, bool]:
+    ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool, bool, bool]:
         """
         Determine which streaming conversion should be applied.
 
@@ -966,7 +1093,9 @@ class StreamHandler:
         (is_openai_to_ollama, is_ollama_to_openai,
          is_ollama, is_openai,
          is_openai_to_lmstudio, is_ollama_to_lmstudio,
-         is_lmstudio_passthrough)
+         is_lmstudio_passthrough,
+         is_anthropic_to_openai, is_openai_to_anthropic,
+         is_anthropic)
         """
         provider_type = str(api_model_provider.api_type)
 
@@ -974,6 +1103,7 @@ class StreamHandler:
         # Determine what the endpoint expects
         # ------------------------------------#
         endpoint_wants_ollama = "ollama" in endpoint_ep_types
+        endpoint_wants_anthropic = "anthropic" in endpoint_ep_types
         endpoint_wants_lmstudio = endpoint_ep_types == ["lmstudio"]
         if endpoint_wants_lmstudio:
             endpoint_wants_openai = False
@@ -987,9 +1117,10 @@ class StreamHandler:
         # ------------------------------------#
         provider_is_ollama = provider_type == "ollama"
         provider_is_lmstudio = provider_type == "lmstudio"
+        provider_is_anthropic = provider_type == "anthropic"
         provider_is_openai = (
             provider_type in OPENAI_COMPATIBLE_PROVIDERS
-            if not provider_is_lmstudio
+            if not provider_is_lmstudio and not provider_is_anthropic
             else False
         )
 
@@ -1004,6 +1135,9 @@ class StreamHandler:
             StreamConversion.OPENAI_TO_LMSTUDIO: False,
             StreamConversion.OLLAMA_TO_LMSTUDIO: False,
             StreamConversion.LMSTUDIO_PASSTHROUGH: False,
+            StreamConversion.ANTHROPIC_TO_OPENAI: False,
+            StreamConversion.OPENAI_TO_ANTHROPIC: False,
+            StreamConversion.ANTHROPIC: False,
         }
 
         # ------------------------------------#
@@ -1011,6 +1145,8 @@ class StreamHandler:
         # ------------------------------------#
         if endpoint_wants_ollama and provider_is_ollama:
             flags[StreamConversion.OLLAMA] = True
+        elif endpoint_wants_anthropic and provider_is_anthropic:
+            flags[StreamConversion.ANTHROPIC] = True
         elif endpoint_wants_openai and provider_is_openai:
             flags[StreamConversion.OPENAI] = True
         elif endpoint_wants_lmstudio and provider_is_lmstudio:
@@ -1024,10 +1160,17 @@ class StreamHandler:
             flags[StreamConversion.OPENAI_TO_OLLAMA] = True
         elif endpoint_wants_ollama and provider_is_lmstudio:
             flags[StreamConversion.OPENAI_TO_OLLAMA] = True
+        elif endpoint_wants_ollama and provider_is_anthropic:
+            # Maybe implement ANTHROPIC_TO_OLLAMA if needed, for now use openai as middleman or fail
+            pass
         elif endpoint_wants_openai and provider_is_ollama:
             flags[StreamConversion.OLLAMA_TO_OPENAI] = True
         elif endpoint_wants_openai and provider_is_lmstudio:
             flags[StreamConversion.OPENAI] = True
+        elif endpoint_wants_openai and provider_is_anthropic:
+            flags[StreamConversion.ANTHROPIC_TO_OPENAI] = True
+        elif endpoint_wants_anthropic and provider_is_openai:
+            flags[StreamConversion.OPENAI_TO_ANTHROPIC] = True
 
         # ------------------------------------#
         # Native LMStudio conversion checks (must be after passthrough)
@@ -1048,4 +1191,7 @@ class StreamHandler:
             flags[StreamConversion.OPENAI_TO_LMSTUDIO],
             flags[StreamConversion.OLLAMA_TO_LMSTUDIO],
             flags[StreamConversion.LMSTUDIO_PASSTHROUGH],
+            flags[StreamConversion.ANTHROPIC_TO_OPENAI],
+            flags[StreamConversion.OPENAI_TO_ANTHROPIC],
+            flags[StreamConversion.ANTHROPIC],
         )

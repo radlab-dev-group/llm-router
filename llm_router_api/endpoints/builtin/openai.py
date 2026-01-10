@@ -16,6 +16,7 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
 from llm_router_api.core.api_types.openai import OpenAIConverters
+from llm_router_api.core.api_types.anthropic import AnthropicConverters
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
 from llm_router_api.endpoints.passthrough import PassthroughI
@@ -43,10 +44,13 @@ class OpenAIResponseHandler(PassthroughI, abc.ABC):
             A dictionary ready to be returned to the client in OpenAI‑compatible
             shape.
         """
-        response = response.json()
-        if "message" in response:
-            return OpenAIConverters.FromOllama.convert(response=response)
-        return response
+        resp_json = response.json()
+        if "message" in resp_json:
+            return OpenAIConverters.FromOllama.convert(response=resp_json)
+        if "content" in resp_json and "role" in resp_json and "id" in resp_json:
+            # Anthropic response
+            return OpenAIConverters.FromAnthropic.convert_response(resp_json)
+        return resp_json
 
 
 class OpenAIResponsesHandler(OpenAIResponseHandler):
