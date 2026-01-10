@@ -114,7 +114,7 @@ class HttpRequestExecutor:
         is_openai: bool = False,
         is_openai_to_lmstudio: bool = False,
         is_ollama_to_lmstudio: bool = False,
-        is_lmstudio_passthrough: bool = False,
+        is_lmstudio: bool = False,
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
@@ -136,8 +136,43 @@ class HttpRequestExecutor:
             f"  * is_openai_to_lmstudio={is_openai_to_lmstudio}\n"
             f"  * is_ollama_to_openai={is_ollama_to_openai}\n"
             f"  * is_ollama_to_lmstudio={is_ollama_to_lmstudio}\n"
-            f"  * is_lmstudio_passthrough={is_lmstudio_passthrough}\n"
+            f"  * is_lmstudio_passthrough={is_lmstudio}\n"
         )
+
+        if force_text:
+            if is_ollama or is_openai_to_ollama:
+                return self._stream_handler.stream_ollama(
+                    url="",
+                    payload=params,
+                    method="",
+                    headers={},
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            elif is_openai or is_ollama_to_openai:
+                return self._stream_handler.stream_openai(
+                    url="",
+                    payload=params,
+                    method="",
+                    headers={},
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            elif is_lmstudio or is_openai_to_lmstudio or is_ollama_to_lmstudio:
+                return self._stream_handler.stream_lmstudio(
+                    url="",
+                    payload=params,
+                    method="",
+                    headers={},
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
 
         # Exactly one mode must be selected
         selected = [
@@ -147,7 +182,7 @@ class HttpRequestExecutor:
             is_ollama_to_openai,
             is_openai_to_lmstudio,
             is_ollama_to_lmstudio,
-            is_lmstudio_passthrough,
+            is_lmstudio,
         ]
         if sum(1 for x in selected if x) != 1:
             raise RuntimeError(
@@ -237,10 +272,10 @@ class HttpRequestExecutor:
                 force_text=force_text,
             )
 
-        if is_lmstudio_passthrough:
+        if is_lmstudio:
             # LMStudio ↔ LMStudio – the stream format is already OpenAI‑compatible,
             # so we can forward it unchanged.
-            return self._stream_handler.stream_openai(
+            return self._stream_handler.stream_lmstudio(
                 url=full_url,
                 payload=params,
                 method=method,

@@ -90,6 +90,61 @@ class StreamHandler:
 
         return _iter()
 
+    @staticmethod
+    def _force_iter_lmstudio(force_text: str, api_model_provider) -> Iterator[bytes]:
+        """
+        Generates forced chunks in LM Studio *native* SSE format:
+        - first chunk includes delta.role="assistant" and delta.content
+        - final chunk has finish_reason="stop" and empty delta
+        - then emits [DONE]
+        """
+        stable_id = "chatcmpl-" + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        stable_created = int(datetime.datetime.now().timestamp())
+        stable_model = api_model_provider.model_path or api_model_provider.name
+
+        first_chunk = {
+            "id": stable_id,
+            "object": "chat.completion.chunk",
+            "created": stable_created,
+            "model": stable_model,
+            "system_fingerprint": stable_model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": force_text},
+                    "logprobs": None,
+                    "finish_reason": None,
+                }
+            ],
+        }
+
+        final_chunk = {
+            "id": stable_id,
+            "object": "chat.completion.chunk",
+            "created": stable_created,
+            "model": stable_model,
+            "system_fingerprint": stable_model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {},
+                    "logprobs": None,
+                    "finish_reason": "stop",
+                }
+            ],
+        }
+
+        def _iter() -> Iterator[bytes]:
+            yield (
+                "data: " + json.dumps(first_chunk, ensure_ascii=False) + "\n\n"
+            ).encode("utf-8")
+            yield (
+                "data: " + json.dumps(final_chunk, ensure_ascii=False) + "\n\n"
+            ).encode("utf-8")
+            yield b"data: [DONE]\n\n"
+
+        return _iter()
+
     def _force_iter_ollama(
         self, force_text: str, api_model_provider
     ) -> Iterator[bytes]:
@@ -182,6 +237,43 @@ class StreamHandler:
             endpoint=endpoint,
             api_model_provider=api_model_provider,
             options=options,
+        )
+
+    def stream_lmstudio(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Optional[Dict[str, Any]],
+        endpoint,
+        api_model_provider,
+        force_text: Optional[str] = None,
+    ) -> Iterator[bytes]:
+        """
+        LMStudio-native streaming (SSE) – returns the raw SSE bytes unchanged.
+        """
+        if force_text is not None:
+
+            def _iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_lmstudio(
+                        force_text, api_model_provider
+                    )
+
+            return _iter()
+
+        return self.stream_openai(
+            url=url,
+            payload=payload,
+            method=method,
+            headers=headers,
+            options=options,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            force_text=force_text,
         )
 
     def stream_ollama(

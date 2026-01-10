@@ -1251,7 +1251,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         is_openai=is_openai,
                         is_openai_to_lmstudio=is_openai_to_lmstudio,
                         is_ollama_to_lmstudio=is_ollama_to_lmstudio,
-                        is_lmstudio_passthrough=is_lmstudio_passthrough,
+                        is_lmstudio=is_lmstudio_passthrough,
                         api_model_provider=api_model_provider,
                         force_text="Content blocked by guardrail. "
                         "Reason: Not safe content!",
@@ -1377,7 +1377,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     is_openai=is_openai,
                     is_openai_to_lmstudio=is_openai_to_lmstudio,
                     is_ollama_to_lmstudio=is_ollama_to_lmstudio,
-                    is_lmstudio_passthrough=is_lmstudio_passthrough,
+                    is_lmstudio=is_lmstudio_passthrough,
                     api_model_provider=api_model_provider,
                 )
 
