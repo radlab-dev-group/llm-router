@@ -398,33 +398,36 @@ class StreamHandler:
         )
 
         def _iter() -> Iterator[bytes]:
-            # We want stable metadata across chunks (LM Studio tends to keep it stable)
+            # We want stable metadata across chunks
+            # (LM Studio tends to keep it stable)
             stable_id: Optional[str] = None
             stable_created: Optional[int] = None
             stable_model: Optional[str] = None
             role_sent = False
 
-            def _as_lmstudio_sse(event_obj: Dict[str, Any]) -> bytes:
+            def _as_lmstudio_sse(event_obj_i: Dict[str, Any]) -> bytes:
                 nonlocal stable_id, stable_created, stable_model, role_sent
 
                 # Capture stable metadata from the first parsable chunk
-                if stable_id is None and isinstance(event_obj.get("id"), str):
-                    stable_id = event_obj["id"]
+                if stable_id is None and isinstance(event_obj_i.get("id"), str):
+                    stable_id = event_obj_i["id"]
                 if stable_created is None and isinstance(
-                    event_obj.get("created"), int
+                    event_obj_i.get("created"), int
                 ):
-                    stable_created = event_obj["created"]
-                if stable_model is None and isinstance(event_obj.get("model"), str):
-                    stable_model = event_obj["model"]
+                    stable_created = event_obj_i["created"]
+                if stable_model is None and isinstance(
+                    event_obj_i.get("model"), str
+                ):
+                    stable_model = event_obj_i["model"]
 
                 out: Dict[str, Any] = {
                     "id": stable_id
-                    or event_obj.get("id")
+                    or event_obj_i.get("id")
                     or (
                         "chatcmpl-"
                         + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
                     ),
-                    "object": event_obj.get("object") or "chat.completion.chunk",
+                    "object": event_obj_i.get("object") or "chat.completion.chunk",
                     "created": (
                         stable_created
                         if stable_created is not None
@@ -437,7 +440,7 @@ class StreamHandler:
                     "choices": [],
                 }
 
-                choices = event_obj.get("choices") or []
+                choices = event_obj_i.get("choices") or []
                 if not isinstance(choices, list) or not choices:
                     out["choices"] = [
                         {
@@ -463,7 +466,8 @@ class StreamHandler:
                         if not isinstance(new_choice["delta"], dict):
                             new_choice["delta"] = {}
 
-                        # LM Studio typically expects role on the first emitted chunk
+                        # LM Studio typically expects a role
+                        # on the first emitted chunk
                         if not role_sent:
                             if "role" not in new_choice["delta"]:
                                 new_choice["delta"]["role"] = "assistant"
@@ -520,7 +524,8 @@ class StreamHandler:
 
                             line = raw_line.strip()
 
-                            # Pass through anything that's not a data line as an SSE event
+                            # Pass through anything that's
+                            # not a data line as an SSE event
                             if not line.startswith(b"data:"):
                                 yield b"data: " + line + b"\n\n"
                                 continue
@@ -535,7 +540,8 @@ class StreamHandler:
                                     data.decode("utf-8", errors="replace")
                                 )
                             except Exception:
-                                # If we can't parse it, forward the original event as-is (still valid SSE)
+                                # If we can't parse it, forward the original
+                                # event as-is (still valid SSE)
                                 yield b"data: " + data + b"\n\n"
                                 continue
 
@@ -561,9 +567,10 @@ class StreamHandler:
         """
         Convert an Ollama NDJSON stream into LMStudio’s native SSE format.
 
-        This is essentially the same conversion performed by
-        ``stream_ollama_to_openai``, because LMStudio’s native format
-        matches the OpenAI‑compatible SSE layout.
+        LM Studio’s native format is *very close* to OpenAI SSE, but in practice:
+        - it typically includes `system_fingerprint`
+        - it often emits `delta.role="assistant"` on the first chunk
+        - Metadata like id/created/model stays stable across chunks
         """
         if force_text is not None:
             with self._model_unsetter(
@@ -571,8 +578,6 @@ class StreamHandler:
             ):
                 return self._force_iter_openai(force_text, api_model_provider)
 
-        # LMStudio expects SSE, so we keep the usual JSON‑NDJSON request
-        # headers unchanged; the conversion logic below builds proper SSE chunks.
         def _iter() -> Iterator[bytes]:
             with self._model_unsetter(
                 endpoint=endpoint,
@@ -580,6 +585,45 @@ class StreamHandler:
                 api_model_provider=api_model_provider,
                 options=options,
             ):
+                stable_id = "chatcmpl-" + datetime.datetime.now().strftime(
+                    "%Y%m%d%H%M%S"
+                )
+                stable_created = int(datetime.datetime.now().timestamp())
+                stable_model = (
+                    api_model_provider.model_path or api_model_provider.name
+                )
+                role_sent = False
+
+                def _lmstudio_event(
+                    delta: Dict[str, Any], finish_reason: Optional[str]
+                ) -> bytes:
+                    nonlocal role_sent
+
+                    # Ensure role is present on the first event LM Studio sees
+                    if not role_sent:
+                        if "role" not in delta:
+                            delta = {"role": "assistant", **delta}
+                        role_sent = True
+
+                    obj = {
+                        "id": stable_id,
+                        "object": "chat.completion.chunk",
+                        "created": stable_created,
+                        "model": stable_model,
+                        "system_fingerprint": stable_model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": delta,
+                                "logprobs": None,
+                                "finish_reason": finish_reason,
+                            }
+                        ],
+                    }
+                    return (
+                        "data: " + json.dumps(obj, ensure_ascii=False) + "\n\n"
+                    ).encode("utf-8")
+
                 try:
                     if method == "POST":
                         ctx = requests.post(
@@ -597,57 +641,38 @@ class StreamHandler:
                             stream=True,
                             headers=headers,
                         )
+
                     with ctx as resp:
                         resp.raise_for_status()
+
                         for raw_line in resp.iter_lines(decode_unicode=False):
                             if not raw_line:
                                 continue
+
                             try:
                                 ollama_obj = json.loads(
                                     raw_line.decode("utf-8", errors="replace")
                                 )
                             except Exception:
-                                # Forward unparseable line unchanged
-                                yield (raw_line + b"\n")
+                                # If it's not JSON, forward
+                                # it as a best-effort SSE data event
+                                yield b"data: " + raw_line + b"\n\n"
                                 continue
 
-                            # Build a base SSE chunk (same as in stream_ollama_to_openai)
-                            base = {
-                                "id": "chatcmpl-"
-                                + datetime.datetime.now().strftime("%Y%m%d%H%M%S"),
-                                "object": "chat.completion.chunk",
-                                "created": int(datetime.datetime.now().timestamp()),
-                                "model": api_model_provider.model_path
-                                or api_model_provider.name,
-                                "choices": [
-                                    {
-                                        "index": 0,
-                                        "delta": {},
-                                        "finish_reason": None,
-                                    }
-                                ],
-                            }
-
-                            if ollama_obj.get("done"):
-                                base["choices"][0]["finish_reason"] = "stop"
-                                yield (
-                                    "data: "
-                                    + json.dumps(base, ensure_ascii=False)
-                                    + "\n\n"
-                                ).encode("utf-8")
+                            # Ollama "done" -> LM Studio stop + DONE
+                            if ollama_obj.get("done") is True:
+                                yield _lmstudio_event(delta={}, finish_reason="stop")
                                 yield b"data: [DONE]\n\n"
-                                continue
+                                return
 
                             delta_text = ollama_obj.get("message", {}).get(
                                 "content", ""
                             )
                             if delta_text:
-                                base["choices"][0]["delta"] = {"content": delta_text}
-                                yield (
-                                    "data: "
-                                    + json.dumps(base, ensure_ascii=False)
-                                    + "\n\n"
-                                ).encode("utf-8")
+                                yield _lmstudio_event(
+                                    delta={"content": delta_text}, finish_reason=None
+                                )
+
                 except requests.RequestException as exc:
                     err = {"error": str(exc)}
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
