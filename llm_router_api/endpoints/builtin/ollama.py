@@ -24,6 +24,37 @@ from llm_router_api.endpoints.passthrough import PassthroughI
 from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI
 
 
+class OllamaEmbeddingsHandler(PassthroughI):
+    """
+    Embeddings endpoint that targets the ``/api/embed``
+    route of an Ollama‑compatible service.
+    """
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name="embed",
+        direct_return=False,
+    ):
+        """
+        Initialize the embed endpoint.
+        """
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            api_types=["ollama"],
+            direct_return=direct_return,
+            method="POST",
+        )
+
+
 class OllamaHomeHandler(EndpointWithHttpRequestI):
     """
     Endpoint that returns a list of available model tags from the Ollama
