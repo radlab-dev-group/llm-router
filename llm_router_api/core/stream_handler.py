@@ -133,7 +133,6 @@ class StreamHandler:
                         payload=payload,
                         headers=headers,
                     ):
-                        print(_ch)
                         yield _ch
                 except requests.RequestException as exc:
                     err = {"error": str(exc)}
