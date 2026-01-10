@@ -133,6 +133,7 @@ class StreamHandler:
                         payload=payload,
                         headers=headers,
                     ):
+                        print(_ch)
                         yield _ch
                 except requests.RequestException as exc:
                     err = {"error": str(exc)}
@@ -373,19 +374,21 @@ class StreamHandler:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Stream an OpenAI‑style SSE response **as‑is** to LMStudio.
+        Convert an OpenAI-compatible SSE stream (e.g. vLLM) into LM Studio's *native*
+        SSE chunk shape.
 
-        LMStudio’s native streaming endpoint expects the same Server‑Sent‑Events
-        format that the OpenAI API provides, so no conversion is required.
+        Key differences we normalize:
+        - LM Studio usually includes `system_fingerprint`
+        - LM Studio sends `delta.role="assistant"` in the first emitted chunk
+        - Keep only the fields LM Studio expects (but do NOT break SSE framing)
         """
+
         if force_text is not None:
-            # Forced‑chunk (useful for tests / UI “thinking” state)
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
             ):
                 return self._force_iter_openai(force_text, api_model_provider)
 
-        # ----- SSE‑specific request headers -----
         headers.update(
             {
                 "Accept": "text/event-stream",
@@ -395,63 +398,152 @@ class StreamHandler:
         )
 
         def _iter() -> Iterator[bytes]:
-            print(
-                f"stream_openai_to_lmstudio START – url={url} method={method} payload={payload}"
-            )
-            done_sent = False  # track whether the upstream sent [DONE]
+            # We want stable metadata across chunks (LM Studio tends to keep it stable)
+            stable_id: Optional[str] = None
+            stable_created: Optional[int] = None
+            stable_model: Optional[str] = None
+            role_sent = False
 
-            # -------------------------------------------------
-            # 1️⃣  Stream the upstream SSE inside the unsetter.
-            # -------------------------------------------------
+            def _as_lmstudio_sse(event_obj: Dict[str, Any]) -> bytes:
+                nonlocal stable_id, stable_created, stable_model, role_sent
+
+                # Capture stable metadata from the first parsable chunk
+                if stable_id is None and isinstance(event_obj.get("id"), str):
+                    stable_id = event_obj["id"]
+                if stable_created is None and isinstance(
+                    event_obj.get("created"), int
+                ):
+                    stable_created = event_obj["created"]
+                if stable_model is None and isinstance(event_obj.get("model"), str):
+                    stable_model = event_obj["model"]
+
+                out: Dict[str, Any] = {
+                    "id": stable_id
+                    or event_obj.get("id")
+                    or (
+                        "chatcmpl-"
+                        + datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+                    ),
+                    "object": event_obj.get("object") or "chat.completion.chunk",
+                    "created": (
+                        stable_created
+                        if stable_created is not None
+                        else int(datetime.datetime.now().timestamp())
+                    ),
+                    "model": stable_model
+                    or (api_model_provider.model_path or api_model_provider.name),
+                    "system_fingerprint": api_model_provider.model_path
+                    or api_model_provider.name,
+                    "choices": [],
+                }
+
+                choices = event_obj.get("choices") or []
+                if not isinstance(choices, list) or not choices:
+                    out["choices"] = [
+                        {
+                            "index": 0,
+                            "delta": {},
+                            "logprobs": None,
+                            "finish_reason": None,
+                        }
+                    ]
+                else:
+                    new_choices = []
+                    for ch in choices:
+                        if not isinstance(ch, dict):
+                            continue
+                        new_choice = {
+                            "index": ch.get("index", 0),
+                            "delta": ch.get("delta") or {},
+                            "logprobs": ch.get("logprobs", None),
+                            "finish_reason": ch.get("finish_reason", None),
+                        }
+
+                        # Normalize delta shape
+                        if not isinstance(new_choice["delta"], dict):
+                            new_choice["delta"] = {}
+
+                        # LM Studio typically expects role on the first emitted chunk
+                        if not role_sent:
+                            if "role" not in new_choice["delta"]:
+                                new_choice["delta"]["role"] = "assistant"
+                            role_sent = True
+
+                        # Allow only role/content in delta (LM Studio-like)
+                        allowed_delta = {}
+                        if "role" in new_choice["delta"]:
+                            allowed_delta["role"] = new_choice["delta"]["role"]
+                        if "content" in new_choice["delta"]:
+                            allowed_delta["content"] = new_choice["delta"]["content"]
+                        new_choice["delta"] = allowed_delta
+
+                        new_choices.append(new_choice)
+
+                    out["choices"] = new_choices or [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant"} if not role_sent else {},
+                            "logprobs": None,
+                            "finish_reason": None,
+                        }
+                    ]
+
+                return (
+                    "data: " + json.dumps(out, ensure_ascii=False) + "\n\n"
+                ).encode("utf-8")
+
             with self._model_unsetter(
                 endpoint, payload, api_model_provider, options
             ):
                 try:
-                    for chunk in self._passthrough_stream(
-                        method=method,
-                        url=url,
-                        endpoint=endpoint,
-                        payload=payload,
-                        headers=headers,
-                    ):
-                        if chunk:
-                            print(
-                                f"stream_openai_to_lmstudio RECEIVED chunk: {chunk.decode('utf-8', errors='replace')}"
-                            )
-                            if b"data: [DONE]" in chunk:
-                                done_sent = True
-                                print(
-                                    "stream_openai_to_lmstudio DETECTED upstream DONE"
+                    req_kwargs = {
+                        "url": url,
+                        "timeout": endpoint.timeout,
+                        "stream": True,
+                        "headers": headers,
+                    }
+                    if method == "POST":
+                        req_kwargs["json"] = payload
+                        resp = requests.post(**req_kwargs)
+                    else:
+                        req_kwargs["params"] = payload
+                        resp = requests.get(**req_kwargs)
+
+                    with resp:
+                        resp.raise_for_status()
+
+                        # SSE: we read line-by-line; each event is on a `data:` line,
+                        # separated by blank lines. iter_lines() is perfect for that.
+                        for raw_line in resp.iter_lines(decode_unicode=False):
+                            if not raw_line:
+                                continue
+
+                            line = raw_line.strip()
+
+                            # Pass through anything that's not a data line as an SSE event
+                            if not line.startswith(b"data:"):
+                                yield b"data: " + line + b"\n\n"
+                                continue
+
+                            data = line[5:].strip()  # remove leading b"data:"
+                            if data == b"[DONE]":
+                                yield b"data: [DONE]\n\n"
+                                continue
+
+                            try:
+                                event_obj = json.loads(
+                                    data.decode("utf-8", errors="replace")
                                 )
-                            yield chunk
+                            except Exception:
+                                # If we can't parse it, forward the original event as-is (still valid SSE)
+                                yield b"data: " + data + b"\n\n"
+                                continue
+
+                            yield _as_lmstudio_sse(event_obj)
+
                 except requests.RequestException as exc:
                     err = {"error": str(exc)}
-                    print(f"stream_openai_to_lmstudio RequestException: {exc}")
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
-                    return
-                except Exception as exc:
-                    err = {"error": f"Connection error: {str(exc)}"}
-                    print("stream_openai_to_lmstudio Unexpected exception")
-                    yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
-                    return
-
-            # -------------------------------------------------
-            # 2️⃣  Emit the final DONE marker **only** if the upstream
-            #     didn’t already send one, then terminate the generator.
-            # -------------------------------------------------
-            if not done_sent:
-                print(
-                    "stream_openai_to_lmstudio EMIT final DONE (upstream lacked it)"
-                )
-                yield b"data: [DONE]\n\n"
-            else:
-                print(
-                    "stream_openai_to_lmstudio SKIP final DONE (already sent upstream)"
-                )
-
-            print("stream_openai_to_lmstudio END")
-            # Explicitly stop the generator – no extra bytes are sent.
-            return
 
         return _iter()
 
