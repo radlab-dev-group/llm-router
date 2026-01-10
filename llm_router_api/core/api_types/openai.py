@@ -67,6 +67,17 @@ class OpenAIApiType(ApiTypesI):
         """
         return "v1/responses"
 
+    def embeddings_ep(self) -> str:
+        """
+        Return the URL path for the embeddings' endpoint.
+
+        Returns
+        -------
+        str
+            The relative path ``v1/embeddings``.
+        """
+        return "v1/embeddings"
+
 
 class OpenAIConverters:
     """

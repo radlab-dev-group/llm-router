@@ -145,6 +145,7 @@ class ApiTypesI(ABC):
             "arch": str(m.get("name", "")),
             "compatibility_type": "mlx",
             "quantization": "4bit",
+            "is_embedding": bool(m.get("is_embedding", False)),
         }
 
     @abstractmethod
@@ -180,5 +181,17 @@ class ApiTypesI(ABC):
         -------
         str
             Endpoint path (e.g., "/v1/responses").
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def embeddings_ep(self) -> str:
+        """
+        Return the URL path for the embeddings' endpoint.
+
+        Returns
+        -------
+        str
+            Endpoint path (e.g., "/v1/embeddings").
         """
         raise NotImplementedError

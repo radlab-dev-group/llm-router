@@ -56,3 +56,14 @@ class OllamaType(ApiTypesI):
             The relative path ``/v1/responses``.
         """
         return "v1/responses"
+
+    def embeddings_ep(self) -> str:
+        """
+        Return the URL path for the embeddings' endpoint.
+
+        Returns
+        -------
+        str
+            ``"/api/embeddings"``
+        """
+        return "/api/embeddings"

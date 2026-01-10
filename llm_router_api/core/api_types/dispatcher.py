@@ -127,6 +127,7 @@ class ApiTypesDispatcher:
 
             * ``"completions"`` – selects the *completions* endpoint.
             * ``"responses"``   – selects the *responses* endpoint.
+            * ``"embeddings"``  – selects the *embeddings* endpoint.
             * otherwise – defaults to the *chat* endpoint.
 
             Leading and trailing ``/`` characters are removed before the check.
@@ -147,16 +148,17 @@ class ApiTypesDispatcher:
 
         Notes
         -----
-        * The check order is: ``"completions"``, then ``"responses"``, then fallback
-          to ``chat``.  If both ``"completions"`` and ``"responses"`` appear, the
-          completions endpoint wins.
+        * The check order is: ``"completions"``, then ``"embeddings"``, then ``"responses"``, then fallback
+          to ``chat``.  If multiple appear, the first one in the check order wins.
         * This method is a thin wrapper around the class methods
-          :meth:`chat_ep`, :meth:`responses_ep`, and :meth:`completions_ep`,
+          :meth:`chat_ep`, :meth:`responses_ep`, :meth:`completions_ep`, and :meth:`embeddings_ep`,
           which each delegates to the concrete ``ApiTypesI`` implementation.
         """
         endpoint_url = endpoint_url.strip("/")
         if "completions" in endpoint_url:
             return self.completions_ep(api_type=api_type)
+        elif "embeddings" in endpoint_url:
+            return self.embeddings_ep(api_type=api_type)
         elif "responses" in endpoint_url:
             return self.responses_ep(api_type=api_type)
         return self.chat_ep(api_type=api_type)
@@ -178,6 +180,13 @@ class ApiTypesDispatcher:
         Delegate to the proper implementation to get completion endpoint path.
         """
         return cls._get_impl(api_type).completions_ep()
+
+    @classmethod
+    def embeddings_ep(cls, api_type: str) -> str:
+        """
+        Delegate to the proper implementation to get embeddings endpoint path.
+        """
+        return cls._get_impl(api_type).embeddings_ep()
 
     @classmethod
     def tags(
