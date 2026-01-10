@@ -11,7 +11,6 @@ import json
 import datetime
 import requests
 import contextlib
-
 from enum import Enum, auto
 from requests import Response
 from typing import Iterator, Dict, Any, Optional
@@ -19,9 +18,9 @@ from typing import Iterator, Dict, Any, Optional
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
 
 
-# --------------------------------------------------------------------------- #
+# ------------------------------------------------#
 # Helper enum for stream‑type resolution
-# --------------------------------------------------------------------------- #
+# ------------------------------------------------#
 class StreamConversion(Enum):
     """Flags indicating which conversion path should be taken."""
 
@@ -31,6 +30,7 @@ class StreamConversion(Enum):
     OPENAI = auto()
     OPENAI_TO_LMSTUDIO = auto()
     OLLAMA_TO_LMSTUDIO = auto()
+    LMSTUDIO_PASSTHROUGH = auto()  # <-- new flag for LM Studio → LM Studio
 
 
 class StreamHandler:
@@ -42,9 +42,9 @@ class StreamHandler:
     that timeout, logging and model‑unset logic stay unchanged.
     """
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
     # Internal utilities – extracted to avoid repetition
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
 
     @staticmethod
     @contextlib.contextmanager
@@ -107,9 +107,9 @@ class StreamHandler:
 
         return _iter()
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
     # Shared helper for passthrough streaming
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
 
     def _passthrough_generator(
         self,
@@ -118,6 +118,7 @@ class StreamHandler:
         payload: Dict[str, Any],
         headers: Dict[str, Any],
         endpoint,
+        api_model_provider,
         options: Optional[Dict[str, Any]],
     ) -> Iterator[bytes]:
         """
@@ -125,9 +126,7 @@ class StreamHandler:
         Handles the ``_model_unsetter`` context and maps request errors
         to a simple JSON error payload.
         """
-        with self._model_unsetter(
-            endpoint, payload, api_model_provider=None, options=options
-        ):
+        with self._model_unsetter(endpoint, payload, api_model_provider, options):
             try:
                 for _ch in self._passthrough_stream(
                     method=method,
@@ -142,9 +141,9 @@ class StreamHandler:
                 # Preserve the original formatting used in the two callers
                 yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
     # Public streaming entry points
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
 
     def stream_openai(
         self,
@@ -161,16 +160,28 @@ class StreamHandler:
         OpenAI‑style streaming (SSE) – returns the raw SSE bytes unchanged.
         """
         if force_text is not None:
-            with self._model_unsetter(
-                endpoint, payload, api_model_provider, options
-            ):
-                return self._force_iter_openai(force_text, api_model_provider)
+
+            def _iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_openai(
+                        force_text, api_model_provider
+                    )
+
+            return _iter()
 
         headers["Accept"] = "text/event-stream"
 
         # Use the shared generator – removes duplicated try/except boilerplate
         return self._passthrough_generator(
-            method, url, payload, headers, endpoint, options
+            method=method,
+            url=url,
+            payload=payload,
+            headers=headers,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            options=options,
         )
 
     def stream_ollama(
@@ -188,14 +199,26 @@ class StreamHandler:
         Streaming from an Ollama endpoint – **passes the stream through unchanged**.
         """
         if force_text is not None:
-            with self._model_unsetter(
-                endpoint, payload, api_model_provider, options
-            ):
-                return self._force_iter_ollama(force_text, api_model_provider)
+
+            def _iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_ollama(
+                        force_text, api_model_provider
+                    )
+
+            return _iter()
 
         # Re‑use the generic passthrough logic
         return self._passthrough_generator(
-            method, url, payload, headers, endpoint, options
+            method=method,
+            url=url,
+            payload=payload,
+            headers=headers,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            options=options,
         )
 
     @staticmethod
@@ -679,9 +702,9 @@ class StreamHandler:
 
         return _iter()
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
     # Helper utilities (kept private to this class)
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
 
     @staticmethod
     def _ollama_chunk(
@@ -836,27 +859,28 @@ class StreamHandler:
                 api_model_provider=api_model_provider,
             )
 
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
     # Stream‑type resolution – moved from EndpointWithHttpRequestI
-    # --------------------------------------------------------------------- #
+    # ------------------------------------------------#
 
     @staticmethod
     def resolve_stream_type(
         endpoint_ep_types: list, api_model_provider
-    ) -> tuple[bool, bool, bool, bool, bool, bool]:
+    ) -> tuple[bool, bool, bool, bool, bool, bool, bool]:
         """
         Determine which streaming conversion should be applied.
 
         Returns a tuple:
         (is_openai_to_ollama, is_ollama_to_openai,
          is_ollama, is_openai,
-         is_openai_to_lmstudio, is_ollama_to_lmstudio)
+         is_openai_to_lmstudio, is_ollama_to_lmstudio,
+         is_lmstudio_passthrough)
         """
         provider_type = str(api_model_provider.api_type)
 
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         # Determine what the endpoint expects
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         endpoint_wants_ollama = "ollama" in endpoint_ep_types
         endpoint_wants_lmstudio = endpoint_ep_types == ["lmstudio"]
         if endpoint_wants_lmstudio:
@@ -866,9 +890,9 @@ class StreamHandler:
                 set(OPENAI_COMPATIBLE_PROVIDERS).intersection(endpoint_ep_types)
             )
 
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         # Provider capabilities
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         provider_is_ollama = provider_type == "ollama"
         provider_is_lmstudio = provider_type == "lmstudio"
         provider_is_openai = (
@@ -877,9 +901,9 @@ class StreamHandler:
             else False
         )
 
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         # Initialise flags – all start as ``False``
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         flags = {
             StreamConversion.OPENAI_TO_OLLAMA: False,
             StreamConversion.OLLAMA_TO_OPENAI: False,
@@ -887,23 +911,23 @@ class StreamHandler:
             StreamConversion.OPENAI: False,
             StreamConversion.OPENAI_TO_LMSTUDIO: False,
             StreamConversion.OLLAMA_TO_LMSTUDIO: False,
+            StreamConversion.LMSTUDIO_PASSTHROUGH: False,
         }
 
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         # Passthrough cases
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         if endpoint_wants_ollama and provider_is_ollama:
             flags[StreamConversion.OLLAMA] = True
         elif endpoint_wants_openai and provider_is_openai:
             flags[StreamConversion.OPENAI] = True
         elif endpoint_wants_lmstudio and provider_is_lmstudio:
-            flags[StreamConversion.OPENAI] = (
-                True  # LMStudio behaves like OpenAI here
-            )
+            # LMStudio → LMStudio (passthrough)
+            flags[StreamConversion.LMSTUDIO_PASSTHROUGH] = True
 
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         # Conversion cases
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         elif endpoint_wants_ollama and provider_is_openai:
             flags[StreamConversion.OPENAI_TO_OLLAMA] = True
         elif endpoint_wants_ollama and provider_is_lmstudio:
@@ -913,17 +937,17 @@ class StreamHandler:
         elif endpoint_wants_openai and provider_is_lmstudio:
             flags[StreamConversion.OPENAI] = True
 
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         # Native LMStudio conversion checks (must be after passthrough)
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
         elif endpoint_wants_lmstudio and provider_is_openai:
             flags[StreamConversion.OPENAI_TO_LMSTUDIO] = True
         elif endpoint_wants_lmstudio and provider_is_ollama:
             flags[StreamConversion.OLLAMA_TO_LMSTUDIO] = True
 
-        # ------------------------------------------------------------- #
-        # Return the tuple in the original order
-        # ------------------------------------------------------------- #
+        # ------------------------------------#
+        # Return the tuple in the original (now extended) order
+        # ------------------------------------#
         return (
             flags[StreamConversion.OPENAI_TO_OLLAMA],
             flags[StreamConversion.OLLAMA_TO_OPENAI],
@@ -931,4 +955,5 @@ class StreamHandler:
             flags[StreamConversion.OPENAI],
             flags[StreamConversion.OPENAI_TO_LMSTUDIO],
             flags[StreamConversion.OLLAMA_TO_LMSTUDIO],
+            flags[StreamConversion.LMSTUDIO_PASSTHROUGH],
         )

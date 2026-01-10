@@ -114,6 +114,7 @@ class HttpRequestExecutor:
         is_openai: bool = False,
         is_openai_to_lmstudio: bool = False,
         is_ollama_to_lmstudio: bool = False,
+        is_lmstudio_passthrough: bool = False,
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
@@ -123,6 +124,9 @@ class HttpRequestExecutor:
         - ``openai`` means OpenAI‑style SSE streaming (also used by LM Studio).
         - ``ollama`` means Ollama NDJSON streaming.
         - ``*_to_*`` flags indicate stream conversion direction.
+        - ``is_lmstudio_passthrough`` means the provider and endpoint are both
+          LM Studio, so we simply forward the raw stream (identical to the
+          OpenAI‑compatible path).
         """
         self.logger.debug(
             "Stream type:\n"
@@ -132,8 +136,10 @@ class HttpRequestExecutor:
             f"  * is_openai_to_lmstudio={is_openai_to_lmstudio}\n"
             f"  * is_ollama_to_openai={is_ollama_to_openai}\n"
             f"  * is_ollama_to_lmstudio={is_ollama_to_lmstudio}\n"
+            f"  * is_lmstudio_passthrough={is_lmstudio_passthrough}\n"
         )
 
+        # Exactly one mode must be selected
         selected = [
             is_openai,
             is_ollama,
@@ -141,13 +147,14 @@ class HttpRequestExecutor:
             is_ollama_to_openai,
             is_openai_to_lmstudio,
             is_ollama_to_lmstudio,
+            is_lmstudio_passthrough,
         ]
         if sum(1 for x in selected if x) != 1:
             raise RuntimeError(
                 "Exactly one streaming mode must be selected: "
                 "is_ollama | is_openai | is_openai_to_ollama | "
                 "is_ollama_to_openai | is_openai_to_lmstudio | "
-                "is_ollama_to_lmstudio"
+                "is_ollama_to_lmstudio | is_lmstudio_passthrough"
             )
 
         # common preparation
@@ -167,6 +174,9 @@ class HttpRequestExecutor:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
+        # ----------------------------------------------------------------- #
+        # Dispatch to the appropriate StreamHandler method
+        # ----------------------------------------------------------------- #
         if is_ollama:
             return self._stream_handler.stream_ollama(
                 url=full_url,
@@ -227,7 +237,21 @@ class HttpRequestExecutor:
                 force_text=force_text,
             )
 
-        # is_openai (default)
+        if is_lmstudio_passthrough:
+            # LMStudio ↔ LMStudio – the stream format is already OpenAI‑compatible,
+            # so we can forward it unchanged.
+            return self._stream_handler.stream_openai(
+                url=full_url,
+                payload=params,
+                method=method,
+                headers=headers,
+                options=options,
+                endpoint=self._endpoint,
+                api_model_provider=api_model_provider,
+                force_text=force_text,
+            )
+
+        # is_openai (default fallback)
         return self._stream_handler.stream_openai(
             url=full_url,
             payload=params,
