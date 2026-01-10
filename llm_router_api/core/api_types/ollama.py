@@ -64,6 +64,6 @@ class OllamaType(ApiTypesI):
         Returns
         -------
         str
-            ``"/api/embeddings"``
+            ``"api/embed"``
         """
-        return "/api/embeddings"
+        return "api/embed"
