@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import datetime
 from dateutil import parser
+from typing import Dict, Any, Optional
 
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
@@ -132,6 +133,81 @@ class OpenAIConverters:
     ``convert_embedding`` helper is provided for providers that expose
     embedding vectors.
     """
+
+    class FromAnthropic:
+        """
+        Converters from Anthropic response format to OpenAI format.
+        """
+
+        @staticmethod
+        def convert_response(response: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Convert Anthropic Messages API response to OpenAI-style Chat Completion.
+            """
+            content_list = response.get("content", [])
+            text_content = ""
+            for item in content_list:
+                if item.get("type") == "text":
+                    text_content += item.get("text", "")
+
+            prompt_tokens = response.get("usage", {}).get("input_tokens", 0)
+            completion_tokens = response.get("usage", {}).get("output_tokens", 0)
+
+            return {
+                "id": response.get("id"),
+                "object": "chat.completion",
+                "created": int(datetime.datetime.now().timestamp()),
+                "model": response.get("model", ""),
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": text_content,
+                        },
+                        "finish_reason": response.get("stop_reason"),
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                },
+            }
+
+        @staticmethod
+        def convert_stream_chunk(chunk: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            """
+            Convert Anthropic stream event to OpenAI-style chunk.
+            """
+            event_type = chunk.get("type")
+
+            if event_type == "content_block_delta":
+                delta = chunk.get("delta", {})
+                if delta.get("type") == "text_delta":
+                    return {
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": delta.get("text")},
+                                "finish_reason": None,
+                            }
+                        ]
+                    }
+            elif event_type == "message_delta":
+                return {
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": chunk.get("delta", {}).get(
+                                "stop_reason"
+                            ),
+                        }
+                    ]
+                }
+
+            return None
 
     class FromOllama:
         """
