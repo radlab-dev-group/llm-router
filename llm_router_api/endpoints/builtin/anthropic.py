@@ -3,15 +3,14 @@ Anthropic-specific endpoint implementations.
 """
 
 from typing import Optional, Dict, Any, List
-import json
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
-from llm_router_api.core.api_types.anthropic import AnthropicConverters
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.endpoints.passthrough import PassthroughI
+from llm_router_api.core.api_types.anthropic import AnthropicConverters
 
 
 class AnthropicChatHandler(PassthroughI):
@@ -42,3 +41,29 @@ class AnthropicChatHandler(PassthroughI):
             direct_return=direct_return,
             method=method,
         )
+
+        self._prepare_response_function = self.prepare_response_function
+
+    @EP.response_time
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Return the incoming parameters unchanged.
+        """
+        return params or {}
+
+    @staticmethod
+    def prepare_response_function(response):
+        """
+        Convert response to OpenAI-compatible format if it's already Anthropic,
+        OR convert to Anthropic format if it's OpenAI/Ollama (reverse proxy case).
+        """
+        resp_json = response.json()
+
+        if "message" in resp_json:
+            return AnthropicConverters.FromOllama.convert_response(resp_json)
+        if "choices" in resp_json:
+            return AnthropicConverters.FromOpenAI.convert_response(resp_json)
+
+        return resp_json

@@ -94,3 +94,66 @@ class AnthropicConverters:
                 )
 
             return anthropic_payload
+
+        @staticmethod
+        def convert_response(response: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Convert OpenAI-style Chat Completion response to Anthropic format.
+            """
+            choices = response.get("choices", [])
+            content = []
+            stop_reason = None
+            if choices:
+                msg = choices[0].get("message", {})
+                text = msg.get("content", "")
+                if text:
+                    content.append({"type": "text", "text": text})
+                stop_reason = choices[0].get("finish_reason")
+
+            prompt_tokens = response.get("usage", {}).get("prompt_tokens", 0)
+            completion_tokens = response.get("usage", {}).get("completion_tokens", 0)
+
+            return {
+                "id": response.get("id"),
+                "type": "message",
+                "role": "assistant",
+                "content": content,
+                "model": response.get("model", ""),
+                "stop_reason": stop_reason,
+                "usage": {
+                    "input_tokens": prompt_tokens,
+                    "output_tokens": completion_tokens,
+                },
+            }
+
+    class FromOllama:
+        """
+        Converters from Ollama response format to Anthropic format.
+        """
+
+        @staticmethod
+        def convert_response(response: Dict[str, Any]) -> Dict[str, Any]:
+            """
+            Convert Ollama chat response to Anthropic format.
+            """
+            msg = response.get("message", {})
+            content = []
+            text = msg.get("content", "")
+            if text:
+                content.append({"type": "text", "text": text})
+
+            prompt_tokens = response.get("prompt_eval_count", 0)
+            completion_tokens = response.get("eval_count", 0)
+
+            return {
+                "id": "ollama-" + str(int(datetime.datetime.now().timestamp())),
+                "type": "message",
+                "role": "assistant",
+                "content": content,
+                "model": response.get("model", ""),
+                "stop_reason": "end_turn" if response.get("done") else None,
+                "usage": {
+                    "input_tokens": prompt_tokens,
+                    "output_tokens": completion_tokens,
+                },
+            }
