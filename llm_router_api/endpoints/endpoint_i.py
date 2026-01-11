@@ -59,6 +59,8 @@ from llm_router_api.base.constants import (
 
 from llm_router_api.core.auditor.auditor import AnyRequestAuditor
 from llm_router_api.core.model_handler import ModelHandler, ApiModel
+
+from llm_router_api.core.api_types.anthropic import AnthropicConverters
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 
@@ -1730,8 +1732,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 params.pop("max_tokens", None)
 
         if model_provider.api_type == "anthropic":
-            from llm_router_api.core.api_types.anthropic import AnthropicConverters
-
-            params = AnthropicConverters.FromOpenAI.convert_payload(params)
+            params = AnthropicConverters.Payload.convert_payload(params)
 
         return params

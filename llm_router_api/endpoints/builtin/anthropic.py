@@ -44,15 +44,6 @@ class AnthropicChatHandler(PassthroughI):
 
         self._prepare_response_function = self.prepare_response_function
 
-    @EP.response_time
-    def prepare_payload(
-        self, params: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Return the incoming parameters unchanged.
-        """
-        return params or {}
-
     @staticmethod
     def prepare_response_function(response):
         """

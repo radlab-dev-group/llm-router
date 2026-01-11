@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import datetime
 from dateutil import parser
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
 from llm_router_api.core.api_types.types_i import ApiTypesI
 

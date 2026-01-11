@@ -45,16 +45,9 @@ class AnthropicConverters:
     Namespace for payload-conversion utilities for Anthropic.
     """
 
-    class FromOpenAI:
-        """
-        Converters from OpenAI format to Anthropic format.
-        """
-
+    class Payload:
         @staticmethod
         def convert_payload(params: Dict[str, Any]) -> Dict[str, Any]:
-            """
-            Convert OpenAI-style chat completion parameters to Anthropic Messages API format.
-            """
             openai_messages = params.get("messages", [])
             anthropic_messages = []
             system_prompt = None
@@ -72,8 +65,11 @@ class AnthropicConverters:
                 "model": params.get("model"),
                 "messages": anthropic_messages,
                 "max_tokens": params.get(
-                    "max_tokens", 4096
-                ),  # Required by Anthropic
+                    "max_tokens",
+                    params.get(
+                        "max_tokens", params.get("options", {}).get("num_ctx", 4096)
+                    ),
+                ),
             }
 
             if system_prompt:
@@ -94,6 +90,11 @@ class AnthropicConverters:
                 )
 
             return anthropic_payload
+
+    class FromOpenAI:
+        """
+        Converters from OpenAI format to Anthropic format.
+        """
 
         @staticmethod
         def convert_response(response: Dict[str, Any]) -> Dict[str, Any]:

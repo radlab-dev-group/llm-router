@@ -47,7 +47,6 @@ class OpenAIResponseHandler(PassthroughI, abc.ABC):
         if "message" in resp_json:
             return OpenAIConverters.FromOllama.convert(response=resp_json)
         if "content" in resp_json and "role" in resp_json and "id" in resp_json:
-            # Anthropic response
             return OpenAIConverters.FromAnthropic.convert_response(resp_json)
         return resp_json
 
@@ -238,7 +237,7 @@ class OpenAIEmbeddingsV1Handler(PassthroughI):
             prompt_handler=prompt_handler,
             model_handler=model_handler,
             dont_add_api_prefix=True,
-            api_types=OPENAI_COMPATIBLE_PROVIDERS,
+            api_types=OPENAI_COMPATIBLE_PROVIDERS + ["anthropic"],
             direct_return=direct_return,
             method="POST",
         )
