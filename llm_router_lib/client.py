@@ -13,7 +13,10 @@ from typing import Optional, Dict, Any, Union, List
 
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
-from llm_router_lib.services.utils import TranslateTextService
+from llm_router_lib.services.utils import (
+    TranslateTextService,
+    GenerativeAnswerService,
+)
 from llm_router_lib.data_models.builtin_utils import (
     TranslateTextModel,
     AnswerBasedOnTheContextModel,
@@ -234,4 +237,4 @@ class LLMRouterClient:
                 question_str=question_str, texts=texts, model_name=model
             ).model_dump()
 
-        return TranslateTextService(self.http, self.logger).call(payload)
+        return GenerativeAnswerService(self.http, self.logger).call(payload)
