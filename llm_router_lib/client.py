@@ -14,7 +14,10 @@ from typing import Optional, Dict, Any, Union, List
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import TranslateTextService
-from llm_router_lib.data_models.builtin_utils import TranslateTextModel
+from llm_router_lib.data_models.builtin_utils import (
+    TranslateTextModel,
+    AnswerBasedOnTheContextModel,
+)
 from llm_router_lib.services.conversation import (
     ConversationService,
     ExtendedConversationService,
@@ -202,5 +205,33 @@ class LLMRouterClient:
                     "No payload and no arguments were passed!"
                 )
             payload = TranslateTextModel(model_name=model, texts=texts).model_dump()
+
+        return TranslateTextService(self.http, self.logger).call(payload)
+
+    # ------------------------------------------------------------------ #
+    def generative_answer(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                AnswerBasedOnTheContextModel,
+            ]
+        ] = None,
+        model: Optional[str] = None,
+        texts: Optional[Dict[str, List[str]] | List[str]] = None,
+        question_str: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if isinstance(payload, AnswerBasedOnTheContextModel):
+            payload = payload.model_dump()
+        elif isinstance(payload, Dict):
+            payload = payload
+        else:
+            if not texts or not question_str or not model:
+                raise NoArgsAndNoPayloadError(
+                    "No payload and no arguments were passed!"
+                )
+            payload = AnswerBasedOnTheContextModel(
+                question_str=question_str, texts=texts, model_name=model
+            ).model_dump()
 
         return TranslateTextService(self.http, self.logger).call(payload)
