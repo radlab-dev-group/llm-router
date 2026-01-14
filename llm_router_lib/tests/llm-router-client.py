@@ -4,6 +4,7 @@ from llm_router_lib import LLMRouterClient
 from llm_router_lib.tests.builtin_conversation import (
     ConversationWithModelTest,
     ExtendedConversationWithModelTest,
+    AnswerBasedOnTheContextModelTest,
 )
 
 
@@ -15,6 +16,7 @@ def prepare_tests(client: LLMRouterClient):
     return [
         [ConversationWithModelTest(client=client), Models.google_gemma_vllm],
         [ExtendedConversationWithModelTest(client=client), Models.google_gemma_vllm],
+        [AnswerBasedOnTheContextModelTest(client=client), Models.google_gemma_vllm],
     ]
 
 
