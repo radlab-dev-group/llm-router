@@ -6,6 +6,8 @@ to interact with a vLLM server that exposes an OpenAI‑compatible REST interfac
 
 from __future__ import annotations
 
+from typing import Any, Dict
+
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
 
@@ -55,3 +57,28 @@ class VllmType(ApiTypesI):
             The relative path ``v1/embeddings``.
         """
         return "v1/embeddings"
+
+
+class VLLMConverters:
+    """
+    Namespace for payload-conversion utilities for vLLM.
+    """
+
+    PARAMS_MAPPING_FROM_TO = [
+        ["max_new_tokens", "max_tokens"],
+        ["model_name", "model"],
+        ["language", None],
+    ]
+
+    class Payload:
+        @staticmethod
+        def convert_payload(params: Dict[str, Any]) -> Dict[str, Any]:
+            for f, t in VLLMConverters.PARAMS_MAPPING_FROM_TO:
+                if f in params:
+                    if t is not None:
+                        params[t] = params[f]
+                    params.pop(f)
+
+            if "max_tokens" in params and params["max_tokens"] < 1:
+                params.pop("max_tokens", None)
+            return params
