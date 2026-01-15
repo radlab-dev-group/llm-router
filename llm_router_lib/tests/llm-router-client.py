@@ -6,6 +6,7 @@ from llm_router_lib.tests.builtin_conversation import (
     ExtendedConversationWithModelTest,
     AnswerBasedOnTheContextModelTest,
 )
+from llm_router_lib.tests.builtin_ping import PingTest
 from llm_router_lib.tests.builtin_utils import TranslateTextModelTest
 
 
@@ -20,6 +21,7 @@ def prepare_tests(client: LLMRouterClient):
         [ExtendedConversationWithModelTest(client=client), Models.google_gemma_vllm],
         [AnswerBasedOnTheContextModelTest(client=client), Models.google_gemma_vllm],
         [TranslateTextModelTest(client=client), Models.speakleash_bielik_2_3],
+        [PingTest(client=client), None],
     ]
 
 

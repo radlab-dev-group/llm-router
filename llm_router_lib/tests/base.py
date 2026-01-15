@@ -15,6 +15,8 @@ class BaseEndpointTest(abc.ABC):
         pass
 
     def run(self, model_name):
-        _p = self.payload.copy()
-        _p["model_name"] = model_name
-        return self.client_method()(payload=self.payload_model(**_p))
+        if self.payload:
+            _p = self.payload.copy()
+            _p["model_name"] = model_name
+            return self.client_method()(payload=self.payload_model(**_p))
+        return self.client_method()()
