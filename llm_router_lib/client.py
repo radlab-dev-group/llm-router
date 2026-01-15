@@ -11,17 +11,16 @@ the model to a plain ``dict`` before invoking the appropriate service.
 import logging
 from typing import Optional, Dict, Any, Union, List
 
+from llm_router_lib.services.ping import PingService
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
-from llm_router_lib.services.utils import TranslateTextService
-from llm_router_lib.data_models.builtin_utils import TranslateTextModel
+from llm_router_lib.services.utils import (
+    TranslateTextService,
+    GenerativeAnswerService,
+)
 from llm_router_lib.services.conversation import (
     ConversationService,
     ExtendedConversationService,
-)
-from llm_router_lib.data_models.builtin_chat import (
-    GenerativeConversationModel,
-    ExtendedGenerativeConversationModel,
 )
 
 
@@ -89,11 +88,15 @@ class LLMRouterClient:
         self.logger = logger or logging.getLogger(__name__)
 
     # ------------------------------------------------------------------ #
+    def ping(self) -> Dict[str, Any]:
+        return PingService(self.http, self.logger).call_get()
+
+    # ------------------------------------------------------------------ #
     def conversation_with_model(
         self,
         payload: Union[
             Dict[str, Any],
-            GenerativeConversationModel,
+            ConversationService.model_cls,
         ],
     ) -> Dict[str, Any]:
         """
@@ -113,17 +116,17 @@ class LLMRouterClient:
         dict
             Parsed JSON response from the router.
         """
-        if isinstance(payload, GenerativeConversationModel):
+        if isinstance(payload, ConversationService.model_cls):
             payload = payload.model_dump()
 
-        return ConversationService(self.http, self.logger).call(payload)
+        return ConversationService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     def extended_conversation_with_model(
         self,
         payload: Union[
             Dict[str, Any],
-            ExtendedGenerativeConversationModel,
+            ExtendedConversationService.model_cls,
         ],
     ) -> Dict[str, Any]:
         """
@@ -140,9 +143,9 @@ class LLMRouterClient:
         dict
             Parsed JSON response from the router.
         """
-        if isinstance(payload, ExtendedGenerativeConversationModel):
+        if isinstance(payload, ExtendedConversationService.model_cls):
             payload = payload.model_dump()
-        return ExtendedConversationService(self.http, self.logger).call(payload)
+        return ExtendedConversationService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     def translate(
@@ -150,7 +153,7 @@ class LLMRouterClient:
         payload: Optional[
             Union[
                 Dict[str, Any],
-                TranslateTextModel,
+                TranslateTextService.model_cls,
             ]
         ] = None,
         texts: Optional[List[str]] = None,
@@ -192,7 +195,7 @@ class LLMRouterClient:
         NoArgsAndNoPayloadError
             If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
         """
-        if isinstance(payload, TranslateTextModel):
+        if isinstance(payload, TranslateTextService.model_cls):
             payload = payload.model_dump()
         elif isinstance(payload, Dict):
             payload = payload
@@ -201,6 +204,36 @@ class LLMRouterClient:
                 raise NoArgsAndNoPayloadError(
                     "No payload and no arguments were passed!"
                 )
-            payload = TranslateTextModel(model_name=model, texts=texts).model_dump()
+            payload = TranslateTextService.model_cls(
+                model_name=model, texts=texts
+            ).model_dump()
 
-        return TranslateTextService(self.http, self.logger).call(payload)
+        return TranslateTextService(self.http, self.logger).call_post(payload)
+
+    # ------------------------------------------------------------------ #
+    def generative_answer(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerativeAnswerService.model_cls,
+            ]
+        ] = None,
+        model: Optional[str] = None,
+        texts: Optional[Dict[str, List[str]] | List[str]] = None,
+        question_str: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        if isinstance(payload, GenerativeAnswerService.model_cls):
+            payload = payload.model_dump()
+        elif isinstance(payload, Dict):
+            payload = payload
+        else:
+            if not texts or not question_str or not model:
+                raise NoArgsAndNoPayloadError(
+                    "No payload and no arguments were passed!"
+                )
+            payload = GenerativeAnswerService.model_cls(
+                question_str=question_str, texts=texts, model_name=model
+            ).model_dump()
+
+        return GenerativeAnswerService(self.http, self.logger).call_post(payload)

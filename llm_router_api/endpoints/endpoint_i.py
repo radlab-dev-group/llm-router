@@ -60,6 +60,7 @@ from llm_router_api.base.constants import (
 from llm_router_api.core.auditor.auditor import AnyRequestAuditor
 from llm_router_api.core.model_handler import ModelHandler, ApiModel
 
+from llm_router_api.core.api_types.vllm import VLLMConverters
 from llm_router_api.core.api_types.anthropic import AnthropicConverters
 from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
@@ -1349,6 +1350,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     api_type=api_model_provider.api_type, params=params
                 )
 
+            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+
             if use_streaming:
                 clear_chosen_provider_finally = False
                 if self._call_for_each_user_msg:
@@ -1728,8 +1731,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 params.pop(_fc, None)
 
         if model_provider.api_type in ["vllm"]:
-            if "max_tokens" in params and params["max_tokens"] < 1:
-                params.pop("max_tokens", None)
+            params = VLLMConverters.Payload.convert_payload(params)
 
         if model_provider.api_type == "anthropic":
             params = AnthropicConverters.Payload.convert_payload(params)

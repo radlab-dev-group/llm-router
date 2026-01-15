@@ -8,7 +8,10 @@ a logger and then called via the ``.call()`` method provided by the base
 class.
 """
 
-from llm_router_lib.data_models.builtin_utils import TranslateTextModel
+from llm_router_lib.data_models.builtin_utils import (
+    TranslateTextModel,
+    AnswerBasedOnTheContextModel,
+)
 from llm_router_lib.services.conversation import BaseConversationServiceInterface
 
 
@@ -32,3 +35,8 @@ class TranslateTextService(BaseConversationServiceInterface):
 
     endpoint = "/api/translate"
     model_cls = TranslateTextModel
+
+
+class GenerativeAnswerService(BaseConversationServiceInterface):
+    endpoint = "/api/generative_answer"
+    model_cls = AnswerBasedOnTheContextModel
