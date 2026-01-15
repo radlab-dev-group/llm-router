@@ -18,11 +18,11 @@ class Models:
 
 def prepare_tests(client: LLMRouterClient):
     return [
-        # [ConversationWithModelTest(client=client), Models.google_gemma_vllm],
-        # [ExtendedConversationWithModelTest(client=client), Models.google_gemma_vllm],
-        # [AnswerBasedOnTheContextModelTest(client=client), Models.google_gemma_vllm],
+        [ConversationWithModelTest(client=client), Models.google_gemma_vllm],
+        [ExtendedConversationWithModelTest(client=client), Models.google_gemma_vllm],
+        [AnswerBasedOnTheContextModelTest(client=client), Models.google_gemma_vllm],
         [TranslateTextModelTest(client=client), Models.speakleash_bielik_2_3],
-        # [PingTest(client=client), None],
+        [PingTest(client=client), None],
     ]
 
 
@@ -33,9 +33,10 @@ def main():
     client = LLMRouterClient(api=api_host, token=token, timeout=180)
 
     for test, model_name in prepare_tests(client):
-        print(
-            json.dumps(test.run(model_name=model_name), indent=1, ensure_ascii=False)
-        )
+        print("--" * 50)
+        test_result = test.run(model_name=model_name)
+        print(" =========== response =========== ")
+        print(json.dumps(test_result, indent=1, ensure_ascii=False))
 
 
 if __name__ == "__main__":
