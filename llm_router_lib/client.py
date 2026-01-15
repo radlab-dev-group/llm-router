@@ -119,7 +119,7 @@ class LLMRouterClient:
         if isinstance(payload, ConversationService.model_cls):
             payload = payload.model_dump()
 
-        return ConversationService(self.http, self.logger).call(payload)
+        return ConversationService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     def extended_conversation_with_model(
@@ -145,7 +145,7 @@ class LLMRouterClient:
         """
         if isinstance(payload, ExtendedConversationService.model_cls):
             payload = payload.model_dump()
-        return ExtendedConversationService(self.http, self.logger).call(payload)
+        return ExtendedConversationService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     def translate(
@@ -208,7 +208,7 @@ class LLMRouterClient:
                 model_name=model, texts=texts
             ).model_dump()
 
-        return TranslateTextService(self.http, self.logger).call(payload)
+        return TranslateTextService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     def generative_answer(
@@ -236,4 +236,4 @@ class LLMRouterClient:
                 question_str=question_str, texts=texts, model_name=model
             ).model_dump()
 
-        return GenerativeAnswerService(self.http, self.logger).call(payload)
+        return GenerativeAnswerService(self.http, self.logger).call_post(payload)

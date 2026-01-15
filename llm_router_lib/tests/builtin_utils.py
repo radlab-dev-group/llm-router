@@ -11,6 +11,7 @@ class TranslateTextModelTest(BaseEndpointTest):
             "Białe buty zawsze szybko się brudzą!",
             "Tęcza ma wszelakie kolory! A białego nie ma?!",
         ],
+        "temperature": 0.2,
     }
     payload_model = TranslateTextModel
 

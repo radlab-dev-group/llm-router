@@ -37,7 +37,7 @@ class BaseConversationServiceInterface(abc.ABC):
         self.http = http
         self.logger = logger
 
-    def call(self, raw_payload: Any) -> Dict[str, Any]:
+    def call_post(self, raw_payload: Any) -> Dict[str, Any]:
         """
         Send a POST request to the configured endpoint and return the JSON body.
 
@@ -80,9 +80,9 @@ class BaseConversationServiceInterface(abc.ABC):
 
         Parameters
         ----------
-        raw_payload : Any
-            The request body, typically an instance of ``self.model_cls`` or a
-            dictionary produced by its ``model_dump`` method.
+        raw_payload : Optional[Any]
+            Optional request body, typically an instance of ``self.model_cls``
+            or a dictionary produced by its ``model_dump`` method.
 
         Returns
         -------
