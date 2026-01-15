@@ -1,5 +1,5 @@
 import abc
-from typing import Dict, Any, Type
+from typing import Dict, Any, Type, Optional
 
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import LLMRouterError
@@ -63,6 +63,38 @@ class BaseConversationServiceInterface(abc.ABC):
             If the response body cannot be decoded as JSON.
         """
         resp = self.http.post(self.endpoint, json=raw_payload)
+        try:
+            j = resp.json()
+        except Exception as exc:
+            raise LLMRouterError(f"Invalid response format: {exc}")
+        return j
+
+    def call_get(self, raw_payload: Optional[Any] = None) -> Dict[str, Any]:
+        """
+        Send a GET request to the configured endpoint and return the JSON body.
+
+        The method does not perform payload validation itself; callers are
+        expected to instantiate ``raw_payload`` using ``self.model_cls`` before
+        invoking ``call``.  If the HTTP response cannot be parsed as JSON, a
+        ``LLMRouterError`` is raised to surface the problem to higher layers.
+
+        Parameters
+        ----------
+        raw_payload : Any
+            The request body, typically an instance of ``self.model_cls`` or a
+            dictionary produced by its ``model_dump`` method.
+
+        Returns
+        -------
+        dict
+            The parsed JSON response from the backend service.
+
+        Raises
+        ------
+        LLMRouterError
+            If the response body cannot be decoded as JSON.
+        """
+        resp = self.http.get(self.endpoint, json=raw_payload)
         try:
             j = resp.json()
         except Exception as exc:
