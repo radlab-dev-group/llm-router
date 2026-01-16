@@ -7,3 +7,11 @@ class PingTest(BaseEndpointTest):
 
     def client_method(self):
         return self._client.ping
+
+
+class VersionTest(BaseEndpointTest):
+    payload = None
+    payload_model = None
+
+    def client_method(self):
+        return self._client.version

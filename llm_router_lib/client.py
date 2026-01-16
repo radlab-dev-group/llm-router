@@ -11,7 +11,7 @@ the model to a plain ``dict`` before invoking the appropriate service.
 import logging
 from typing import Optional, Dict, Any, Union, List
 
-from llm_router_lib.services.ping import PingService
+from llm_router_lib.services.health import PingService, VersionService
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
@@ -89,7 +89,47 @@ class LLMRouterClient:
 
     # ------------------------------------------------------------------ #
     def ping(self) -> Dict[str, Any]:
+        """
+        Perform a health‑check request against the router.
+
+        This method invokes the ``/api/ping`` endpoint via :class:`PingService`
+        and returns the parsed JSON response.  It is useful for quickly
+        confirming that the service is up and reachable before making more
+        expensive calls.
+
+        Returns
+        -------
+        dict
+            The JSON payload returned by the router, typically containing a
+            ``status`` field (e.g. ``{\"status\": \"ok\"}``).
+
+        Raises
+        ------
+        LLMRouterError
+            Propagated from the underlying service if the HTTP request fails
+            or the response cannot be decoded as JSON.
+        """
         return PingService(self.http, self.logger).call_get()
+
+    def version(self) -> Dict[str, Any]:
+        """
+        Retrieve version information for the running router instance.
+
+        Calls the ``/api/version`` endpoint via :class:`VersionService`.  The
+        returned dictionary may include keys such as ``version``, ``commit_hash``,
+        ``build_date`` or other metadata the backend provides.
+
+        Returns
+        -------
+        dict
+            Parsed JSON containing version‑related data.
+
+        Raises
+        ------
+        LLMRouterError
+            Propagated if the request fails or the response is not valid JSON.
+        """
+        return VersionService(self.http, self.logger).call_get()
 
     # ------------------------------------------------------------------ #
     def conversation_with_model(
