@@ -11,7 +11,7 @@ the model to a plain ``dict`` before invoking the appropriate service.
 import logging
 from typing import Optional, Dict, Any, Union, List
 
-from llm_router_lib.services.ping import PingService
+from llm_router_lib.services.health import PingService, VersionService
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
@@ -90,6 +90,9 @@ class LLMRouterClient:
     # ------------------------------------------------------------------ #
     def ping(self) -> Dict[str, Any]:
         return PingService(self.http, self.logger).call_get()
+
+    def version(self) -> Dict[str, Any]:
+        return VersionService(self.http, self.logger).call_get()
 
     # ------------------------------------------------------------------ #
     def conversation_with_model(
