@@ -19,6 +19,7 @@ class PingService(BaseConversationServiceInterface):
     model_cls : None
         No request payload model is required for this endpoint.
     """
+
     endpoint = "/api/ping"
     model_cls = None
 
@@ -38,5 +39,6 @@ class VersionService(BaseConversationServiceInterface):
     model_cls : None
         No request payload model is required for this endpoint.
     """
+
     endpoint = "/api/version"
     model_cls = None
