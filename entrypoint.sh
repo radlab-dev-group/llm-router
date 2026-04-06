@@ -2,16 +2,12 @@
 set -e
 
 # Default values
-APP_SCRIPT="python3 -m llm_router_api.rest_api"
 DEBUG_MODE=false
 
 for arg in "$@"; do
     case "$arg" in
         --debug|debug|--shell|shell)
             DEBUG_MODE=true
-            ;;
-        --runserver|runserver)
-            APP_SCRIPT="run-rest-api.sh"
             ;;
     esac
 done
@@ -24,10 +20,5 @@ if [ "$DEBUG_MODE" = true ]; then
     exit 0
 fi
 
-if [ ! -f "./$APP_SCRIPT" ]; then
-    echo "[entrypoint] ERROR: Script $APP_SCRIPT not found!"
-    exit 1
-fi
-
-echo "[entrypoint] Starting application using $APP_SCRIPT ..."
-exec "./$APP_SCRIPT"
+echo "[entrypoint] Starting application..."
+exec python3 -m llm_router_api.rest_api
