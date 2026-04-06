@@ -8,7 +8,7 @@ ENV ENABLE_LLM_WEB=false
 LABEL authors="RadLab"
 LABEL version=$version
 
-ENV LLM_PROXY_API_MINIMUM=1
+ENV LLM_ROUTER_MINIMUM=1
 
 RUN apt-get update && apt-get upgrade -y && apt-get install -y supervisor htop curl htop jq git vim cron gettext && rm -rf /var/lib/apt/lists/*
 

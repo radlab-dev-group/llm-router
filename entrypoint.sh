@@ -2,7 +2,7 @@
 set -e
 
 # Default values
-APP_SCRIPT="run-rest-api-gunicorn.sh"
+APP_SCRIPT="python3 -m llm_router_api.rest_api"
 DEBUG_MODE=false
 
 for arg in "$@"; do
