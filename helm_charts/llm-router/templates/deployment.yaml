@@ -13,6 +13,8 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: {{ include "llm-router.fullname" . }}
+      annotations:
+        checksum/config-models: {{ .Files.Get "files/config-models.json" | sha256sum }}
     spec:
       containers:
         - name: llm-router
@@ -22,6 +24,16 @@ spec:
           {{- toYaml .Values.image.args | nindent 12 }}
           ports:
             - containerPort: {{ .Values.service.port }}
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /
+              port: {{ .Values.service.port }}
+              scheme: HTTP
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            successThreshold: 1
+            timeoutSeconds: 1
           envFrom:
             - configMapRef:
                 name: {{ include "llm-router.fullname" . }}-config
