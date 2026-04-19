@@ -25,7 +25,7 @@ import logging
 import datetime
 
 from copy import deepcopy
-from typing import Optional, Dict, Any, Iterable, List
+from typing import Optional, Dict, Any, Iterable, List, Tuple
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -301,7 +301,7 @@ class SecureEndpointI(abc.ABC):
 
     @staticmethod
     def _end_audit_log_if_needed(
-        payload, audit_log, auditor: AnyRequestAuditor, force_end: bool
+        payload, mappings, audit_log, auditor: AnyRequestAuditor, force_end: bool
     ):
         """
         Finalize an audit log entry and persist it via the provided auditor.
@@ -336,6 +336,7 @@ class SecureEndpointI(abc.ABC):
             audit_log["end"] = {
                 "timestamp": datetime.datetime.now().timestamp(),
                 "payload": deepcopy(payload),
+                "mappings": deepcopy(mappings),
             }
             auditor.add_log(audit_log)
 
@@ -375,6 +376,7 @@ class SecureEndpointI(abc.ABC):
         if not is_safe and audit_log:
             self._end_audit_log_if_needed(
                 payload=message,
+                mappings={},
                 audit_log=audit_log,
                 auditor=self._guardrail_auditor_request,
                 force_end=True,
@@ -385,7 +387,7 @@ class SecureEndpointI(abc.ABC):
 
         return is_safe
 
-    def _do_masking_if_needed(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _do_masking_if_needed(self, payload: Dict[str, Any] | None) -> Tuple[Optional[Dict[str, Any]], Dict]:
         """
         Apply masking to the payload when required by configuration or request.
 
@@ -411,18 +413,18 @@ class SecureEndpointI(abc.ABC):
             or not payload
             or type(payload) is not dict
         ):
-            return payload
+            return payload, {}
 
         do_masking = FORCE_MASKING or bool(payload.get("anonymize", False))
         if not do_masking:
-            return payload
+            return payload, {}
 
         audit_log = self._begin_audit_log_if_needed(
             payload=payload,
             prepare_audit_log=MASKING_WITH_AUDIT,
             audit_type="masking",
         )
-        masked_payload = self._mask_whole_payload(
+        masked_payload, mappings = self._mask_whole_payload(
             payload=payload,
             algorithms=MASKING_STRATEGY_PIPELINE,
         )
@@ -434,18 +436,19 @@ class SecureEndpointI(abc.ABC):
 
         self._end_audit_log_if_needed(
             payload=payload,
+            mappings=mappings,
             audit_log=audit_log,
             auditor=self._mask_auditor,
             force_end=False,
         )
 
-        return payload
+        return payload, mappings
 
     def _mask_whole_payload(
         self,
         payload: Dict | str | List | Any,
         algorithms: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+    ) -> Tuple[Dict[str, Any], Dict]:
         """
         Apply the :class:`MaskerPipeline` to the supplied payload.
 
@@ -462,8 +465,8 @@ class SecureEndpointI(abc.ABC):
             The masked representation of *payload*.
         """
         self._prepare_masker_pipeline(plugins=algorithms)
-        _p = self._masker_pipeline.apply(payload=payload)
-        return _p
+        _p, _m = self._masker_pipeline.apply(payload=payload)
+        return _p, _m
 
 
 # ----------------------------------------------------------------------
@@ -1265,7 +1268,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
             # 2. Mask the whole payload if needed
-            params = self._do_masking_if_needed(payload=params)
+            params, mappings = self._do_masking_if_needed(payload=params)
+
+            # Show mappings!
+            print(json.dumps(mappings, indent=2, ensure_ascii=False))
 
             # 3. Clear payload to accept only required params
             params = self._clear_payload(payload=params)
@@ -1453,7 +1459,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     # ==============================================================================
     # Private helpers
     @staticmethod
-    def _clear_payload(payload: Dict[str, Any]):
+    def _clear_payload(payload: Dict[str, Any] | None):
         """
         Remove internal‑only keys from the payload before it is sent to the
         downstream model.
@@ -1471,11 +1477,12 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Dict[str, Any]
             The payload with internal keys removed.
         """
-        if type(payload) in [str, tuple]:
+        if type(payload) in [str, tuple] or not payload:
             return payload
 
         for k in CLEAR_PREDEFINED_PARAMS:
             payload.pop(k, None)
+
         # If stream param is not given, then set as False
         payload["stream"] = payload.get("stream", False)
         return payload
@@ -1503,7 +1510,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             The possibly‑modified payload with a correctly ordered
             ``messages`` list.
         """
-        if "messages" not in params:
+        if not params or "messages" not in params:
             return params
 
         messages = params["messages"]
