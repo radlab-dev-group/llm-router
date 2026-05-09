@@ -22,7 +22,9 @@ from llm_router_api.base.constants import (
     REST_API_LOG_LEVEL,
 )
 from llm_router_plugins.maskers.registry import MASKERS_HOSTS_DEFINITION
-from llm_router_plugins.maskers.fast_masker.fast_masker_plugin import FastMaskerPlugin
+from llm_router_plugins.maskers.fast_masker.fast_masker_plugin import (
+    FastMaskerPlugin,
+)
 from llm_router_plugins.guardrails.registry import GUARDRAILS_HOSTS_DEFINITION
 
 

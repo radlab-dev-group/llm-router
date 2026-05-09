@@ -387,7 +387,9 @@ class SecureEndpointI(abc.ABC):
 
         return is_safe
 
-    def _do_masking_if_needed(self, payload: Dict[str, Any] | None) -> Tuple[Optional[Dict[str, Any]], Dict]:
+    def _do_masking_if_needed(
+        self, payload: Dict[str, Any] | None
+    ) -> Tuple[Optional[Dict[str, Any]], Dict]:
         """
         Apply masking to the payload when required by configuration or request.
 
