@@ -122,4 +122,5 @@ class FastTextMasking(EndpointWithHttpRequestI):
             masked version of the input text.
         """
         options = FastMaskerModel(**params)
-        return {"text": self._fast_masker.mask_text(text=options.text)}
+        text, mappings = self._fast_masker.mask_text(text=options.text)
+        return {"text": text, "mappings": mappings}
