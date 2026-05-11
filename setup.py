@@ -43,7 +43,6 @@ setup(
     ),
     python_requires=">=3.10",
     install_requires=[
-        "radlab-ml-utils @ " "git+https://github.com/radlab-dev-group/ml-utils",
         "llm-router-plugins @ "
         "git+https://github.com/radlab-dev-group/llm-router-plugins",
     ],
