@@ -163,6 +163,8 @@ class ApiTypesDispatcher:
             return self.responses_ep(api_type=api_type)
         elif "embed" in endpoint_url:
             return self.embeddings_ep(api_type=api_type)
+        elif "messages" in endpoint_url:
+            return self.messages_ep(api_type=api_type)
         return self.chat_ep(api_type=api_type)
 
     @classmethod
@@ -189,6 +191,13 @@ class ApiTypesDispatcher:
         Delegate to the proper implementation to get embeddings endpoint path.
         """
         return cls._get_impl(api_type).embeddings_ep()
+
+    @classmethod
+    def messages_ep(cls, api_type: str) -> str:
+        """
+        Delegate to the proper implementation to get messages endpoint path.
+        """
+        return cls._get_impl(api_type).messages_ep()
 
     @classmethod
     def tags(

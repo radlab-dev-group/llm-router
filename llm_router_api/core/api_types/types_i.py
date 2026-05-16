@@ -5,14 +5,7 @@ from abc import ABC, abstractmethod
 
 
 class ApiTypesI(ABC):
-    """
-    Abstract base class describing endpoints and HTTP methods for an API type.
-
-    Subclasses must implement:
-    - models_list_ep() and models_list_method()
-    - chat_ep() and chat_method()
-    - completions_ep() and completions_method()
-    """
+    """ """
 
     @staticmethod
     def tags(models_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -195,3 +188,15 @@ class ApiTypesI(ABC):
             Endpoint path (e.g., "/v1/embeddings").
         """
         raise NotImplementedError
+
+    @staticmethod
+    def messages_ep() -> str:
+        """
+        Return the URL path for the messages's endpoint.
+
+        Returns
+        -------
+        str:
+            Endoint path (e.g. "/v1/messages?").
+        """
+        return "/v1/messages"

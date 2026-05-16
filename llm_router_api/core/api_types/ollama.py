@@ -81,6 +81,10 @@ class OllamaType(ApiTypesI):
         """
         return "api/embed"
 
+    @staticmethod
+    def messages_ep() -> str:
+        return "/v1/messages?beta=true"
+
 
 class OllamaConverters:
     """Namespace for payload‑conversion utilities.
