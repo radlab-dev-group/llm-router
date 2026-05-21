@@ -24,9 +24,9 @@ class AnthropicChatHandler(PassthroughI):
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
         prompt_handler: Optional[PromptHandler] = None,
         model_handler: Optional[ModelHandler] = None,
-        ep_name="messages",
+        ep_name="v1/messages",
         method="POST",
-        dont_add_api_prefix: bool = False,
+        dont_add_api_prefix: bool = True,
         api_types: Optional[List[str]] = None,
         direct_return: bool = False,
     ):
