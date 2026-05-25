@@ -93,7 +93,8 @@ class FastTextMasking(EndpointWithHttpRequestI):
             direct_return=True,
         )
 
-        self._fast_masker = FastMasker(rules=FastMasker.ALL_MASKER_RULES)
+        # rules=None means that the all masker rules will be used
+        self._fast_masker = FastMasker(rules=None)
 
     @EP.require_params
     def prepare_payload(
