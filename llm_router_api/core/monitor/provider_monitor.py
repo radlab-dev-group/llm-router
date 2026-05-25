@@ -16,10 +16,8 @@ from typing import List, Dict, Optional
 
 try:
     import redis
-
-    REDIS_IS_AVAILABLE = True
 except ImportError:
-    REDIS_IS_AVAILABLE = False
+    raise RuntimeError("Redis is not available. Please install it first.")
 
 
 class RedisProviderMonitor:
@@ -55,8 +53,6 @@ class RedisProviderMonitor:
         logger : logging.Logger, optional
             Logger instance; if omitted, a module‑level logger is created.
         """
-        if not REDIS_IS_AVAILABLE:
-            raise RuntimeError("Redis is not available. Please install it first.")
 
         self.logger = logger or logging.getLogger(__name__)
 
