@@ -3,7 +3,9 @@ gunicorn
 redis
 prometheus_client
 python-dateutil
-# gevent
+
+gnupg
+redis
 
 tqdm
 requests
