@@ -81,7 +81,7 @@ class LLMRouterClient:
         self.retries = retries
         self.http = HttpRequester(
             base_url=self.base_url,
-            token=self.token,
+            token=self.token or "",
             timeout=self.timeout,
             retries=self.retries,
         )
