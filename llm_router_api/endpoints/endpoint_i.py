@@ -1623,7 +1623,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             or ``None`` if all attempts fail.
         """
         response = None
-        status_code_force = None
+        error_exc = None
+
         try:
             response = self._http_executor.call_http_request(
                 ep_url=ep_url,
@@ -1634,14 +1635,18 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
         except Exception as e:
             self.logger.error(e)
-            self.logger.error(response.text)
-            status_code_force = 500
+            error_exc = e
 
         self.unset_model(
             api_model_provider=api_model_provider, params=params, options=options
         )
 
-        status_code = None or status_code_force
+        # If the HTTP call failed completely, report the error instead of silently
+        # returning ``None`` (which Flask would convert to ``{}`` with HTTP 200).
+        if error_exc is not None:
+            return self.return_response_not_ok(error_exc)
+
+        status_code = None
         if response and type(response) not in [dict]:
             status_code = response.status_code
         elif not response:
