@@ -62,6 +62,17 @@ DEFAULT_API_PREFIX = os.environ.get(
 SERVICE_AS_PROXY = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM")
 
 # =============================================================================
+# REQUEST LIMITS
+# =============================================================================
+# Maximum request body size in bytes (default: 10 MB). Larger payloads are
+# rejected with HTTP 413 to prevent memory exhaustion from oversized JSON.
+MAX_REQUEST_BODY_SIZE = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}MAX_REQUEST_BODY_SIZE", 10 * 1024 * 1024
+    )
+)
+
+# =============================================================================
 # SERVER CONFIGURATION
 # =============================================================================
 # Type of server, default is flask {flask, gunicorn, waitress}

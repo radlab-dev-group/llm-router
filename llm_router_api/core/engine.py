@@ -33,6 +33,7 @@ from llm_router_api.base.constants import (
     USE_PROMETHEUS,
     SERVER_BALANCE_STRATEGY,
     ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
+    MAX_REQUEST_BODY_SIZE,
 )
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
 
@@ -142,6 +143,7 @@ class FlaskEngine:
             If endpoint registration fails for any reason.
         """
         flask_app = Flask(__name__)
+        flask_app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BODY_SIZE
         try:
             self.__register_instances(
                 application=flask_app,
