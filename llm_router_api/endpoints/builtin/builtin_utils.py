@@ -7,6 +7,7 @@ response into a clean JSON payload.
 """
 
 import os
+import re
 import time
 
 from typing import Optional, Dict, Any, List
@@ -91,10 +92,18 @@ class ApiVersion(EndpointWithHttpRequestI):
             ],
         )
 
-        self.version = "0.0.1"
+        self.version = "not-given"
         if os.path.exists(self.VERSION_FILE):
-            with open(self.VERSION_FILE) as f:
-                self.version = f.read().strip()
+            try:
+                with open(self.VERSION_FILE) as f:
+                    self.version = f.read().strip()
+                    if not re.fullmatch(r"\d+\.\d+\.[\dA-Za-z]+", self.version):
+                        raise ValueError(
+                            f"Invalid version format: '{self.version}'. "
+                            f"Expected format X.X.Y (e.g., 0.5.2, 1.0.2rc)"
+                        )
+            except Exception as e:
+                raise e
 
         self.logger.info(f"  -> Running LLM-Router version: {self.version}")
 
