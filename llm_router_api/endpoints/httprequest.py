@@ -79,6 +79,7 @@ class HttpRequestExecutor:
                 system_message=system_msg,
                 params=params,
                 headers=headers,
+                api_model_provider=api_model_provider,
             )
 
         if prompt_str:
@@ -90,11 +91,13 @@ class HttpRequestExecutor:
                     ep_url=full_url,
                     params=params,
                     headers=headers,
+                    api_model_provider=api_model_provider,
                 )
             return self._call_get_with_payload(
                 ep_url=full_url,
                 params=params,
                 headers=headers,
+                api_model_provider=api_model_provider,
             )
         except Exception:
             raise
@@ -337,6 +340,33 @@ class HttpRequestExecutor:
     # --------------------------------------------------------------------- #
     # Private helpers
     # --------------------------------------------------------------------- #
+    def _log_provider_error(
+        self,
+        method: str,
+        ep_url: str,
+        api_model_provider: Optional[ApiModel],
+        msg: str,
+    ) -> None:
+        """Log the full error details on the server (includes URL, IP, etc.)."""
+        provider_id = api_model_provider.id if api_model_provider else "unknown"
+        self.logger.error(
+            "[%s] provider %s — URL: %s — error: %s",
+            method,
+            provider_id,
+            ep_url,
+            msg,
+        )
+
+    @staticmethod
+    def _provider_request_error(
+        method: str,
+        api_model_provider: Optional[ApiModel],
+        exc: Exception,
+    ) -> RuntimeError:
+        """Build a sanitized error for the client — uses provider ID, not URL/IP."""
+        provider_id = api_model_provider.id if api_model_provider else "unknown"
+        return RuntimeError(f"[{method}] Provider {provider_id}: {exc}")
+
     @staticmethod
     def _prepare_full_url_ep(ep_url: str, api_model_provider: ApiModel) -> str:
         """
@@ -350,6 +380,7 @@ class HttpRequestExecutor:
         system_message: Dict[str, Any],
         params: Dict[str, Any],
         headers: Optional[Dict[str, Any]] = None,
+        api_model_provider: Optional[ApiModel] = None,
     ):
         """
         Send a separate request for each ``user``‑role message.
@@ -358,7 +389,7 @@ class HttpRequestExecutor:
         prompt (if any) and a single user message.  Only ``POST`` is
         supported; a ``GET`` will raise an exception.
         """
-        if self._endpoint._prepare_response_function is None:
+        if self._endpoint.prepare_response_function is None:
             raise Exception(
                 "_prepare_response_function must be implemented "
                 "when calling api for each user message"
@@ -384,12 +415,13 @@ class HttpRequestExecutor:
                 params=payload,
                 return_raw_response=True,
                 headers=headers,
+                api_model_provider=api_model_provider,
             )
             response.raise_for_status()
             contents.append(content)
             responses.append(response)
 
-        return self._endpoint._prepare_response_function(responses, contents)
+        return self._endpoint.prepare_response_function(responses, contents)
 
     def _call_post_with_payload(
         self,
@@ -397,6 +429,7 @@ class HttpRequestExecutor:
         params: Dict[str, Any],
         return_raw_response: bool = False,
         headers: Optional[Dict[str, Any]] = None,
+        api_model_provider: Optional[ApiModel] = None,
     ) -> Optional[Dict[str, Any] | Response]:
         """
         Issue a ``POST`` request with a JSON payload.
@@ -409,18 +442,24 @@ class HttpRequestExecutor:
                 headers=headers,
             )
         except requests.RequestException as exc:
-            self.logger.exception(exc)
-            raise RuntimeError(f"POST request to {ep_url} failed: {exc}") from exc
+            self._log_provider_error("POST", ep_url, api_model_provider, str(exc))
+
+            raise self._provider_request_error(
+                "POST", api_model_provider, exc
+            ) from exc
 
         if return_raw_response:
             return response
-        return self._endpoint.return_http_response(response=response)
+        return self._endpoint.return_http_response(
+            response=response, api_model_provider=api_model_provider
+        )
 
     def _call_get_with_payload(
         self,
         ep_url: str,
         params: Dict[str, Any],
         headers: Optional[Dict[str, Any]] = None,
+        api_model_provider: Optional[ApiModel] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Issue a ``GET`` request with query parameters.
@@ -433,5 +472,11 @@ class HttpRequestExecutor:
                 headers=headers,
             )
         except requests.RequestException as exc:
-            raise RuntimeError(f"GET request to {ep_url} failed: {exc}") from exc
-        return self._endpoint.return_http_response(response=response)
+            self._log_provider_error("GET", ep_url, api_model_provider, str(exc))
+
+            raise self._provider_request_error(
+                "GET", api_model_provider, exc
+            ) from exc
+        return self._endpoint.return_http_response(
+            response=response, api_model_provider=api_model_provider
+        )

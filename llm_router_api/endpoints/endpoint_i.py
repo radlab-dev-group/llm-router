@@ -1421,19 +1421,26 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     options=options,
                 )
 
-    def return_http_response(self, response):
+    def return_http_response(
+        self, response, api_model_provider: Optional[ApiModel] = None
+    ):
         """
         Normalize an HTTP response object into a Python dictionary.
 
         If the response status code indicates an error, a
-        :class:`RuntimeError` is raised.  When the body cannot be parsed as
-         JSON, a ``{"raw_response": <text>}`` mapping is returned instead.
+        :class:`RuntimeError` is raised with the provider ID.
+        When the body cannot be parsed as JSON, a ``{"raw_response": <text>}``
+        mapping is returned instead.
 
         Parameters
         ----------
         response:
             ``requests.Response`` object obtained from a ``GET`` or ``POST``
             call.
+        api_model_provider:
+            Optional provider metadata used in error messages (never leaked
+            to the client in raw form — only the non-sensitive ``.id`` field
+            is used).
 
         Returns
         -------
@@ -1446,16 +1453,27 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             If ``response.ok`` is ``False``.
         """
         if not response.ok:
+            provider_id = api_model_provider.id if api_model_provider else "unknown"
+            self.logger.error(
+                "Provider [%s] HTTP %d — response body: %s",
+                provider_id,
+                response.status_code,
+                response.text,
+            )
             raise RuntimeError(
-                f"POST request to {self._ep_name} returned status "
-                f"{response.status_code}: {response.text}"
+                f"Provider {provider_id} returned HTTP {response.status_code}"
             )
         try:
             if self._prepare_response_function:
                 return self._prepare_response_function(response)
             return response.json()
         except json.JSONDecodeError as e:
-            self.logger.exception(e)
+            provider_id = api_model_provider.id if api_model_provider else "unknown"
+            self.logger.error(
+                "Provider [%s] response is not valid JSON — body: %s",
+                provider_id,
+                response.text,
+            )
             return {"raw_response": response.text}
 
     # ==============================================================================
