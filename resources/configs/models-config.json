@@ -3,8 +3,8 @@
     "google/gemma-3-12b-it": {
       "providers": [
         {
-          "id": "gemma3_12b-vllm-71:7000",
-          "api_host": "http://192.168.100.71:7000/",
+          "id": "gemma3_12b-vllm-X:7000",
+          "api_host": "http://192.100.100.X:7000/",
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
@@ -14,8 +14,8 @@
           "tool_calling": false
         },
         {
-          "id": "gemma3_12b-vllm-71:7001",
-          "api_host": "http://192.168.100.71:7001/",
+          "id": "gemma3_12b-vllm-X:7001",
+          "api_host": "http://192.100.100.X:7001/",
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
@@ -25,81 +25,14 @@
           "tool_calling": false
         }
       ],
-      "providers_sleep": [
-        {
-          "id": "gemma3_12b-vllm-66:7000",
-          "api_host": "http://192.168.100.66:7000/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 0.1,
-          "keep_alive": null,
-          "tool_calling": false
-        },
-        {
-          "id": "gemma3_12b-vllm-66:7001",
-          "api_host": "http://192.168.100.66:7001/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 0.1,
-          "keep_alive": null,
-          "tool_calling": false
-        },
-        {
-          "id": "gemma3_12b-vllm-66:7002",
-          "api_host": "http://192.168.100.66:7002/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 0.1,
-          "keep_alive": null,
-          "tool_calling": false
-        },
-        {
-          "id": "gemma3_12b-vllm-70:7000",
-          "api_host": "http://192.168.100.70:7000/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 1.0,
-          "keep_alive": null,
-          "tool_calling": false
-        },
-        {
-          "id": "gemma3_12b-vllm-70:7001",
-          "api_host": "http://192.168.100.70:7001/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 1.0,
-          "keep_alive": null,
-          "tool_calling": false
-        },
-        {
-          "id": "gemma3_12b-vllm-70:7002",
-          "api_host": "http://192.168.100.70:7002/",
-          "api_token": "",
-          "api_type": "vllm",
-          "input_size": 4096,
-          "model_path": "",
-          "weight": 1.0,
-          "keep_alive": null,
-          "tool_calling": false
-        }
-      ]
+      "providers_sleep": []
     },
     "google/gemini-2.5-flash-lite": {
       "providers": [
         {
           "id": "google_gemini_2_5-flash-lite",
           "api_host": "https://generativelanguage.googleapis.com/v1beta/openai/",
-          "api_token": "AIzaSyDYjl8eVqO9LXOXe589xNWvBDXuEfJqITA",
+          "api_token": "YOUR_API_TOKEN",
           "api_type": "openai",
           "input_size": 512000,
           "model_path": "gemini-2.5-flash-lite",
@@ -115,7 +48,7 @@
         {
           "id": "openai-gpt3_5-t-0125",
           "api_host": "https://api.openai.com",
-          "api_token": "",
+          "api_token": "YOUR_API_TOKEN",
           "api_type": "openai",
           "input_size": 256000,
           "model_path": "gpt-3.5-turbo-0125",
@@ -124,35 +57,11 @@
         }
       ]
     },
-    "gpt-oss:20b": {
-      "providers": [
-        {
-          "id": "gpt-oss-20b-ollama-66:11434",
-          "api_host": "http://192.168.100.66:11434",
-          "api_token": "",
-          "api_type": "ollama",
-          "input_size": 256000,
-          "model_path": "",
-          "keep_alive": "35m",
-          "tool_calling": true
-        }
-      ]
-    },
     "gpt-oss:120b": {
       "providers": [
         {
-          "id": "gpt-oss-120b-ollama-66:11434",
-          "api_host": "http://192.168.100.66:11434",
-          "api_token": "",
-          "api_type": "ollama",
-          "input_size": 256000,
-          "model_path": "",
-          "keep_alive": "35m",
-          "tool_calling": true
-        },
-        {
-          "id": "gpt-oss-120b-ollama-70:11434",
-          "api_host": "http://192.168.100.70:11434",
+          "id": "gpt-oss-120b-ollama-Z:11434",
+          "api_host": "http://192.100.100.Z:11434",
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
@@ -161,58 +70,19 @@
           "tool_calling": true
         }
       ],
-      "providers_sleep": [
-      ]
+      "providers_sleep": []
     }
   },
   "qwen_models": {
     "nomic-embed-text": {
       "providers": [
         {
-          "id": "nomic-embed-text-ollama",
-          "api_host": "http://192.168.100.66:11434",
+          "id": "nomic-embed-text-ollama-X",
+          "api_host": "http://192.100.100.X:11434",
           "api_token": "",
           "api_type": "ollama",
           "input_size": 2048,
           "is_embedding": true
-        }
-      ]
-    },
-    "qwen3:235b": {
-      "providers": [
-        {
-          "id": "qwen3-235b-66:11434",
-          "api_host": "http://192.168.100.66:11434",
-          "api_token": "",
-          "api_type": "ollama",
-          "input_size": 256000,
-          "model_path": "",
-          "keep_alive": "35m",
-          "tool_calling": true
-        }
-      ]
-    },
-    "qwen3-coder:30b": {
-      "providers": [
-        {
-          "id": "qwen3-coder-30b-66:11434",
-          "api_host": "http://192.168.100.66:11434",
-          "api_token": "",
-          "api_type": "ollama",
-          "input_size": 256000,
-          "model_path": "",
-          "keep_alive": "35m",
-          "tool_calling": true
-        },
-        {
-          "id": "qwen3-coder-30b-70:11434",
-          "api_host": "http://192.168.100.70:11434",
-          "api_token": "",
-          "api_type": "ollama",
-          "input_size": 256000,
-          "model_path": "",
-          "keep_alive": "35m",
-          "tool_calling": true
         }
       ]
     }
@@ -224,11 +94,9 @@
     ],
     "openai_models": [
       "openai/gpt-3.5-turbo-0125",
-      "gpt-oss:20b",
       "gpt-oss:120b"
     ],
     "qwen_models": [
-      "qwen3-coder:30b",
       "nomic-embed-text"
     ]
   }
