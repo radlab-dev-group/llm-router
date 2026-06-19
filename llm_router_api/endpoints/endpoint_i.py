@@ -39,6 +39,7 @@ from llm_router_lib.data_models.constants import (
     LANGUAGE_PARAM,
     CLEAR_PREDEFINED_PARAMS,
 )
+from llm_router_api.base.constants_base import ALL_PROVIDERS
 
 from llm_router_api.core.errors import sanitize_error_message
 
@@ -765,7 +766,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         error_message = (
             sanitize_error_message(str(body)) if body else "Error while processing"
         )
-        if any(t in self._ep_types_str for t in ["ollama", "openai", "vllm"]):
+        if any(t in self._ep_types_str for t in ALL_PROVIDERS):
             error_body = {
                 "error": {
                     "message": error_message,
