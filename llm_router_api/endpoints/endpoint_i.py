@@ -1272,8 +1272,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # 2. Mask the whole payload if needed
             params, mappings = self._do_masking_if_needed(payload=params)
 
-            # Show mappings!
-            print(json.dumps(mappings, indent=2, ensure_ascii=False))
+            # ...and show existing mappings
+            self.logger.debug(
+                "Masking mappings: %s",
+                json.dumps(mappings, indent=2, ensure_ascii=False),
+            )
 
             # 3. Clear payload to accept only required params
             params = self._clear_payload(payload=params)
