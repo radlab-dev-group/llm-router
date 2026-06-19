@@ -193,7 +193,15 @@ class FlaskEndpointRegistrar:
                 self._logger.exception(
                     f"Unhandled exception in endpoint: {endpoint.__class__.__name__}",
                 )
-                return jsonify({"error": "internal_error", "details": str(exc)}), 500
+                return (
+                    jsonify(
+                        {
+                            "error": "internal_error",
+                            "details": "An internal error occurred",
+                        }
+                    ),
+                    500,
+                )
 
         return handler
 
