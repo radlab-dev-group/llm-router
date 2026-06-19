@@ -27,6 +27,7 @@ from flask import Flask, Blueprint, request, jsonify, Response, stream_with_cont
 from rdl_ml_utils.utils.logger import prepare_logger
 
 from llm_router_api.endpoints.endpoint_i import EndpointI
+from llm_router_api.core.errors import sanitize_error_message
 from llm_router_api.base.constants import DEFAULT_API_PREFIX
 
 
@@ -147,7 +148,15 @@ class FlaskEndpointRegistrar:
             try:
                 params = self._extract_params(endpoint.method)
             except Exception as exc:
-                return jsonify({"error": "bad_request", "details": str(exc)}), 400
+                return (
+                    jsonify(
+                        {
+                            "error": "bad_request",
+                            "details": sanitize_error_message(str(exc)),
+                        }
+                    ),
+                    400,
+                )
 
             try:
                 result = endpoint.run_ep(params or {})
@@ -188,7 +197,15 @@ class FlaskEndpointRegistrar:
 
                 return jsonify(result or {}), 200
             except ValueError as ve:
-                return jsonify({"error": "bad_request", "details": str(ve)}), 400
+                return (
+                    jsonify(
+                        {
+                            "error": "bad_request",
+                            "details": sanitize_error_message(str(ve)),
+                        }
+                    ),
+                    400,
+                )
             except Exception as exc:
                 self._logger.exception(
                     f"Unhandled exception in endpoint: {endpoint.__class__.__name__}",

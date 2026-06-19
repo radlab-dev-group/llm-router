@@ -16,6 +16,7 @@ from requests import Response
 from typing import Iterator, Dict, Any, Optional
 
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
+from llm_router_api.core.errors import sanitize_error_message
 
 
 # ------------------------------------------------#
@@ -195,7 +196,7 @@ class StreamHandler:
                 ):
                     yield _ch
             except requests.RequestException as exc:
-                err = {"error": str(exc)}
+                err = {"error": sanitize_error_message(str(exc))}
                 # Preserve the original formatting used in the two callers
                 yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
 
@@ -406,7 +407,7 @@ class StreamHandler:
                                 continue
 
                 except requests.RequestException as exc:
-                    err = {"error": str(exc)}
+                    err = {"error": sanitize_error_message(str(exc))}
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
 
         return _iter()
@@ -513,7 +514,7 @@ class StreamHandler:
                         ):
                             yield chunk
                 except requests.RequestException as exc:
-                    err = {"error": str(exc)}
+                    err = {"error": sanitize_error_message(str(exc))}
                     yield (json.dumps(err) + "\n").encode("utf-8")
 
         return _iter()
@@ -617,7 +618,7 @@ class StreamHandler:
                                     + "\n\n"
                                 ).encode("utf-8")
                 except requests.RequestException as exc:
-                    err = {"error": str(exc)}
+                    err = {"error": sanitize_error_message(str(exc))}
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
 
         return _iter()
@@ -797,7 +798,7 @@ class StreamHandler:
                             yield _as_lmstudio_sse(event_obj)
 
                 except requests.RequestException as exc:
-                    err = {"error": str(exc)}
+                    err = {"error": sanitize_error_message(str(exc))}
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
 
         return _iter()
@@ -916,7 +917,7 @@ class StreamHandler:
                                 )
 
                 except requests.RequestException as exc:
-                    err = {"error": str(exc)}
+                    err = {"error": sanitize_error_message(str(exc))}
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
 
         return _iter()

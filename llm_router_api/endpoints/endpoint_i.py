@@ -40,6 +40,8 @@ from llm_router_lib.data_models.constants import (
     CLEAR_PREDEFINED_PARAMS,
 )
 
+from llm_router_api.core.errors import sanitize_error_message
+
 from llm_router_api.base.constants import (
     USE_PROMETHEUS,
     DEFAULT_EP_LANGUAGE,
@@ -760,7 +762,9 @@ class EndpointI(SecureEndpointI, abc.ABC):
             # Heuristic for plain text (if the body is a string)
             status_code = 404
 
-        error_message = str(body) if body else "Error while processing"
+        error_message = (
+            sanitize_error_message(str(body)) if body else "Error while processing"
+        )
         if any(t in self._ep_types_str for t in ["ollama", "openai", "vllm"]):
             error_body = {
                 "error": {
@@ -774,7 +778,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
             if body is None or not str(body):
                 error_body = {"status": False}
             else:
-                error_body = {"status": False, "body": str(body)}
+                error_body = {
+                    "status": False,
+                    "body": sanitize_error_message(str(body)),
+                }
 
         return error_body, status_code
 
@@ -815,6 +822,9 @@ class EndpointI(SecureEndpointI, abc.ABC):
         # if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
         #     return
         model_name = self._model_name_from_params_or_model(params=params)
+        if model_name is None:
+            raise ValueError(f"Cannot find model {model_name}")
+
         api_model = self._model_handler.get_model_provider(
             model_name=model_name, options=options, fake=fake
         )

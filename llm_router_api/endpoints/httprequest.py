@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any, Iterator
 
 from llm_router_api.core.model_handler import ApiModel
 from llm_router_api.core.stream_handler import StreamHandler
+from llm_router_api.core.errors import sanitize_error_message
 
 
 class HttpRequestExecutor:
@@ -365,7 +366,8 @@ class HttpRequestExecutor:
     ) -> RuntimeError:
         """Build a sanitized error for the client — uses provider ID, not URL/IP."""
         provider_id = api_model_provider.id if api_model_provider else "unknown"
-        return RuntimeError(f"[{method}] Provider {provider_id}: {exc}")
+        sanitized = sanitize_error_message(str(exc))
+        return RuntimeError(f"[{method}] Provider {provider_id}: {sanitized}")
 
     @staticmethod
     def _prepare_full_url_ep(ep_url: str, api_model_provider: ApiModel) -> str:
