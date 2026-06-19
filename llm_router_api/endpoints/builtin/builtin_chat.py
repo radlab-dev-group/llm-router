@@ -72,6 +72,10 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
         self._prepare_response_function = self.__prepare_response_function
 
+    @property
+    def prepare_response_function(self):
+        return self._prepare_response_function
+
     @EP.require_params
     def prepare_payload(
         self, params: Optional[Dict[str, Any]]
