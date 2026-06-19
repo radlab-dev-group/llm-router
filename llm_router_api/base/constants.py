@@ -110,7 +110,9 @@ if not len(SERVER_WORKERS_CLASS):
     SERVER_WORKERS_CLASS = None
 
 # Server host, default is localhost
-SERVER_HOST = os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_HOST").strip()
+SERVER_HOST = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_HOST", "localhost"
+).strip()
 
 # Run server in debug mode
 RUN_IN_DEBUG_MODE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}IN_DEBUG")
