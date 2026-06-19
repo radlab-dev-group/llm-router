@@ -199,6 +199,7 @@ class StreamHandler:
                 err = {"error": sanitize_error_message(str(exc))}
                 # Preserve the original formatting used in the two callers
                 yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+                return
 
     # ------------------------------------------------#
     # Public streaming entry points
@@ -409,6 +410,7 @@ class StreamHandler:
                 except requests.RequestException as exc:
                     err = {"error": sanitize_error_message(str(exc))}
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+                    return
 
         return _iter()
 
@@ -516,6 +518,7 @@ class StreamHandler:
                 except requests.RequestException as exc:
                     err = {"error": sanitize_error_message(str(exc))}
                     yield (json.dumps(err) + "\n").encode("utf-8")
+                    return
 
         return _iter()
 
@@ -620,6 +623,7 @@ class StreamHandler:
                 except requests.RequestException as exc:
                     err = {"error": sanitize_error_message(str(exc))}
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
+                    return
 
         return _iter()
 
@@ -800,6 +804,7 @@ class StreamHandler:
                 except requests.RequestException as exc:
                     err = {"error": sanitize_error_message(str(exc))}
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+                    return
 
         return _iter()
 
@@ -919,6 +924,7 @@ class StreamHandler:
                 except requests.RequestException as exc:
                     err = {"error": sanitize_error_message(str(exc))}
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
+                    return
 
         return _iter()
 
