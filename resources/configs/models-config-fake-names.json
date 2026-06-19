@@ -2,7 +2,7 @@
   "google_models": {
     "google/vllm": {
       "id": "google-vllm-gemini",
-      "api_host": "http://192.100.100.X:7000/",
+      "api_host": "http://xxx.xxx.xxx.xxx:7000/",
       "api_token": "",
       "api_type": "vllm",
       "input_size": 4096,
@@ -20,7 +20,7 @@
   "openai_models": {
     "id": "openai-models-oss",
     "openai/model": {
-      "api_host": "http://192.100.100.Y:11434",
+      "api_host": "http://xxx.xxx.xxx.xxx:11434",
       "api_token": "",
       "api_type": "ollama",
       "input_size": 256000,

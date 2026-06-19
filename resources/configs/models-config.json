@@ -4,7 +4,7 @@
       "providers": [
         {
           "id": "gemma3_12b-vllm-X:7000",
-          "api_host": "http://192.100.100.X:7000/",
+          "api_host": "http://xxx.xxx.xxx.xxx:7000/",
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
@@ -15,7 +15,7 @@
         },
         {
           "id": "gemma3_12b-vllm-X:7001",
-          "api_host": "http://192.100.100.X:7001/",
+          "api_host": "http://xxx.xxx.xxx.xxx:7001/",
           "api_token": "",
           "api_type": "vllm",
           "input_size": 4096,
@@ -61,7 +61,7 @@
       "providers": [
         {
           "id": "gpt-oss-120b-ollama-Z:11434",
-          "api_host": "http://192.100.100.Z:11434",
+          "api_host": "http://xxx.xxx.xxx.xxx:11434",
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
@@ -78,7 +78,7 @@
       "providers": [
         {
           "id": "nomic-embed-text-ollama-X",
-          "api_host": "http://192.100.100.X:11434",
+          "api_host": "http://xxx.xxx.xxx.xxx:11434",
           "api_token": "",
           "api_type": "ollama",
           "input_size": 2048,
