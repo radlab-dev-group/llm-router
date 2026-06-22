@@ -158,6 +158,17 @@ class MemoryKeyStore(KeyStoreInterface):
             return None
         return record
 
+    async def get_key_by_plain(self, key_plain: str) -> dict | None:
+        """Look up a key record by its **plaintext** key."""
+        for record in self._keys.values():
+            if record["key_plain"] == key_plain:
+                return record
+        return None
+
+    def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+        """Synchronous version of :meth:`get_key_by_plain`."""
+        return self._run_async(self.get_key_by_plain(key_plain))
+
     # -- mutations --------------------------------------------------------------
     async def create_key(self, record: dict) -> str:
         key_plain: str = record.pop("key_plain")
