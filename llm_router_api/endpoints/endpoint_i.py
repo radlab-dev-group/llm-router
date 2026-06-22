@@ -39,6 +39,9 @@ from llm_router_lib.data_models.constants import (
     LANGUAGE_PARAM,
     CLEAR_PREDEFINED_PARAMS,
 )
+from llm_router_api.base.constants_base import ALL_PROVIDERS
+
+from llm_router_api.core.errors import sanitize_error_message
 
 from llm_router_api.base.constants import (
     USE_PROMETHEUS,
@@ -760,8 +763,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
             # Heuristic for plain text (if the body is a string)
             status_code = 404
 
-        error_message = str(body) if body else "Error while processing"
-        if any(t in self._ep_types_str for t in ["ollama", "openai", "vllm"]):
+        error_message = (
+            sanitize_error_message(str(body)) if body else "Error while processing"
+        )
+        if any(t in self._ep_types_str for t in ALL_PROVIDERS):
             error_body = {
                 "error": {
                     "message": error_message,
@@ -774,7 +779,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
             if body is None or not str(body):
                 error_body = {"status": False}
             else:
-                error_body = {"status": False, "body": str(body)}
+                error_body = {
+                    "status": False,
+                    "body": sanitize_error_message(str(body)),
+                }
 
         return error_body, status_code
 
@@ -815,6 +823,9 @@ class EndpointI(SecureEndpointI, abc.ABC):
         # if self.REQUIRED_ARGS is None or not len(self.REQUIRED_ARGS):
         #     return
         model_name = self._model_name_from_params_or_model(params=params)
+        if model_name is None:
+            raise ValueError(f"Cannot find model {model_name}")
+
         api_model = self._model_handler.get_model_provider(
             model_name=model_name, options=options, fake=fake
         )
@@ -1272,8 +1283,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # 2. Mask the whole payload if needed
             params, mappings = self._do_masking_if_needed(payload=params)
 
-            # Show mappings!
-            print(json.dumps(mappings, indent=2, ensure_ascii=False))
+            # ...and show existing mappings
+            self.logger.debug(
+                "Masking mappings: %s",
+                json.dumps(mappings, indent=2, ensure_ascii=False),
+            )
 
             # 3. Clear payload to accept only required params
             params = self._clear_payload(payload=params)
@@ -1421,19 +1435,26 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     options=options,
                 )
 
-    def return_http_response(self, response):
+    def return_http_response(
+        self, response, api_model_provider: Optional[ApiModel] = None
+    ):
         """
         Normalize an HTTP response object into a Python dictionary.
 
         If the response status code indicates an error, a
-        :class:`RuntimeError` is raised.  When the body cannot be parsed as
-         JSON, a ``{"raw_response": <text>}`` mapping is returned instead.
+        :class:`RuntimeError` is raised with the provider ID.
+        When the body cannot be parsed as JSON, a ``{"raw_response": <text>}``
+        mapping is returned instead.
 
         Parameters
         ----------
         response:
             ``requests.Response`` object obtained from a ``GET`` or ``POST``
             call.
+        api_model_provider:
+            Optional provider metadata used in error messages (never leaked
+            to the client in raw form — only the non-sensitive ``.id`` field
+            is used).
 
         Returns
         -------
@@ -1446,16 +1467,27 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             If ``response.ok`` is ``False``.
         """
         if not response.ok:
+            provider_id = api_model_provider.id if api_model_provider else "unknown"
+            self.logger.error(
+                "Provider [%s] HTTP %d — response body: %s",
+                provider_id,
+                response.status_code,
+                response.text,
+            )
             raise RuntimeError(
-                f"POST request to {self._ep_name} returned status "
-                f"{response.status_code}: {response.text}"
+                f"Provider {provider_id} returned HTTP {response.status_code}"
             )
         try:
             if self._prepare_response_function:
                 return self._prepare_response_function(response)
             return response.json()
         except json.JSONDecodeError as e:
-            self.logger.exception(e)
+            provider_id = api_model_provider.id if api_model_provider else "unknown"
+            self.logger.error(
+                "Provider [%s] response is not valid JSON — body: %s",
+                provider_id,
+                response.text,
+            )
             return {"raw_response": response.text}
 
     # ==============================================================================
@@ -1592,7 +1624,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             or ``None`` if all attempts fail.
         """
         response = None
-        status_code_force = None
+        error_exc = None
+
         try:
             response = self._http_executor.call_http_request(
                 ep_url=ep_url,
@@ -1603,14 +1636,18 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
         except Exception as e:
             self.logger.error(e)
-            self.logger.error(response.text)
-            status_code_force = 500
+            error_exc = e
 
         self.unset_model(
             api_model_provider=api_model_provider, params=params, options=options
         )
 
-        status_code = None or status_code_force
+        # If the HTTP call failed completely, report the error instead of silently
+        # returning ``None`` (which Flask would convert to ``{}`` with HTTP 200).
+        if error_exc is not None:
+            return self.return_response_not_ok(error_exc)
+
+        status_code = None
         if response and type(response) not in [dict]:
             status_code = response.status_code
         elif not response:

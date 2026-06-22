@@ -48,6 +48,21 @@ class ApiModelConfig:
 
         self._validate_unique_identifiers()
 
+    def _try_to_load_config(self) -> Dict:
+        """
+        Load and parse the models config JSON file.
+
+        Raises
+        ------
+        RuntimeError
+            If the file cannot be parsed as valid JSON.
+        """
+        try:
+            with open(self.models_config_path, "rt") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            raise RuntimeError("Invalid JSON format in models config file")
+
     def _read_active_models(self) -> Dict[str, str]:
         """
         Read the JSON configuration and return a dictionary of active models.
@@ -56,7 +71,7 @@ class ApiModelConfig:
             Dict[str, List[str]]: Mapping of model types to lists of active
             model names. Returns an empty dict if no models are defined.
         """
-        models_config = json.load(open(self.models_config_path, "rt"))
+        models_config = self._try_to_load_config()
         if len(models_config):
             exists_model = False
             for model_type, model_list in models_config.items():
@@ -75,7 +90,8 @@ class ApiModelConfig:
             Dict[str, List[Dict]]: Mapping of model name to a list of provider dicts.
         """
         models_configuration: Dict[str, List[Dict]] = {}
-        models_json = json.load(open(self.models_config_path, "rt"))
+        models_json = self._try_to_load_config()
+
         for m_type, models_list in self.active_models.items():
             for m_name in models_list:
                 model_config = models_json[m_type][m_name]

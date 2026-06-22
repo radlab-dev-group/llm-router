@@ -1,23 +1,26 @@
 {
   "google_models": {
     "google/vllm": {
-      "api_host": "http://192.168.100.79:7000/",
+      "id": "google-vllm-gemini",
+      "api_host": "http://xxx.xxx.xxx.xxx:7000/",
       "api_token": "",
       "api_type": "vllm",
       "input_size": 4096,
       "model_path": "google/gemma-3-12b-it"
     },
     "google/cloud": {
+      "id": "google-cloud-gemini",
       "api_host": "https://generativelanguage.googleapis.com/v1beta/openai/",
-      "api_token": "AIzaSyDfKMslmpStbAOzuJ2H6KA2oa_fTQNh3HI",
+      "api_token": "YOUR_API_KEY",
       "api_type": "openai",
       "input_size": 512000,
       "model_path": "gemini-2.5-flash-lite"
     }
   },
   "openai_models": {
+    "id": "openai-models-oss",
     "openai/model": {
-      "api_host": "http://192.168.100.66:11434",
+      "api_host": "http://xxx.xxx.xxx.xxx:11434",
       "api_token": "",
       "api_type": "ollama",
       "input_size": 256000,

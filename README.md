@@ -180,6 +180,41 @@ Utility scripts:
 
 ---
 
+## 🔒 Security
+
+### 🔍 Error message sanitization
+
+All error messages returned to API callers are sanitized to prevent leakage of internal infrastructure details (IP
+addresses, hostnames, URLs, ports, connection strings).
+
+**How it works:**
+
+- `sanitize_error_message()` in [`llm_router_api/core/errors.py`](llm_router_api/core/errors.py) strips URLs, IP
+  addresses, ports, hostnames, and urllib3/requests exception internals from error strings.
+- Applied at every output choke point:
+    - HTTP provider errors (`httprequest.py`)
+    - Streaming error chunks (`stream_handler.py`)
+    - `return_response_not_ok()` — the central error builder for all non-streaming errors
+    - Parameter validation errors in `register.py`
+- Server-side logs **still receive the full, unsanitized** exception — debugging remains fully possible.
+
+**What you will see as a caller:**
+
+- ✅ `"ConnectTimeout: The read operation timed out"`
+- ✅ `"A connection error occurred"`
+
+**What you will NOT see:**
+
+- ❌ `192.168.x.x`, `10.0.x.x` — internal IPs
+- ❌ `http://...`, `https://...` — internal URLs
+- ❌ `port=8080`, `host='...'` — connection details
+- ❌ Stack traces or internal provider addresses
+
+This protection applies to all error responses regardless of whether they originate from HTTP provider calls, 
+streaming endpoints, or request validation.
+
+---
+
 ## 📦 Docker
 
 Run the container with the default configuration:
@@ -229,26 +264,27 @@ A full list of environment variables is available at: [API README](llm_router_ap
 
 ### Core variables
 
-| Variable                          | Default                                | Description                                                                                                      |
-|-----------------------------------|----------------------------------------|------------------------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_PROMPTS_DIR`          | `resources/prompts`                    | Directory containing predefined system prompts.                                                                  |
-| `LLM_ROUTER_MODELS_CONFIG`        | `resources/configs/models-config.json` | Path to the models configuration JSON file.                                                                      |
-| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`  | `pl`                                   | Default language for endpoint prompts.                                                                           |
-| `LLM_ROUTER_TIMEOUT`              | `0`                                    | Timeout (seconds) for llm-router API calls.                                                                      |
-| `LLM_ROUTER_EXTERNAL_TIMEOUT`     | `300`                                  | Timeout (seconds) for external model API calls.                                                                  |
-| `LLM_ROUTER_LOG_FILENAME`         | `llm-router.log`                       | Name of the log file.                                                                                            |
-| `LLM_ROUTER_LOG_LEVEL`            | `INFO`                                 | Logging level (e.g., INFO, DEBUG).                                                                               |
-| `LLM_ROUTER_EP_PREFIX`            | `/api`                                 | Prefix for all API endpoints.                                                                                    |
-| `LLM_ROUTER_MINIMUM`              | `False`                                | Run service in proxy‑only mode.                                                                                  |
-| `LLM_ROUTER_IN_DEBUG`             | `False`                                | Run server in debug mode.                                                                                        |
-| `LLM_ROUTER_BALANCE_STRATEGY`     | `balanced`                             | Load‑balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`. |
-| `LLM_ROUTER_SERVER_TYPE`          | `flask`                                | Server implementation: `flask`, `gunicorn`, `waitress`.                                                          |
-| `LLM_ROUTER_SERVER_PORT`          | `8080`                                 | Port on which the server listens.                                                                                |
-| `LLM_ROUTER_SERVER_HOST`          | `localhost`                            | Host address for the server.                                                                                     |
-| `LLM_ROUTER_SERVER_WORKERS_COUNT` | `2`                                    | Number of workers.                                                                                               |
-| `LLM_ROUTER_SERVER_THREADS_COUNT` | `8`                                    | Number of worker threads.                                                                                        |
-| `LLM_ROUTER_SERVER_WORKER_CLASS`  | `None`                                 | Worker class for servers that support it.                                                                        |
-| `LLM_ROUTER_USE_PROMETHEUS`       | `False`                                | Enable Prometheus metrics (`/metrics` endpoint).                                                                 |
+| Variable                           | Default                                | Description                                                                                                          |
+|------------------------------------|----------------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_PROMPTS_DIR`           | `resources/prompts`                    | Directory containing predefined system prompts.                                                                      |
+| `LLM_ROUTER_MODELS_CONFIG`         | `resources/configs/models-config.json` | Path to the models configuration JSON file.                                                                          |
+| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`   | `pl`                                   | Default language for endpoint prompts.                                                                               |
+| `LLM_ROUTER_TIMEOUT`               | `0`                                    | Timeout (seconds) for llm-router API calls.                                                                          |
+| `LLM_ROUTER_EXTERNAL_TIMEOUT`      | `300`                                  | Timeout (seconds) for external model API calls.                                                                      |
+| `LLM_ROUTER_MAX_REQUEST_BODY_SIZE` | `10485760` (10 MB)                     | Maximum allowed request body size in bytes. Larger payloads are rejected with HTTP 413 to prevent memory exhaustion. |
+| `LLM_ROUTER_LOG_FILENAME`          | `llm-router.log`                       | Name of the log file.                                                                                                |
+| `LLM_ROUTER_LOG_LEVEL`             | `INFO`                                 | Logging level (e.g., INFO, DEBUG).                                                                                   |
+| `LLM_ROUTER_EP_PREFIX`             | `/api`                                 | Prefix for all API endpoints.                                                                                        |
+| `LLM_ROUTER_MINIMUM`               | `False`                                | Run service in proxy‑only mode.                                                                                      |
+| `LLM_ROUTER_IN_DEBUG`              | `False`                                | Run server in debug mode.                                                                                            |
+| `LLM_ROUTER_BALANCE_STRATEGY`      | `balanced`                             | Load‑balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`.     |
+| `LLM_ROUTER_SERVER_TYPE`           | `flask`                                | Server implementation: `flask`, `gunicorn`, `waitress`.                                                              |
+| `LLM_ROUTER_SERVER_PORT`           | `8080`                                 | Port on which the server listens.                                                                                    |
+| `LLM_ROUTER_SERVER_HOST`           | `localhost`                            | Host address for the server.                                                                                         |
+| `LLM_ROUTER_SERVER_WORKERS_COUNT`  | `2`                                    | Number of workers.                                                                                                   |
+| `LLM_ROUTER_SERVER_THREADS_COUNT`  | `8`                                    | Number of worker threads.                                                                                            |
+| `LLM_ROUTER_SERVER_WORKER_CLASS`   | `None`                                 | Worker class for servers that support it.                                                                            |
+| `LLM_ROUTER_USE_PROMETHEUS`        | `False`                                | Enable Prometheus metrics (`/metrics` endpoint).                                                                     |
 
 ### Masking & guardrail variables
 
@@ -359,7 +395,7 @@ The `resources/llm-router-speakleash/` directory contains ready‑made configs f
 
 - `speakleash-models.json` — configures `Bielik-11B-v2.3-Instruct` across **8 vLLM providers** on 3 hosts
 - `run-bielik-*.sh` — vLLM launch scripts for each GPU (cuda:0, cuda:1, cuda:2)
-- `run-rest-api-gunicorn.sh` — full LLM Router server with masking, guardrails, Redis balancing and Prometheus metrics
+- `run-rest-api-gunicorn.sh` — full LLM Router server with masking, guardrails, Redis balancing, and Prometheus metrics
 - `run-sojka-guardrail.sh` — guardrail service with Bielik‑Guard model
 
 ---

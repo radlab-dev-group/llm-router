@@ -73,3 +73,5 @@ OPENAI_COMPATIBLE_PROVIDERS = [
     "llama.cpp",
     "anthropic",
 ]
+
+ALL_PROVIDERS = OPENAI_COMPATIBLE_PROVIDERS + ["ollama", "anthropic"]

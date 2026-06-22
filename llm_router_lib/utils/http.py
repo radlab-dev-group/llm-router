@@ -179,6 +179,6 @@ class HttpRequester:
             The validated response object.
         """
         url = self._full_url(path)
-        self.logger.debug("POST %s | payload=%s", url, json)
+        self.logger.debug("POST %s", url)
         resp = self.session.post(url, json=json, timeout=self.timeout, **kwargs)
         return self._handle_response(resp)
