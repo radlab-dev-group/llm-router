@@ -87,11 +87,8 @@ class AuthMiddleware:
                 allowed=False, reason="missing_key", status_code=401
             )
 
-        # 3. Authenticate — hash lookup
-        import bcrypt
-        key_hash = bcrypt.hashpw(key.encode(), bcrypt.gensalt()).decode()
-
-        key_record = self._store.get_key_by_hash_sync(key_hash)
+        # 3. Authenticate — plaintext lookup (avoids bcrypt salt mismatch)
+        key_record = self._store.get_key_by_plain_sync(key)
         if key_record is None:
             self.logger.warning(
                 "Authentication failed: invalid key (prefix=%s)",
@@ -193,7 +190,18 @@ class AuthMiddleware:
         """Check if a path is on the public endpoints list."""
         public_str = self._config.get("public_endpoints", "/ping,/version,/models,/")
         public_list = [p.strip() for p in public_str.split(",") if p.strip()]
-        return path in public_list
+
+        # Exact match first
+        if path in public_list:
+            return True
+
+        # Prefix match for OpenAI-style paths (e.g. /v1/models → /models)
+        for pub in public_list:
+            v1_path = f"/v1{pub}"
+            if path == v1_path:
+                return True
+
+        return False
 
     def _extract_key(self, request_obj) -> tuple[str | None, str]:
         """Extract the API key from headers or query string. Returns (key, key_id)."""
