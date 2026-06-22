@@ -202,13 +202,7 @@ def main(argv: list[str] | None = None) -> int:
     int
         Exit code.
     """
-    from llm_router_api.core.auth.key_generator import KeyGenerator
     from llm_router_api.core.auth.key_store import create_key_store
-    from llm_router_api.core.auth.policies.engine import PermissionEngine
-    from llm_router_api.core.auth.policies.builtin import (
-        list_builtin_policies,
-        register_policy,
-    )
 
     if argv is None:
         argv = sys.argv[1:]
