@@ -102,6 +102,31 @@ functionality is effectively disabled and attempts to use the `LangchainRAGPlugi
 *optional** variables (`LANGCHAIN_RAG_DEVICE`, `LANGCHAIN_RAG_CHUNK_SIZE`, `LANGCHAIN_RAG_CHUNK_OVERLAP`) fall back to
 the defaults shown above.
 
+---
+
+### Authentication variables
+
+| Variable                                              | Description    | Default                                |
+|------|--------|------|
+| `LLM_ROUTER_AUTH_ENABLED`                     | **Master switch** — `"true"` enables all authentication. Default is `false` (no auth).    | `false`                                |
+| `LLM_ROUTER_AUTH_KEY_STORE`                   | Key store backend: `vault`, `redis`, or `memory`.    | `memory`                               |
+| `LLM_ROUTER_AUTH_VAULT_ADDR`                  | HashiCorp Vault server URL.    | *(empty)*                              |
+| `LLM_ROUTER_AUTH_VAULT_PATH`                  | KV v2 mount path for key storage.    | `secret/data/llm-router/api-keys`      |
+| `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD`           | Auth method: `kubernetes`, `approle`, or `token`.    | `kubernetes`                           |
+| `LLM_ROUTER_AUTH_VAULT_ROLE_ID`               | AppRole role ID.    | *(empty)*                              |
+| `LLM_ROUTER_AUTH_VAULT_SECRET_ID`             | AppRole secret ID.    | *(empty)*                              |
+| `LLM_ROUTER_AUTH_KEY_CACHE_TTL`               | Key cache TTL in seconds.    | `300`                                  |
+| `LLM_ROUTER_AUTH_KEY_CACHE_JITTER`            | Random jitter to prevent cache stampede.    | `60`                                   |
+| `LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED`          | Enable rate limiting.    | `false`                                |
+| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT`          | Default rate limit (requests per minute).    | `60`                                   |
+| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`            | Comma-separated paths that bypass authentication.    | `/ping,/version,/models,/`             |
+| `LLM_ROUTER_AUTH_KEY_PREFIX`                  | Key prefix (like LiteLLM/OpenAI).    | `sk-litm`                              |
+| `LLM_ROUTER_AUTH_KEY_LENGTH`                  | Entropy bytes for key generation.    | `48`                                   |
+| `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD`       | Old keys remain valid for this many seconds after rotation.    | `3600`                                 |
+| `LLM_ROUTER_AUTH_AUDIT`                       | Record auth events in the audit log.    | `false`                                |
+
+> See full authentication docs: **[AUTHENTICATION.md](AUTHENTICATION.md)**
+
 ### Model Configuration
 
 `models-config.json` follows the schema:

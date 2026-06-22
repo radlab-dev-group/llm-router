@@ -1,0 +1,1 @@
+IS_CLI_COMMAND = False

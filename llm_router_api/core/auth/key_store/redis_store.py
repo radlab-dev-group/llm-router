@@ -1,0 +1,164 @@
+"""
+Redis key store — stores API keys directly in Redis.
+
+Uses a Redis hash per key under ``secret/llm-router/api-keys/<key_id>``.
+Suitable for deployments without HashiCorp Vault.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+import uuid
+from typing import Any
+
+import redis
+
+import bcrypt
+
+from .interface import KeyStoreInterface
+
+_DEFAULT_REDIS_PREFIX = "secret:llm-router:api-keys"
+
+
+class RedisKeyStore(KeyStoreInterface):
+    """Store API keys in Redis."""
+
+    def __init__(
+        self,
+        redis_client: redis.Redis | None = None,
+        redis_host: str | None = None,
+        redis_port: int = 6379,
+        redis_db: int = 0,
+        redis_password: str | None = None,
+        prefix: str = _DEFAULT_REDIS_PREFIX,
+    ) -> None:
+        if redis_client is not None:
+            self._redis = redis_client
+        else:
+            self._redis = redis.Redis(
+                host=redis_host or "127.0.0.1",
+                port=redis_port,
+                db=redis_db,
+                decode_responses=True,
+                password=redis_password,
+            )
+        self._prefix = prefix
+
+    def _key(self, key_id: str) -> str:
+        return f"{self._prefix}:{key_id}"
+
+    # -- sync helpers ----------------------------------------------
+    @staticmethod
+    def _run_async(coro):
+        """Run an async coroutine from a synchronous context."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        if loop:
+            return asyncio.run_coroutine_threadsafe(coro, loop).result()
+        return asyncio.run(coro)
+
+    def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
+        return self._run_async(self.get_key_by_hash(key_hash))
+
+    async def get_key_by_hash(self, key_hash: str) -> dict | None:
+        # Scan all keys looking for a matching hash
+        cursor = 0
+        while True:
+            cursor, keys = self._redis.scan(cursor, match=f"{self._prefix}:*", count=100)
+            for key in keys:
+                raw = self._redis.get(key)
+                if raw:
+                    record = json.loads(raw)
+                    if record.get("key_hash") == key_hash and record.get("is_active"):
+                        return record
+            if cursor == 0:
+                break
+        return None
+
+    async def get_key_by_id(self, key_id: str) -> dict | None:
+        raw = self._redis.get(self._key(key_id))
+        if not raw:
+            return None
+        record = json.loads(raw)
+        if not record.get("is_active"):
+            return None
+        return record
+
+    async def create_key(self, record: dict) -> str:
+        key_plain: str = record.pop("key_plain")
+        key_hash = bcrypt.hashpw(key_plain.encode(), bcrypt.gensalt()).decode()
+
+        key_id = record.get("key_id", f"key-{uuid.uuid4().hex[:8]}")
+        now = time.time()
+        api_record = {
+            "key_id": key_id,
+            "key_hash": key_hash,
+            "key_prefix": key_plain[:7] if len(key_plain) > 6 else key_plain,
+            "policy_name": record.get("policy_name", "developer"),
+            "policy_override": record.get("policy_override"),
+            "created_at": now,
+            "expires_at": record.get("expires_at"),
+            "last_used_at": None,
+            "is_active": True,
+            "rotate_at": None,
+            "grace_until": None,
+            "metadata": record.get("metadata", {}),
+        }
+        self._redis.set(self._key(key_id), json.dumps(api_record))
+        return key_plain
+
+    async def rotate_key(self, key_id: str, grace_period: int) -> str:
+        old_raw = self._redis.get(self._key(key_id))
+        if not old_raw:
+            raise ValueError(f"Key {key_id} not found")
+
+        old = json.loads(old_raw)
+        new_plain = f"{old['key_prefix']}{uuid.uuid4().hex[:40]}"
+        new_hash = bcrypt.hashpw(new_plain.encode(), bcrypt.gensalt()).decode()
+        new_id = f"{key_id}-rotated-{int(time.time())}"
+        now = time.time()
+
+        new_record = {
+            **old,
+            "key_id": new_id,
+            "key_hash": new_hash,
+            "key_prefix": new_plain[:7],
+            "created_at": now,
+            "is_active": True,
+            "grace_until": old.get("expires_at") or (now + grace_period),
+        }
+        self._redis.set(self._key(new_id), json.dumps(new_record))
+
+        old["is_active"] = False
+        old["rotated_to"] = new_id
+        self._redis.set(self._key(key_id), json.dumps(old))
+
+        return new_plain
+
+    async def delete_key(self, key_id: str) -> None:
+        self._redis.delete(self._key(key_id))
+
+    async def list_keys(self) -> list[dict]:
+        result = []
+        cursor = 0
+        while True:
+            cursor, keys = self._redis.scan(cursor, match=f"{self._prefix}:*", count=100)
+            for key in keys:
+                raw = self._redis.get(key)
+                if raw:
+                    record = json.loads(raw)
+                    result.append({
+                        "key_id": record["key_id"],
+                        "key_prefix": record["key_prefix"],
+                        "policy_name": record["policy_name"],
+                        "is_active": record["is_active"],
+                        "created_at": record["created_at"],
+                        "expires_at": record.get("expires_at"),
+                    })
+            if cursor == 0:
+                break
+        return result

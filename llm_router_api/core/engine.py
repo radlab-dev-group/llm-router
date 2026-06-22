@@ -20,8 +20,10 @@ Typical usage
 
 import traceback
 
-from flask import Flask
+from flask import Flask, request, jsonify
 from typing import List, Type, Optional
+
+from rdl_ml_utils.utils.logger import prepare_logger
 
 from llm_router_api.core.monitor.services_monitor import LLMRouterServicesMonitor
 from llm_router_api.endpoints.endpoint_i import EndpointI
@@ -34,8 +36,27 @@ from llm_router_api.base.constants import (
     SERVER_BALANCE_STRATEGY,
     ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
     MAX_REQUEST_BODY_SIZE,
+    LLM_ROUTER_AUTH_ENABLED,
+    LLM_ROUTER_AUTH_KEY_STORE,
+    LLM_ROUTER_AUTH_VAULT_ADDR,
+    LLM_ROUTER_AUTH_VAULT_PATH,
+    LLM_ROUTER_AUTH_VAULT_AUTH_METHOD,
+    LLM_ROUTER_AUTH_VAULT_ROLE_ID,
+    LLM_ROUTER_AUTH_VAULT_SECRET_ID,
+    LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED,
+    LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT,
+    LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS,
+    LLM_ROUTER_AUTH_KEY_CACHE_TTL,
+    LLM_ROUTER_AUTH_KEY_CACHE_JITTER,
+    LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD,
+    LLM_ROUTER_AUTH_AUDIT,
+    REDIS_HOST,
+    REDIS_PORT,
+    REDIS_DB,
+    REDIS_PASSWORD,
 )
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
+from llm_router_api.core.auth.metrics import AuthMetrics
 
 if USE_PROMETHEUS:
     from llm_router_api.core.metrics import PrometheusMetrics
@@ -122,6 +143,9 @@ class FlaskEngine:
 
         self._services_monitor.start()
 
+        self._auth_enabled = False
+        self._auth_metrics: AuthMetrics | None = None
+
     # def __del__(self):
     #     if self._services_monitor:
     #         self._services_monitor.stop()
@@ -144,6 +168,13 @@ class FlaskEngine:
         """
         flask_app = Flask(__name__)
         flask_app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BODY_SIZE
+
+        # -- AUTH ENABLED CHECK -------------------------------------------
+        self._auth_enabled = LLM_ROUTER_AUTH_ENABLED
+
+        if self._auth_enabled:
+            self._setup_auth(flask_app)
+
         try:
             self.__register_instances(
                 application=flask_app,
@@ -154,9 +185,140 @@ class FlaskEngine:
 
         self.__register_prometheus_if_needed(flask_app)
 
+        # -- METRICS (after endpoints) --------------------------------------
+        if USE_PROMETHEUS:
+            self.__register_auth_metrics_if_needed(flask_app)
+
         return flask_app
 
-    def __register_prometheus_if_needed(self, flask_app):
+    def _setup_auth(self, flask_app: Flask) -> None:
+        """
+        Set up the authentication system: key store, rate limiter, and middleware.
+
+        This is called during ``prepare_flask_app()`` when ``LLM_ROUTER_AUTH_ENABLED``
+        is ``"true"``.
+        """
+        from llm_router_api.base.constants import (
+            LLM_ROUTER_AUTH_ENABLED,
+            LLM_ROUTER_AUTH_KEY_STORE,
+            LLM_ROUTER_AUTH_VAULT_ADDR,
+            LLM_ROUTER_AUTH_VAULT_PATH,
+            LLM_ROUTER_AUTH_VAULT_AUTH_METHOD,
+            LLM_ROUTER_AUTH_VAULT_ROLE_ID,
+            LLM_ROUTER_AUTH_VAULT_SECRET_ID,
+            LLM_ROUTER_AUTH_KEY_CACHE_TTL,
+            LLM_ROUTER_AUTH_KEY_CACHE_JITTER,
+            LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD,
+            LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED,
+            LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT,
+            LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS,
+            LLM_ROUTER_AUTH_AUDIT,
+            LLM_ROUTER_AUTH_KEY_PREFIX,
+            LLM_ROUTER_AUTH_KEY_LENGTH,
+            REDIS_HOST,
+            REDIS_PORT,
+            REDIS_DB,
+            REDIS_PASSWORD,
+        )
+        from llm_router_api.core.auth import (
+            create_key_store,
+            RedisRateLimiter,
+            PermissionEngine,
+        )
+        from llm_router_api.core.auth.middleware import install_auth_middleware
+        from llm_router_api.core.auth.audit import AuthAuditorBridge
+        from llm_router_api.core.auditor.auditor import AnyRequestAuditor
+        import redis
+
+        if not LLM_ROUTER_AUTH_ENABLED:
+            return
+
+        auth_logger = prepare_logger(
+            "llm_router_api.auth",
+            log_level=REST_API_LOG_LEVEL,
+            use_default_config=True,
+        )
+        auth_logger.info("[AUTH] Authentication is ENABLED")
+
+        # 1. Create the key store
+        store_kwargs = {}
+        if LLM_ROUTER_AUTH_KEY_STORE == "vault":
+            store_kwargs = {
+                "addr": LLM_ROUTER_AUTH_VAULT_ADDR,
+                "mount_path": LLM_ROUTER_AUTH_VAULT_PATH,
+                "auth_method": LLM_ROUTER_AUTH_VAULT_AUTH_METHOD,
+                "role_id": LLM_ROUTER_AUTH_VAULT_ROLE_ID,
+                "secret_id": LLM_ROUTER_AUTH_VAULT_SECRET_ID,
+            }
+        elif LLM_ROUTER_AUTH_KEY_STORE == "redis":
+            store_kwargs = {
+                "redis_host": REDIS_HOST,
+                "redis_port": REDIS_PORT,
+                "redis_db": REDIS_DB,
+                "redis_password": REDIS_PASSWORD,
+            }
+
+        store = create_key_store(LLM_ROUTER_AUTH_KEY_STORE, **store_kwargs)
+        self._key_store = store
+
+        # 2. Rate limiter
+        rate_limiter = RedisRateLimiter(
+            redis_client=store_kwargs.get("redis_client"),
+            window=60,
+        )
+        self._rate_limiter = rate_limiter
+
+        # 3. Permission engine
+        perm_engine = PermissionEngine()
+        self._perm_engine = perm_engine
+
+        # 4. Auth config
+        auth_config = {
+            "public_endpoints": LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS,
+            "rate_limit_enabled": LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED,
+            "default_rate_limit": LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT,
+            "rotation_grace_period": LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD,
+            "key_prefix": LLM_ROUTER_AUTH_KEY_PREFIX,
+            "key_length": LLM_ROUTER_AUTH_KEY_LENGTH,
+            "audit_enabled": LLM_ROUTER_AUTH_AUDIT,
+        }
+
+        # 5. Install middleware
+        install_auth_middleware(flask_app, store, auth_config)
+
+        # 6. Audit bridge
+        if LLM_ROUTER_AUTH_AUDIT:
+            from llm_router_api.core.auditor.auditor import AnyRequestAuditor
+            auditor = AnyRequestAuditor(
+                logger=prepare_logger(
+                    "llm_router_api.auth.audit",
+                    log_level=REST_API_LOG_LEVEL,
+                    use_default_config=True,
+                )
+            )
+            self._auth_auditor_bridge = AuthAuditorBridge(auditor)
+
+        self._auth_config = auth_config
+        auth_logger = prepare_logger(
+            "llm_router_api.auth",
+            log_level=REST_API_LOG_LEVEL,
+            use_default_config=True,
+        )
+        auth_logger.info("[AUTH] Auth system initialized successfully")
+
+    def _register_auth_metrics(self):
+        """Register auth Prometheus metrics."""
+        from llm_router_api.core.auth.metrics import AuthMetrics
+
+        if self._auth_metrics is not None:
+            return  # Already registered
+
+        self._auth_metrics = AuthMetrics()
+
+        # Store auth metrics on flask_app.extensions for access
+        self.flask_app.extensions["auth_metrics"] = self._auth_metrics
+
+    def __register_prometheus_if_needed(self, flask_app: Flask) -> None:
         """
         Register Prometheus metrics endpoint when ``USE_PROMETHEUS`` is enabled.
 
@@ -168,6 +330,9 @@ class FlaskEngine:
 
         The function silently returns if ``USE_PROMETHEUS`` is ``False``.
         """
+        # Store flask_app for later access
+        self.flask_app = flask_app
+
         if not USE_PROMETHEUS:
             return
 
@@ -190,6 +355,19 @@ class FlaskEngine:
             raise RuntimeError(
                 f"Failed to register endpoints: {traceback.format_exc()}"
             )
+
+    def __register_auth_metrics_if_needed(self, flask_app: Flask) -> None:
+        """
+        Register auth Prometheus metrics alongside the standard HTTP metrics.
+
+        This is called from ``prepare_flask_app()`` after the app is fully
+        initialized.  It silently returns when Prometheus is disabled.
+        """
+        if not USE_PROMETHEUS or self._auth_metrics is not None:
+            return
+
+        from llm_router_api.core.auth.metrics import AuthMetrics
+        self._auth_metrics = AuthMetrics()
 
     def __auto_load_endpoints(self, base_class: Type[EndpointI]):
         """

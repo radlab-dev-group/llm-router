@@ -49,6 +49,7 @@ setup(
     extras_require=extras,
     entry_points={
         "console_scripts": {
+            "llm-router=llm_router_api.cli:main",
             "llm-router-fast-masker=llm_router_cli.fast_masker:main",
         }
     },

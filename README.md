@@ -180,6 +180,22 @@ Utility scripts:
 
 ---
 
+## 🔐 Authentication
+
+The router supports API-key-based authentication with per-endpoint policies, rate limiting, and audit trail.
+
+➡️ **[Authentication documentation](llm_router_api/AUTHENTICATION.md)**
+
+---
+
+## ⏱️ Rate Limiting
+
+Sliding-window rate limiting backed by Redis sorted sets. Each API key + IP gets a configurable number of requests per minute. Returns `Retry-After` on 429 responses and exposes Prometheus metrics.
+
+➡️ **[Rate Limiting documentation](llm_router_api/RATE_LIMITING.md)**
+
+---
+
 ## 🔒 Security
 
 ### 🔍 Error message sanitization
@@ -307,6 +323,30 @@ A full list of environment variables is available at: [API README](llm_router_ap
 | `LLM_ROUTER_REDIS_DB`       | `0`         | Redis database number.                                      |
 
 > **Redis is now mandatory.** The router raises `RuntimeError` at startup if Redis is unavailable.
+
+### Authentication variables
+
+| Variable                                          | Default                                        | Description                                                                                          |
+|----------------------------------------|----------|-------------------------------------------------|----------------------|--------|
+| `LLM_ROUTER_AUTH_ENABLED`                         | `false`                                      | **Master switch** — `"true"` enables all authentication. Default is `false` (no auth).              |
+| `LLM_ROUTER_AUTH_KEY_STORE`                       | `memory`                                     | Key store backend: `vault`, `redis`, or `memory`.                                                      |
+| `LLM_ROUTER_AUTH_VAULT_ADDR`                      | *(empty)*                                    | HashiCorp Vault server URL (e.g. `https://vault.example.com`).                                        |
+| `LLM_ROUTER_AUTH_VAULT_PATH`                      | `secret/data/llm-router/api-keys`            | KV v2 mount path for key storage.                                                                      |
+| `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD`               | `kubernetes`                                 | Auth method: `kubernetes`, `approle`, or `token`.                                                        |
+| `LLM_ROUTER_AUTH_VAULT_ROLE_ID`                   | *(empty)*                                    | AppRole role ID (or K8s SA token for K8s auth).                                                         |
+| `LLM_ROUTER_AUTH_VAULT_SECRET_ID`                 | *(empty)*                                    | AppRole secret ID.                                                                                     |
+| `LLM_ROUTER_AUTH_VAULT_TOKEN`                     | *(empty)*                                    | Vault token (for token auth).                                                                          |
+| `LLM_ROUTER_AUTH_KEY_CACHE_TTL`                   | `300`                                        | Key cache TTL in seconds.                                                                              |
+| `LLM_ROUTER_AUTH_KEY_CACHE_JITTER`                | `60`                                         | Random jitter to prevent cache stampede.                                                               |
+| `LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED`              | `false`                                      | Enable rate limiting.                                                                                  |
+| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT`              | `60`                                         | Default rate limit (requests per minute).                                                              |
+| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`                | `/ping,/version,/models,/`                   | Comma-separated paths that bypass authentication.                                                      |
+| `LLM_ROUTER_AUTH_KEY_PREFIX`                      | `sk-litm`                                    | Key prefix (like LiteLLM/OpenAI format).                                                               |
+| `LLM_ROUTER_AUTH_KEY_LENGTH`                      | `48`                                         | Entropy bytes for key generation (produces 64-char key).                                               |
+| `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD`           | `3600`                                       | Old keys remain valid for this many seconds after rotation.                                            |
+| `LLM_ROUTER_AUTH_AUDIT`                           | `false`                                      | Record auth events in the audit log.                                                                   |
+
+> See full authentication docs: **[llm_router_api/AUTHENTICATION.md](llm_router_api/AUTHENTICATION.md)**
 
 ---
 
