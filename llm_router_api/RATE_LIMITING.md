@@ -203,12 +203,12 @@ appendfsync everysec
 
 ## Comparison with Fixed-Window
 
-| Feature | Sliding Window (current) | Fixed Window |
-|------|------|--|------|
-| Boundary spikes | ❌ No | ✅ Yes |
-| Precision | Per-request | Per-window |
-| Memory | O(entries)               | O(windows)                |
-| Burst protection | ✅ Excellent | ⚠️ Can allow 2× limit at boundary |
+| Feature          | Sliding Window (current) | Fixed Window                      |
+|------------------|--------------------------|-----------------------------------|
+| Boundary spikes  | ❌ No                     | ✅ Yes                             |
+| Precision        | Per-request              | Per-window                        |
+| Memory           | O(entries)               | O(windows)                        |
+| Burst protection | ✅ Excellent              | ⚠️ Can allow 2× limit at boundary |
 
 ### Why Sliding Window?
 
