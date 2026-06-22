@@ -19,8 +19,8 @@ import llm_router_api.base.const_global as _cg  # noqa: E402
 
 _cg.IS_CLI_COMMAND = True
 
-import argparse
 import sys
+import argparse
 
 
 def main(argv: list[str] | None = None) -> int:

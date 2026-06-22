@@ -5,8 +5,6 @@ AnyRequestAuditor for compliance/logging.
 
 from __future__ import annotations
 
-from typing import Any
-
 from llm_router_api.core.auditor.auditor import AnyRequestAuditor
 
 

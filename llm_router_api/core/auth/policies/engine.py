@@ -7,8 +7,12 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from .model import ApiKeyRecord, EndpointPermission, EndpointPolicy
-from . import builtin as builtin_policies
+from llm_router_api.core.auth.policies import builtin as builtin_policies
+from llm_router_api.core.auth.policies.model import (
+    ApiKeyRecord,
+    EndpointPermission,
+    EndpointPolicy,
+)
 
 
 # -- Endpoint key normalization --------------------------------------

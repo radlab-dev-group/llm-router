@@ -7,24 +7,25 @@ decides whether to allow it to proceed or short-circuit with an error.
 
 from __future__ import annotations
 
-import os
 import time
-import json
 
 from flask import (
     Flask,
     request,
     jsonify,
-    current_app,
     g,
 )
 
-from llm_router_api.base.constants import USE_PROMETHEUS, REST_API_LOG_LEVEL
+from llm_router_api.base.constants import REST_API_LOG_LEVEL
 
-from .errors import AuthResult, auth_error_response, auth_429_response
-from .rate_limiter import RedisRateLimiter, RateLimitResult
-from .policies.engine import PermissionEngine
-from .policies.model import EndpointPermission
+from llm_router_api.core.auth.policies.engine import PermissionEngine
+from llm_router_api.core.auth.policies.model import EndpointPermission
+from llm_router_api.core.auth.rate_limiter import RedisRateLimiter, RateLimitResult
+from llm_router_api.core.auth.errors import (
+    AuthResult,
+    auth_error_response,
+    auth_429_response,
+)
 
 
 class AuthMiddleware:

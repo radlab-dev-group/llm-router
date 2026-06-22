@@ -7,7 +7,7 @@ when the user creates a key without specifying a policy.
 
 from __future__ import annotations
 
-from .model import EndpointPolicy
+from llm_router_api.core.auth.policies.model import EndpointPolicy
 
 _builtin_policies: dict[str, EndpointPolicy] = {
     "developer": EndpointPolicy(can_access=True),

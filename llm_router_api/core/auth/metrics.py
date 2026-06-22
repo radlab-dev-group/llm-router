@@ -8,8 +8,7 @@ Prometheus is enabled (``LLM_ROUTER_USE_PROMETHEUS=true``).
 from __future__ import annotations
 
 import os
-import time
-from typing import Any
+
 
 IS_PROMETHEUS_AVAILABLE = False
 try:

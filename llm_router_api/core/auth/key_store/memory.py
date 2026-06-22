@@ -32,7 +32,7 @@ import logging as _logging
 
 from pathlib import Path
 
-from .interface import KeyStoreInterface
+from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
 
 class MemoryKeyStore(KeyStoreInterface):

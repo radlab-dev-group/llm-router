@@ -7,17 +7,15 @@ Suitable for deployments without HashiCorp Vault.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 import uuid
-from typing import Any
-
 import redis
-
 import bcrypt
+import asyncio
 
-from .interface import KeyStoreInterface
+
+from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
 _DEFAULT_REDIS_PREFIX = "secret:llm-router:api-keys"
 

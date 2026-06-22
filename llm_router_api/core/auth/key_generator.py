@@ -8,8 +8,8 @@ used by OpenAI, LiteLLM, and other LLM proxies.
 from __future__ import annotations
 
 import re
-import secrets
 import string
+import secrets
 
 
 class KeyGenerator:

@@ -7,15 +7,12 @@ backend (Vault, disk, …) on every request.
 
 from __future__ import annotations
 
-import asyncio
 import json
-import time
-import random
-from typing import Any
-
 import redis
+import random
+import asyncio
 
-from .interface import KeyStoreInterface
+from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
 
 class RedisKeyStoreCache(KeyStoreInterface):
