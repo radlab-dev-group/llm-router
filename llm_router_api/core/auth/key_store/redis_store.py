@@ -64,6 +64,25 @@ class RedisKeyStore(KeyStoreInterface):
     def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
         return self._run_async(self.get_key_by_hash(key_hash))
 
+    async def get_key_by_plain(self, key_plain: str) -> dict | None:
+        """Look up a key record by its plaintext key using bcrypt.checkpw."""
+        cursor = 0
+        while True:
+            cursor, keys = self._redis.scan(cursor, match=f"{self._prefix}:*", count=100)
+            for key_name in keys:
+                raw = self._redis.get(key_name)
+                if raw:
+                    record = json.loads(raw)
+                    stored_hash = record.get("key_hash")
+                    if stored_hash and bcrypt.checkpw(key_plain.encode(), stored_hash.encode()):
+                        return record
+            if cursor == 0:
+                break
+        return None
+
+    def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+        return self._run_async(self.get_key_by_plain(key_plain))
+
     async def get_key_by_hash(self, key_hash: str) -> dict | None:
         # Scan all keys looking for a matching hash
         cursor = 0
