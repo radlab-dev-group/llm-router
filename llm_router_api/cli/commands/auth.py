@@ -14,13 +14,12 @@ Usage::
 
 from __future__ import annotations
 
-import argparse
-import json
 import os
 import sys
-import time
+import json
+import argparse
+
 from pathlib import Path
-from typing import Any
 
 
 def register_auth_subparser(
