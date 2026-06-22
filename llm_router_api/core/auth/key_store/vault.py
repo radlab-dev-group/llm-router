@@ -104,6 +104,55 @@ class VaultKeyStore(KeyStoreInterface):
     def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
         return self._run_async(self._wrapped.get_key_by_hash(key_hash))
 
+    async def get_key_by_plain(self, key_plain: str) -> dict | None:
+        """Look up a key record by its plaintext key using bcrypt.checkpw.
+
+        Scans all keys in Vault since hashes are stored with random salts
+        and cannot be looked up by hash directly.
+        """
+        import hvault
+
+        kv_path = self._mount_path.rstrip("/")
+        try:
+            secret = self._client.secrets.kv.v2.list_secrets(
+                path=kv_path,
+                mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
+            )
+        except Exception:
+            return None
+
+        secrets_data = secret.get("data", {}) or {}
+        keys = secrets_data.get("keys") or []
+
+        for key_name in keys:
+            try:
+                secret_data = self._client.secrets.kv.v2.read_secret_version(
+                    path=f"{kv_path}/{key_name}",
+                    mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
+                )
+                record = secret_data.get("data", {}).get("data", {}) or {}
+                stored_hash = record.get("key_hash")
+                if stored_hash and bcrypt.checkpw(
+                    key_plain.encode(), stored_hash.encode()
+                ):
+                    return {
+                        "key_id": key_name,
+                        "key_hash": stored_hash,
+                        "key_plain": None,  # plaintext not available from Vault
+                        "key_prefix": record.get("key_prefix", ""),
+                        "policy_name": record.get("policy_name", "developer"),
+                        "is_active": record.get("is_active", True),
+                        "created_at": record.get("created_at"),
+                        "expires_at": record.get("expires_at"),
+                    }
+            except Exception:
+                continue
+        return None
+
+    def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+        """Synchronous version of :meth:`get_key_by_plain`."""
+        return self._run_async(self.get_key_by_plain(key_plain))
+
     # -- KeyStoreInterface forwarding -------------------------------
     async def get_key_by_hash(self, key_hash: str) -> dict | None:
         return await self._wrapped.get_key_by_hash(key_hash)

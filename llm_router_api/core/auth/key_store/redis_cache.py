@@ -133,3 +133,12 @@ class RedisKeyStoreCache(KeyStoreInterface):
 
     async def list_keys(self) -> list[dict]:
         return await self._backend.list_keys()
+
+    # -- plaintext lookup (bypasses cache since salts are random) -------------
+    async def get_key_by_plain(self, key_plain: str) -> dict | None:
+        """Delegate plaintext lookup to backend — cannot be cached (random bcrypt salts)."""
+        return await self._backend.get_key_by_plain(key_plain)
+
+    def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+        """Sync version of :meth:`get_key_by_plain`."""
+        return self._run_async(self.get_key_by_plain(key_plain))
