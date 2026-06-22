@@ -82,9 +82,26 @@ class EndpointPolicy:
     def get_permission(
         self, endpoint_key: str, method: str = "POST"
     ) -> EndpointPermission:
-        """Return the permission for a specific endpoint and method."""
+        """Return the permission for a specific endpoint and method.
+
+        If ``can_access`` is True and there are no explicit per-endpoint
+        restrictions (``permissions`` dict), return an allow-all permission.
+        Otherwise look up the exact endpoint_key in ``permissions`` — if it
+        is absent, deny (the policy has *some* endpoint-level rules and this
+        one wasn't listed).
+        """
         if not self.can_access:
             return EndpointPermission(method=method, allowed=False)
+
+        # When can_access=True but no per-endpoint map exists → allow everything
+        if not self.permissions:
+            return EndpointPermission(
+                method=method,
+                allowed=True,
+                requires_guardrail=False,
+                requires_masking=False,
+            )
+
         perm = self.permissions.get(endpoint_key)
         if perm is None:
             return EndpointPermission(method=method, allowed=False)

@@ -23,15 +23,14 @@ Env var ``LLM_ROUTER_AUTH_MEMORY_SEED_FILE`` controls the path
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
 import time
 import uuid
-from pathlib import Path
-from typing import Any
-
 import bcrypt
+import asyncio
+import logging as _logging
+
+from pathlib import Path
 
 from .interface import KeyStoreInterface
 
@@ -91,25 +90,6 @@ class MemoryKeyStore(KeyStoreInterface):
             self._keys[key_id] = api_record
             self._by_hash[key_hash] = key_id
 
-    # -- seed loading ------------------------------
-    @staticmethod
-    def _load_seeds(seed_file: str) -> list[dict]:
-        """Load key seed records from a JSON file."""
-        path = Path(seed_file).expanduser()
-        if not path.exists():
-            return []
-        raw = path.read_text(encoding="utf-8")
-        records = json.loads(raw)
-        if not isinstance(records, list):
-            raise ValueError(
-                f"Seed file {seed_file} must contain a JSON array, "
-                f"got {type(records).__name__}"
-            )
-        for rec in records:
-            if "key_plain" not in rec:
-                raise ValueError(f"Seed record missing 'key_plain': {rec}")
-        return records
-
     def _persist_seeds(self, seed_file: str) -> None:
         """Write all current keys back to the seed file."""
         path = Path(seed_file).expanduser()
@@ -160,13 +140,39 @@ class MemoryKeyStore(KeyStoreInterface):
 
     async def get_key_by_plain(self, key_plain: str) -> dict | None:
         """Look up a key record by its **plaintext** key."""
-        for record in self._keys.values():
-            if record["key_plain"] == key_plain:
-                return record
+        logger = _logging.getLogger(__name__)
+        prefix = key_plain[:7] if len(key_plain) > 6 else key_plain
+        for rec_id, record in self._keys.items():
+            stored = record.get("key_prefix", "")
+            if stored == prefix:
+                logger.debug(
+                    "get_key_by_plain: candidate prefix=%s (id=%s) — full match check pending",
+                    prefix,
+                    rec_id[:8],
+                )
+                if record.get("key_plain") == key_plain:
+                    logger.info(
+                        "get_key_by_plain: MATCH prefix=%s (id=%s)",
+                        prefix,
+                        rec_id[:8],
+                    )
+                    return record
+        logger.warning(
+            "get_key_by_plain: NO MATCH for key with prefix=%s (total keys=%d)",
+            prefix,
+            len(self._keys),
+        )
         return None
 
     def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
         """Synchronous version of :meth:`get_key_by_plain`."""
+        prefix = key_plain[:7] if len(key_plain) > 6 else key_plain
+        logger = _logging.getLogger(__name__)
+        logger.debug(
+            "get_key_by_plain_sync: checking prefix=%s (total_keys=%d)",
+            prefix,
+            len(self._keys),
+        )
         return self._run_async(self.get_key_by_plain(key_plain))
 
     # -- mutations --------------------------------------------------------------

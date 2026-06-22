@@ -48,6 +48,7 @@ from llm_router_api.base.constants import (
     LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS,
     LLM_ROUTER_AUTH_KEY_CACHE_TTL,
     LLM_ROUTER_AUTH_KEY_CACHE_JITTER,
+    LLM_ROUTER_AUTH_MEMORY_SEED_FILE,
     LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD,
     LLM_ROUTER_AUTH_AUDIT,
     REDIS_HOST,
@@ -249,6 +250,10 @@ class FlaskEngine:
                 "auth_method": LLM_ROUTER_AUTH_VAULT_AUTH_METHOD,
                 "role_id": LLM_ROUTER_AUTH_VAULT_ROLE_ID,
                 "secret_id": LLM_ROUTER_AUTH_VAULT_SECRET_ID,
+            }
+        elif LLM_ROUTER_AUTH_KEY_STORE == "memory":
+            store_kwargs = {
+                "seed_file": LLM_ROUTER_AUTH_MEMORY_SEED_FILE,
             }
         elif LLM_ROUTER_AUTH_KEY_STORE == "redis":
             store_kwargs = {

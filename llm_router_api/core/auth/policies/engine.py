@@ -68,9 +68,23 @@ class PermissionEngine:
     def __init__(self, custom_policies: dict[str, EndpointPolicy] | None = None) -> None:
         self._custom_policies: dict[str, EndpointPolicy] = custom_policies or {}
 
+    @staticmethod
+    def _normalize(record: Any) -> Any:
+        """Ensure *record* supports attribute access (works for dicts or ApiKeyRecord)."""
+        if isinstance(record, dict):
+            class _AttrDict(dict):
+                """A dict that also supports ``obj.attr`` access."""
+                def __getattr__(self, attr: str) -> Any:  # noqa: D105
+                    val = self.get(attr)
+                    if val is None and attr not in self:
+                        raise AttributeError(f"{type(self).__name__!r} object has no attribute {attr!r}")
+                    return val
+            return _AttrDict(record)
+        return record
+
     def resolve(
         self,
-        key_record: ApiKeyRecord,
+        key_record: Any,
         endpoint_key: str,
         model_name: str | None = None,
     ) -> EndpointPermission:
@@ -79,8 +93,8 @@ class PermissionEngine:
 
         Parameters
         ----------
-        key_record : ApiKeyRecord
-            The authenticated key.
+        key_record : ApiKeyRecord | dict
+            The authenticated key (object or plain dict — both supported).
         endpoint_key : str
             The normalized endpoint key (e.g. ``"post:/v1/chat/completions"``).
         model_name : str | None
@@ -90,6 +104,8 @@ class PermissionEngine:
         -------
         EndpointPermission
         """
+        record = self._normalize(key_record)
+
         # Public endpoints — always pass
         builtin_perm = _ENDPOINT_PERMISSION_MAP.get(endpoint_key)
         if builtin_perm == "_public":
@@ -101,15 +117,15 @@ class PermissionEngine:
             )
 
         # Fetch policy
-        policy = self._get_policy(key_record)
+        policy = self._get_policy(record)
 
         # Key is inactive or expired
-        if not policy.is_active or not key_record.is_active:
+        if not policy.is_active or not record.is_active:
             return EndpointPermission(
                 method=endpoint_key.split(":")[0],
                 allowed=False,
             )
-        if key_record.expires_at and time.time() > key_record.expires_at:
+        if record.expires_at and time.time() > record.expires_at:
             return EndpointPermission(
                 method=endpoint_key.split(":")[0],
                 allowed=False,
@@ -117,7 +133,7 @@ class PermissionEngine:
 
         # Get the permission type for this endpoint
         perm_type = builtin_perm or "chat"  # default fallback
-        perm = policy.get_permission(endpoint_key, model_name=model_name)
+        perm = policy.get_permission(endpoint_key)
 
         if not perm.allowed:
             return EndpointPermission(
@@ -152,16 +168,16 @@ class PermissionEngine:
             requires_masking=perm.requires_masking,
         )
 
-    def _get_policy(self, key_record: ApiKeyRecord) -> EndpointPolicy:
-        """Resolve the policy for a key record."""
+    def _get_policy(self, record: Any) -> EndpointPolicy:
+        """Resolve the policy for a key record (object or dict)."""
         # 1. policy_override
-        if key_record.policy_override:
-            policy = self._parse_override(key_record.policy_override)
+        if record.policy_override:
+            policy = self._parse_override(record.policy_override)
             policy.is_active = True
             return policy
 
         # 2. Named policy (builtin or custom)
-        named = key_record.policy_name
+        named = record.policy_name
         policy = self._custom_policies.get(named)
         if policy is None:
             policy = builtin_policies.get_builtin_policy(named)
