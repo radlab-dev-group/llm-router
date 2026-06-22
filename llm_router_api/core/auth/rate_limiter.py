@@ -57,9 +57,7 @@ class RedisRateLimiter:
             )
         self.WINDOW = window
 
-    def is_allowed(
-        self, key_id: str, ip: str, limit: int
-    ) -> RateLimitResult:
+    def is_allowed(self, key_id: str, ip: str, limit: int) -> RateLimitResult:
         """
         Check if a request is within the rate limit.
 
@@ -96,7 +94,9 @@ class RedisRateLimiter:
                 retry_after = max(1, retry_after)
             else:
                 retry_after = self.WINDOW
-            return RateLimitResult(allowed=False, remaining=0, retry_after=retry_after)
+            return RateLimitResult(
+                allowed=False, remaining=0, retry_after=retry_after
+            )
 
         # Add this request
         member = f"{now}:{uuid.uuid4().hex[:6]}"

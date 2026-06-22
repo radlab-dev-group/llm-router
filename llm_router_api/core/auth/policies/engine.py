@@ -10,6 +10,7 @@ from typing import Any
 from .model import ApiKeyRecord, EndpointPermission, EndpointPolicy
 from . import builtin as builtin_policies
 
+
 # -- Endpoint key normalization --------------------------------------
 def _endpoint_key(method: str, path: str) -> str:
     """
@@ -65,20 +66,27 @@ class PermissionEngine:
     permission matrix.
     """
 
-    def __init__(self, custom_policies: dict[str, EndpointPolicy] | None = None) -> None:
+    def __init__(
+        self, custom_policies: dict[str, EndpointPolicy] | None = None
+    ) -> None:
         self._custom_policies: dict[str, EndpointPolicy] = custom_policies or {}
 
     @staticmethod
     def _normalize(record: Any) -> Any:
         """Ensure *record* supports attribute access (works for dicts or ApiKeyRecord)."""
         if isinstance(record, dict):
+
             class _AttrDict(dict):
                 """A dict that also supports ``obj.attr`` access."""
+
                 def __getattr__(self, attr: str) -> Any:  # noqa: D105
                     val = self.get(attr)
                     if val is None and attr not in self:
-                        raise AttributeError(f"{type(self).__name__!r} object has no attribute {attr!r}")
+                        raise AttributeError(
+                            f"{type(self).__name__!r} object has no attribute {attr!r}"
+                        )
                     return val
+
             return _AttrDict(record)
         return record
 
@@ -144,7 +152,9 @@ class PermissionEngine:
         # Model whitelist check (global)
         if policy.model_whitelist and model_name:
             model_lower = model_name.lower()
-            whitelisted = any(model_lower in w.lower() for w in policy.model_whitelist)
+            whitelisted = any(
+                model_lower in w.lower() for w in policy.model_whitelist
+            )
             if not whitelisted:
                 return EndpointPermission(
                     method=endpoint_key.split(":")[0],

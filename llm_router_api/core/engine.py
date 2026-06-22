@@ -294,6 +294,7 @@ class FlaskEngine:
         # 6. Audit bridge
         if LLM_ROUTER_AUTH_AUDIT:
             from llm_router_api.core.auditor.auditor import AnyRequestAuditor
+
             auditor = AnyRequestAuditor(
                 logger=prepare_logger(
                     "llm_router_api.auth.audit",
@@ -372,6 +373,7 @@ class FlaskEngine:
             return
 
         from llm_router_api.core.auth.metrics import AuthMetrics
+
         self._auth_metrics = AuthMetrics()
 
     def __auto_load_endpoints(self, base_class: Type[EndpointI]):

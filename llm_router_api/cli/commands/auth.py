@@ -23,7 +23,9 @@ from pathlib import Path
 from typing import Any
 
 
-def register_auth_subparser(parser: argparse.ArgumentParser, nest_auth: bool = True) -> None:
+def register_auth_subparser(
+    parser: argparse.ArgumentParser, nest_auth: bool = True
+) -> None:
     """Register the ``auth`` subparser with its child commands.
 
     Parameters
@@ -203,12 +205,17 @@ def main(argv: list[str] | None = None) -> int:
     from llm_router_api.core.auth.key_generator import KeyGenerator
     from llm_router_api.core.auth.key_store import create_key_store
     from llm_router_api.core.auth.policies.engine import PermissionEngine
-    from llm_router_api.core.auth.policies.builtin import list_builtin_policies, register_policy
+    from llm_router_api.core.auth.policies.builtin import (
+        list_builtin_policies,
+        register_policy,
+    )
 
     if argv is None:
         argv = sys.argv[1:]
 
-    parser = argparse.ArgumentParser(description="Manage API keys and authentication")
+    parser = argparse.ArgumentParser(
+        description="Manage API keys and authentication"
+    )
     auth_sub = parser.add_subparsers(dest="auth_command")
     # Top-level --store for key store backend. Subcommands override this.
     parser.add_argument(
@@ -320,11 +327,15 @@ def _handle_key(args, sub: list) -> int:
                 print("No API keys found.")
                 return 0
 
-            print(f"{'KEY_ID':<20} {'PREFIX':<10} {'POLICY':<15} {'ACTIVE':<8} {'EXPIRES':<20}")
+            print(
+                f"{'KEY_ID':<20} {'PREFIX':<10} {'POLICY':<15} {'ACTIVE':<8} {'EXPIRES':<20}"
+            )
             print("-" * 75)
             for k in keys:
                 expires_str = (
-                    f"{k.get('expires_at', 'none'):.0f}" if k.get('expires_at') else "none"
+                    f"{k.get('expires_at', 'none'):.0f}"
+                    if k.get("expires_at")
+                    else "none"
                 )
                 line = (
                     f"{k['key_id']:<20} {k['key_prefix']:<10} {k['policy_name']:<15} "
@@ -395,7 +406,10 @@ def _handle_key(args, sub: list) -> int:
 def _handle_policy(args, sub: list) -> int:
     """Handle policy subcommands."""
     from llm_router_api.core.auth.policies.engine import EndpointPolicy
-    from llm_router_api.core.auth.policies.builtin import list_builtin_policies, register_policy
+    from llm_router_api.core.auth.policies.builtin import (
+        list_builtin_policies,
+        register_policy,
+    )
 
     if not sub:
         print("Usage: llm-router auth policy <list|create> ...")

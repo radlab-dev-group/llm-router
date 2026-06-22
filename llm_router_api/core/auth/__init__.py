@@ -35,15 +35,15 @@ __all__ = [
 # Mapping of exported names to (submodule, attr_name).
 _EXPORTS: dict[str, tuple[str, str]] = {
     "install_auth_middleware": (".middleware", "install_auth_middleware"),
-    "create_key_store":        (".key_store",       "create_key_store"),
-    "RedisRateLimiter":        (".rate_limiter",    "RedisRateLimiter"),
-    "PermissionEngine":        (".policies.engine",  "PermissionEngine"),
-    "ApiKeyRecord":            (".policies.model",   "ApiKeyRecord"),
-    "EndpointPolicy":          (".policies.model",   "EndpointPolicy"),
-    "EndpointPermission":      (".policies.model",   "EndpointPermission"),
-    "KeyGenerator":            (".key_generator",    "KeyGenerator"),
-    "AuthAuditorBridge":       (".audit",            "AuthAuditorBridge"),
-    "AuthResult":              (".errors",           "AuthResult"),
+    "create_key_store": (".key_store", "create_key_store"),
+    "RedisRateLimiter": (".rate_limiter", "RedisRateLimiter"),
+    "PermissionEngine": (".policies.engine", "PermissionEngine"),
+    "ApiKeyRecord": (".policies.model", "ApiKeyRecord"),
+    "EndpointPolicy": (".policies.model", "EndpointPolicy"),
+    "EndpointPermission": (".policies.model", "EndpointPermission"),
+    "KeyGenerator": (".key_generator", "KeyGenerator"),
+    "AuthAuditorBridge": (".audit", "AuthAuditorBridge"),
+    "AuthResult": (".errors", "AuthResult"),
 }
 
 _MOD_CACHE: dict[str, ModuleType] = {}

@@ -68,13 +68,17 @@ class RedisKeyStore(KeyStoreInterface):
         """Look up a key record by its plaintext key using bcrypt.checkpw."""
         cursor = 0
         while True:
-            cursor, keys = self._redis.scan(cursor, match=f"{self._prefix}:*", count=100)
+            cursor, keys = self._redis.scan(
+                cursor, match=f"{self._prefix}:*", count=100
+            )
             for key_name in keys:
                 raw = self._redis.get(key_name)
                 if raw:
                     record = json.loads(raw)
                     stored_hash = record.get("key_hash")
-                    if stored_hash and bcrypt.checkpw(key_plain.encode(), stored_hash.encode()):
+                    if stored_hash and bcrypt.checkpw(
+                        key_plain.encode(), stored_hash.encode()
+                    ):
                         return record
             if cursor == 0:
                 break
@@ -87,12 +91,16 @@ class RedisKeyStore(KeyStoreInterface):
         # Scan all keys looking for a matching hash
         cursor = 0
         while True:
-            cursor, keys = self._redis.scan(cursor, match=f"{self._prefix}:*", count=100)
+            cursor, keys = self._redis.scan(
+                cursor, match=f"{self._prefix}:*", count=100
+            )
             for key in keys:
                 raw = self._redis.get(key)
                 if raw:
                     record = json.loads(raw)
-                    if record.get("key_hash") == key_hash and record.get("is_active"):
+                    if record.get("key_hash") == key_hash and record.get(
+                        "is_active"
+                    ):
                         return record
             if cursor == 0:
                 break
@@ -165,19 +173,23 @@ class RedisKeyStore(KeyStoreInterface):
         result = []
         cursor = 0
         while True:
-            cursor, keys = self._redis.scan(cursor, match=f"{self._prefix}:*", count=100)
+            cursor, keys = self._redis.scan(
+                cursor, match=f"{self._prefix}:*", count=100
+            )
             for key in keys:
                 raw = self._redis.get(key)
                 if raw:
                     record = json.loads(raw)
-                    result.append({
-                        "key_id": record["key_id"],
-                        "key_prefix": record["key_prefix"],
-                        "policy_name": record["policy_name"],
-                        "is_active": record["is_active"],
-                        "created_at": record["created_at"],
-                        "expires_at": record.get("expires_at"),
-                    })
+                    result.append(
+                        {
+                            "key_id": record["key_id"],
+                            "key_prefix": record["key_prefix"],
+                            "policy_name": record["policy_name"],
+                            "is_active": record["is_active"],
+                            "created_at": record["created_at"],
+                            "expires_at": record.get("expires_at"),
+                        }
+                    )
             if cursor == 0:
                 break
         return result

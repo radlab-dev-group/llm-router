@@ -10,13 +10,13 @@ from __future__ import annotations
 from .model import EndpointPolicy
 
 _builtin_policies: dict[str, EndpointPolicy] = {
-    "developer":  EndpointPolicy(can_access=True),
-    "admin":      EndpointPolicy(can_access=True, metadata={"level": "admin"}),
-    "chat":       EndpointPolicy(can_access=True),
-    "embedding":  EndpointPolicy(can_access=True),
-    "anthropic":  EndpointPolicy(can_access=True),
-    "ollama":     EndpointPolicy(can_access=True),
-    "builtin":    EndpointPolicy(can_access=True),
+    "developer": EndpointPolicy(can_access=True),
+    "admin": EndpointPolicy(can_access=True, metadata={"level": "admin"}),
+    "chat": EndpointPolicy(can_access=True),
+    "embedding": EndpointPolicy(can_access=True),
+    "anthropic": EndpointPolicy(can_access=True),
+    "ollama": EndpointPolicy(can_access=True),
+    "builtin": EndpointPolicy(can_access=True),
 }
 
 

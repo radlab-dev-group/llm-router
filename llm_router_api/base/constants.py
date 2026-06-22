@@ -246,9 +246,11 @@ LLM_ROUTER_AUTH_ENABLED = os.environ.get(
 ).strip().lower() in ("true", "1", "yes", "t")
 
 # Key store backend: vault | redis | memory
-LLM_ROUTER_AUTH_KEY_STORE = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_KEY_STORE", "memory"
-).strip().lower()
+LLM_ROUTER_AUTH_KEY_STORE = (
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_KEY_STORE", "memory")
+    .strip()
+    .lower()
+)
 
 # Memory store seed file — JSON array of key records (for dev/test)
 LLM_ROUTER_AUTH_MEMORY_SEED_FILE = os.environ.get(
@@ -262,11 +264,15 @@ LLM_ROUTER_AUTH_VAULT_ADDR = os.environ.get(
 ).strip()
 LLM_ROUTER_AUTH_VAULT_PATH = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_VAULT_PATH",
-    "secret/data/llm-router/api-keys"
+    "secret/data/llm-router/api-keys",
 ).strip()
-LLM_ROUTER_AUTH_VAULT_AUTH_METHOD = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_VAULT_AUTH_METHOD", "kubernetes"
-).strip().lower()
+LLM_ROUTER_AUTH_VAULT_AUTH_METHOD = (
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_VAULT_AUTH_METHOD", "kubernetes"
+    )
+    .strip()
+    .lower()
+)
 LLM_ROUTER_AUTH_VAULT_ROLE_ID = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_VAULT_ROLE_ID", ""
 ).strip()
@@ -293,7 +299,7 @@ LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT = int(
 # Public endpoints (always bypass auth)
 LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_PUBLIC_ENDPOINTS",
-    "/ping,/version,/models,/"
+    "/ping,/version,/models,/",
 ).strip()
 
 # Key generation settings
@@ -306,13 +312,13 @@ LLM_ROUTER_AUTH_KEY_LENGTH = int(
 
 # Key rotation
 LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD = int(
-    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_ROTATION_GRACE_PERIOD", "3600")
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_ROTATION_GRACE_PERIOD", "3600"
+    )
 )
 
 # Audit integration
-LLM_ROUTER_AUTH_AUDIT = bool_env_value(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_AUDIT"
-)
+LLM_ROUTER_AUTH_AUDIT = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_AUDIT")
 
 # =============================================================================
 # MONITORING DEFINITIONS

@@ -43,7 +43,9 @@ class VaultKeyStore(KeyStoreInterface):
         import hvault
 
         self._client = hvault.Client(url=addr)
-        self._authenticate_vault(auth_method, role_id, secret_id, k8s_service_account, k8s_review_path)
+        self._authenticate_vault(
+            auth_method, role_id, secret_id, k8s_service_account, k8s_review_path
+        )
 
         # Wrap in cache
         self._wrapped: KeyStoreInterface
@@ -79,12 +81,16 @@ class VaultKeyStore(KeyStoreInterface):
         elif auth_method == "approle":
             self._client.auth_approle(
                 role_id=os.environ.get("LLM_ROUTER_AUTH_VAULT_ROLE_ID", role_id),
-                secret_id=os.environ.get("LLM_ROUTER_AUTH_VAULT_SECRET_ID", secret_id),
+                secret_id=os.environ.get(
+                    "LLM_ROUTER_AUTH_VAULT_SECRET_ID", secret_id
+                ),
             )
         elif auth_method == "token":
             token = os.environ.get("LLM_ROUTER_AUTH_VAULT_TOKEN", "")
             if not token:
-                raise RuntimeError("LLM_ROUTER_AUTH_VAULT_TOKEN is required for token auth")
+                raise RuntimeError(
+                    "LLM_ROUTER_AUTH_VAULT_TOKEN is required for token auth"
+                )
             self._client.token = token
         else:
             raise ValueError(f"Unsupported Vault auth method: {auth_method}")
@@ -240,14 +246,16 @@ class VaultKeyStore(KeyStoreInterface):
             for kid in keys:
                 record = await self.get_key_by_id(kid)
                 if record:
-                    result.append({
-                        "key_id": record["key_id"],
-                        "key_prefix": record["key_prefix"],
-                        "policy_name": record["policy_name"],
-                        "is_active": record["is_active"],
-                        "created_at": record["created_at"],
-                        "expires_at": record.get("expires_at"),
-                    })
+                    result.append(
+                        {
+                            "key_id": record["key_id"],
+                            "key_prefix": record["key_prefix"],
+                            "policy_name": record["policy_name"],
+                            "is_active": record["is_active"],
+                            "created_at": record["created_at"],
+                            "expires_at": record.get("expires_at"),
+                        }
+                    )
             return result
         except Exception:
             return []
@@ -257,12 +265,15 @@ class VaultKeyStore(KeyStoreInterface):
         record = await self.get_key_by_id(key_id)
         if record:
             record["last_used_at"] = time.time()
-            await self.create_key({**record, "key_plain": "placeholder"})  # placeholder
+            await self.create_key(
+                {**record, "key_plain": "placeholder"}
+            )  # placeholder
 
     def update_last_used_sync(self, key_id: str) -> None:
         """Sync version of update_last_used."""
         try:
             import asyncio
+
             asyncio.get_event_loop().create_task(self.update_last_used(key_id))
         except RuntimeError:
             pass

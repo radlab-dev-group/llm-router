@@ -58,7 +58,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    if args.command is None or not hasattr(args, 'auth_command') or args.auth_command is None:
+    if (
+        args.command is None
+        or not hasattr(args, "auth_command")
+        or args.auth_command is None
+    ):
         parser.print_help()
         return 0
 

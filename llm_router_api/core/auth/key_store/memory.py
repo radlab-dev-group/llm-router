@@ -96,15 +96,17 @@ class MemoryKeyStore(KeyStoreInterface):
         path.parent.mkdir(parents=True, exist_ok=True)
         out: list[dict] = []
         for rec in self._keys.values():
-            out.append({
-                "key_plain": rec.get("key_plain", ""),  # stored at creation
-                "key_id": rec["key_id"],
-                "policy_name": rec["policy_name"],
-                "is_active": rec.get("is_active", True),
-                "expires_at": rec.get("expires_at"),
-                "created_at": rec.get("created_at"),
-                "metadata": rec.get("metadata", {}),
-            })
+            out.append(
+                {
+                    "key_plain": rec.get("key_plain", ""),  # stored at creation
+                    "key_id": rec["key_id"],
+                    "policy_name": rec["policy_name"],
+                    "is_active": rec.get("is_active", True),
+                    "expires_at": rec.get("expires_at"),
+                    "created_at": rec.get("created_at"),
+                    "metadata": rec.get("metadata", {}),
+                }
+            )
         path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
     # -- sync helpers ----------------------------------------------

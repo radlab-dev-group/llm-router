@@ -55,6 +55,7 @@ class AuthMiddleware:
     def logger(self):
         if self._logger is None:
             from rdl_ml_utils.utils.logger import prepare_logger
+
             self._logger = prepare_logger(
                 "llm_router_api.auth.middleware",
                 log_level=REST_API_LOG_LEVEL,
@@ -78,14 +79,14 @@ class AuthMiddleware:
         """
         # 1. Public endpoints — always pass
         if self._is_public_endpoint(request_obj.path):
-            return AuthResult(allowed=True, reason="public_endpoint", status_code=200)
+            return AuthResult(
+                allowed=True, reason="public_endpoint", status_code=200
+            )
 
         # 2. Extract key
         key, key_id = self._extract_key(request_obj)
         if key is None:
-            return AuthResult(
-                allowed=False, reason="missing_key", status_code=401
-            )
+            return AuthResult(allowed=False, reason="missing_key", status_code=401)
 
         # 3. Authenticate — plaintext lookup (avoids bcrypt salt mismatch)
         key_record = self._store.get_key_by_plain_sync(key)
@@ -94,9 +95,7 @@ class AuthMiddleware:
                 "Authentication failed: invalid key (prefix=%s)",
                 key[:7] if len(key) > 6 else key,
             )
-            return AuthResult(
-                allowed=False, reason="invalid_key", status_code=401
-            )
+            return AuthResult(allowed=False, reason="invalid_key", status_code=401)
 
         # 3a. Check key status
         if not key_record.get("is_active", True):
@@ -119,9 +118,7 @@ class AuthMiddleware:
         # 3b. Check expiry
         expires = key_record.get("expires_at")
         if expires and time.time() > expires:
-            return AuthResult(
-                allowed=False, reason="key_expired", status_code=401
-            )
+            return AuthResult(allowed=False, reason="key_expired", status_code=401)
 
         # Update last_used_at (async — don't block)
         self._update_last_used(key_record)
@@ -148,7 +145,7 @@ class AuthMiddleware:
             )
 
         # 5. Rate limit
-        limit = permission.method if hasattr(permission, 'method') else 60
+        limit = permission.method if hasattr(permission, "method") else 60
         client_ip = self._get_client_ip(request_obj)
         rate_result: RateLimitResult = self._limiter.is_allowed(
             key_id=key_id,
@@ -220,7 +217,9 @@ class AuthMiddleware:
             return key, key_id
 
         # Priority 3: query parameter
-        query_key = request_obj.args.get("api_key") or request_obj.args.get("api-key")
+        query_key = request_obj.args.get("api_key") or request_obj.args.get(
+            "api-key"
+        )
         if query_key:
             key = query_key.strip()
             key_id = f"query:{key[:7] if len(key) > 6 else key}"
@@ -250,11 +249,13 @@ class AuthMiddleware:
             return
         try:
             import asyncio
+
             loop = asyncio.get_running_loop()
             loop.create_task(self._update_last_used_async(key_id))
         except RuntimeError:
             # No running event loop — run synchronously in background
             import threading
+
             threading.Thread(
                 target=self._update_last_used_sync,
                 args=(key_id,),
@@ -267,7 +268,7 @@ class AuthMiddleware:
 
     def _update_last_used_sync(self, key_id: str) -> None:
         """Sync version of last-used update."""
-        if hasattr(self._store, 'update_last_used'):
+        if hasattr(self._store, "update_last_used"):
             self._store.update_last_used_sync(key_id)
 
 
@@ -288,11 +289,17 @@ def install_auth_middleware(flask_app: Flask, store, auth_config: dict) -> None:
         Authentication configuration dict.
     """
     # Initialize Redis connections
-    from llm_router_api.base.constants import REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD
+    from llm_router_api.base.constants import (
+        REDIS_HOST,
+        REDIS_PORT,
+        REDIS_DB,
+        REDIS_PASSWORD,
+    )
 
     redis_client = None
     try:
         import redis as _redis
+
         redis_client = _redis.Redis(
             host=REDIS_HOST or "127.0.0.1",
             port=REDIS_PORT or 6379,
@@ -319,12 +326,18 @@ def install_auth_middleware(flask_app: Flask, store, auth_config: dict) -> None:
         if not result.allowed:
             # Special handling for 429
             if result.reason == "rate_limit":
-                response = jsonify(auth_429_response(result.headers.get("Retry-After", 60)))
+                response = jsonify(
+                    auth_429_response(result.headers.get("Retry-After", 60))
+                )
                 response.status_code = 429
-                response.headers["Retry-After"] = result.headers.get("Retry-After", "60")
+                response.headers["Retry-After"] = result.headers.get(
+                    "Retry-After", "60"
+                )
                 return response
 
-            response = jsonify(auth_error_response(result.reason, result.status_code))
+            response = jsonify(
+                auth_error_response(result.reason, result.status_code)
+            )
             response.status_code = result.status_code
             for k, v in result.headers.items():
                 response.headers[k] = v
@@ -339,5 +352,7 @@ def install_auth_middleware(flask_app: Flask, store, auth_config: dict) -> None:
     def add_auth_headers(response):
         """Add auth-related headers to every response."""
         if hasattr(g, "api_key_id") and g.api_key_id:
-            response.headers["X-Auth-Key"] = g.api_key_prefix  # prefix only for security
+            response.headers["X-Auth-Key"] = (
+                g.api_key_prefix
+            )  # prefix only for security
         return response
