@@ -280,6 +280,27 @@ LLM_ROUTER_AUTH_VAULT_SECRET_ID = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_VAULT_SECRET_ID", ""
 ).strip()
 
+# =============================================================================
+# AUTH REDIS CONFIGURATION (separate from general REDIS used by keepalive/LB)
+# =============================================================================
+# Redis connection for auth key store — completely independent env vars.
+LLM_ROUTER_AUTH_REDIS_HOST = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_REDIS_HOST", ""
+).strip()
+
+LLM_ROUTER_AUTH_REDIS_PORT = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_REDIS_PORT", 6379)
+)
+
+LLM_ROUTER_AUTH_REDIS_DB = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_REDIS_DB", 0)
+)
+
+_llm_router_auth_redis_password = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_REDIS_PASSWORD", ""
+).strip()
+LLM_ROUTER_AUTH_REDIS_PASSWORD = _llm_router_auth_redis_password if _llm_router_auth_redis_password else None
+
 # Redis cache settings for key lookups
 LLM_ROUTER_AUTH_KEY_CACHE_TTL = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_KEY_CACHE_TTL", "300")

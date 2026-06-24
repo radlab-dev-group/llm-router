@@ -22,6 +22,29 @@ import argparse
 from pathlib import Path
 
 
+def _auth_redis_kwargs(args) -> dict:
+    """Build redis kwargs for auth key store.
+
+    Priority: CLI args → env vars → defaults.
+    """
+    return {
+        "redis_host": getattr(args, "auth_redis_host", None)
+        or os.environ.get("LLM_ROUTER_AUTH_REDIS_HOST"),
+        "redis_port": int(
+            getattr(args, "auth_redis_port", 0)
+            or os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379)
+        ),
+        "redis_db": int(
+            getattr(args, "auth_redis_db", -1)
+            or os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0)
+        ),
+        "redis_password": (
+            getattr(args, "auth_redis_password", None)
+            or os.environ.get("LLM_ROUTER_AUTH_REDIS_PASSWORD")
+        ) or None,
+    }
+
+
 def register_auth_subparser(
     parser: argparse.ArgumentParser, nest_auth: bool = True
 ) -> None:
@@ -69,6 +92,28 @@ def register_auth_subparser(
         help="Key store backend",
     )
     key_generate.add_argument(
+        "--auth-redis-host",
+        default=None,
+        help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+    )
+    key_generate.add_argument(
+        "--auth-redis-port",
+        type=int,
+        default=None,
+        help="Redis port for auth key store (default: env or 6379)",
+    )
+    key_generate.add_argument(
+        "--auth-redis-db",
+        type=int,
+        default=None,
+        help="Redis database for auth key store (default: env or 0)",
+    )
+    key_generate.add_argument(
+        "--auth-redis-password",
+        default=None,
+        help="Redis password for auth key store (default: env)",
+    )
+    key_generate.add_argument(
         "--expires",
         type=str,
         default=None,
@@ -92,6 +137,29 @@ def register_auth_subparser(
         help="Key store backend",
     )
     key_list.add_argument(
+        "--auth-redis-host",
+        default=None,
+        help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+    )
+    key_list.add_argument(
+        "--auth-redis-port",
+        type=int,
+        default=None,
+        help="Redis port for auth key store (default: env or 6379)",
+    )
+    key_list.add_argument(
+        "--auth-redis-db",
+        type=int,
+        default=None,
+        help="Redis database for auth key store (default: env or 0)",
+    )
+    key_list.add_argument(
+        "--auth-redis-password",
+        default=None,
+        help="Redis password for auth key store (default: env)",
+    )
+    key_list.add_argument(
+        "--json",
         "--json",
         action="store_true",
         default=False,
@@ -118,6 +186,28 @@ def register_auth_subparser(
         choices=["memory", "redis", "vault"],
         help="Key store backend",
     )
+    key_delete.add_argument(
+        "--auth-redis-host",
+        default=None,
+        help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+    )
+    key_delete.add_argument(
+        "--auth-redis-port",
+        type=int,
+        default=None,
+        help="Redis port for auth key store (default: env or 6379)",
+    )
+    key_delete.add_argument(
+        "--auth-redis-db",
+        type=int,
+        default=None,
+        help="Redis database for auth key store (default: env or 0)",
+    )
+    key_delete.add_argument(
+        "--auth-redis-password",
+        default=None,
+        help="Redis password for auth key store (default: env)",
+    )
 
     key_rotate = key_sub.add_parser(
         "rotate",
@@ -139,6 +229,28 @@ def register_auth_subparser(
         choices=["memory", "redis", "vault"],
         help="Key store backend",
     )
+    key_rotate.add_argument(
+        "--auth-redis-host",
+        default=None,
+        help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+    )
+    key_rotate.add_argument(
+        "--auth-redis-port",
+        type=int,
+        default=None,
+        help="Redis port for auth key store (default: env or 6379)",
+    )
+    key_rotate.add_argument(
+        "--auth-redis-db",
+        type=int,
+        default=None,
+        help="Redis database for auth key store (default: env or 0)",
+    )
+    key_rotate.add_argument(
+        "--auth-redis-password",
+        default=None,
+        help="Redis password for auth key store (default: env)",
+    )
 
     key_reveal = key_sub.add_parser(
         "reveal",
@@ -153,6 +265,28 @@ def register_auth_subparser(
         default="memory",
         choices=["memory", "redis", "vault"],
         help="Key store backend",
+    )
+    key_reveal.add_argument(
+        "--auth-redis-host",
+        default=None,
+        help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+    )
+    key_reveal.add_argument(
+        "--auth-redis-port",
+        type=int,
+        default=None,
+        help="Redis port for auth key store (default: env or 6379)",
+    )
+    key_reveal.add_argument(
+        "--auth-redis-db",
+        type=int,
+        default=None,
+        help="Redis database for auth key store (default: env or 0)",
+    )
+    key_reveal.add_argument(
+        "--auth-redis-password",
+        default=None,
+        help="Redis password for auth key store (default: env)",
     )
 
     # -- policy subparser --------------------
@@ -184,6 +318,28 @@ def register_auth_subparser(
         default="memory",
         choices=["memory", "redis", "vault"],
         help="Key store backend",
+    )
+    policy_create.add_argument(
+        "--auth-redis-host",
+        default=None,
+        help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+    )
+    policy_create.add_argument(
+        "--auth-redis-port",
+        type=int,
+        default=None,
+        help="Redis port for auth key store (default: env or 6379)",
+    )
+    policy_create.add_argument(
+        "--auth-redis-db",
+        type=int,
+        default=None,
+        help="Redis database for auth key store (default: env or 0)",
+    )
+    policy_create.add_argument(
+        "--auth-redis-password",
+        default=None,
+        help="Redis password for auth key store (default: env)",
     )
 
 
@@ -241,13 +397,7 @@ def main(argv: list[str] | None = None) -> int:
 
     os.environ["LLM_ROUTER_AUTH_MEMORY_SEED_FILE"] = seed_file
 
-    key_store = create_key_store(
-        store_type=args.store,
-        redis_host=getattr(args, "auth_addr", None),
-        redis_port=getattr(args, "auth_port", 6379),
-        redis_db=getattr(args, "auth_db", 0),
-        redis_password=getattr(args, "auth_password", None),
-    )
+    key_store = create_key_store(args.store, **_auth_redis_kwargs(args))
 
     if cmd == "key":
         return _handle_key(args, sub)
@@ -274,10 +424,7 @@ def _handle_key(args, sub: list) -> int:
 
     key_store = create_key_store(
         store_type=getattr(args, "store", "memory"),
-        redis_host=getattr(args, "auth_addr", None),
-        redis_port=getattr(args, "auth_port", 6379),
-        redis_db=getattr(args, "auth_db", 0),
-        redis_password=getattr(args, "auth_password", None),
+        **_auth_redis_kwargs(args),
     )
 
     async def _run():

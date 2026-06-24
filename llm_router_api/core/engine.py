@@ -55,6 +55,10 @@ from llm_router_api.base.constants import (
     REDIS_PORT,
     REDIS_DB,
     REDIS_PASSWORD,
+    LLM_ROUTER_AUTH_REDIS_HOST,
+    LLM_ROUTER_AUTH_REDIS_PORT,
+    LLM_ROUTER_AUTH_REDIS_DB,
+    LLM_ROUTER_AUTH_REDIS_PASSWORD,
 )
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
 from llm_router_api.core.auth.metrics import AuthMetrics
@@ -220,6 +224,10 @@ class FlaskEngine:
             REDIS_PORT,
             REDIS_DB,
             REDIS_PASSWORD,
+            LLM_ROUTER_AUTH_REDIS_HOST,
+            LLM_ROUTER_AUTH_REDIS_PORT,
+            LLM_ROUTER_AUTH_REDIS_DB,
+            LLM_ROUTER_AUTH_REDIS_PASSWORD,
         )
         from llm_router_api.core.auth import (
             create_key_store,
@@ -257,10 +265,10 @@ class FlaskEngine:
             }
         elif LLM_ROUTER_AUTH_KEY_STORE == "redis":
             store_kwargs = {
-                "redis_host": REDIS_HOST,
-                "redis_port": REDIS_PORT,
-                "redis_db": REDIS_DB,
-                "redis_password": REDIS_PASSWORD,
+                "redis_host": LLM_ROUTER_AUTH_REDIS_HOST,
+                "redis_port": LLM_ROUTER_AUTH_REDIS_PORT,
+                "redis_db": LLM_ROUTER_AUTH_REDIS_DB,
+                "redis_password": LLM_ROUTER_AUTH_REDIS_PASSWORD,
             }
 
         store = create_key_store(LLM_ROUTER_AUTH_KEY_STORE, **store_kwargs)

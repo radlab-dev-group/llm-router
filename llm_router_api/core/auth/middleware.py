@@ -291,10 +291,10 @@ def install_auth_middleware(flask_app: Flask, store, auth_config: dict) -> None:
     """
     # Initialize Redis connections
     from llm_router_api.base.constants import (
-        REDIS_HOST,
-        REDIS_PORT,
-        REDIS_DB,
-        REDIS_PASSWORD,
+        LLM_ROUTER_AUTH_REDIS_HOST,
+        LLM_ROUTER_AUTH_REDIS_PORT,
+        LLM_ROUTER_AUTH_REDIS_DB,
+        LLM_ROUTER_AUTH_REDIS_PASSWORD,
     )
 
     redis_client = None
@@ -302,11 +302,11 @@ def install_auth_middleware(flask_app: Flask, store, auth_config: dict) -> None:
         import redis as _redis
 
         redis_client = _redis.Redis(
-            host=REDIS_HOST or "127.0.0.1",
-            port=REDIS_PORT or 6379,
-            db=REDIS_DB or 0,
+            host=LLM_ROUTER_AUTH_REDIS_HOST or "127.0.0.1",
+            port=LLM_ROUTER_AUTH_REDIS_PORT or 6379,
+            db=LLM_ROUTER_AUTH_REDIS_DB or 0,
             decode_responses=True,
-            password=REDIS_PASSWORD,
+            password=LLM_ROUTER_AUTH_REDIS_PASSWORD,
         )
     except Exception:
         pass
