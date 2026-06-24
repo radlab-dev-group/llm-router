@@ -75,6 +75,49 @@ export LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST=${LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_
 export LLM_ROUTER_MASKER_PII_HOST=${LLM_ROUTER_MASKER_PII_HOST:-""}
 
 # ==================================================================================
+# Authentication
+export LLM_ROUTER_AUTH_ENABLED=${LLM_ROUTER_AUTH_ENABLED:-0}
+# Key store backend: vault | redis | memory
+export LLM_ROUTER_AUTH_KEY_STORE=${LLM_ROUTER_AUTH_KEY_STORE:-"memory"}
+
+# Memory store seed file (for dev/test with --store memory)
+export LLM_ROUTER_AUTH_MEMORY_SEED_FILE=${LLM_ROUTER_AUTH_MEMORY_SEED_FILE:-"${HOME}/.llm-router/keys.json"}
+
+# Redis settings for auth key store (separate from LLM_ROUTER_REDIS_* used by keepalive/LB)
+export LLM_ROUTER_AUTH_REDIS_HOST=${LLM_ROUTER_AUTH_REDIS_HOST:-""}
+export LLM_ROUTER_AUTH_REDIS_PORT=${LLM_ROUTER_AUTH_REDIS_PORT:-6379}
+export LLM_ROUTER_AUTH_REDIS_DB=${LLM_ROUTER_AUTH_REDIS_DB:-0}
+export LLM_ROUTER_AUTH_REDIS_PASSWORD=${LLM_ROUTER_AUTH_REDIS_PASSWORD:-""}
+
+# Vault settings (used when --store vault)
+export LLM_ROUTER_AUTH_VAULT_ADDR=${LLM_ROUTER_AUTH_VAULT_ADDR:-""}
+export LLM_ROUTER_AUTH_VAULT_PATH=${LLM_ROUTER_AUTH_VAULT_PATH:-"secret/data/llm-router/api-keys"}
+export LLM_ROUTER_AUTH_VAULT_AUTH_METHOD=${LLM_ROUTER_AUTH_VAULT_AUTH_METHOD:-"kubernetes"}
+export LLM_ROUTER_AUTH_VAULT_ROLE_ID=${LLM_ROUTER_AUTH_VAULT_ROLE_ID:-""}
+export LLM_ROUTER_AUTH_VAULT_SECRET_ID=${LLM_ROUTER_AUTH_VAULT_SECRET_ID:-""}
+
+# Redis cache for key lookups (used with any backend)
+export LLM_ROUTER_AUTH_KEY_CACHE_TTL=${LLM_ROUTER_AUTH_KEY_CACHE_TTL:-300}
+export LLM_ROUTER_AUTH_KEY_CACHE_JITTER=${LLM_ROUTER_AUTH_KEY_CACHE_JITTER:-60}
+
+# Rate limiting
+export LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED=${LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED:-""}
+export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=${LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT:-60}
+
+# Public endpoints (always bypass auth, comma-separated)
+export LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS=${LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS:-"/ping,/version,/models/"}
+
+# Key generation settings
+export LLM_ROUTER_AUTH_KEY_PREFIX=${LLM_ROUTER_AUTH_KEY_PREFIX:-"sk-litm"}
+export LLM_ROUTER_AUTH_KEY_LENGTH=${LLM_ROUTER_AUTH_KEY_LENGTH:-48}
+
+# Key rotation grace period (seconds)
+export LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD=${LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD:-3600}
+
+# Audit logging
+export LLM_ROUTER_AUTH_AUDIT=${LLM_ROUTER_AUTH_AUDIT:-""}
+
+# ==================================================================================
 # Utilities/plugins available: [langchain_rag,simple_semantic_routing]
 #export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"simple_semantic_routing,langchain_rag"}
 export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-""}
