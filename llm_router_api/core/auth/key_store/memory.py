@@ -91,22 +91,26 @@ class MemoryKeyStore(KeyStoreInterface):
             self._by_hash[key_hash] = key_id
 
     def _persist_seeds(self, seed_file: str) -> None:
-        """Write all current keys back to the seed file."""
+        """Write all current keys back to the seed file.
+
+        Only writes active records — deleted keys (is_active=False) are
+        silently dropped so they do not reappear on reload.
+        """
         path = Path(seed_file).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
-        out: list[dict] = []
-        for rec in self._keys.values():
-            out.append(
-                {
-                    "key_plain": rec.get("key_plain", ""),  # stored at creation
-                    "key_id": rec["key_id"],
-                    "policy_name": rec["policy_name"],
-                    "is_active": rec.get("is_active", True),
-                    "expires_at": rec.get("expires_at"),
-                    "created_at": rec.get("created_at"),
-                    "metadata": rec.get("metadata", {}),
-                }
-            )
+        out: list[dict] = [
+            {
+                "key_plain": rec.get("key_plain", ""),
+                "key_id": rec["key_id"],
+                "policy_name": rec["policy_name"],
+                "is_active": rec.get("is_active", True),
+                "expires_at": rec.get("expires_at"),
+                "created_at": rec.get("created_at"),
+                "metadata": rec.get("metadata", {}),
+            }
+            for rec in self._keys.values()
+            if rec.get("is_active")  # persist only truly active records
+        ]
         path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
     # -- sync helpers ----------------------------------------------
@@ -239,11 +243,9 @@ class MemoryKeyStore(KeyStoreInterface):
         return new_plain
 
     async def delete_key(self, key_id: str) -> None:
-        record = self._keys.get(key_id)
-        if record:
-            if record.get("key_hash") in self._by_hash:
-                del self._by_hash[record["key_hash"]]
-            record["is_active"] = False
+        record = self._keys.pop(key_id, None)
+        if record and record.get("key_hash") in self._by_hash:
+            del self._by_hash[record["key_hash"]]
 
     async def list_keys(self) -> list[dict]:
         return [
