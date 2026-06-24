@@ -41,7 +41,8 @@ def _auth_redis_kwargs(args) -> dict:
         "redis_password": (
             getattr(args, "auth_redis_password", None)
             or os.environ.get("LLM_ROUTER_AUTH_REDIS_PASSWORD")
-        ) or None,
+        )
+        or None,
     }
 
 

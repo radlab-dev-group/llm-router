@@ -299,7 +299,9 @@ LLM_ROUTER_AUTH_REDIS_DB = int(
 _llm_router_auth_redis_password = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_REDIS_PASSWORD", ""
 ).strip()
-LLM_ROUTER_AUTH_REDIS_PASSWORD = _llm_router_auth_redis_password if _llm_router_auth_redis_password else None
+LLM_ROUTER_AUTH_REDIS_PASSWORD = (
+    _llm_router_auth_redis_password if _llm_router_auth_redis_password else None
+)
 
 # Redis cache settings for key lookups
 LLM_ROUTER_AUTH_KEY_CACHE_TTL = int(
