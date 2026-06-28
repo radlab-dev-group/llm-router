@@ -22,10 +22,12 @@ class Ping(EndpointWithHttpRequestI):
     """
     Health‑check endpoint that returns a simple *pong* response.
 
-    This endpoint is registered under the name ``ping`` and only supports
-    the HTTP ``GET`` method.  It does not require any request parameters
-    and is typically used by monitoring tools to verify that the service
-    is up and responding.
+    Registered at ``/ping`` (no prefix).
+    Auth: **public** — in the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` list
+    (``/ping,/version,/models,/``).
+
+    This endpoint is typically used by monitoring tools to verify that the service
+    is up and responding. It does not require any request parameters.
 
     Attributes:
         REQUIRED_ARGS (list): Empty list – no required arguments.

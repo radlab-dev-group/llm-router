@@ -37,6 +37,11 @@ class AuthMiddleware:
     2. **Authenticate** (hash lookup → key record).
     3. **Authorize** (policy → endpoint permission).
     4. **Rate-limit** (sliding window check).
+
+    Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
+    ``/ping,/version,/models,/``) bypass all checks — they are always accessible
+    regardless of auth configuration.  See :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
+    for the full mapping of authenticated endpoints to their required permission types.
     """
 
     def __init__(
@@ -279,6 +284,11 @@ def install_auth_middleware(flask_app: Flask, store, auth_config: dict) -> None:
 
     This function is called from ``FlaskEngine.prepare_flask_app()``
     when ``LLM_ROUTER_AUTH_ENABLED`` is ``"true"``.
+
+    Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
+    ``/ping,/version,/models,/``) bypass all auth checks. All other endpoints
+    are mapped to required permission types in
+    :data:`~llm_router_api.core.auth.policies.engine._ENDPOINT_PERMISSION_MAP`.
 
     Parameters
     ----------

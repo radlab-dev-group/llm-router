@@ -26,6 +26,12 @@ from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI
 
 
 class ConversationWithModel(EndpointWithHttpRequestI):
+    """
+    Built‑in chat‑conversation endpoint.
+
+    Registered at ``/api/conversation_with_model`` (with default prefix).
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+
     REQUIRED_ARGS = GENAI_CONV_REQ_ARGS
     OPTIONAL_ARGS = GENAI_CONV_OPT_ARGS
     SYSTEM_PROMPT_NAME = {
@@ -170,6 +176,12 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
 
 class ExtendedConversationWithModel(ConversationWithModel):
+    """
+    Extended built‑in chat‑conversation endpoint (supports system prompts).
+
+    Registered at ``/api/extended_conversation_with_model``.
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission) — inherits policy from :class:`ConversationWithModel`.
+
     REQUIRED_ARGS = EXT_GENAI_CONV_REQ_ARGS
     OPTIONAL_ARGS = EXT_GENAI_CONV_OPT_ARGS
     SYSTEM_PROMPT_NAME = None

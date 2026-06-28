@@ -72,6 +72,10 @@ class PrometheusMetrics:
 
     METRICS_EP = "/metrics"
 
+    # Auth: **public** (when `LLM_ROUTER_AUTH_ENABLED=true`) — listed in the default LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS.
+    # Also explicitly mapped to "_public" in _ENDPOINT_PERMISSION_MAP.
+    # Requires LLM_ROUTER_USE_PROMETHEUS=1 and Redis to be enabled.
+
     def __init__(
         self,
         app: Flask,

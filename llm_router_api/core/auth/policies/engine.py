@@ -29,26 +29,32 @@ def _endpoint_key(method: str, path: str) -> str:
 
 # -- Per-endpoint permission mapping -------------------------------
 # Maps internal endpoint keys to the policy permission they should use.
+# Values of "_public" mean the endpoint bypasses all auth checks (always accessible).
+# All other values are the required permission type (e.g. "chat", "embedding").
+# NOTE: Auth enforcement only applies when LLM_ROUTER_AUTH_ENABLED=true.
 _ENDPOINT_PERMISSION_MAP: dict[str, str] = {
-    # Health & version — always public
-    "get:/ping": "_public",
-    "get:/version": "_public",
-    "get:/": "_public",
-    "get:/api/tags": "_public",
-    "get:/metrics": "_public",
-    # Authenticated endpoints
-    "get:/models": "chat",
-    "get:/v1/models": "chat",
-    "get:/api/v0/models": "chat",
-    "post:/api/chat/completions": "chat",
-    "post:/v1/chat/completions": "chat",
-    "post:/chat/completions": "chat",
-    "post:/v0/chat/completions": "chat",
-    "post:/v1/messages": "anthropic",
-    "post:/v1/responses": "chat",
-    "post:/v1/embeddings": "embedding",
-    "post:/api/embed": "embedding",
-    "post:/api/chat": "ollama",
+    # ── Public endpoints — always accessible, no auth required (even when LLM_ROUTER_AUTH_ENABLED=true) ──
+    "get:/ping": "_public",            # Health‑check
+    "get:/version": "_public",         # Router version info
+    "get:/": "_public",                # Ollama health endpoint
+    "get:/api/tags": "_public",        # Ollama model tags (prefix path)
+    "get:/metrics": "_public",         # Prometheus metrics (requires Redis + prometheus flag)
+    "get:/models": "_public",          # OpenAI‑compatible models list
+    # ── Auth endpoints — require valid API key with the matching permission (only when LLM_ROUTER_AUTH_ENABLED=true) ──
+    "get:/v1/models": "chat",          # OpenAI models v1 (not in default public path)
+    "get:/api/v0/models": "chat",      # LM Studio models
+    "post:/api/chat/completions": "chat",       # OpenAI‑style chat completion (with prefix)
+    "post:/v1/chat/completions": "chat",        # vLLM‑like chat completion
+    "post:/chat/completions": "chat",           # OpenAI‑style chat completion (alt path)
+    "post:/v0/chat/completions": "chat",        # LM Studio chat completion
+    "post:/v1/messages": "anthropic",           # Anthropic Messages API (Claude)
+    "post:/v1/responses": "chat",               # OpenAI‑like responses v1
+    "post:/responses": "chat",                  # OpenAI‑like responses (base path)
+    "post:/v1/embeddings": "embedding",         # OpenAI‑compatible embeddings v1
+    "post:/embeddings": "embedding",            # Standard embeddings (base path)
+    "post:/api/embeddings": "embedding",        # Standard embeddings (with prefix)
+    "post:/api/embed": "embedding",             # Ollama‑native embeddings
+    "post:/api/chat": "ollama",                 # Ollama‑style chat completion
     "post:/api/conversation_with_model": "builtin",
     "post:/api/extended_conversation_with_model": "builtin",
     "post:/api/generate_questions": "builtin",
