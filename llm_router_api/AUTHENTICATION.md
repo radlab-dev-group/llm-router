@@ -298,10 +298,10 @@ redis-server
 # 2. Set environment variables
 export LLM_ROUTER_AUTH_ENABLED=true
 export LLM_ROUTER_AUTH_KEY_STORE=redis
-export LLM_ROUTER_REDIS_HOST=127.0.0.1
-export LLM_ROUTER_REDIS_PORT=6379
-export LLM_ROUTER_REDIS_DB=0
-# export LLM_ROUTER_REDIS_PASSWORD=secret  # if Redis requires auth
+export LLM_ROUTER_AUTH_REDIS_HOST=127.0.0.1
+export LLM_ROUTER_AUTH_REDIS_PORT=6379
+export LLM_ROUTER_AUTH_REDIS_DB=0
+# export LLM_ROUTER_AUTH_REDIS_PASSWORD=secret  # if Redis requires auth
 
 # 3. Generate keys (written to Redis)
 llm-router auth key generate --policy developer --store redis
@@ -314,18 +314,18 @@ python -m llm_router_api.rest_api
 curl -H "x-api-key: sk-litm-..." https://host/api/chat/completions
 ```
 
-| Variable                    | Value                            |
-|-----------------------------|----------------------------------|
-| `LLM_ROUTER_AUTH_ENABLED`   | `true`                           |
-| `LLM_ROUTER_AUTH_KEY_STORE` | `redis`                          |
-| `LLM_ROUTER_REDIS_HOST`     | Redis host (default `127.0.0.1`) |
-| `LLM_ROUTER_REDIS_PORT`     | Redis port (default `6379`)      |
-| `LLM_ROUTER_REDIS_DB`       | Redis DB number (default `0`)    |
-| `LLM_ROUTER_REDIS_PASSWORD` | Redis password (default: none)   |
+| Variable                          | Value                              |
+|-----------------------------------|------------------------------------|
+| `LLM_ROUTER_AUTH_ENABLED`         | `true`                             |
+| `LLM_ROUTER_AUTH_KEY_STORE`       | `redis`                            |
+| `LLM_ROUTER_AUTH_REDIS_HOST`      | Redis host (default `127.0.0.1`)  |
+| `LLM_ROUTER_AUTH_REDIS_PORT`      | Redis port (default `6379`)        |
+| `LLM_ROUTER_AUTH_REDIS_DB`        | Redis DB number (default `0`)      |
+| `LLM_ROUTER_AUTH_REDIS_PASSWORD`  | Redis password (default: none)     |
 
 **Operational notes:**
 
-- Keys stored in Redis hashes under `secret:llm-router:api-keys:<key_id>`.
+- Keys stored as JSON strings in Redis under `secret:llm-router:api-keys:<key_id>`.
 - Works across multiple Flask workers — all workers see the same key set.
 - Redis is already required for load balancing (same instance works).
 - For production, use Redis Sentinel or a managed Redis service with TLS.
@@ -349,8 +349,8 @@ export LLM_ROUTER_AUTH_VAULT_ADDR=https://vault.example.com
 export LLM_ROUTER_AUTH_VAULT_PATH=secret/data/llm-router/api-keys
 export LLM_ROUTER_AUTH_VAULT_AUTH_METHOD=kubernetes
 
-# Vault will auto-detect the Kubernetes service account token
-# at /var/run/secrets/kubernetes.io/serviceaccount/token
+# The K8s service account JWT is read from:
+# /var/run/secrets/kubernetes.io/serviceaccount/token (hardcoded)
 
 # 2. Generate and use keys
 llm-router auth key generate --policy developer --store vault
@@ -371,7 +371,7 @@ curl -H "x-api-key: sk-litm-..." https://host/api/chat/completions
 
 - Vault K8s auth reads the service account JWT automatically.
 - Keys stored under `{vault_path}/{key_id}/data` in KV v2 format.
-- Vault auto-deletes keys after rotation if configured.
+- On rotation the old key is deactivated (`is_active=False`) and a new key is written.
 - Ensure the Vault Role has `read` and `create` policies for the mount path.
 
 #### 3b. AppRole Auth (non-K8s / VM deployments)
@@ -409,7 +409,7 @@ export LLM_ROUTER_AUTH_VAULT_TOKEN=s.your-vault-token-here
 |-------------------------|-------------------|-----------------------------|----------------------|-----------------------|
 | **Persistence**         | ✅ Yes (seed file) | ✅ Yes (RDB/AOF)             | ✅ Yes                | ✅ Yes                 |
 | **Multi-process safe**  | ❌ No              | ✅ Yes                       | ✅ Yes                | ✅ Yes                 |
-| **Encryption-at-rest**  | ❌ No              | ✅ Yes (if Redis configured) | ✅ Yes (Vault native) | ✅ Yes (Vault native)  |
+| **Encryption-at-rest**  | ❌ No              | ⚠️ No (app does not configure SSL/TLS — use managed Redis with TLS) | ✅ Yes (Vault native) | ✅ Yes (Vault native)  |
 | **Secret rotation**     | Manual            | Manual                      | ✅ Automatic + manual | ✅ Automatic + manual  |
 | **External dependency** | None              | Redis                       | Vault + K8s SA token | Vault + AppRole creds |
 | **Production ready**    | ❌ Dev only        | ✅ Yes                       | ✅ Yes                | ✅ Yes                 |

@@ -53,7 +53,7 @@ Example: `auth:ratelimit:dev-a1b2c3d3:192.168.1.100`
 |--------------------------------------|----------|---------------------------------------------------------------|
 | `LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED` | `false`  | Enable rate limiting                                          |
 | `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` | `60`     | Default rate limit (requests per minute)                      |
-| `LLM_ROUTER_AUTH_KEY_STORE`          | `memory` | Key store backend (Redis store recommended for rate limiting) |
+| `LLM_ROUTER_AUTH_KEY_STORE`          | `redis`  | Key store backend (Redis is required for rate limiting) |
 
 ### Enabling Rate Limiting
 
@@ -229,13 +229,19 @@ export LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED=true
 
 Without it, a leaked API key allows unlimited requests to your downstream providers.
 
-### 2. Use Redis Store for Key Management
+### 2. Set up auth Redis connection
+
+Rate limiting **requires** a working Redis connection regardless of key store type
+(because the rate limiter manages its own sorted sets).  When using `--store redis`
+for keys, the same connection serves both purposes:
 
 ```bash
 export LLM_ROUTER_AUTH_KEY_STORE=redis
+export LLM_ROUTER_AUTH_REDIS_HOST=127.0.0.1
 ```
 
-Rate limit state is already in Redis — using Redis for keys keeps state co-located.
+When using `memory` store for keys, ensure `LLM_ROUTER_AUTH_REDIS_HOST` (or the
+general `LLM_ROUTER_REDIS_HOST`) is set so the rate limiter can connect.
 
 ### 3. Monitor Rate Limit Events
 
