@@ -33,13 +33,13 @@ _ENDPOINT_PERMISSION_MAP: dict[str, str] = {
     # Health & version — always public
     "get:/ping": "_public",
     "get:/version": "_public",
-    "get:/models": "_public",
-    "get:/v1/models": "_public",
     "get:/": "_public",
     "get:/api/tags": "_public",
-    "get:/api/v0/models": "_public",
     "get:/metrics": "_public",
     # Authenticated endpoints
+    "get:/models": "chat",
+    "get:/v1/models": "chat",
+    "get:/api/v0/models": "chat",
     "post:/api/chat/completions": "chat",
     "post:/v1/chat/completions": "chat",
     "post:/chat/completions": "chat",
