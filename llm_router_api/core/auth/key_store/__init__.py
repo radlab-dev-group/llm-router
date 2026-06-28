@@ -28,6 +28,31 @@ except ImportError:
     pass
 
 
+def _make_shared_redis_client(kwargs: dict) -> redis.Redis | None:
+    """Return a single ``redis.Redis`` instance shared between store and cache.
+
+    Prefer an explicitly passed ``redis_client`` from *kwargs*; otherwise build
+    one from the standard ``redis_host/port/db/password`` kwargs so that both
+    :class:`RedisKeyStore` and :class:`RedisKeyStoreCache` reuse the **same**
+    connection pool (cache doesn't silently fall back to *no-op* when
+    ``redis_client is None``).
+    """
+    client = kwargs.get("redis_client")
+    if client is not None:
+        return client
+    host = kwargs.get("redis_host") or "127.0.0.1"
+    port = int(kwargs.get("redis_port", 6379))
+    db = int(kwargs.get("redis_db", 0))
+    password = kwargs.get("redis_password")
+    return redis.Redis(
+        host=host,
+        port=port,
+        db=db,
+        decode_responses=True,
+        password=password,
+    )
+
+
 def create_key_store(
     store_type: str = "memory",
     **kwargs,
@@ -48,6 +73,9 @@ def create_key_store(
         A configured key store (wrapped in a Redis cache layer when
         ``LLM_ROUTER_AUTH_KEY_CACHE_TTL`` is set).
     """
+    # Create ONE shared redis client for both store and cache
+    shared_client = _make_shared_redis_client(kwargs)
+
     if store_type == "vault":
         if not _VAULT_AVAILABLE:
             raise RuntimeError(
@@ -56,6 +84,8 @@ def create_key_store(
             )
         from .vault import VaultKeyStore
 
+        kwargs["redis_client"] = shared_client
+        kwargs["_no_internal_cache"] = True  # external cache (below) handles caching
         store: KeyStoreInterface = VaultKeyStore(**kwargs)
 
     elif store_type == "redis":
@@ -65,6 +95,7 @@ def create_key_store(
             )
         from .redis_store import RedisKeyStore
 
+        kwargs["redis_client"] = shared_client
         store = RedisKeyStore(**kwargs)
 
     elif store_type == "memory":
@@ -82,8 +113,7 @@ def create_key_store(
         from .redis_cache import RedisKeyStoreCache
 
         ttl = int(cache_ttl) + random.randint(0, int(cache_jitter or "0"))
-        redis_client = kwargs.get("redis_client")
-        store = RedisKeyStoreCache(store, redis_client=redis_client, ttl=ttl)
+        store = RedisKeyStoreCache(store, redis_client=shared_client, ttl=ttl)
 
     return store
 

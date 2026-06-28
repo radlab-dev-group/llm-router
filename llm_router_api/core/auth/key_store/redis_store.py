@@ -1,7 +1,7 @@
 """
 Redis key store — stores API keys directly in Redis.
 
-Uses a Redis hash per key under ``secret/llm-router/api-keys/<key_id>``.
+Uses a Redis **string** (JSON-serialized) per key under ``secret:llm-router:api-keys:<key_id>``.
 Suitable for deployments without HashiCorp Vault.
 """
 

@@ -32,6 +32,7 @@ class VaultKeyStore(KeyStoreInterface):
         redis_client=None,
         cache_ttl: int = 300,
         cache_jitter: int = 60,
+        _no_internal_cache=False,
     ) -> None:
         self._addr = addr.rstrip("/")
         self._mount_path = mount_path.rstrip("/")
@@ -45,19 +46,22 @@ class VaultKeyStore(KeyStoreInterface):
             auth_method, role_id, secret_id, k8s_service_account, k8s_review_path
         )
 
-        # Wrap in cache
+        # Wrap in cache (skip when create_key_store provides an external layer)
         self._wrapped: KeyStoreInterface
-        try:
-            from .redis_cache import RedisKeyStoreCache
+        if not _no_internal_cache:
+            try:
+                from .redis_cache import RedisKeyStoreCache
 
-            self._wrapped = RedisKeyStoreCache(
-                backend=self,
-                redis_client=redis_client,
-                ttl=cache_ttl,
-                jitter=cache_jitter,
-            )
-        except Exception:
-            self._wrapped = self  # fallback: no cache
+                self._wrapped = RedisKeyStoreCache(
+                    backend=self,
+                    redis_client=redis_client,
+                    ttl=cache_ttl,
+                    jitter=cache_jitter,
+                )
+            except Exception:
+                self._wrapped = self  # fallback: no cache
+        else:
+            self._wrapped = self
 
     def _authenticate_vault(
         self,
@@ -268,7 +272,13 @@ class VaultKeyStore(KeyStoreInterface):
             )  # placeholder
 
     def update_last_used_sync(self, key_id: str) -> None:
-        """Sync version of update_last_used."""
+        """Sync version of :meth:`update_last_used`.
+
+        .. note::
+           Fire-and-forget — the task may be dropped if the event loop
+           closes before it runs (lost update).  Prefer :meth:`update_last_used`
+           when possible.
+        """
         try:
             import asyncio
 
