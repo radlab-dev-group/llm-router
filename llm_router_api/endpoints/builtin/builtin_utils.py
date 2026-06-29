@@ -47,6 +47,7 @@ class ApiVersion(EndpointWithHttpRequestI):
 
     Registered at ``/version`` (no prefix).
     Auth: **public** — in the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` list.
+    """
 
     VERSION_FILE = ".version"
 
@@ -137,7 +138,9 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
     Built‑in utility: generate questions from input texts.
 
     Registered at ``/api/generate_questions`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    """
 
     REQUIRED_ARGS = GENERATE_Q_REQ
     OPTIONAL_ARGS = GENERATE_Q_OPT
@@ -306,7 +309,9 @@ class TranslateTexts(EndpointWithHttpRequestI):
     Built‑in utility: translate a list of texts.
 
     Registered at ``/api/translate`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    """
 
     REQUIRED_ARGS = TRANSLATE_TEXT_REQ
     OPTIONAL_ARGS = TRANSLATE_TEXT_OPT
@@ -415,7 +420,9 @@ class SimplifyTexts(EndpointWithHttpRequestI):
     Built‑in utility: simplify input texts.
 
     Registered at ``/api/simplify_text`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    """
 
     REQUIRED_ARGS = SIMPLIFY_TEXT_REQ
     OPTIONAL_ARGS = SIMPLIFY_TEXT_OPT
@@ -511,7 +518,9 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
     Built‑in utility: generate a short article from a single text.
 
     Registered at ``/api/generate_article_from_text`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    """
 
     REQUIRED_ARGS = GENERATE_ART_REQ
     OPTIONAL_ARGS = GENERATE_ART_OPT
@@ -602,8 +611,10 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
     Built‑in utility: generate a full article from multiple texts.
 
     Registered at ``/api/create_full_article_from_texts`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission) — inherits policy from
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``builtin`` permission) — inherits policy from
     :class:`GenerateNewsFromTextHandler`.
+    """
 
     REQUIRED_ARGS = FULL_ARTICLE_REQ
     OPTIONAL_ARGS = FULL_ARTICLE_OPT
@@ -681,8 +692,10 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
     Built‑in utility: answer a question using provided context.
 
     Registered at ``/api/generative_answer`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission) — inherits policy from
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``builtin`` permission) — inherits policy from
     :class:`GenerateNewsFromTextHandler`.
+    """
 
     REQUIRED_ARGS = CONTEXT_ANSWER_REQ
     OPTIONAL_ARGS = CONTEXT_ANSWER_OPT

@@ -29,6 +29,7 @@ class LmStudioModelsHandler(PassthroughI):
 
     Registered at ``/api/v0/models`` (with default prefix).
     Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``chat`` permission).
+    """
 
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
 
@@ -102,7 +103,9 @@ class LLMStudioChatV0Handler(OpenAIResponseHandler):
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/api/v0/chat/completions`` route of an OpenAI‑compatible service.
 
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``chat`` permission). Registered at ``/api/v0/chat/completions``.
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``chat`` permission). Registered at ``/api/v0/chat/completions``.
+    """
 
     def __init__(
         self,
