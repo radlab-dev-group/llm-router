@@ -101,6 +101,28 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
+    async def disable_key(self, key_id: str) -> None:
+        """
+        Deactivate (but do not delete) a key by setting ``is_active=False``.
+
+        Parameters
+        ----------
+        key_id : str
+            The key to deactivate.
+        """
+
+    @abc.abstractmethod
+    async def enable_key(self, key_id: str) -> None:
+        """
+        Re-activate a previously deactivated key by setting ``is_active=True``.
+
+        Parameters
+        ----------
+        key_id : str
+            The key to activate.
+        """
+
+    @abc.abstractmethod
     async def delete_key(self, key_id: str) -> None:
         """
         Deactivate and remove a key.

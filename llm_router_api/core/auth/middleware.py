@@ -279,7 +279,12 @@ class AuthMiddleware:
             self._store.update_last_used_sync(key_id)
 
 
-def install_auth_middleware(flask_app: Flask, store, auth_config: dict) -> None:
+def install_auth_middleware(
+    flask_app: Flask,
+    store,
+    auth_config: dict,
+    redis_client=None,
+) -> None:
     """
     Install the auth middleware on the Flask app.
 
@@ -299,29 +304,12 @@ def install_auth_middleware(flask_app: Flask, store, auth_config: dict) -> None:
         The key store used for lookups.
     auth_config : dict
         Authentication configuration dict.
+    redis_client : redis.Redis | None, optional
+        A verified Redis client (from the key store factory). When provided,
+        rate limiting shares the same connection as the key store — no second
+        bootstrap attempt is needed.  Defaults to ``None`` (falls back to
+        reading auth Redis env vars and connecting directly).
     """
-    # Initialize Redis connections
-    from llm_router_api.base.constants import (
-        LLM_ROUTER_AUTH_REDIS_HOST,
-        LLM_ROUTER_AUTH_REDIS_PORT,
-        LLM_ROUTER_AUTH_REDIS_DB,
-        LLM_ROUTER_AUTH_REDIS_PASSWORD,
-    )
-
-    redis_client = None
-    try:
-        import redis as _redis
-
-        redis_client = _redis.Redis(
-            host=LLM_ROUTER_AUTH_REDIS_HOST or "127.0.0.1",
-            port=LLM_ROUTER_AUTH_REDIS_PORT or 6379,
-            db=LLM_ROUTER_AUTH_REDIS_DB or 0,
-            decode_responses=True,
-            password=LLM_ROUTER_AUTH_REDIS_PASSWORD,
-        )
-    except Exception:
-        pass
-
     rate_limiter = RedisRateLimiter(redis_client=redis_client)
     perm_engine = PermissionEngine()
     auth = AuthMiddleware(store, rate_limiter, perm_engine, auth_config)

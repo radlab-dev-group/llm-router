@@ -163,13 +163,79 @@ class VaultKeyStore(KeyStoreInterface):
 
     # -- KeyStoreInterface forwarding -------------------------------
     async def get_key_by_hash(self, key_hash: str) -> dict | None:
-        return await self._wrapped.get_key_by_hash(key_hash)
+        # Forward to cache when available; fall back to full scan for direct use
+        if self._wrapped is not self:
+            return await self._wrapped.get_key_by_hash(key_hash)
+        # Direct path (when _no_internal_cache=True): scan all keys and compare hash
+        kv_path = self._mount_path.rstrip("/")
+        try:
+            secret = self._client.secrets.kv.v2.list_secrets(
+                path=kv_path,
+                mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
+            )
+        except Exception:
+            return None
+
+        secrets_data = secret.get("data", {}) or {}
+        keys = secrets_data.get("keys") or []
+
+        for key_name in keys:
+            try:
+                secret_data = self._client.secrets.kv.v2.read_secret_version(
+                    path=f"{kv_path}/{key_name}",
+                    mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
+                )
+                record = secret_data.get("data", {}).get("data", {}) or {}
+                stored_hash = record.get("key_hash")
+                if stored_hash and stored_hash == key_hash:
+                    return {
+                        "key_id": key_name,
+                        "key_hash": stored_hash,
+                        "key_plain": None,
+                        "key_prefix": record.get("key_prefix", ""),
+                        "policy_name": record.get("policy_name", "developer"),
+                        "is_active": record.get("is_active", True),
+                        "created_at": record.get("created_at"),
+                        "expires_at": record.get("expires_at"),
+                    }
+            except Exception:
+                continue
+        return None
 
     async def get_key_by_id(self, key_id: str) -> dict | None:
-        return await self._wrapped.get_key_by_id(key_id)
+        # Forward to cache when available; fall back to direct read for direct use
+        if self._wrapped is not self:
+            return await self._wrapped.get_key_by_id(key_id)
+        # Direct path (when _no_internal_cache=True): read from Vault directly
+        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
+        try:
+            secret_data = self._client.secrets.kv.v2.read_secret_version(
+                path=kv_path,
+                mount_point=(
+                    self._mount_path.split("/")[0]
+                    if "/" in self._mount_path
+                    else None
+                ),
+            )
+            record = secret_data.get("data", {}).get("data", {}) or {}
+            if not record.get("is_active"):
+                return None
+            return {
+                "key_id": key_id,
+                "key_hash": record.get("key_hash"),
+                "key_plain": None,
+                "key_prefix": record.get("key_prefix", ""),
+                "policy_name": record.get("policy_name", "developer"),
+                "is_active": record.get("is_active", True),
+                "created_at": record.get("created_at"),
+                "expires_at": record.get("expires_at"),
+            }
+        except Exception:
+            return None
 
     async def create_key(self, record: dict) -> str:
         # The vault write goes directly to vault (backend), cache invalidated afterwards
+        record = dict(record)  # prevent mutating caller's dict
         key_plain = record.pop("key_plain")
         key_hash = bcrypt.hashpw(key_plain.encode(), bcrypt.gensalt()).decode()
 
@@ -212,12 +278,16 @@ class VaultKeyStore(KeyStoreInterface):
             **old,
             "key_id": new_id,
             "key_hash": new_hash,
+            "key_plain": new_plain,
             "key_prefix": new_plain[:7],
             "created_at": now,
             "is_active": True,
             "grace_until": old.get("expires_at") or (now + grace_period),
         }
         await self.create_key(new_record)
+
+        # Ensure grace_until is persisted (create_key always writes grace_until: None, override it)
+        await self.update_grace_until(new_id, new_record["grace_until"])
 
         # Invalidate old
         self._client.write_secret(
@@ -227,14 +297,61 @@ class VaultKeyStore(KeyStoreInterface):
         )
         return new_plain
 
-    async def delete_key(self, key_id: str) -> None:
-        self._client.delete_secret(
+    async def disable_key(self, key_id: str) -> None:
+        """Deactivate a key by setting is_active=False."""
+        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
+        try:
+            secret_data = self._client.secrets.kv.v2.read_secret_version(
+                path=kv_path,
+                mount_point=(
+                    self._mount_path.split("/")[0]
+                    if "/" in self._mount_path
+                    else None
+                ),
+            )
+            record = secret_data.get("data", {}).get("data", {}) or {}
+        except Exception:
+            raise ValueError(f"Key {key_id} not found") from None
+        record["is_active"] = False
+        self._client.write_secret(
             path=key_id,
             mount_point=self._mount_path,
+            data={"data": record},
         )
 
+    async def enable_key(self, key_id: str) -> None:
+        """Re-activate a previously deactivated key."""
+        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
+        try:
+            secret_data = self._client.secrets.kv.v2.read_secret_version(
+                path=kv_path,
+                mount_point=(
+                    self._mount_path.split("/")[0]
+                    if "/" in self._mount_path
+                    else None
+                ),
+            )
+            record = secret_data.get("data", {}).get("data", {}) or {}
+        except Exception:
+            raise ValueError(f"Key {key_id} not found") from None
+        record["is_active"] = True
+        self._client.write_secret(
+            path=key_id,
+            mount_point=self._mount_path,
+            data={"data": record},
+        )
+
+    async def delete_key(self, key_id: str) -> None:
+        try:
+            self._client.delete_secret(
+                path=key_id,
+                mount_point=self._mount_path,
+            )
+        except Exception:  # key may not exist — treat as no-op
+            pass
+
     async def list_keys(self) -> list[dict]:
-        """List all keys under the mount path."""
+        """List all keys under the mount path, including disabled ones."""
         try:
             response = self._client.list_secret(
                 path=self._mount_path.rstrip("/"),
@@ -246,18 +363,29 @@ class VaultKeyStore(KeyStoreInterface):
             keys = [k.rstrip("/") for k in keys if k.strip()]
             result = []
             for kid in keys:
-                record = await self.get_key_by_id(kid)
-                if record:
-                    result.append(
-                        {
-                            "key_id": record["key_id"],
-                            "key_prefix": record["key_prefix"],
-                            "policy_name": record["policy_name"],
-                            "is_active": record["is_active"],
-                            "created_at": record["created_at"],
-                            "expires_at": record.get("expires_at"),
-                        }
+                kv_path = f"{self._mount_path.rstrip('/')}/{kid}"
+                try:
+                    secret_data = self._client.secrets.kv.v2.read_secret_version(
+                        path=kv_path,
+                        mount_point=(
+                            self._mount_path.split("/")[0]
+                            if "/" in self._mount_path
+                            else None
+                        ),
                     )
+                    record = secret_data.get("data", {}).get("data", {}) or {}
+                except Exception:
+                    continue
+                result.append(
+                    {
+                        "key_id": kid,
+                        "key_prefix": record.get("key_prefix", ""),
+                        "policy_name": record.get("policy_name", "developer"),
+                        "is_active": record.get("is_active", True),
+                        "created_at": record.get("created_at"),
+                        "expires_at": record.get("expires_at"),
+                    }
+                )
             return result
         except Exception:
             return []
@@ -285,3 +413,25 @@ class VaultKeyStore(KeyStoreInterface):
             asyncio.get_event_loop().create_task(self.update_last_used(key_id))
         except RuntimeError:
             pass
+
+    async def update_grace_until(self, key_id: str, grace_until: float) -> None:
+        """Update grace_until for a key (read-modify-write to preserve the record)."""
+        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
+        try:
+            secret_data = self._client.secrets.kv.v2.read_secret_version(
+                path=kv_path,
+                mount_point=(
+                    self._mount_path.split("/")[0]
+                    if "/" in self._mount_path
+                    else None
+                ),
+            )
+            record = secret_data.get("data", {}).get("data", {}) or {}
+        except Exception:
+            return
+        record["grace_until"] = grace_until
+        self._client.write_secret(
+            path=key_id,
+            mount_point=self._mount_path,
+            data={"data": record},
+        )

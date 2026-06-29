@@ -271,12 +271,14 @@ class FlaskEngine:
                 "redis_password": LLM_ROUTER_AUTH_REDIS_PASSWORD,
             }
 
-        store = create_key_store(LLM_ROUTER_AUTH_KEY_STORE, **store_kwargs)
+        store, shared_client = create_key_store(
+            LLM_ROUTER_AUTH_KEY_STORE, **store_kwargs
+        )
         self._key_store = store
 
-        # 2. Rate limiter
+        # 2. Rate limiter — reuse the same verified Redis client
         rate_limiter = RedisRateLimiter(
-            redis_client=store_kwargs.get("redis_client"),
+            redis_client=shared_client,
             window=60,
         )
         self._rate_limiter = rate_limiter
@@ -296,8 +298,10 @@ class FlaskEngine:
             "audit_enabled": LLM_ROUTER_AUTH_AUDIT,
         }
 
-        # 5. Install middleware
-        install_auth_middleware(flask_app, store, auth_config)
+        # 5. Install middleware (with verified Redis client for rate limiter)
+        install_auth_middleware(
+            flask_app, store, auth_config, redis_client=shared_client
+        )
 
         # 6. Audit bridge
         if LLM_ROUTER_AUTH_AUDIT:

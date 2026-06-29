@@ -6,6 +6,8 @@ Usage::
     llm-router auth key generate [--policy developer] [--store memory]
     llm-router auth key list [--store memory]
     llm-router auth key delete <key-id> [--store memory]
+    llm-router auth key disable <key-id> [--store memory]
+    llm-router auth key enable <key-id> [--store memory]
     llm-router auth key rotate <key-id> [--grace 3600]
     llm-router auth key reveal <key-id>
     llm-router auth policy list
@@ -210,6 +212,80 @@ def register_auth_subparser(
         help="Redis password for auth key store (default: env)",
     )
 
+    key_disable = key_sub.add_parser(
+        "disable",
+        help="Disable an API key (deactivate without deleting)",
+    )
+    key_disable.add_argument(
+        "key_id",
+        help="Key ID to disable",
+    )
+    key_disable.add_argument(
+        "--store",
+        default="memory",
+        choices=["memory", "redis", "vault"],
+        help="Key store backend",
+    )
+    key_disable.add_argument(
+        "--auth-redis-host",
+        default=None,
+        help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+    )
+    key_disable.add_argument(
+        "--auth-redis-port",
+        type=int,
+        default=None,
+        help="Redis port for auth key store (default: env or 6379)",
+    )
+    key_disable.add_argument(
+        "--auth-redis-db",
+        type=int,
+        default=None,
+        help="Redis database for auth key store (default: env or 0)",
+    )
+    key_disable.add_argument(
+        "--auth-redis-password",
+        default=None,
+        help="Redis password for auth key store (default: env)",
+    )
+
+    key_enable = key_sub.add_parser(
+        "enable",
+        help="Re-enable a previously disabled API key",
+    )
+    key_enable.add_argument(
+        "key_id",
+        help="Key ID to enable",
+    )
+    key_enable.add_argument(
+        "--store",
+        default="memory",
+        choices=["memory", "redis", "vault"],
+        help="Key store backend",
+    )
+    key_enable.add_argument(
+        "--auth-redis-host",
+        default=None,
+        help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+    )
+    key_enable.add_argument(
+        "--auth-redis-port",
+        type=int,
+        default=None,
+        help="Redis port for auth key store (default: env or 6379)",
+    )
+    key_enable.add_argument(
+        "--auth-redis-db",
+        type=int,
+        default=None,
+        help="Redis database for auth key store (default: env or 0)",
+    )
+    key_enable.add_argument(
+        "--auth-redis-password",
+        default=None,
+        help="Redis password for auth key store (default: env)",
+    )
+
     key_rotate = key_sub.add_parser(
         "rotate",
         help="Rotate an API key",
@@ -398,7 +474,7 @@ def main(argv: list[str] | None = None) -> int:
 
     os.environ["LLM_ROUTER_AUTH_MEMORY_SEED_FILE"] = seed_file
 
-    key_store = create_key_store(args.store, **_auth_redis_kwargs(args))
+    key_store, _ = create_key_store(args.store, **_auth_redis_kwargs(args))
 
     if cmd == "key":
         return _handle_key(args, sub)
@@ -417,13 +493,13 @@ def _handle_key(args, sub: list) -> int:
     from llm_router_api.core.auth.policies.builtin import get_builtin_policy
 
     if not sub:
-        print("Usage: llm-router auth key <generate|list|delete|rotate|reveal>")
+        print("Usage: llm-router auth key <generate|list|delete|disable|enable|rotate|reveal>")
         return 1
 
     cmd = sub[0]
     key_args = sub[1:]
 
-    key_store = create_key_store(
+    key_store, _ = create_key_store(
         store_type=getattr(args, "store", "memory"),
         **_auth_redis_kwargs(args),
     )
@@ -496,6 +572,32 @@ def _handle_key(args, sub: list) -> int:
             if seed_file:
                 key_store._persist_seeds(seed_file)
             print(f"Key {key_id} deleted.")
+            return 0
+
+        elif cmd == "disable":
+            key_id = key_args[0] if key_args else None
+            if not key_id:
+                print("Error: key_id is required for disable.")
+                return 1
+            try:
+                await key_store.disable_key(key_id)
+                print(f"Key {key_id} disabled.")
+            except ValueError as exc:
+                print(f"Error: {exc}")
+                return 1
+            return 0
+
+        elif cmd == "enable":
+            key_id = key_args[0] if key_args else None
+            if not key_id:
+                print("Error: key_id is required for enable.")
+                return 1
+            try:
+                await key_store.enable_key(key_id)
+                print(f"Key {key_id} enabled.")
+            except ValueError as exc:
+                print(f"Error: {exc}")
+                return 1
             return 0
 
         elif cmd == "rotate":

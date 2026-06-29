@@ -165,6 +165,24 @@ class RedisKeyStore(KeyStoreInterface):
 
         return new_plain
 
+    async def disable_key(self, key_id: str) -> None:
+        """Deactivate a key by setting is_active=False."""
+        raw = self._redis.get(self._key(key_id))
+        if not raw:
+            raise ValueError(f"Key {key_id} not found")
+        record = json.loads(raw)
+        record["is_active"] = False
+        self._redis.set(self._key(key_id), json.dumps(record))
+
+    async def enable_key(self, key_id: str) -> None:
+        """Re-activate a previously deactivated key."""
+        raw = self._redis.get(self._key(key_id))
+        if not raw:
+            raise ValueError(f"Key {key_id} not found")
+        record = json.loads(raw)
+        record["is_active"] = True
+        self._redis.set(self._key(key_id), json.dumps(record))
+
     async def delete_key(self, key_id: str) -> None:
         self._redis.delete(self._key(key_id))
 

@@ -94,8 +94,9 @@ class MemoryKeyStore(KeyStoreInterface):
     def _persist_seeds(self, seed_file: str) -> None:
         """Write all current keys back to the seed file.
 
-        Only writes active records — deleted keys (is_active=False) are
-        silently dropped so they do not reappear on reload.
+        All records are persisted with their current ``is_active`` state —
+        deleted keys (popped from ``_keys``) are dropped; disabled keys
+        (``is_active=False``) survive so that ``enable`` works after a restart.
         """
         path = Path(seed_file).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,7 +111,6 @@ class MemoryKeyStore(KeyStoreInterface):
                 "metadata": rec.get("metadata", {}),
             }
             for rec in self._keys.values()
-            if rec.get("is_active")  # persist only truly active records
         ]
         path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
@@ -248,6 +248,32 @@ class MemoryKeyStore(KeyStoreInterface):
         record = self._keys.pop(key_id, None)
         if record and record.get("key_hash") in self._by_hash:
             del self._by_hash[record["key_hash"]]
+
+    async def disable_key(self, key_id: str) -> None:
+        """Deactivate a key by setting is_active=False."""
+        record = self._keys.get(key_id)
+        if not record:
+            raise ValueError(f"Key {key_id} not found")
+        record["is_active"] = False
+        # Remove from hash lookup so old key can't authenticate
+        if record.get("key_hash") in self._by_hash:
+            del self._by_hash[record["key_hash"]]
+        # Persist to seed file if configured
+        if self._seed_file:
+            self._persist_seeds(self._seed_file)
+
+    async def enable_key(self, key_id: str) -> None:
+        """Re-activate a previously deactivated key."""
+        record = self._keys.get(key_id)
+        if not record:
+            raise ValueError(f"Key {key_id} not found")
+        record["is_active"] = True
+        # Re-add to hash lookup so the key can authenticate again
+        if record.get("key_hash") and record["key_hash"] not in self._by_hash:
+            self._by_hash[record["key_hash"]] = key_id
+        # Persist to seed file if configured
+        if self._seed_file:
+            self._persist_seeds(self._seed_file)
 
     async def list_keys(self) -> list[dict]:
         return [
