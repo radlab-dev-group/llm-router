@@ -12,7 +12,6 @@ import os
 import time
 import uuid
 import bcrypt
-import asyncio
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
@@ -97,18 +96,7 @@ class VaultKeyStore(KeyStoreInterface):
         else:
             raise ValueError(f"Unsupported Vault auth method: {auth_method}")
 
-    # -- sync helpers ----------------------------------------------
-    @staticmethod
-    def _run_async(coro):
-        """Run an async coroutine from a synchronous context."""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop:
-            return asyncio.run_coroutine_threadsafe(coro, loop).result()
-        return asyncio.run(coro)
-
+    # -- sync wrappers (inherit _run_async from base class) ---------------
     def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
         return self._run_async(self._wrapped.get_key_by_hash(key_hash))
 

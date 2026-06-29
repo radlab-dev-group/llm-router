@@ -114,18 +114,6 @@ class MemoryKeyStore(KeyStoreInterface):
         ]
         path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
-    # -- sync helpers ----------------------------------------------
-    @staticmethod
-    def _run_async(coro):
-        """Run an async coroutine from a synchronous context."""
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-        if loop:
-            return asyncio.run_coroutine_threadsafe(coro, loop).result()
-        return asyncio.run(coro)
-
     # -- lookups ----------------------------------------------------------------
     async def get_key_by_hash(self, key_hash: str) -> dict | None:
         key_id = self._by_hash.get(key_hash)
@@ -137,7 +125,7 @@ class MemoryKeyStore(KeyStoreInterface):
         return record
 
     def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
-        return self._run_async(self.get_key_by_hash(key_hash))
+        return asyncio.run(self.get_key_by_hash(key_hash))
 
     async def get_key_by_id(self, key_id: str) -> dict | None:
         record = self._keys.get(key_id)

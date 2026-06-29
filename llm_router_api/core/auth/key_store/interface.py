@@ -8,6 +8,8 @@ the auth middleware can treat them interchangeably.
 from __future__ import annotations
 
 import abc
+import asyncio
+
 from typing import Any
 
 
@@ -18,6 +20,24 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
     The store is the single source of truth for API keys — it holds the
     authoritative record for every issued key together with its policy.
     """
+
+    @staticmethod
+    def _run_async(coro) -> Any:
+        """Run an async coroutine from a synchronous context.
+
+        If a running event loop exists, schedules *coro* on it via
+        ``asyncio.run_coroutine_threadsafe``.  Otherwise runs it with
+        ``asyncio.run()``.
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(coro)
+        import asyncio as _asyncio
+
+        return _asyncio.run_coroutine_threadsafe(
+            coro, _asyncio.get_running_loop()
+        ).result()
 
     @abc.abstractmethod
     async def get_key_by_hash(self, key_hash: str) -> Any | None:

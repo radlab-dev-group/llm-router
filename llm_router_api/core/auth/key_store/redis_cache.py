@@ -131,6 +131,20 @@ class RedisKeyStoreCache(KeyStoreInterface):
     async def list_keys(self) -> list[dict]:
         return await self._backend.list_keys()
 
+    async def disable_key(self, key_id: str) -> None:
+        """Deactivate a key — forwards to backend and invalidates cache."""
+        old = await self.get_key_by_id(key_id)
+        await self._backend.disable_key(key_id)
+        if old:
+            self._invalidate(key_id, old.get("key_hash", ""))
+
+    async def enable_key(self, key_id: str) -> None:
+        """Re-activate a key — forwards to backend and invalidates cache."""
+        old = await self.get_key_by_id(key_id)
+        await self._backend.enable_key(key_id)
+        if old:
+            self._invalidate(key_id, old.get("key_hash", ""))
+
     # -- plaintext lookup (bypasses cache since salts are random) -------------
     async def get_key_by_plain(self, key_plain: str) -> dict | None:
         """Delegate plaintext lookup to backend — cannot be cached (random bcrypt salts)."""
