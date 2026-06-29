@@ -45,8 +45,8 @@ Now type (or paste) your text, **then press**:
 The script will finish and display the anonymised output.
 """
 
-import argparse
 import sys
+import argparse
 
 from llm_router_plugins.maskers.fast_masker.core.masker import FastMasker
 from llm_router_plugins.maskers.fast_masker.core.masker import (
