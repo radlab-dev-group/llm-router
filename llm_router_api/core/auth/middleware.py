@@ -270,7 +270,8 @@ class AuthMiddleware:
 
     async def _update_last_used_async(self, key_id: str) -> None:
         """Async version of last-used update."""
-        await self._store.update_last_used(key_id)
+        if hasattr(self._store, "update_last_used"):
+            await self._store.update_last_used(key_id)
 
     def _update_last_used_sync(self, key_id: str) -> None:
         """Sync version of last-used update."""

@@ -114,6 +114,7 @@ class RedisKeyStore(KeyStoreInterface):
         return record
 
     async def create_key(self, record: dict) -> str:
+        record = dict(record)  # prevent mutating caller's dict
         key_plain: str = record.pop("key_plain")
         key_hash = bcrypt.hashpw(key_plain.encode(), bcrypt.gensalt()).decode()
 
@@ -191,3 +192,16 @@ class RedisKeyStore(KeyStoreInterface):
             if cursor == 0:
                 break
         return result
+
+    async def update_last_used(self, key_id: str) -> None:
+        """Update last_used_at for a key."""
+        raw = self._redis.get(self._key(key_id))
+        if not raw:
+            return
+        record = json.loads(raw)
+        record["last_used_at"] = time.time()
+        self._redis.set(self._key(key_id), json.dumps(record))
+
+    def update_last_used_sync(self, key_id: str) -> None:
+        """Sync version of :meth:`update_last_used`."""
+        return self._run_async(self.update_last_used(key_id))

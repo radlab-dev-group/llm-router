@@ -67,7 +67,8 @@ class MemoryKeyStore(KeyStoreInterface):
     def _seed_keys(self, seed_file: str) -> None:
         """Load seed records into the key store."""
         for rec in self._load_seeds(seed_file):
-            key_plain: str = rec["key_plain"]
+            rec = dict(rec)  # prevent mutating the loaded JSON dict
+            key_plain: str = rec.pop("key_plain")
             key_hash = bcrypt.hashpw(key_plain.encode(), bcrypt.gensalt()).decode()
             key_id = rec.get("key_id", f"seed-{uuid.uuid4().hex[:8]}")
             now = rec.get("created_at", time.time())
@@ -183,6 +184,7 @@ class MemoryKeyStore(KeyStoreInterface):
 
     # -- mutations --------------------------------------------------------------
     async def create_key(self, record: dict) -> str:
+        record = dict(record)  # prevent mutating caller's dict
         key_plain: str = record.pop("key_plain")
         key_hash = bcrypt.hashpw(key_plain.encode(), bcrypt.gensalt()).decode()
 
@@ -260,3 +262,16 @@ class MemoryKeyStore(KeyStoreInterface):
             }
             for r in self._keys.values()
         ]
+
+    async def update_last_used(self, key_id: str) -> None:
+        """Update last_used_at for a key."""
+        record = self._keys.get(key_id)
+        if record:
+            record["last_used_at"] = time.time()
+            # Persist if seed file is configured
+            if self._seed_file:
+                self._persist_seeds(self._seed_file)
+
+    def update_last_used_sync(self, key_id: str) -> None:
+        """Sync version of :meth:`update_last_used`."""
+        return self._run_async(self.update_last_used(key_id))
