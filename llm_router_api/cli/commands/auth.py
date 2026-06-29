@@ -493,7 +493,10 @@ def _handle_key(args, sub: list) -> int:
     from llm_router_api.core.auth.policies.builtin import get_builtin_policy
 
     if not sub:
-        print("Usage: llm-router auth key <generate|list|delete|disable|enable|rotate|reveal>")
+        print(
+            "Usage: llm-router auth key "
+            "<generate|list|delete|disable|enable|rotate|reveal>"
+        )
         return 1
 
     cmd = sub[0]
