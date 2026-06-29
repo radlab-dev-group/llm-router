@@ -547,19 +547,59 @@ def _handle_key(args, sub: list) -> int:
                 print("No API keys found.")
                 return 0
 
-            print(
-                f"{'KEY_ID':<20} {'PREFIX':<10} {'POLICY':<15} {'ACTIVE':<8} {'EXPIRES':<20}"
-            )
-            print("-" * 75)
+            # Calculate column widths from data
+            max_widths = {
+                "KEY_ID": 8,
+                "PREFIX": 8,
+                "POLICY": 8,
+                "ACTIVE": 7,
+                "EXPIRES": 10,
+            }
             for k in keys:
-                expires_str = (
+                exp_str = (
+                    f"{k.get('expires_at', 'none'):.0f}"
+                    if k.get("expires_at")
+                    else "none"
+                )
+                max_widths["KEY_ID"] = max(
+                    max_widths["KEY_ID"], len(k["key_id"]) + 1
+                )
+                max_widths["PREFIX"] = max(
+                    max_widths["PREFIX"], len(k.get("key_prefix", "")) + 1
+                )
+                max_widths["POLICY"] = max(
+                    max_widths["POLICY"], len(k.get("policy_name", "")) + 1
+                )
+                max_widths["ACTIVE"] = max(max_widths["ACTIVE"], 4 + 1)
+
+            w = (
+                max_widths["KEY_ID"],
+                max_widths["PREFIX"],
+                max_widths["POLICY"],
+                max_widths["ACTIVE"],
+                max_widths["EXPIRES"],
+            )
+
+            # Header
+            hdr = (
+                f"{'KEY_ID':<{w[0]}} {'PREFIX':<{w[1]}} {'POLICY':<{w[2]}} "
+                f"{'ACTIVE':<{w[3]}} {'EXPIRES':<{w[4]}}"
+            )
+            print(hdr)
+            print("-" * len(hdr))
+
+            for k in keys:
+                exp_str = (
                     f"{k.get('expires_at', 'none'):.0f}"
                     if k.get("expires_at")
                     else "none"
                 )
                 line = (
-                    f"{k['key_id']:<20} {k['key_prefix']:<10} {k['policy_name']:<15} "
-                    f"{'yes' if k.get('is_active') else 'no':<8} {expires_str:<20}"
+                    f"{k['key_id']:<{w[0]}} "
+                    f"{k['key_prefix']:<{w[1]}} "
+                    f"{k['policy_name']:<{w[2]}} "
+                    f"{'yes' if k.get('is_active') else 'no':<{w[3]}} "
+                    f"{exp_str:<{w[4]}}"
                 )
                 if show_plain and "key_plain" in k:
                     line += f"  PLAIN: {k['key_plain']}"
