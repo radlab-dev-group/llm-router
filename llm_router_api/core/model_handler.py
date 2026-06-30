@@ -85,6 +85,14 @@ class ApiModel:
         )
 
     def as_dict(self) -> Dict[str, Any]:
+        """
+        Return the configuration as a dictionary.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary representation of this ApiModelConfig instance.
+        """
         return {
             "id": self.id,
             "name": self.name,

@@ -384,7 +384,7 @@ class _StartAppVerificator:
     @staticmethod
     def __verify_is_able_to_init():
         if not SERVICE_AS_PROXY:
-            raise Exception(
+            raise ValueError(
                 f"Currently llm-proxy-api only supports service-as-proxy mode!\n"
                 f"Environment: {_DontChangeMe.MAIN_ENV_PREFIX}MINIMUM "
                 f"must be set as True/1/yes/t\n\n"
@@ -394,7 +394,7 @@ class _StartAppVerificator:
     @staticmethod
     def __verify_balancing_strategy():
         if SERVER_BALANCE_STRATEGY not in POSSIBLE_BALANCE_STRATEGIES:
-            raise Exception(
+            raise ValueError(
                 f"{SERVER_BALANCE_STRATEGY} is not a valid strategy for balancing.\n"
                 f"Available strategies: {POSSIBLE_BALANCE_STRATEGIES}\n\n"
             )
@@ -402,7 +402,7 @@ class _StartAppVerificator:
     @staticmethod
     def __verify_default_masking_strategy():
         if FORCE_MASKING and not MASKING_STRATEGY_PIPELINE:
-            raise Exception(
+            raise ValueError(
                 "When FORCE_MASKING is set to `True`, you must specify the "
                 "pipeline of masking strategies"
             )
@@ -411,13 +411,13 @@ class _StartAppVerificator:
     def __verify_default_request_guardrails():
         if GUARDRAIL_WITH_AUDIT_REQUEST:
             if not FORCE_GUARDRAIL_REQUEST:
-                raise Exception(
+                raise ValueError(
                     "`export LLM_ROUTER_FORCE_GUARDRAIL_REQUEST=1` environment is "
                     "required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=1`\n\n"
                 )
 
         if FORCE_GUARDRAIL_REQUEST and not GUARDRAIL_STRATEGY_PIPELINE_REQUEST:
-            raise Exception(
+            raise ValueError(
                 "When FORCE_GUARDRAIL_REQUEST is set to `True`, you must specify the "
                 "pipeline of guardrail strategies for each user request"
             )
@@ -426,12 +426,12 @@ class _StartAppVerificator:
     def __verify_default_response_guardrails():
         if GUARDRAIL_WITH_AUDIT_RESPONSE:
             if not FORCE_GUARDRAIL_RESPONSE:
-                raise Exception(
+                raise ValueError(
                     "`export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=1` environment is "
                     "required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=1`\n\n"
                 )
         if FORCE_GUARDRAIL_RESPONSE and not GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
-            raise Exception(
+            raise ValueError(
                 "When FORCE_GUARDRAIL_RESPONSE is set to `True`, you must specify the "
                 "pipeline of guardrail strategies for each response"
             )
@@ -451,35 +451,35 @@ class _StartAppVerificator:
             )
 
             if not LANGCHAIN_RAG_COLLECTION:
-                raise Exception(
+                raise ValueError(
                     f"LANGCHAIN_RAG_COLLECTION is required when using "
                     f"{_lp_name} plugin. "
                     f"Export LLM_ROUTER_LANGCHAIN_RAG_COLLECTION "
                     f"with your collection name"
                 )
             if not LANGCHAIN_RAG_EMBEDDER:
-                raise Exception(
+                raise ValueError(
                     f"LANGCHAIN_RAG_EMBEDDER is required when using "
                     f"{_lp_name} plugin. "
                     f"Export LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER "
                     f"with chosen embedder name/path"
                 )
             if not LANGCHAIN_RAG_DEVICE:
-                raise Exception(
+                raise ValueError(
                     f"LANGCHAIN_RAG_DEVICE is required when using "
                     f"{_lp_name} plugin. "
                     f"Export LLM_ROUTER_LANGCHAIN_RAG_DEVICE "
                     f"with chosen device (cpu, cuda:0, ...)"
                 )
             if not LANGCHAIN_RAG_CHUNK_SIZE:
-                raise Exception(
+                raise ValueError(
                     f"LANGCHAIN_RAG_CHUNK_SIZE is required when using "
                     f"{_lp_name} plugin. "
                     f"Export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE with size "
                     f"(in tokens) of stored chunks in the vector database"
                 )
             if not LANGCHAIN_RAG_CHUNK_OVERLAP:
-                raise Exception(
+                raise ValueError(
                     f"LANGCHAIN_RAG_CHUNK_OVERLAP is required when using "
                     f"{_lp_name} plugin. "
                     f"Export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP with size (in"
@@ -493,6 +493,11 @@ class _StartAppVerificator:
         self.__verify_utils_plugins_langchain_rag()
 
     def dont_run_if_something_is_wrong(self):
+        """Verify all startup assumptions and the plugins system.
+
+        Calls through to each individual verification method; if any
+        checks fail they will raise before this function returns.
+        """
         self.__verify_is_able_to_init()
         self.__verify_balancing_strategy()
         self.__verify_default_masking_strategy()

@@ -332,7 +332,7 @@ class SecureEndpointI(abc.ABC):
         """
         if not audit_log:
             if force_end:
-                raise Exception("Cannot end audit! Audit log is not set!")
+                raise RuntimeError("Cannot end audit! Audit log is not set!")
             return
 
         if force_end or audit_log["begin"]["payload"] != payload:
@@ -416,7 +416,7 @@ class SecureEndpointI(abc.ABC):
         if (
             self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
             or not payload
-            or type(payload) is not dict
+            or not isinstance(payload, dict)
         ):
             return payload, {}
 
@@ -1293,7 +1293,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             map_prompt = None
             prompt_str_force = None
             prompt_str_postfix = None
-            if type(params) is dict:
+            if isinstance(params, dict):
                 map_prompt = params.pop("map_prompt", {})
                 prompt_str_force = params.pop("prompt_str_force", "")
                 prompt_str_postfix = params.pop("prompt_str_postfix", "")
@@ -1725,7 +1725,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 if p in params:
                     _params[p] = params[p]
         else:
-            raise Exception(f"Unsupported API type: {api_type}")
+            raise ValueError(f"Unsupported API type: {api_type}")
         return _params
 
     @staticmethod
@@ -1765,7 +1765,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         should treat the returned mapping as the definitive payload to be
         forwarded.
         """
-        if model_provider is None or params is None or type(params) is not dict:
+        if model_provider is None or params is None or not isinstance(params, dict):
             return params
 
         if not model_provider.tool_calling:

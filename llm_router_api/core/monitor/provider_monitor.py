@@ -185,7 +185,7 @@ class RedisProviderMonitor:
                 self._stop_event.wait(self._check_interval)
                 continue
 
-            self.logger.debug(f"[provider-monitor] keys to check: {keys}")
+            self.logger.debug("[provider-monitor] keys to check: %s", keys)
             for providers_key in keys:
                 # Extract model name from key
                 model_name = providers_key.replace(f"{self._monitor_key()}:", "")

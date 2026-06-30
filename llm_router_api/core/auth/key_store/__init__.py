@@ -91,7 +91,7 @@ def create_key_store(
     """
     # Create ONE shared redis client for both store and cache — only when a
     # Redis-backed store is requested.  Memory stores never touch Redis.
-    if store_type == "redis" or store_type == "vault":
+    if store_type in ("redis", "vault"):
         shared_client = _make_shared_redis_client(kwargs)
     else:
         shared_client = None

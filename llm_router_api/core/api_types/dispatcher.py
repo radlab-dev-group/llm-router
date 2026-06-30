@@ -161,11 +161,11 @@ class ApiTypesDispatcher:
         endpoint_url = endpoint_url.strip("/")
         if "completions" in endpoint_url:
             return self.completions_ep(api_type=api_type)
-        elif "responses" in endpoint_url:
+        if "responses" in endpoint_url:
             return self.responses_ep(api_type=api_type)
-        elif "embed" in endpoint_url:
+        if "embed" in endpoint_url:
             return self.embeddings_ep(api_type=api_type)
-        elif "messages" in endpoint_url:
+        if "messages" in endpoint_url:
             return self.messages_ep(api_type=api_type)
         return self.chat_ep(api_type=api_type)
 
@@ -178,6 +178,9 @@ class ApiTypesDispatcher:
 
     @classmethod
     def responses_ep(cls, api_type: str) -> str:
+        """
+        Delegate to the proper implementation to get responses endpoint path.
+        """
         return cls._get_impl(api_type).responses_ep()
 
     @classmethod

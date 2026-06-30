@@ -109,8 +109,9 @@ class KeepAlive:
         endpoint = self._endpoint_for(api_type, api_host)
         if not endpoint:
             self._logger.warning(
-                f"[keep-alive] unsupported "
-                f"api_type={api_type} (model={req.model_name})"
+                "[keep-alive] unsupported " "api_type=%s (model=%s)",
+                api_type,
+                req.model_name,
             )
             return
 
@@ -121,8 +122,10 @@ class KeepAlive:
             )
             response.raise_for_status()
             self._logger.debug(
-                f"[keep-alive] response model={req.model_name} "
-                f"api_type={req.model_name} status={response.status_code}",
+                "[keep-alive] response model=%s " "api_type=%s status=%s",
+                req.model_name,
+                req.model_name,
+                response.status_code,
             )
         except Exception as exc:
             self._logger.error(
@@ -135,8 +138,10 @@ class KeepAlive:
             return
 
         self._logger.info(
-            f"[keep-alive] Sending prompt to {api_type} "
-            f"model={req.model_name} host={req.host}"
+            "[keep-alive] Sending prompt to %s " "model=%s host=%s",
+            api_type,
+            req.model_name,
+            req.host,
         )
 
     @staticmethod

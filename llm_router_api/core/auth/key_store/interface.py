@@ -33,7 +33,7 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
             asyncio.get_running_loop()
         except RuntimeError:
             return asyncio.run(coro)
-        import asyncio as _asyncio  # pylint: disable=reimport
+        import asyncio as _asyncio  # pylint: disable=reimported
 
         return _asyncio.run_coroutine_threadsafe(
             coro, _asyncio.get_running_loop()

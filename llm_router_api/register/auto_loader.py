@@ -137,7 +137,7 @@ class EndpointAutoLoader:
                 continue
 
             try:
-                self._logger.debug(f"Instantiating {cls.__name__}")
+                self._logger.debug("Instantiating %s", cls.__name__)
                 instances.append(
                     cls(
                         logger_level=self._logger_level,
@@ -148,7 +148,9 @@ class EndpointAutoLoader:
                 )
             except TypeError as e:
                 self._logger.warning(
-                    f"Cannot instantiate {cls.__name__} without arguments: {str(e)}"
+                    "Cannot instantiate %s without arguments: %s",
+                    cls.__name__,
+                    e,
                 )
         return instances
 

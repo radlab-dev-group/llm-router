@@ -199,7 +199,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
         try:
             self.redis_client.hdel(redis_key, provider_field)
         except Exception:
-            raise
+            raise  # intentional pass-through of original traceback
 
         provider.pop("__chosen_field", None)
 

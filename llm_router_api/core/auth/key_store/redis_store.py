@@ -73,6 +73,7 @@ class RedisKeyStore(KeyStoreInterface):
         return None
 
     def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+        """Run the async get_key_by_plain coroutine on the event loop."""
         return self._run_async(self.get_key_by_plain(key_plain))
 
     async def get_key_by_hash(self, key_hash: str) -> dict | None:

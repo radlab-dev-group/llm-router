@@ -49,6 +49,7 @@ class AnthropicConverters:
     class Payload:
         @staticmethod
         def convert_payload(params: Dict[str, Any]) -> Dict[str, Any]:
+            """Convert OpenAI payload to Anthropic format."""
             openai_messages = params.get("messages", [])
             anthropic_messages = []
             system_prompt = None

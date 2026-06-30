@@ -331,7 +331,7 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
 
     def _get_active_providers(
         self, model_name: str, providers: List[Dict]
-    ) -> List[Dict]:
+    ) -> List[Dict]:  # pylint: disable=unused-argument
         """
         Retrieve the list of currently active providers for a model.
 

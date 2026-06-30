@@ -61,6 +61,7 @@ class AuthMiddleware:
 
     @property
     def logger(self):
+        """Lazily initialize and return the logger."""
         if self._logger is None:
             from rdl_ml_utils.utils.logger import prepare_logger
 

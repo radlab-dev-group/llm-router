@@ -69,7 +69,9 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
         """
 
         self._import_result = None
-        self._gpg = gnupg.GPG(gnupghome=str(self.AUDITOR_PUB_KEY_DIR))
+        self._gpg = gnupg.GPG(
+            gnupghome=str(self.AUDITOR_PUB_KEY_DIR)
+        )  # pylint: disable=unexpected-keyword-arg
         self._gpg.encoding = "utf-8"
 
         self.__verify()
@@ -140,7 +142,7 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
             If the public key file does not exist.
         """
         if not self.AUDITOR_PUB_KEY_FILE.exists():
-            raise Exception(
+            raise RuntimeError(
                 f"GPG public key {self.AUDITOR_PUB_KEY_FILE} does not exists!"
             )
 

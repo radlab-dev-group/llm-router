@@ -752,7 +752,7 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
         prompt_str_force = _payload.get("system_prompt")
 
         context = ""
-        if type(_payload["texts"]) is dict:
+        if isinstance(_payload["texts"], dict):
             doc_name_in_answer = _payload.get("doc_name_in_answer", False)
             for doc_name, tests in _payload["texts"].items():
                 for t in tests:
@@ -760,7 +760,7 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
                         t = f"Document name: {doc_name}\nDocument context: {t}"
 
                     context += t + "\n\n"
-        elif type(_payload["texts"]) is list:
+        elif isinstance(_payload["texts"], list):
             for t in _payload["texts"]:
                 context += t + "\n\n"
 

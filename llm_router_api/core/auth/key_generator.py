@@ -72,4 +72,5 @@ class KeyGenerator:
 
     @property
     def prefix(self) -> str:
+        """Return the key prefix (e.g. ``'sk-litm-'``)."""
         return self.PREFIX

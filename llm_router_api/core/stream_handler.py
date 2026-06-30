@@ -375,6 +375,7 @@ class StreamHandler:
                         json=payload,
                         headers=headers,
                         stream=True,
+                        timeout=endpoint.timeout,
                     )
                     response.raise_for_status()
 

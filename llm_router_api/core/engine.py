@@ -39,7 +39,9 @@ from llm_router_api.base.constants import (
     LLM_ROUTER_AUTH_ENABLED,
 )
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
-from llm_router_api.core.auth.metrics import AuthMetrics  # pylint: disable=reimport
+from llm_router_api.core.auth.metrics import (
+    AuthMetrics,
+)  # pylint: disable=reimported
 
 # Prometheus is imported unconditionally here to avoid pylint E0606;
 # actual usage is gated by the USE_PROMETHEUS constant.
@@ -174,7 +176,7 @@ class FlaskEngine:
 
         # -- METRICS (after endpoints) --------------------------------------
         if USE_PROMETHEUS:
-            self.__register_auth_metrics_if_needed(flask_app)
+            self.__register_auth_metrics_if_needed()
 
         return flask_app
 
@@ -303,7 +305,7 @@ class FlaskEngine:
 
     def _register_auth_metrics(self):
         """Register auth Prometheus metrics."""
-        from llm_router_api.core.auth.metrics import (  # pylint: disable=reimport
+        from llm_router_api.core.auth.metrics import (  # pylint: disable=reimported
             AuthMetrics as _AuthMetrics,
         )
 
@@ -353,7 +355,7 @@ class FlaskEngine:
                 f"Failed to register endpoints: {traceback.format_exc()}"
             ) from exc
 
-    def __register_auth_metrics_if_needed(self, flask_app: Flask) -> None:
+    def __register_auth_metrics_if_needed(self) -> None:
         """
         Register auth Prometheus metrics alongside the standard HTTP metrics.
 
@@ -363,7 +365,7 @@ class FlaskEngine:
         if not USE_PROMETHEUS or self._auth_metrics is not None:
             return
 
-        from llm_router_api.core.auth.metrics import (  # pylint: disable=reimport
+        from llm_router_api.core.auth.metrics import (  # pylint: disable=reimported
             AuthMetrics as _AuthMetrics,
         )
 
