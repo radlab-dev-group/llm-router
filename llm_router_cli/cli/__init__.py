@@ -118,7 +118,3 @@ def main(argv: list[str] | None = None) -> int:
     # Unknown command
     parser.print_help()
     return 1
-
-
-# -- version ----------------------------------------------------------
-__version__ = "0.5.2"  # keep in sync with .version
