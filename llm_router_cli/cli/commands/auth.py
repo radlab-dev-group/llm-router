@@ -26,6 +26,7 @@ import argparse
 import asyncio
 
 from pathlib import Path
+
 # ---------------------------------------------------------------------------
 # Shared argument helpers — avoid repeating the same --store / --auth-redis-*
 # arguments on every subparser.
@@ -116,9 +117,11 @@ def _seed_policies(config_dir: Path) -> None:
     try:
         from importlib import resources as pkg_resources
 
-        src_data = pkg_resources.files("llm_router_cli.resources.configs").joinpath(
-            "rate_limiting-policies.json"
-        ).read_bytes()
+        src_data = (
+            pkg_resources.files("llm_router_cli.resources.configs")
+            .joinpath("rate_limiting-policies.json")
+            .read_bytes()
+        )
         dest.write_bytes(src_data)
         return
     except (ImportError, OSError):
@@ -438,7 +441,9 @@ def _load_rate_limit_presets() -> list[dict]:
             return loaded
 
     # 2. User config dir (default installed location)
-    user_config = Path.home() / ".llm-router" / "configs" / "rate_limiting-policies.json"
+    user_config = (
+        Path.home() / ".llm-router" / "configs" / "rate_limiting-policies.json"
+    )
     loaded = _try_load(user_config)
     if loaded is not None:
         return loaded
@@ -447,7 +452,10 @@ def _load_rate_limit_presets() -> list[dict]:
     try:
         from importlib import resources as pkg_resources
 
-        _PACKAGE_RES = pkg_resources.files("llm_router_cli.resources.configs") / "rate_limiting-policies.json"
+        _PACKAGE_RES = (
+            pkg_resources.files("llm_router_cli.resources.configs")
+            / "rate_limiting-policies.json"
+        )
         if hasattr(_PACKAGE_RES, "read_bytes"):  # Python 3.9+
             loaded = _try_load_bytes(_PACKAGE_RES.read_bytes())
         elif hasattr(_PACKAGE_RES, "joinpath"):  # fallback for older Python
@@ -487,16 +495,7 @@ def register_rate_limit_subparser(parser: argparse.ArgumentParser) -> None:
     )
     _add_key_id_arg(rl_apply)
     rl_apply.add_argument("--preset", required=True, help="Preset name")
-    rl_apply.add_argument(
-        "--store",
-        default="memory",
-        choices=["memory", "redis", "vault"],
-        help="Key store backend (default: memory)",
-    )
-    rl_apply.add_argument("--auth-redis-host", default=None, help="Redis host for auth key store")
-    rl_apply.add_argument("--auth-redis-port", type=int, default=None, help="Redis port for auth key store")
-    rl_apply.add_argument("--auth-redis-db", type=int, default=None, help="Redis database for auth key store")
-    rl_apply.add_argument("--auth-redis-password", default=None, help="Redis password for auth key store")
+    _add_store_and_redis_args(rl_apply)
 
     # -- remove <key_id> --
     rl_remove = rl_sub.add_parser(
@@ -504,16 +503,7 @@ def register_rate_limit_subparser(parser: argparse.ArgumentParser) -> None:
         help="Remove rate-limit override from a key (revert to global default)",
     )
     _add_key_id_arg(rl_remove)
-    rl_remove.add_argument(
-        "--store",
-        default="memory",
-        choices=["memory", "redis", "vault"],
-        help="Key store backend (default: memory)",
-    )
-    rl_remove.add_argument("--auth-redis-host", default=None, help="Redis host for auth key store")
-    rl_remove.add_argument("--auth-redis-port", type=int, default=None, help="Redis port for auth key store")
-    rl_remove.add_argument("--auth-redis-db", type=int, default=None, help="Redis database for auth key store")
-    rl_remove.add_argument("--auth-redis-password", default=None, help="Redis password for auth key store")
+    _add_store_and_redis_args(rl_remove)
 
 
 def register_auth_subparser(
@@ -824,7 +814,11 @@ def _rl_list(sub: list[str]) -> int:
     print(f"  {'NAME':<{max_name}}  {'RPM':>{max_rpm}}  DESCRIPTION")
     print(f"  {'-' * max_name}  {'-' * max_rpm}  {'-----------'}")
     for p in presets:
-        rpm = str(p.get("rpm", "-")) if p.get("rpm") else f"{p.get('daily_limit', 'N/A')}/day"
+        rpm = (
+            str(p.get("rpm", "-"))
+            if p.get("rpm")
+            else f"{p.get('daily_limit', 'N/A')}/day"
+        )
         print(f"  {p['name']:<{max_name}}  {rpm:>{max_rpm}}  {p['description']}")
     return 0
 
@@ -836,23 +830,19 @@ def _rl_apply(sub: list[str]) -> int:
         return 1
 
     key_id = sub[1]
-    store = "memory"
-    preset_name = None
-    redis_kwargs = {}
 
-    for i, arg in enumerate(sub):
-        if arg == "--store" and i + 1 < len(sub):
-            store = sub[i + 1]
-        elif arg == "--preset" and i + 1 < len(sub):
-            preset_name = sub[i + 1]
-        elif arg == "--auth-redis-host" and i + 1 < len(sub):
-            redis_kwargs["host"] = sub[i + 1]
-        elif arg == "--auth-redis-port" and i + 1 < len(sub):
-            redis_kwargs["port"] = int(sub[i + 1])
-        elif arg == "--auth-redis-db" and i + 1 < len(sub):
-            redis_kwargs["db"] = int(sub[i + 1])
-        elif arg == "--auth-redis-password" and i + 1 < len(sub):
-            redis_kwargs["password"] = sub[i + 1]
+    # Parse shared store/redis flags via argparse — delegates to _auth_redis_kwargs.
+    _rl_parser = argparse.ArgumentParser(add_help=False)
+    _rl_parser.add_argument("--store", default="memory")
+    _rl_parser.add_argument("--preset", default=None)
+    _rl_parser.add_argument("--auth-redis-host", default=None)
+    _rl_parser.add_argument("--auth-redis-port", type=int, default=None)
+    _rl_parser.add_argument("--auth-redis-db", type=int, default=None)
+    _rl_parser.add_argument("--auth-redis-password", default=None)
+    parsed = _rl_parser.parse_args(sub[1:])
+    store = getattr(parsed, "store", "memory")
+    preset_name = getattr(parsed, "preset", None)
+    redis_kwargs = _auth_redis_kwargs(parsed)
 
     if not preset_name:
         print("Error: --preset is required.")
@@ -873,13 +863,16 @@ def _rl_apply(sub: list[str]) -> int:
 
     # Apply based on store type
     from pathlib import Path as _Path
+
     seed_file = _DEFAULT_SEED_FILE
     seed_path = _Path(seed_file)
 
     if store == "memory":
         # Edit seed file directly
         if not seed_path.exists():
-            print(f"Error: Seed file {seed_file} does not exist. Generate keys first.")
+            print(
+                f"Error: Seed file {seed_file} does not exist. Generate keys first."
+            )
             return 1
 
         keys = json.loads(seed_path.read_text(encoding="utf-8"))
@@ -889,7 +882,9 @@ def _rl_apply(sub: list[str]) -> int:
 
         found = False
         for rec in keys:
-            if rec.get("key_id") == key_id or rec.get("key_plain", "").startswith(key_id[:7]):
+            if rec.get("key_id") == key_id or rec.get("key_plain", "").startswith(
+                key_id[:7]
+            ):
                 override = rec.get("policy_override") or {}
                 override["rate_limit"] = rate_limit
                 rec["policy_override"] = override
@@ -901,26 +896,44 @@ def _rl_apply(sub: list[str]) -> int:
             return 1
 
         seed_path.write_text(json.dumps(keys, indent=2) + "\n", encoding="utf-8")
-        print(f"Applied preset '{preset_name}' (rate_limit={rate_limit}/min) to key {key_id}.")
+        print(
+            f"Applied preset '{preset_name}' (rate_limit={rate_limit}/min) to key {key_id}."
+        )
 
     elif store == "redis":
         import redis as _redis_mod
 
-        host = redis_kwargs.get("host") or os.environ.get("LLM_ROUTER_AUTH_REDIS_HOST", "127.0.0.1")
-        port = int(redis_kwargs.get("port") or os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379))
-        db = int(redis_kwargs.get("db") or os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0))
-        password = redis_kwargs.get("password") or os.environ.get("LLM_ROUTER_AUTH_REDIS_PASSWORD")
+        host = redis_kwargs.get("redis_host") or os.environ.get(
+            "LLM_ROUTER_AUTH_REDIS_HOST", "127.0.0.1"
+        )
+        port = int(
+            redis_kwargs.get("redis_port")
+            or os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379)
+        )
+        db = int(
+            redis_kwargs.get("redis_db")
+            or os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0)
+        )
+        password = redis_kwargs.get("redis_password") or os.environ.get(
+            "LLM_ROUTER_AUTH_REDIS_PASSWORD"
+        )
 
-        r = _redis_mod.Redis(host=host, port=port, db=db, decode_responses=True, password=password)
+        r = _redis_mod.Redis(
+            host=host, port=port, db=db, decode_responses=True, password=password
+        )
         key_hash_key = f"auth:key:{key_id}"
         raw = r.hget(key_hash_key, "policy_override")
         policy_override = json.loads(raw) if raw else {}
         policy_override["rate_limit"] = rate_limit
         r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
-        print(f"Applied preset '{preset_name}' (rate_limit={rate_limit}/min) to key {key_id}.")
+        print(
+            f"Applied preset '{preset_name}' (rate_limit={rate_limit}/min) to key {key_id}."
+        )
 
     elif store == "vault":
-        print("Error: 'rate-limit apply' on vault store requires Vault API. Use seed file or --store memory.")
+        print(
+            "Error: 'rate-limit apply' on vault store requires Vault API. Use seed file or --store memory."
+        )
         return 1
 
     else:
@@ -937,13 +950,20 @@ def _rl_remove(sub: list[str]) -> int:
         return 1
 
     key_id = sub[1]
-    store = "memory"
 
-    for i, arg in enumerate(sub):
-        if arg == "--store" and i + 1 < len(sub):
-            store = sub[i + 1]
+    # Parse shared store/redis flags via argparse — delegates to _auth_redis_kwargs.
+    _rl_parser = argparse.ArgumentParser(add_help=False)
+    _rl_parser.add_argument("--store", default="memory")
+    _rl_parser.add_argument("--auth-redis-host", default=None)
+    _rl_parser.add_argument("--auth-redis-port", type=int, default=None)
+    _rl_parser.add_argument("--auth-redis-db", type=int, default=None)
+    _rl_parser.add_argument("--auth-redis-password", default=None)
+    parsed = _rl_parser.parse_args(sub[1:])
+    store = getattr(parsed, "store", "memory")
+    redis_kwargs = _auth_redis_kwargs(parsed)
 
     from pathlib import Path as _Path
+
     seed_file = _DEFAULT_SEED_FILE
     seed_path = _Path(seed_file)
 
@@ -959,7 +979,9 @@ def _rl_remove(sub: list[str]) -> int:
 
         found = False
         for rec in keys:
-            if rec.get("key_id") == key_id or rec.get("key_plain", "").startswith(key_id[:7]):
+            if rec.get("key_id") == key_id or rec.get("key_plain", "").startswith(
+                key_id[:7]
+            ):
                 if rec.get("policy_override"):
                     override = rec["policy_override"]
                     if "rate_limit" in override:
@@ -974,17 +996,31 @@ def _rl_remove(sub: list[str]) -> int:
             return 1
 
         seed_path.write_text(json.dumps(keys, indent=2) + "\n", encoding="utf-8")
-        print(f"Removed rate-limit override for key {key_id} (will use global default).")
+        print(
+            f"Removed rate-limit override for key {key_id} (will use global default)."
+        )
 
     elif store == "redis":
         import redis as _redis_mod
 
-        host = os.environ.get("LLM_ROUTER_AUTH_REDIS_HOST", "127.0.0.1")
-        port = int(os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379))
-        db = int(os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0))
-        password = os.environ.get("LLM_ROUTER_AUTH_REDIS_PASSWORD")
+        host = redis_kwargs.get("redis_host") or os.environ.get(
+            "LLM_ROUTER_AUTH_REDIS_HOST", "127.0.0.1"
+        )
+        port = int(
+            redis_kwargs.get("redis_port")
+            or os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379)
+        )
+        db = int(
+            redis_kwargs.get("redis_db")
+            or os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0)
+        )
+        password = redis_kwargs.get("redis_password") or os.environ.get(
+            "LLM_ROUTER_AUTH_REDIS_PASSWORD"
+        )
 
-        r = _redis_mod.Redis(host=host, port=port, db=db, decode_responses=True, password=password)
+        r = _redis_mod.Redis(
+            host=host, port=port, db=db, decode_responses=True, password=password
+        )
         key_hash_key = f"auth:key:{key_id}"
         raw = r.hget(key_hash_key, "policy_override")
         policy_override = json.loads(raw) if raw else {}
@@ -994,10 +1030,14 @@ def _rl_remove(sub: list[str]) -> int:
             r.hdel(key_hash_key, "policy_override")
         else:
             r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
-        print(f"Removed rate-limit override for key {key_id} (will use global default).")
+        print(
+            f"Removed rate-limit override for key {key_id} (will use global default)."
+        )
 
     elif store == "vault":
-        print("Error: 'rate-limit remove' on vault store requires Vault API. Use seed file or --store memory.")
+        print(
+            "Error: 'rate-limit remove' on vault store requires Vault API. Use seed file or --store memory."
+        )
         return 1
 
     else:

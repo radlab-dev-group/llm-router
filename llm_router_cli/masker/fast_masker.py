@@ -23,7 +23,9 @@ def main() -> int:
 
     # Forward all CLI arguments to the new anonymizer handler, defaulting to
     # fast_masker for the old interface which had no --algorithm flag.
-    argv = ["--algorithm", "fast_masker"] + (sys.argv[1:] if len(sys.argv) > 1 else [])
+    argv = ["--algorithm", "fast_masker"] + (
+        sys.argv[1:] if len(sys.argv) > 1 else []
+    )
     return _anonymizer_main(argv)
 
 

@@ -259,7 +259,11 @@ def _mask(args) -> int:  # noqa: C901
 
     # Handle input – file object (from main) vs string path (from auth dispatcher).
     if isinstance(args.input, str):
-        _input_text = sys.stdin.read() if args.input == "-" else Path(args.input).read_text(encoding="utf-8")
+        _input_text = (
+            sys.stdin.read()
+            if args.input == "-"
+            else Path(args.input).read_text(encoding="utf-8")
+        )
     else:
         _input_text = args.input.read()
 
