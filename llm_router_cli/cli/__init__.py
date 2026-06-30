@@ -22,6 +22,12 @@ _cg.IS_CLI_COMMAND = True
 
 import sys
 import argparse
+from importlib.metadata import version as _pkg_version
+
+
+def _version() -> str:
+    """Return the installed package version (e.g. ``0.6.0``)."""
+    return _pkg_version("llm-router")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -44,6 +50,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="llm-router",
         description="LLM Router CLI — manage API keys, policies, and more",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_version()}",
+        help="Show program version and exit",
     )
     subparsers = parser.add_subparsers(dest="command")
 
