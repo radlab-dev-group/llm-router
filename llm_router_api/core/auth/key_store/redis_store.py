@@ -15,6 +15,8 @@ import bcrypt
 
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
+from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix
+
 
 _DEFAULT_REDIS_PREFIX = "secret:llm-router:api-keys"
 
@@ -111,7 +113,7 @@ class RedisKeyStore(KeyStoreInterface):
         api_record = {
             "key_id": key_id,
             "key_hash": key_hash,
-            "key_prefix": key_plain[:7] if len(key_plain) > 6 else key_plain,
+            "key_prefix": gen_key_prefix(key_plain),
             "policy_name": record.get("policy_name", "developer"),
             "policy_override": record.get("policy_override"),
             "created_at": now,
@@ -140,7 +142,7 @@ class RedisKeyStore(KeyStoreInterface):
             **old,
             "key_id": new_id,
             "key_hash": new_hash,
-            "key_prefix": new_plain[:7],
+            "key_prefix": gen_key_prefix(new_plain),
             "created_at": now,
             "is_active": True,
             "grace_until": old.get("expires_at") or (now + grace_period),
