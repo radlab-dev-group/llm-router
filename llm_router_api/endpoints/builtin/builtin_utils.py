@@ -101,7 +101,7 @@ class ApiVersion(EndpointWithHttpRequestI):
         self.version = "not-given"
         if os.path.exists(self.VERSION_FILE):
             try:
-                with open(self.VERSION_FILE) as f:
+                with open(self.VERSION_FILE, encoding="utf-8") as f:
                     self.version = f.read().strip()
                     if not re.fullmatch(r"\d+\.\d+\.[\dA-Za-z]+", self.version):
                         raise ValueError(
@@ -231,7 +231,7 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
         assert len(responses) == len(contents)
 
         questions = []
-        for response, content in zip(responses, contents):
+        for response, _content in zip(responses, contents):
             _, _, dialog_question = self._get_choices_from_response(
                 response=response
             )
@@ -258,13 +258,13 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
             new_text_questions = []
             for question in text_questions:
                 text_q = question.strip()
-                if not len(text_q):
+                if not text_q:
                     continue
                 if split_with_question_mark and "?" in text_q:
                     for spl_q in text_q.split("?"):
                         proper_q = self._remove_enumeration_from_question(spl_q)
                         proper_q = proper_q.strip()
-                        if not len(proper_q):
+                        if not proper_q:
                             continue
                         new_text_questions.append(proper_q + "?")
                 else:
@@ -502,7 +502,7 @@ class SimplifyTexts(EndpointWithHttpRequestI):
         assert len(responses) == len(contents)
 
         simplifications = []
-        for response, orig_text in zip(responses, contents):
+        for response, _orig_text in zip(responses, contents):
             _, _, simpl_text = self._get_choices_from_response(response=response)
             simplifications.append(simpl_text)
 
@@ -593,7 +593,7 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
         dict
             ``{"response": {"article_text": <text>}, "generation_time": <seconds>}``.
         """
-        j_response, choices, assistant_response = self._get_choices_from_response(
+        _, choices, _assistant_response = self._get_choices_from_response(
             response=response
         )
 
@@ -795,7 +795,7 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
         dict
             ``{"response": <answer_text>, "generation_time": <seconds>}``.
         """
-        j_response, choices, assistant_response = self._get_choices_from_response(
+        _, choices, _assistant_response = self._get_choices_from_response(
             response=response
         )
 

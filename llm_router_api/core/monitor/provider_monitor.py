@@ -17,7 +17,7 @@ from typing import List, Dict, Optional
 try:
     import redis
 except ImportError:
-    raise RuntimeError("Redis is not available. Please install it first.")
+    raise RuntimeError("Redis is not available. Please install it first.") from None
 
 
 class RedisProviderMonitor:

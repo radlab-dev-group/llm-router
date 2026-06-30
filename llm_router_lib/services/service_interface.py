@@ -65,8 +65,10 @@ class BaseConversationServiceInterface(abc.ABC):
         resp = self.http.post(self.endpoint, json=raw_payload)
         try:
             j = resp.json()
-        except Exception as exc:
-            raise LLMRouterError(f"Invalid response format: {exc}")
+        except Exception as inner_exc:
+            raise LLMRouterError(
+                f"Invalid response format: {inner_exc}"
+            ) from inner_exc
         return j
 
     def call_get(self, raw_payload: Optional[Any] = None) -> Dict[str, Any]:
@@ -97,6 +99,8 @@ class BaseConversationServiceInterface(abc.ABC):
         resp = self.http.get(self.endpoint, json=raw_payload)
         try:
             j = resp.json()
-        except Exception as exc:
-            raise LLMRouterError(f"Invalid response format: {exc}")
+        except Exception as inner_exc:
+            raise LLMRouterError(
+                f"Invalid response format: {inner_exc}"
+            ) from inner_exc
         return j

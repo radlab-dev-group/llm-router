@@ -4,7 +4,9 @@ black .
 
 flake8 .
 
-pylint ./*
+pylint ./llm_router_api
+pylint ./llm_router_cli
+pylint ./llm_router_lib
 
 mypy .
 

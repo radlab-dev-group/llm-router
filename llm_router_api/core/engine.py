@@ -39,10 +39,14 @@ from llm_router_api.base.constants import (
     LLM_ROUTER_AUTH_ENABLED,
 )
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
-from llm_router_api.core.auth.metrics import AuthMetrics
+from llm_router_api.core.auth.metrics import AuthMetrics  # pylint: disable=reimport
 
-if USE_PROMETHEUS:
+# Prometheus is imported unconditionally here to avoid pylint E0606;
+# actual usage is gated by the USE_PROMETHEUS constant.
+try:
     from llm_router_api.core.metrics import PrometheusMetrics
+except ImportError:
+    PrometheusMetrics = None  # type: ignore
 
 
 class FlaskEngine:
@@ -163,8 +167,8 @@ class FlaskEngine:
                 application=flask_app,
                 instances=self.__auto_load_endpoints(base_class=EndpointI),
             )
-        except RuntimeError as e:
-            raise RuntimeError(f"Failed to register endpoints: {e}")
+        except RuntimeError as exc:
+            raise RuntimeError(f"Failed to register endpoints: {exc}") from exc
 
         self.__register_prometheus_if_needed(flask_app)
 
@@ -299,12 +303,14 @@ class FlaskEngine:
 
     def _register_auth_metrics(self):
         """Register auth Prometheus metrics."""
-        from llm_router_api.core.auth.metrics import AuthMetrics
+        from llm_router_api.core.auth.metrics import (  # pylint: disable=reimport
+            AuthMetrics as _AuthMetrics,
+        )
 
         if self._auth_metrics is not None:
             return  # Already registered
 
-        self._auth_metrics = AuthMetrics()
+        self._auth_metrics = _AuthMetrics()
 
         # Store auth metrics on flask_app.extensions for access
         self.flask_app.extensions["auth_metrics"] = self._auth_metrics
@@ -342,10 +348,10 @@ class FlaskEngine:
 
             # Also keep a reference on the engine instance for direct access.
             self.prometheus_metrics = _m
-        except Exception:
+        except Exception as exc:
             raise RuntimeError(
                 f"Failed to register endpoints: {traceback.format_exc()}"
-            )
+            ) from exc
 
     def __register_auth_metrics_if_needed(self, flask_app: Flask) -> None:
         """
@@ -357,9 +363,11 @@ class FlaskEngine:
         if not USE_PROMETHEUS or self._auth_metrics is not None:
             return
 
-        from llm_router_api.core.auth.metrics import AuthMetrics
+        from llm_router_api.core.auth.metrics import (  # pylint: disable=reimport
+            AuthMetrics as _AuthMetrics,
+        )
 
-        self._auth_metrics = AuthMetrics()
+        self._auth_metrics = _AuthMetrics()
 
     def __auto_load_endpoints(self, base_class: Type[EndpointI]):
         """
@@ -390,7 +398,7 @@ class FlaskEngine:
         )
 
         instances = _auto_loader.instantiate_with_defaults(classes=classes)
-        if instances is None or not len(instances):
+        if instances is None or not instances:
             raise RuntimeError("No endpoints found!")
 
         return instances

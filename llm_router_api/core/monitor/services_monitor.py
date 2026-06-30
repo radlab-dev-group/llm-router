@@ -109,7 +109,7 @@ class LLMRouterServicesMonitor:
         if ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS <= 0:
             return
 
-        if not len(self._all_strategies):
+        if not self._all_strategies:
             self.logger.warning(
                 "[services-monitor] There are no strategies to check health "
                 "(llm-router-services are not used). "

@@ -599,10 +599,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
         self._call_for_each_user_msg = call_for_each_user_msg
 
         self._ep_types_str = api_types
-        if self._ep_types_str is None or not len(self._ep_types_str):
+        if self._ep_types_str is None or not self._ep_types_str:
             raise RuntimeError("Endpoint api type is required!")
 
-        if not len(set(self._ep_types_str).intersection(set(API_TYPES))):
+        if not set(self._ep_types_str).intersection(set(API_TYPES)):
             raise RuntimeError(f"Supported api types are [{', '.join(API_TYPES)}]!")
 
         self._api_type_dispatcher = ApiTypesDispatcher()
@@ -930,7 +930,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
     def _get_choices_from_response(response):
         j_response = response.json()
         choices = j_response.get("choices", [])
-        if not len(choices):
+        if not choices:
             if "message" in j_response:
                 choices = [j_response]
 
@@ -955,11 +955,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         ValueError
             If any required key is missing from *params*.
         """
-        if (
-            params is None
-            or self.REQUIRED_ARGS is None
-            or not len(self.REQUIRED_ARGS)
-        ):
+        if params is None or self.REQUIRED_ARGS is None or not self.REQUIRED_ARGS:
             return
 
         missing = [arg for arg in self.REQUIRED_ARGS if arg not in params]

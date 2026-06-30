@@ -188,14 +188,13 @@ class StreamHandler:
         """
         with self._model_unsetter(endpoint, payload, api_model_provider, options):
             try:
-                for _ch in self._passthrough_stream(
+                yield from self._passthrough_stream(
                     method=method,
                     url=url,
                     endpoint=endpoint,
                     payload=payload,
                     headers=headers,
-                ):
-                    yield _ch
+                )
             except requests.RequestException as exc:
                 err = {"error": sanitize_error_message(str(exc))}
                 # Preserve the original formatting used in the two callers
@@ -513,10 +512,9 @@ class StreamHandler:
                         )
                     with req as resp:
                         resp.raise_for_status()
-                        for chunk in self._parse_ollama_stream(
+                        yield from self._parse_ollama_stream(
                             resp, api_model_provider
-                        ):
-                            yield chunk
+                        )
                 except requests.RequestException as exc:
                     err = {"error": sanitize_error_message(str(exc))}
                     yield (json.dumps(err) + "\n").encode("utf-8")
@@ -582,7 +580,7 @@ class StreamHandler:
                                 )
                             except Exception:
                                 # Forward unparseable line unchanged
-                                yield (raw_line + b"\n")
+                                yield raw_line + b"\n"
                                 continue
 
                             # Build a base SSE chunk

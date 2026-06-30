@@ -83,6 +83,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
     @property
     def prepare_response_function(self):
+        """Return the response preparation function."""
         return self._prepare_response_function
 
     @EP.require_params
@@ -118,7 +119,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
         ]
 
         _history = self.__prepare_history(payload=_payload)
-        if len(_history):
+        if _history:
             _payload["messages"] = _history + _payload["messages"]
 
         if "historical_messages" in _payload:
@@ -168,7 +169,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
         dict
             ``{"response": <assistant_text>, "generation_time": <seconds>}``.
         """
-        j_response, choices, assistant_response = self._get_choices_from_response(
+        _j_response, _choices, assistant_response = self._get_choices_from_response(
             response=response
         )
 

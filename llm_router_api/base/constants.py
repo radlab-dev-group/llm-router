@@ -108,7 +108,7 @@ SERVER_WORKERS_CLASS = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKER_CLASS", ""
 ).strip()
 
-if not len(SERVER_WORKERS_CLASS):
+if not SERVER_WORKERS_CLASS:
     SERVER_WORKERS_CLASS = None
 
 # Server host, default is localhost
@@ -144,7 +144,7 @@ REDIS_DB = int(os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_DB", 0))
 REDIS_PASSWORD = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PASSWORD", ""
 ).strip()
-if not len(REDIS_PASSWORD):
+if not REDIS_PASSWORD:
     REDIS_PASSWORD = None
 
 # =============================================================================
@@ -401,7 +401,7 @@ class _StartAppVerificator:
 
     @staticmethod
     def __verify_default_masking_strategy():
-        if FORCE_MASKING and not len(MASKING_STRATEGY_PIPELINE):
+        if FORCE_MASKING and not MASKING_STRATEGY_PIPELINE:
             raise Exception(
                 "When FORCE_MASKING is set to `True`, you must specify the "
                 "pipeline of masking strategies"
@@ -416,7 +416,7 @@ class _StartAppVerificator:
                     "required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST=1`\n\n"
                 )
 
-        if FORCE_GUARDRAIL_REQUEST and not len(GUARDRAIL_STRATEGY_PIPELINE_REQUEST):
+        if FORCE_GUARDRAIL_REQUEST and not GUARDRAIL_STRATEGY_PIPELINE_REQUEST:
             raise Exception(
                 "When FORCE_GUARDRAIL_REQUEST is set to `True`, you must specify the "
                 "pipeline of guardrail strategies for each user request"
@@ -430,9 +430,7 @@ class _StartAppVerificator:
                     "`export LLM_ROUTER_FORCE_GUARDRAIL_RESPONSE=1` environment is "
                     "required when `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE=1`\n\n"
                 )
-        if FORCE_GUARDRAIL_RESPONSE and not len(
-            GUARDRAIL_STRATEGY_PIPELINE_RESPONSE
-        ):
+        if FORCE_GUARDRAIL_RESPONSE and not GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
             raise Exception(
                 "When FORCE_GUARDRAIL_RESPONSE is set to `True`, you must specify the "
                 "pipeline of guardrail strategies for each response"

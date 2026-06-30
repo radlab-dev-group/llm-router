@@ -239,7 +239,7 @@ class LLMRouterClient:
         if isinstance(payload, TranslateTextService.model_cls):
             payload = payload.model_dump()
         elif isinstance(payload, Dict):
-            payload = payload
+            pass  # payload already a dict, keep as-is
         else:
             if not texts or not model:
                 raise NoArgsAndNoPayloadError(
@@ -267,7 +267,7 @@ class LLMRouterClient:
         if isinstance(payload, GenerativeAnswerService.model_cls):
             payload = payload.model_dump()
         elif isinstance(payload, Dict):
-            payload = payload
+            pass  # payload already a dict, keep as-is
         else:
             if not texts or not question_str or not model:
                 raise NoArgsAndNoPayloadError(

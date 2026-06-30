@@ -318,9 +318,7 @@ def _generate_config(
             best_port = None
             for port in ports_to_scan:
                 if _health_check_with_path(host, port, prov["health_path"]):
-                    group_name_local, group = _build_config_for_provider(
-                        prov, host, port
-                    )
+                    _, group = _build_config_for_provider(prov, host, port)
                     # Check if it actually has models (not just a health endpoint).
                     if group and "models_raw" not in group:
                         best_port = port

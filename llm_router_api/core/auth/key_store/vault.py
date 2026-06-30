@@ -75,7 +75,7 @@ class VaultKeyStore(KeyStoreInterface):
     ) -> None:
         """Authenticate to Vault using the selected method."""
         if auth_method == "kubernetes":
-            with open(sa_path, "r") as f:
+            with open(sa_path, "r", encoding="utf-8") as f:
                 jwt = f.read().strip()
             self._client.auth_kubernetes(
                 role=os.environ.get("LLM_ROUTER_AUTH_VAULT_ROLE_ID", role_id),

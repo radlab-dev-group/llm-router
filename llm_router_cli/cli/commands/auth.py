@@ -870,7 +870,7 @@ def _rl_apply(sub: list[str]) -> int:
         rate_limit = max(1, daily_limit // 1440)
 
     # Apply based on store type
-    from pathlib import Path as _Path
+    from pathlib import Path as _Path  # pylint: disable=reimport
 
     seed_file = _DEFAULT_SEED_FILE
     seed_path = _Path(seed_file)
@@ -973,7 +973,7 @@ def _rl_remove(sub: list[str]) -> int:
     store = getattr(parsed, "store", "memory")
     redis_kwargs = _auth_redis_kwargs(parsed)
 
-    from pathlib import Path as _Path
+    from pathlib import Path as _Path  # pylint: disable=reimport
 
     seed_file = _DEFAULT_SEED_FILE
     seed_path = _Path(seed_file)
