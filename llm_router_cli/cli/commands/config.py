@@ -295,7 +295,7 @@ def _clean_config(config: Dict[str, Any]) -> None:
 def _generate_config(
     hosts: List[Tuple[str, int]], all_ports: bool = False
 ) -> Dict[str, Any]:
-    """Run discovery across all provider definitions for every host and build the config dict.
+    """Run discovery across all provider definitions for every host
 
     Each entry in *hosts* is ``(raw_host, explicit_port)`` — when *explicit_port* is
     non-zero only that port is scanned (for ``host:port`` inputs); otherwise the
@@ -332,7 +332,8 @@ def _generate_config(
             # Build final config entry for the winning port.
             group_name, group = _build_config_for_provider(prov, host, best_port)
             if group_name in config:
-                # Merge models by name across hosts — each model gets one provider per (host, port).
+                # Merge models by name across hosts — each model gets one provider per
+                # (host, port).
                 for model_name, model_data in group.items():
                     if model_name not in config[group_name]:
                         config[group_name][model_name] = model_data
@@ -365,8 +366,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-router config",
         description=(
-            "Auto-discover local LLM providers (Ollama, vLLM, LM Studio) on a given host, "
-            "fetch their available models, and produce a models-config.json ready for the router."
+            "Auto-discover local LLM providers"
+            " (Ollama, vLLM, LM Studio) on a given host,"
+            " fetch their available models, and produce"
+            " a models-config.json ready for the router."
         ),
     )
     subparsers = parser.add_subparsers(dest="config_action")

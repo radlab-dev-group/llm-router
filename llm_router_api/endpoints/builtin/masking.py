@@ -25,7 +25,6 @@ Response::
 
 from typing import Optional, Dict, Any
 
-
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_api.core.decorators import EP
@@ -43,7 +42,8 @@ class FastTextMasking(EndpointWithHttpRequestI):
     rule set.
 
     Registered at ``/api/fast_text_mask`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
 
     The endpoint expects a ``text`` field inside the JSON body.  The
     ``direct_return`` flag is enabled so the processed payload is returned

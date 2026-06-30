@@ -28,7 +28,8 @@ class LmStudioModelsHandler(PassthroughI):
     LM Studio service.
 
     Registered at ``/api/v0/models`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``chat`` permission).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``chat`` permission).
     """
 
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = True

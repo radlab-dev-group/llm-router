@@ -150,11 +150,13 @@ class ApiTypesDispatcher:
 
         Notes
         -----
-        * The check order is: ``"completions"``, then ``"embeddings"``, then ``"responses"``, then fallback
-          to ``chat``.  If multiple appear, the first one in the check order wins.
+        * The check order is: ``"completions"``, then ``"embeddings"``,
+          then ``"responses"``, then fallback to ``chat``.  If multiple
+          appear, the first one in the check order wins.
         * This method is a thin wrapper around the class methods
-          :meth:`chat_ep`, :meth:`responses_ep`, :meth:`completions_ep`, and :meth:`embeddings_ep`,
-          which each delegates to the concrete ``ApiTypesI`` implementation.
+          :meth:`chat_ep`, :meth:`responses_ep`, :meth:`completions_ep`,
+          and :meth:`embeddings_ep`, which each delegates to the concrete
+          ``ApiTypesI`` implementation.
         """
         endpoint_url = endpoint_url.strip("/")
         if "completions" in endpoint_url:

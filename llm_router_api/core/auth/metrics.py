@@ -79,7 +79,8 @@ class AuthMetrics:
         self.TOTAL.labels(result=result, key_id=key_id).inc()
 
     def record_latency(self, step: str, seconds: float) -> None:
-        """Record the latency of an auth step (extract, authenticate, authorize, etc.)."""
+        """Record the latency of an auth step
+        (extract, authenticate, authorize, etc.)."""
         if self._registry is None:
             return
         self.LATENCY.labels(step=step).observe(seconds)

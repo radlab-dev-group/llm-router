@@ -16,9 +16,9 @@ been validated by ``_handle_response``.
 """
 
 import logging
-from typing import Any, Dict, Optional
-
 import requests
+
+from typing import Any, Dict, Optional
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 

@@ -1,7 +1,8 @@
 """
 Redis key store — stores API keys directly in Redis.
 
-Uses a Redis **string** (JSON-serialized) per key under ``secret:llm-router:api-keys:<key_id>``.
+Uses a Redis **string** (JSON-serialized) per key
+under ``secret:llm-router:api-keys:<key_id>``.
 Suitable for deployments without HashiCorp Vault.
 """
 
@@ -12,7 +13,6 @@ import time
 import uuid
 import redis
 import bcrypt
-
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix

@@ -11,6 +11,7 @@ import json
 import datetime
 import requests
 import contextlib
+
 from enum import Enum, auto
 from requests import Response
 from typing import Iterator, Dict, Any, Optional
@@ -31,7 +32,7 @@ class StreamConversion(Enum):
     OPENAI = auto()
     OPENAI_TO_LMSTUDIO = auto()
     OLLAMA_TO_LMSTUDIO = auto()
-    LMSTUDIO_PASSTHROUGH = auto()  # <-- new flag for LM Studio → LM Studio
+    LMSTUDIO_PASSTHROUGH = auto()
     ANTHROPIC_TO_OPENAI = auto()
     OPENAI_TO_ANTHROPIC = auto()
     ANTHROPIC = auto()
@@ -332,7 +333,8 @@ class StreamHandler:
         """
         Anthropic-native streaming – returns the raw SSE bytes unchanged.
         """
-        # Anthropic doesn't have a simple 'force_text' iteration yet, but we can add it if needed
+        # Anthropic doesn't have a simple 'force_text' iteration yet, but we can
+        # add it if needed
         headers["Accept"] = "text/event-stream"
         headers["anthropic-version"] = "2023-06-01"
 
@@ -397,9 +399,8 @@ class StreamHandler:
                                     OpenAIConverters,
                                 )
 
-                                converted = OpenAIConverters.FromAnthropic.convert_stream_chunk(
-                                    chunk
-                                )
+                                _fa = OpenAIConverters.FromAnthropic
+                                converted = _fa.convert_stream_chunk(chunk)
                                 if converted:
                                     yield f"data: {json.dumps(converted)}\n\n".encode(
                                         "utf-8"
@@ -428,9 +429,10 @@ class StreamHandler:
         """
         Convert OpenAI SSE stream to Anthropic-compatible SSE stream.
         """
-        # Note: Implementation of OpenAI -> Anthropic stream conversion is more complex
-        # because OpenAI doesn't map 1:1 to Anthropic events.
-        # For now, we use passthrough if possible, or raise error if conversion is strictly required.
+        # Note: Implementation of OpenAI -> Anthropic stream
+        # conversion is more complex because OpenAI doesn't
+        # map 1:1 to Anthropic events.
+        # For now, use passthrough when possible; raise if conversion needed.
         # In most cases, we want to go TO OpenAI format.
         headers["Accept"] = "text/event-stream"
         return self._passthrough_generator(
@@ -1168,7 +1170,8 @@ class StreamHandler:
         elif endpoint_wants_ollama and provider_is_lmstudio:
             flags[StreamConversion.OPENAI_TO_OLLAMA] = True
         elif endpoint_wants_ollama and provider_is_anthropic:
-            # Maybe implement ANTHROPIC_TO_OLLAMA if needed, for now use openai as middleman or fail
+            # Maybe implement ANTHROPIC_TO_OLLAMA if needed, for now use openai as
+            # middleman or fail
             pass
         elif endpoint_wants_openai and provider_is_ollama:
             flags[StreamConversion.OLLAMA_TO_OPENAI] = True

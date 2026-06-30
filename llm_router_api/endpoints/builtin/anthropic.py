@@ -2,7 +2,7 @@
 Anthropic-specific endpoint implementations.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import List, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -17,7 +17,8 @@ class AnthropicChatHandler(PassthroughI):
     Handler for Anthropic Messages API.
 
     Registered at ``/v1/messages`` (no prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``anthropic`` permission).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``anthropic`` permission).
     """
 
     def __init__(

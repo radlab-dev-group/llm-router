@@ -40,7 +40,10 @@ class AuthResult:
 
 # -- reason → message mapping ----------------------------
 _AUTH_MESSAGES: dict[str, str] = {
-    "missing_key": "API key not provided. Send it in the Authorization header or as x-api-key.",
+    "missing_key": (
+        "API key not provided. "
+        "Send it in the Authorization header or as x-api-key."
+    ),
     "invalid_key": "API key not found or invalid.",
     "key_inactive": "This API key has been deactivated.",
     "key_expired": "This API key has expired.",

@@ -14,10 +14,12 @@ Seed file format
 
     [
       { "key_plain": "sk-litm-...", "policy_name": "developer" },
-      { "key_plain": "sk-litm-...", "policy_name": "readonly", "expires_at": 1700000000 },
+      { "key_plain": "sk-litm-...",
+        "policy_name": "readonly", "expires_at": 1700000000 },
     ]
 
-Keys are stored in a local JSON seed file (default ``~/.llm-router/configs/auth/memory-keys.json``).
+Keys are stored in a local JSON seed file (default
+    ``~/.llm-router/configs/auth/memory-keys.json``).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ import time
 import uuid
 import bcrypt
 import asyncio
+
 import logging as _logging
 
 from pathlib import Path
@@ -141,7 +144,8 @@ class MemoryKeyStore(KeyStoreInterface):
             stored = record.get("key_prefix", "")
             if stored == prefix:
                 logger.debug(
-                    "get_key_by_plain: candidate prefix=%s (id=%s) — full match check pending",
+                    "get_key_by_plain: candidate prefix=%s "
+                    "(id=%s) — full match check pending",
                     prefix,
                     rec_id[:8],
                 )

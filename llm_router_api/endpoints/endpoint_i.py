@@ -1481,7 +1481,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             if self._prepare_response_function:
                 return self._prepare_response_function(response)
             return response.json()
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             provider_id = api_model_provider.id if api_model_provider else "unknown"
             self.logger.error(
                 "Provider [%s] response is not valid JSON — body: %s",

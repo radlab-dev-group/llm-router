@@ -5,11 +5,11 @@ Permission engine — resolves a key → policy → endpoint permissions.
 from __future__ import annotations
 
 import time
+
 from typing import Any
 
 from llm_router_api.core.auth.policies import builtin as builtin_policies
 from llm_router_api.core.auth.policies.model import (
-    ApiKeyRecord,
     EndpointPermission,
     EndpointPolicy,
 )
@@ -33,14 +33,16 @@ def _endpoint_key(method: str, path: str) -> str:
 # All other values are the required permission type (e.g. "chat", "embedding").
 # NOTE: Auth enforcement only applies when LLM_ROUTER_AUTH_ENABLED=true.
 _ENDPOINT_PERMISSION_MAP: dict[str, str] = {
-    # ── Public endpoints — always accessible, no auth required (even when LLM_ROUTER_AUTH_ENABLED=true) ──
+    # ── Public endpoints — always accessible, no auth required
+    #    (even when LLM_ROUTER_AUTH_ENABLED=true) ──
     "get:/ping": "_public",  # Health‑check
     "get:/version": "_public",  # Router version info
     "get:/": "_public",  # Ollama health endpoint
     "get:/api/tags": "_public",  # Ollama model tags (prefix path)
     "get:/metrics": "_public",  # Prometheus metrics (requires Redis + prometheus flag)
     "get:/models": "_public",  # OpenAI‑compatible models list
-    # ── Auth endpoints — require valid API key with the matching permission (only when LLM_ROUTER_AUTH_ENABLED=true) ──
+    # ── Auth endpoints — require valid API key with the
+    #    matching permission (only when LLM_ROUTER_AUTH_ENABLED=true) ──
     "get:/v1/models": "chat",  # OpenAI models v1 (not in default public path)
     "get:/api/v0/models": "chat",  # LM Studio models
     "post:/api/chat/completions": "chat",  # OpenAI‑style chat completion (with prefix)
@@ -83,7 +85,8 @@ class PermissionEngine:
 
     @staticmethod
     def _normalize(record: Any) -> Any:
-        """Ensure *record* supports attribute access (works for dicts or ApiKeyRecord)."""
+        """Ensure *record* supports attribute access
+        (works for dicts or ApiKeyRecord)."""
         if isinstance(record, dict):
 
             class _AttrDict(dict):
@@ -149,8 +152,7 @@ class PermissionEngine:
                 allowed=False,
             )
 
-        # Get the permission type for this endpoint
-        perm_type = builtin_perm or "chat"  # default fallback
+        # Get the permission for this endpoint
         perm = policy.get_permission(endpoint_key)
 
         if not perm.allowed:

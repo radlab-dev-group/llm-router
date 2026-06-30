@@ -5,7 +5,8 @@ Anthropic API integration utilities.
 from __future__ import annotations
 
 import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict
+
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
 

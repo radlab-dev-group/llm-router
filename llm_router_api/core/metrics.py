@@ -11,8 +11,8 @@ installed.
 
 import os
 import time
-from typing import Optional
 
+from typing import Optional
 from flask import Flask, request, Response
 from rdl_ml_utils.utils.logger import prepare_logger
 
@@ -72,7 +72,8 @@ class PrometheusMetrics:
 
     METRICS_EP = "/metrics"
 
-    # Auth: **public** (when `LLM_ROUTER_AUTH_ENABLED=true`) — listed in the default LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS.
+    # Auth: **public** (when `LLM_ROUTER_AUTH_ENABLED=true`)
+    # — listed in the default LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS.
     # Also explicitly mapped to "_public" in _ENDPOINT_PERMISSION_MAP.
     # Requires LLM_ROUTER_USE_PROMETHEUS=1 and Redis to be enabled.
 

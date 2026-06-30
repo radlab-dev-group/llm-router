@@ -7,6 +7,7 @@ stream‑handling code easier to test/mocks.
 """
 
 import requests
+
 from requests import Response
 from typing import Optional, Dict, Any, Iterator
 

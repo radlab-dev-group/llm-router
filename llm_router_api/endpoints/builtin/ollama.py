@@ -30,7 +30,9 @@ class OllamaEmbeddingsHandler(PassthroughI):
     Embeddings endpoint that targets the ``/api/embed``
     route of an Ollama‑compatible service.
 
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``embedding`` permission). Registered at ``/api/embed`` (with prefix).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``embedding`` permission).
+    Registered at ``/api/embed`` (with prefix).
     """
 
     def __init__(
@@ -155,7 +157,8 @@ class OllamaTagsHandler(EndpointWithHttpRequestI):
     Ollama service.
 
     Registered at ``/api/tags`` (with default prefix).
-    Auth: **public** — explicitly listed in :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
+    Auth: **public** — explicitly listed in
+    :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
     as ``"_public"``.
     """
 
@@ -204,7 +207,8 @@ class OllamaChatHandler(PassthroughI):
     Base endpoint for forwarding chat‑style requests to an Ollama compatible API.
 
     Registered at ``/api/chat`` (with default prefix).
-    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``ollama`` permission).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``ollama`` permission).
     """
 
     REQUIRED_ARGS = None

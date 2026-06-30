@@ -20,7 +20,7 @@ Typical usage
 
 import traceback
 
-from flask import Flask, request, jsonify
+from flask import Flask
 from typing import List, Type, Optional
 
 from rdl_ml_utils.utils.logger import prepare_logger
@@ -31,34 +31,12 @@ from llm_router_api.register.auto_loader import EndpointAutoLoader
 from llm_router_api.register.register import FlaskEndpointRegistrar
 from llm_router_api.base.constants import (
     DEFAULT_API_PREFIX,
-    REST_API_LOG_LEVEL,
-    USE_PROMETHEUS,
-    SERVER_BALANCE_STRATEGY,
-    ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
     MAX_REQUEST_BODY_SIZE,
+    REST_API_LOG_LEVEL,
+    ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS,
+    SERVER_BALANCE_STRATEGY,
+    USE_PROMETHEUS,
     LLM_ROUTER_AUTH_ENABLED,
-    LLM_ROUTER_AUTH_KEY_STORE,
-    LLM_ROUTER_AUTH_VAULT_ADDR,
-    LLM_ROUTER_AUTH_VAULT_PATH,
-    LLM_ROUTER_AUTH_VAULT_AUTH_METHOD,
-    LLM_ROUTER_AUTH_VAULT_ROLE_ID,
-    LLM_ROUTER_AUTH_VAULT_SECRET_ID,
-    LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED,
-    LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT,
-    LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS,
-    LLM_ROUTER_AUTH_KEY_CACHE_TTL,
-    LLM_ROUTER_AUTH_KEY_CACHE_JITTER,
-    LLM_ROUTER_AUTH_MEMORY_SEED_FILE,
-    LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD,
-    LLM_ROUTER_AUTH_AUDIT,
-    REDIS_HOST,
-    REDIS_PORT,
-    REDIS_DB,
-    REDIS_PASSWORD,
-    LLM_ROUTER_AUTH_REDIS_HOST,
-    LLM_ROUTER_AUTH_REDIS_PORT,
-    LLM_ROUTER_AUTH_REDIS_DB,
-    LLM_ROUTER_AUTH_REDIS_PASSWORD,
 )
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
 from llm_router_api.core.auth.metrics import AuthMetrics
@@ -204,15 +182,12 @@ class FlaskEngine:
         is ``"true"``.
         """
         from llm_router_api.base.constants import (
-            LLM_ROUTER_AUTH_ENABLED,
             LLM_ROUTER_AUTH_KEY_STORE,
             LLM_ROUTER_AUTH_VAULT_ADDR,
             LLM_ROUTER_AUTH_VAULT_PATH,
             LLM_ROUTER_AUTH_VAULT_AUTH_METHOD,
             LLM_ROUTER_AUTH_VAULT_ROLE_ID,
             LLM_ROUTER_AUTH_VAULT_SECRET_ID,
-            LLM_ROUTER_AUTH_KEY_CACHE_TTL,
-            LLM_ROUTER_AUTH_KEY_CACHE_JITTER,
             LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD,
             LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED,
             LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT,
@@ -220,10 +195,6 @@ class FlaskEngine:
             LLM_ROUTER_AUTH_AUDIT,
             LLM_ROUTER_AUTH_KEY_PREFIX,
             LLM_ROUTER_AUTH_KEY_LENGTH,
-            REDIS_HOST,
-            REDIS_PORT,
-            REDIS_DB,
-            REDIS_PASSWORD,
             LLM_ROUTER_AUTH_REDIS_HOST,
             LLM_ROUTER_AUTH_REDIS_PORT,
             LLM_ROUTER_AUTH_REDIS_DB,
@@ -236,8 +207,6 @@ class FlaskEngine:
         )
         from llm_router_api.core.auth.middleware import install_auth_middleware
         from llm_router_api.core.auth.audit import AuthAuditorBridge
-        from llm_router_api.core.auditor.auditor import AnyRequestAuditor
-        import redis
 
         if not LLM_ROUTER_AUTH_ENABLED:
             return

@@ -22,9 +22,10 @@ import llm_router_api.base.const_global as _cg  # noqa: E402
 
 _cg.IS_CLI_COMMAND = True
 
-import sys
-import argparse
-from importlib.metadata import version as _pkg_version
+import sys  # noqa: E402
+import argparse  # noqa: E402
+
+from importlib.metadata import version as _pkg_version  # noqa: E402
 
 
 def _version() -> str:
@@ -113,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
             help=f"Do not apply {desc}.",
         )
 
-    # Register the ``config`` subparser (auto-discover local providers and merge configs).
+    # Register the ``config`` subparser
+    # (auto-discover local providers and merge configs).
     from .commands.config import register_config_subparser  # noqa: E402
 
     config_parser = subparsers.add_parser(

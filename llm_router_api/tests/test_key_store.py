@@ -7,14 +7,12 @@ separate files (`test_memory_key_store.py`, etc.).
 
 from __future__ import annotations
 
-import json
-import time
 import uuid
-from pathlib import Path
-from typing import Any, Callable
-
 import pytest
 import bcrypt
+
+from typing import Any
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Fixtures: create a fresh key store instance for each backend
@@ -315,7 +313,8 @@ class TestCreateKey:
     def test_does_not_expose_plaintext_in_store(
         self, key_store: dict[str, Any]
     ) -> None:
-        """After create_key, the stored record must NOT contain key_plain (except Memory stores it for seed files)."""
+        """After create_key, the stored record must NOT contain
+        key_plain (except Memory stores it for seed files)."""
         store = key_store["store"]
         plain = "sk-test-key-" + uuid.uuid4().hex[:16]
         asyncio_run(store.create_key({"key_plain": plain}))
@@ -333,7 +332,8 @@ class TestCreateKey:
             assert len(keys) == 1
             record = keys[0]
 
-        # The returned record from list_keys should NOT contain "key_plain" (except Memory for CLI reveal)
+        # The returned record from list_keys should NOT contain "key_plain"
+        # (except Memory for CLI reveal)
         if key_store["type"] == "memory":
             # Memory stores plaintext for seed persistence — that's expected
             pass
@@ -345,8 +345,8 @@ class TestCreateKey:
     def test_creates_unique_key_id(self, key_store: dict[str, Any]) -> None:
         """Each create_key call must produce a unique key_id."""
         store = key_store["store"]
-        id1 = asyncio_run(store.create_key({"key_plain": f"sk-key-1"}))
-        id2 = asyncio_run(store.create_key({"key_plain": f"sk-key-2"}))
+        _ = asyncio_run(store.create_key({"key_plain": "sk-key-1"}))
+        _ = asyncio_run(store.create_key({"key_plain": "sk-key-2"}))
         # The keys must have different IDs — check via list_keys
         keys = asyncio_run(store.list_keys())
         key_ids = [k["key_id"] for k in keys]
@@ -380,11 +380,11 @@ class TestGetByKeyHash:
         asyncio_run(store.create_key({"key_plain": plain}))
 
         # Hash the plaintext and look it up
-        stored_hash = bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+        bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
         # We need the ACTUAL hash that was stored — let's get it via list_keys
         keys = asyncio_run(store.list_keys())
         assert len(keys) == 1
-        actual_hash = keys[0]["key_hash"] if "key_hash" in keys[0] else None
+        _ = keys[0]["key_hash"] if "key_hash" in keys[0] else None
 
         # For stores that don't expose hash in list, we need another approach
         # Use get_key_by_plain instead
@@ -405,7 +405,7 @@ class TestGetByKeyId:
     def test_returns_record_for_known_id(self, key_store: dict[str, Any]) -> None:
         store = key_store["store"]
         plain = "sk-id-test-" + uuid.uuid4().hex[:8]
-        stored_plain = asyncio_run(store.create_key({"key_plain": plain}))
+        asyncio_run(store.create_key({"key_plain": plain}))
 
         # Get the key_id from list_keys
         keys = asyncio_run(store.list_keys())
@@ -466,7 +466,6 @@ class TestSyncMethods:
 
         keys = asyncio_run(store.list_keys())
         assert len(keys) == 1
-        key_id = keys[0]["key_id"]
 
         # Must not raise — all backends have update_last_used now
         assert hasattr(store, "update_last_used")
