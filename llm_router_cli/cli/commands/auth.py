@@ -12,6 +12,9 @@ Usage::
     llm-router auth key reveal <key-id>
     llm-router auth policy list
     llm-router auth policy create <name> <json-policy>
+    llm-router auth rate-limit list
+    llm-router auth rate-limit apply <key-id> --preset <name> [--store memory]
+    llm-router auth rate-limit remove <key-id> [--store memory]
 """
 
 from __future__ import annotations
@@ -84,13 +87,49 @@ def _add_key_id_arg(p: argparse.ArgumentParser) -> None:
 
 _SEED_DIR = Path.home() / ".llm-router"
 
+# Default seed file path for memory key store — also used by constants.py and the shell script.
+_DEFAULT_SEED_FILE = str(_SEED_DIR / "configs" / "auth" / "memory-keys.json")
+
 
 def _ensure_seed_env() -> str:
-    """Ensure seed directory exists and env var is set; return seed path."""
+    """Ensure seed directory structure and return the seed file path.
+
+    Creates ``~/.llm-router/configs/auth/`` if missing.
+    Seeds default rate-limiting-policies.json into ``configs/``.
+    """
     _SEED_DIR.mkdir(exist_ok=True)
-    seed_file = str(_SEED_DIR / "keys.json")
-    os.environ["LLM_ROUTER_AUTH_MEMORY_SEED_FILE"] = seed_file
-    return seed_file
+
+    auth_dir = _SEED_DIR / "configs" / "auth"
+    auth_dir.mkdir(parents=True, exist_ok=True)
+
+    # Seed default rate-limiting-policies.json if missing
+    _seed_policies(_SEED_DIR / "configs")
+
+    return _DEFAULT_SEED_FILE
+
+
+def _seed_policies(config_dir: Path) -> None:
+    """Copy the shipped policies JSON into *config_dir* when it does not exist yet."""
+    dest = config_dir / "rate_limiting-policies.json"
+    if dest.exists():
+        return
+
+    # Try to read from installed package resource (works after pip install)
+    try:
+        from importlib import resources as pkg_resources
+
+        src_data = pkg_resources.files("llm_router_cli.resources.configs").joinpath(
+            "rate_limiting-policies.json"
+        ).read_bytes()
+        dest.write_bytes(src_data)
+        return
+    except (ImportError, OSError):
+        pass
+
+    # Last resort: repo-relative path for development
+    fallback = Path("resources/configs/rate_limiting-policies.json")
+    if fallback.is_file():
+        dest.write_text(fallback.read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------
@@ -245,9 +284,12 @@ def _handle_key_action(
         print(f"Error: {exc}")
         return 1
 
-    # Persist to seed file after mutations (only memory store has this attr)
-    if hasattr(key_store, "_persist_seeds") and seed_file:
-        key_store._persist_seeds(seed_file)
+    # Persist to seed file after mutations (only memory store has this attr).
+    # For non-memory stores the key store writes directly, so seed_file is ignored.
+    if hasattr(key_store, "_persist_seeds"):
+        target = seed_file or getattr(key_store, "_seed_file", None)
+        if target:
+            key_store._persist_seeds(target)
 
     print(success_msg)
     return 0
@@ -336,6 +378,144 @@ def _key_mutate(args, key_args: list[str], action: str) -> int:
     )
     seed_file = getattr(key_store, "_seed_file", None)
     return _handle_key_action(key_store, key_id, action, seed_file=seed_file)
+
+
+# ---------------------------------------------------------------------------
+# Preset loading — searches user config dir, then installed package, then built-in.
+# ---------------------------------------------------------------------------
+
+_RATE_LIMITING_CONFIG_FILE = os.environ.get(
+    "LLM_ROUTER_RATE_LIMITING_CONFIG", ""
+).strip()
+
+
+def _load_rate_limit_presets() -> list[dict]:
+    """Load predefined rate-limit presets from the JSON config file.
+
+    Search order::
+
+        1. ``$LLM_ROUTER_RATE_LIMITING_CONFIG`` (absolute path to file or directory)
+        2. ``~/.llm-router/configs/rate_limiting-policies.json`` (user config dir)
+        3. Package resource ``llm_router_cli.resources.configs`` (installed via pip)
+        4. Minimal built-in presets (last resort)
+    """
+    _BUILTIN_FALLBACK = [
+        {"name": "free", "rpm": 10, "description": "Free tier — limited usage"},
+        {"name": "basic", "rpm": 60, "description": "Standard (1/s)"},
+        {"name": "pro", "rpm": 120, "description": "Pro tier (2/s)"},
+        {"name": "enterprise", "rpm": 500, "description": "High throughput"},
+    ]
+
+    def _try_load(path: Path) -> list[dict] | None:
+        if not path.exists():
+            return None
+        try:
+            presets = json.loads(path.read_text(encoding="utf-8"))
+            result = [p for p in presets if isinstance(p, dict) and "name" in p]
+            if result:
+                return result
+        except (json.JSONDecodeError, OSError):
+            pass
+        return None
+
+    def _try_load_bytes(data: bytes) -> list[dict] | None:
+        try:
+            presets = json.loads(data)
+            result = [p for p in presets if isinstance(p, dict) and "name" in p]
+            if result:
+                return result
+        except (json.JSONDecodeError, OSError):
+            pass
+        return None
+
+    # 1. User-provided absolute path (file or directory)
+    if _RATE_LIMITING_CONFIG_FILE:
+        candidate = Path(_RATE_LIMITING_CONFIG_FILE)
+        loaded = _try_load(candidate)
+        if loaded is not None:
+            return loaded
+        # Maybe it's a directory — append the expected filename
+        loaded = _try_load(candidate / "rate_limiting-policies.json")
+        if loaded is not None:
+            return loaded
+
+    # 2. User config dir (default installed location)
+    user_config = Path.home() / ".llm-router" / "configs" / "rate_limiting-policies.json"
+    loaded = _try_load(user_config)
+    if loaded is not None:
+        return loaded
+
+    # 3. Installed package resource (works after pip install, no cwd dependency)
+    try:
+        from importlib import resources as pkg_resources
+
+        _PACKAGE_RES = pkg_resources.files("llm_router_cli.resources.configs") / "rate_limiting-policies.json"
+        if hasattr(_PACKAGE_RES, "read_bytes"):  # Python 3.9+
+            loaded = _try_load_bytes(_PACKAGE_RES.read_bytes())
+        elif hasattr(_PACKAGE_RES, "joinpath"):  # fallback for older Python
+            loaded = _try_load(Path(_PACKAGE_RES))
+        if loaded is not None:
+            return loaded
+    except (ImportError, OSError):
+        pass
+
+    # 4. Built-in fallback
+    return _BUILTIN_FALLBACK
+
+
+# ---------------------------------------------------------------------------
+# Subparser registration for rate-limit subcommand.
+# ---------------------------------------------------------------------------
+
+
+def register_rate_limit_subparser(parser: argparse.ArgumentParser) -> None:
+    """Register the ``rate-limit`` sub-subcommands under *parser* (the auth subparsers)."""
+    rl_parser = parser.add_parser(
+        "rate-limit",
+        help="Manage rate limiting presets and per-key overrides",
+    )
+    rl_sub = rl_parser.add_subparsers(dest="rate_limit_command")
+
+    # -- list --
+    rl_list = rl_sub.add_parser(
+        "list",
+        help="List available rate-limit presets",
+    )
+
+    # -- apply <key_id> --preset <name> --
+    rl_apply = rl_sub.add_parser(
+        "apply",
+        help="Apply a rate-limit preset to an existing key",
+    )
+    _add_key_id_arg(rl_apply)
+    rl_apply.add_argument("--preset", required=True, help="Preset name")
+    rl_apply.add_argument(
+        "--store",
+        default="memory",
+        choices=["memory", "redis", "vault"],
+        help="Key store backend (default: memory)",
+    )
+    rl_apply.add_argument("--auth-redis-host", default=None, help="Redis host for auth key store")
+    rl_apply.add_argument("--auth-redis-port", type=int, default=None, help="Redis port for auth key store")
+    rl_apply.add_argument("--auth-redis-db", type=int, default=None, help="Redis database for auth key store")
+    rl_apply.add_argument("--auth-redis-password", default=None, help="Redis password for auth key store")
+
+    # -- remove <key_id> --
+    rl_remove = rl_sub.add_parser(
+        "remove",
+        help="Remove rate-limit override from a key (revert to global default)",
+    )
+    _add_key_id_arg(rl_remove)
+    rl_remove.add_argument(
+        "--store",
+        default="memory",
+        choices=["memory", "redis", "vault"],
+        help="Key store backend (default: memory)",
+    )
+    rl_remove.add_argument("--auth-redis-host", default=None, help="Redis host for auth key store")
+    rl_remove.add_argument("--auth-redis-port", type=int, default=None, help="Redis port for auth key store")
+    rl_remove.add_argument("--auth-redis-db", type=int, default=None, help="Redis database for auth key store")
+    rl_remove.add_argument("--auth-redis-password", default=None, help="Redis password for auth key store")
 
 
 def register_auth_subparser(
@@ -470,6 +650,9 @@ def register_auth_subparser(
     )
     _add_store_and_redis_args(policy_create)
 
+    # -- rate-limit subparser --------------------
+    register_rate_limit_subparser(auth_sub)
+
 
 def main(argv: list[str] | None = None) -> int:
     """
@@ -517,6 +700,8 @@ def main(argv: list[str] | None = None) -> int:
         return _handle_key(args, sub, seed_file)
     elif cmd == "policy":
         return _handle_policy(args, sub)
+    elif cmd == "rate-limit":
+        return _handle_rate_limit(sub)
     else:
         parser.print_help()
         return 1
@@ -599,6 +784,229 @@ def _handle_policy(args, sub: list) -> int:
     else:
         print(f"Unknown policy command: {cmd}")
         return 1
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit handler.
+# ---------------------------------------------------------------------------
+
+_RATE_LIMIT_COMMANDS = {
+    "list": lambda sub: _rl_list(sub),
+    "apply": lambda sub: _rl_apply(sub),
+    "remove": lambda sub: _rl_remove(sub),
+}
+
+
+def _handle_rate_limit(sub: list[str]) -> int:
+    """Handle rate-limit subcommands."""
+    if not sub:
+        print("Usage: llm-router auth rate-limit <list|apply|remove> ...")
+        return 1
+
+    cmd = sub[0]
+    handler = _RATE_LIMIT_COMMANDS.get(cmd)
+    if handler is None:
+        print(f"Unknown rate-limit command: {cmd}")
+        return 1
+    return handler(sub)
+
+
+def _rl_list(sub: list[str]) -> int:
+    """List all available rate-limit presets."""
+    presets = _load_rate_limit_presets()
+    if not presets:
+        print("No presets found.")
+        return 1
+
+    # Calculate column widths
+    max_name = max(len(p["name"]) for p in presets)
+    max_rpm = max(len(str(p.get("rpm", "-"))) for p in presets)
+
+    print("Available rate-limit presets:")
+    print(f"  {'NAME':<{max_name}}  {'RPM':>{max_rpm}}  DESCRIPTION")
+    print(f"  {'-' * max_name}  {'-' * max_rpm}  {'-----------'}")
+    for p in presets:
+        rpm = str(p.get("rpm", "-")) if p.get("rpm") else f"{p.get('daily_limit', 'N/A')}/day"
+        print(f"  {p['name']:<{max_name}}  {rpm:>{max_rpm}}  {p['description']}")
+    return 0
+
+
+def _rl_apply(sub: list[str]) -> int:
+    """Apply a rate-limit preset to an existing key."""
+    if len(sub) < 2:
+        print("Usage: llm-router auth rate-limit apply <key_id> --preset <name>")
+        return 1
+
+    key_id = sub[1]
+    store = "memory"
+    preset_name = None
+    redis_kwargs = {}
+
+    for i, arg in enumerate(sub):
+        if arg == "--store" and i + 1 < len(sub):
+            store = sub[i + 1]
+        elif arg == "--preset" and i + 1 < len(sub):
+            preset_name = sub[i + 1]
+        elif arg == "--auth-redis-host" and i + 1 < len(sub):
+            redis_kwargs["host"] = sub[i + 1]
+        elif arg == "--auth-redis-port" and i + 1 < len(sub):
+            redis_kwargs["port"] = int(sub[i + 1])
+        elif arg == "--auth-redis-db" and i + 1 < len(sub):
+            redis_kwargs["db"] = int(sub[i + 1])
+        elif arg == "--auth-redis-password" and i + 1 < len(sub):
+            redis_kwargs["password"] = sub[i + 1]
+
+    if not preset_name:
+        print("Error: --preset is required.")
+        return 1
+
+    presets = _load_rate_limit_presets()
+    preset = next((p for p in presets if p["name"] == preset_name), None)
+    if not preset:
+        names = ", ".join(p["name"] for p in presets)
+        print(f"Error: Unknown preset '{preset_name}'. Available: {names}")
+        return 1
+
+    rate_limit = preset.get("rpm")
+    daily_limit = preset.get("daily_limit")
+    if rate_limit is None and daily_limit is not None:
+        # Convert daily to per-minute approximation
+        rate_limit = max(1, daily_limit // 1440)
+
+    # Apply based on store type
+    from pathlib import Path as _Path
+    seed_file = _DEFAULT_SEED_FILE
+    seed_path = _Path(seed_file)
+
+    if store == "memory":
+        # Edit seed file directly
+        if not seed_path.exists():
+            print(f"Error: Seed file {seed_file} does not exist. Generate keys first.")
+            return 1
+
+        keys = json.loads(seed_path.read_text(encoding="utf-8"))
+        if not isinstance(keys, list):
+            print(f"Error: Seed file must contain a JSON array.")
+            return 1
+
+        found = False
+        for rec in keys:
+            if rec.get("key_id") == key_id or rec.get("key_plain", "").startswith(key_id[:7]):
+                override = rec.get("policy_override") or {}
+                override["rate_limit"] = rate_limit
+                rec["policy_override"] = override
+                found = True
+                break
+
+        if not found:
+            print(f"Error: Key '{key_id}' not found in seed file.")
+            return 1
+
+        seed_path.write_text(json.dumps(keys, indent=2) + "\n", encoding="utf-8")
+        print(f"Applied preset '{preset_name}' (rate_limit={rate_limit}/min) to key {key_id}.")
+
+    elif store == "redis":
+        import redis as _redis_mod
+
+        host = redis_kwargs.get("host") or os.environ.get("LLM_ROUTER_AUTH_REDIS_HOST", "127.0.0.1")
+        port = int(redis_kwargs.get("port") or os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379))
+        db = int(redis_kwargs.get("db") or os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0))
+        password = redis_kwargs.get("password") or os.environ.get("LLM_ROUTER_AUTH_REDIS_PASSWORD")
+
+        r = _redis_mod.Redis(host=host, port=port, db=db, decode_responses=True, password=password)
+        key_hash_key = f"auth:key:{key_id}"
+        raw = r.hget(key_hash_key, "policy_override")
+        policy_override = json.loads(raw) if raw else {}
+        policy_override["rate_limit"] = rate_limit
+        r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
+        print(f"Applied preset '{preset_name}' (rate_limit={rate_limit}/min) to key {key_id}.")
+
+    elif store == "vault":
+        print("Error: 'rate-limit apply' on vault store requires Vault API. Use seed file or --store memory.")
+        return 1
+
+    else:
+        print(f"Error: Unknown store '{store}'.")
+        return 1
+
+    return 0
+
+
+def _rl_remove(sub: list[str]) -> int:
+    """Remove rate-limit override from a key."""
+    if len(sub) < 2:
+        print("Usage: llm-router auth rate-limit remove <key_id>")
+        return 1
+
+    key_id = sub[1]
+    store = "memory"
+
+    for i, arg in enumerate(sub):
+        if arg == "--store" and i + 1 < len(sub):
+            store = sub[i + 1]
+
+    from pathlib import Path as _Path
+    seed_file = _DEFAULT_SEED_FILE
+    seed_path = _Path(seed_file)
+
+    if store == "memory":
+        if not seed_path.exists():
+            print(f"Error: Seed file {seed_file} does not exist.")
+            return 1
+
+        keys = json.loads(seed_path.read_text(encoding="utf-8"))
+        if not isinstance(keys, list):
+            print(f"Error: Seed file must contain a JSON array.")
+            return 1
+
+        found = False
+        for rec in keys:
+            if rec.get("key_id") == key_id or rec.get("key_plain", "").startswith(key_id[:7]):
+                if rec.get("policy_override"):
+                    override = rec["policy_override"]
+                    if "rate_limit" in override:
+                        del override["rate_limit"]
+                    if not override:
+                        del rec["policy_override"]
+                found = True
+                break
+
+        if not found:
+            print(f"Error: Key '{key_id}' not found in seed file.")
+            return 1
+
+        seed_path.write_text(json.dumps(keys, indent=2) + "\n", encoding="utf-8")
+        print(f"Removed rate-limit override for key {key_id} (will use global default).")
+
+    elif store == "redis":
+        import redis as _redis_mod
+
+        host = os.environ.get("LLM_ROUTER_AUTH_REDIS_HOST", "127.0.0.1")
+        port = int(os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379))
+        db = int(os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0))
+        password = os.environ.get("LLM_ROUTER_AUTH_REDIS_PASSWORD")
+
+        r = _redis_mod.Redis(host=host, port=port, db=db, decode_responses=True, password=password)
+        key_hash_key = f"auth:key:{key_id}"
+        raw = r.hget(key_hash_key, "policy_override")
+        policy_override = json.loads(raw) if raw else {}
+        if "rate_limit" in policy_override:
+            del policy_override["rate_limit"]
+        if not policy_override:
+            r.hdel(key_hash_key, "policy_override")
+        else:
+            r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
+        print(f"Removed rate-limit override for key {key_id} (will use global default).")
+
+    elif store == "vault":
+        print("Error: 'rate-limit remove' on vault store requires Vault API. Use seed file or --store memory.")
+        return 1
+
+    else:
+        print(f"Error: Unknown store '{store}'.")
+        return 1
+
+    return 0
 
 
 if __name__ == "__main__":

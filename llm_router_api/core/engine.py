@@ -260,8 +260,12 @@ class FlaskEngine:
                 "secret_id": LLM_ROUTER_AUTH_VAULT_SECRET_ID,
             }
         elif LLM_ROUTER_AUTH_KEY_STORE == "memory":
+            from llm_router_api.base.constants import (
+                LLM_ROUTER_AUTH_MEMORY_SEED_FILE as _MEMORY_SEED,
+            )
+
             store_kwargs = {
-                "seed_file": LLM_ROUTER_AUTH_MEMORY_SEED_FILE,
+                "seed_file": _MEMORY_SEED,
             }
         elif LLM_ROUTER_AUTH_KEY_STORE == "redis":
             store_kwargs = {

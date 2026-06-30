@@ -119,9 +119,9 @@ def create_key_store(
         store = RedisKeyStore(**kwargs)
 
     elif store_type == "memory":
-        # seed file from env (read here so the env var is discovered)
-        seed_file = os.environ.get("LLM_ROUTER_AUTH_MEMORY_SEED_FILE")
-        store = MemoryKeyStore(seed_file=seed_file)
+        from llm_router_api.base.constants import LLM_ROUTER_AUTH_MEMORY_SEED_FILE
+
+        store = MemoryKeyStore(seed_file=LLM_ROUTER_AUTH_MEMORY_SEED_FILE)
         shared_client = None  # memory store does not use Redis
 
     else:

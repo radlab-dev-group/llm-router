@@ -252,11 +252,10 @@ LLM_ROUTER_AUTH_KEY_STORE = (
     .lower()
 )
 
-# Memory store seed file — JSON array of key records (for dev/test)
-LLM_ROUTER_AUTH_MEMORY_SEED_FILE = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_MEMORY_SEED_FILE",
-    str(Path.home() / ".llm-router" / "keys.json"),
-).strip()
+# Memory store seed file — JSON array of key records (for dev/test).
+LLM_ROUTER_AUTH_MEMORY_SEED_FILE = str(
+    Path.home() / ".llm-router" / "configs" / "auth" / "memory-keys.json"
+)
 
 # Vault-specific settings
 LLM_ROUTER_AUTH_VAULT_ADDR = os.environ.get(

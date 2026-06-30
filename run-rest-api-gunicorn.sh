@@ -80,8 +80,8 @@ export LLM_ROUTER_AUTH_ENABLED=${LLM_ROUTER_AUTH_ENABLED:-0}
 # Key store backend: vault | redis | memory
 export LLM_ROUTER_AUTH_KEY_STORE=${LLM_ROUTER_AUTH_KEY_STORE:-"memory"}
 
-# Memory store seed file (for dev/test with --store memory)
-export LLM_ROUTER_AUTH_MEMORY_SEED_FILE=${LLM_ROUTER_AUTH_MEMORY_SEED_FILE:-"${HOME}/.llm-router/keys.json"}
+# Memory store seed file (for dev/test with --store memory).
+# No env override — path is hardcoded to ~/.llm-router/configs/auth/memory-keys.json
 
 # Redis settings for auth key store (separate from LLM_ROUTER_REDIS_* used by keepalive/LB)
 export LLM_ROUTER_AUTH_REDIS_HOST=${LLM_ROUTER_AUTH_REDIS_HOST:-""}

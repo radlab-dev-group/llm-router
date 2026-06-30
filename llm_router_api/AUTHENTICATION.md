@@ -39,9 +39,7 @@ Client Request → AuthMiddleware → Key Store Lookup → Permission Engine →
 
 ### Memory Store
 
-| Variable                           | Default                   | Description                           |
-|------------------------------------|---------------------------|---------------------------------------|
-| `LLM_ROUTER_AUTH_MEMORY_SEED_FILE` | `~/.llm-router/keys.json` | JSON file with pre-loaded key records |
+Seed file path: ``~/.llm-router/configs/auth/memory-keys.json`` (hardcoded, no env override).
 
 ### Vault Backend
 
@@ -174,7 +172,7 @@ The seed file is a JSON array. Each record must have `key_plain` and optionally 
 
 ### Default Location
 
-`~/.llm-router/keys.json` (configurable via `LLM_ROUTER_AUTH_MEMORY_SEED_FILE`)
+`~/.llm-router/configs/auth/memory-keys.json`
 
 ---
 
@@ -244,8 +242,8 @@ configuration, key management commands, and operational notes.
 
 ```bash
 # 1. Create seed file (keys persist to disk)
-mkdir -p ~/.llm-router
-cat > ~/.llm-router/keys.json << 'EOF'
+mkdir -p ~/.llm-router/configs/auth
+cat > ~/.llm-router/configs/auth/memory-keys.json << 'EOF'
 [
   { "key_plain": "sk-litm-my-dev-key", "policy_name": "developer" }
 ]
@@ -254,7 +252,6 @@ EOF
 # 2. Set environment variables
 export LLM_ROUTER_AUTH_ENABLED=true
 export LLM_ROUTER_AUTH_KEY_STORE=memory
-export LLM_ROUTER_AUTH_MEMORY_SEED_FILE=~/.llm-router/keys.json
 
 # 3. Verify keys are loaded
 llm-router auth key list --store memory --reveal
@@ -269,11 +266,10 @@ python -m llm_router_api.rest_api
 curl -H "x-api-key: sk-litm-my-dev-key" https://host/api/chat/completions
 ```
 
-| Variable                           | Value                                                       |
-|------------------------------------|-------------------------------------------------------------|
-| `LLM_ROUTER_AUTH_ENABLED`          | `true`                                                      |
-| `LLM_ROUTER_AUTH_KEY_STORE`        | `memory`                                                    |
-| `LLM_ROUTER_AUTH_MEMORY_SEED_FILE` | Path to seed JSON file (default: `~/.llm-router/keys.json`) |
+| Variable                        | Value     |
+|---------------------------------|-----------|
+| `LLM_ROUTER_AUTH_ENABLED`       | `true`    |
+| `LLM_ROUTER_AUTH_KEY_STORE`     | `memory`  |
 
 **Operational notes:**
 

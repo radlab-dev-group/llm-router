@@ -41,6 +41,9 @@ setup(
         ],
         exclude=("tests", "docs"),
     ),
+    package_data={
+        "llm_router_cli.resources": ["configs/*.json"],
+    },
     python_requires=">=3.10",
     install_requires=[
         "llm-router-plugins @ "

@@ -17,8 +17,7 @@ Seed file format
       { "key_plain": "sk-litm-...", "policy_name": "readonly", "expires_at": 1700000000 },
     ]
 
-Env var ``LLM_ROUTER_AUTH_MEMORY_SEED_FILE`` controls the path
-(default ``~/.llm-router/keys.json``).
+Keys are stored in a local JSON seed file (default ``~/.llm-router/configs/auth/memory-keys.json``).
 """
 
 from __future__ import annotations
