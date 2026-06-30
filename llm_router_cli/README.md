@@ -20,10 +20,11 @@ llm-router --version   # 0.6.0
 
 ## Top-Level Commands
 
-| Command          | Description                                  |
-|------------------|----------------------------------------------|
-| `auth`           | Manage API keys, policies, and rate limiting |
-| `anonymizer run` | Anonymize text using a selectable algorithm  |
+| Command          | Description                                   |
+|------------------|-----------------------------------------------|
+| `auth`           | Manage API keys, policies, and rate limiting  |
+| `config`         | Auto-discover local providers & merge configs |
+| `anonymizer run` | Anonymize text using a selectable algorithm   |
 
 ---
 
@@ -191,6 +192,54 @@ llm-router auth rate-limit apply <key-id> --preset pro --store memory
 ```bash
 llm-router auth rate-limit remove <key-id> [--store memory]
 ```
+
+---
+
+## `llm-router config` — Provider Discovery & Config Merging
+
+### Command Tree
+
+```
+llm-router config discover <host...> [-o FILE] [--all-ports] [--no-active]  # Auto-discover providers
+llm-router config merge <configs...> [-o FILE]                              # Merge multiple configs
+```
+
+### `discover` — Scan hosts for local LLM servers
+
+```bash
+llm-router config discover localhost -o models-config.json
+llm-router config discover localhost 192.168.1.50 --all-ports
+llm-router config discover "10.0.0.1:8080" "ollama.local:11434"
+```
+
+| Flag                | Default      | Description                                          |
+|---------------------|--------------|------------------------------------------------------|
+| `<hosts>`           | *(required)* | One or more hosts to scan (supports `host:port`)     |
+| `-o, --config-file` | *(stdout)*   | Output path for generated config                     |
+| `--all-ports`       | `false`      | Check all known ports even if first one is reachable |
+| `--no-active`       | `false`      | Skip writing the active_models section               |
+
+**Auto-discovered providers:**
+
+| Provider  | Default Ports | Health Endpoint | Models Endpoint |
+|-----------|---------------|-----------------|-----------------|
+| Ollama    | 11434, 18765  | `/`             | `/api/tags`     |
+| vLLM      | 8000, 7000    | `/health`       | `/v1/models`    |
+| LM Studio | 1234, 1235    | `/`             | `/v1/models`    |
+
+### `merge` — Merge multiple models-config.json files
+
+```bash
+llm-router config merge base.json override.json -o merged-config.json
+```
+
+Merges provider entries recursively (overlay wins on conflict), unions `active_models`, and deduplicates providers
+by `api_host`.
+
+| Flag           | Default      | Description                   |
+|----------------|--------------|-------------------------------|
+| `<configs>`    | *(required)* | Input config files to merge   |
+| `-o, --output` | *(stdout)*   | Output path for merged config |
 
 ---
 
