@@ -211,3 +211,6 @@ __marimo__/
 __gpg/
 resources/keys/
 local-https/
+/logs/prometheus_multiproc/gauge_all_3054639.db
+
+TODO__*
