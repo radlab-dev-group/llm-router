@@ -150,13 +150,13 @@ class AuthMiddleware:
                 allowed=False, reason="endpoint_denied_by_policy", status_code=403
             )
 
-        # 5. Rate limit
-        limit = permission.method if hasattr(permission, "method") else 60
+        # 5. Rate limit — use the rate_limit from the resolved policy
+        rate_limit = getattr(permission, "rate_limit", None) or 60
         client_ip = self._get_client_ip(request_obj)
         rate_result: RateLimitResult = self._limiter.is_allowed(
             key_id=key_id,
             ip=client_ip,
-            limit=60,  # default from policy
+            limit=rate_limit,
         )
 
         if not rate_result.allowed:
