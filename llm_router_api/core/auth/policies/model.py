@@ -24,6 +24,8 @@ class EndpointPermission:
         Whether guardrail checks must be enforced (even if policy says "allow").
     requires_masking : bool
         Whether masking must be enforced.
+    rate_limit : int | None
+        Per-endpoint rate limit in requests per minute (``None`` = use global default).
     """
 
     method: str = "ANY"
@@ -31,6 +33,7 @@ class EndpointPermission:
     allowed_models: tuple[str, ...] | None = None
     requires_guardrail: bool = True
     requires_masking: bool = False
+    rate_limit: int | None = None
 
     def __post_init__(self) -> None:
         if self.allowed and self.allowed_models:

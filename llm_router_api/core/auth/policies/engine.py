@@ -186,6 +186,7 @@ class PermissionEngine:
             allowed=True,
             requires_guardrail=perm.requires_guardrail,
             requires_masking=perm.requires_masking,
+            rate_limit=policy.rate_limit if hasattr(policy, "rate_limit") else 60,
         )
 
     def _get_policy(self, record: Any) -> EndpointPolicy:
