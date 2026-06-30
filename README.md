@@ -1,6 +1,6 @@
 # LLM Router - Open-Source AI Gateway for Local and Cloud LLM Infrastructure
 
-**Version: 0.5.1**
+**Version: 0.6.0**
 
 [**LLM Router**](https://llm-router.cloud) is a service that can be deployed on‑premises or in the cloud. It adds a
 layer between any application and the LLM provider. In real time it controls traffic, distributes load among providers
@@ -190,9 +190,19 @@ The router supports API-key-based authentication with per-endpoint policies, rat
 
 ## ⏱️ Rate Limiting
 
-Sliding-window rate limiting backed by Redis sorted sets. Each API key + IP gets a configurable number of requests per minute. Returns `Retry-After` on 429 responses and exposes Prometheus metrics.
+Sliding-window rate limiting backed by Redis sorted sets. Each API key + IP gets a configurable number of requests per
+minute. Returns `Retry-After` on 429 responses and exposes Prometheus metrics.
 
 ➡️ **[Rate Limiting documentation](llm_router_api/RATE_LIMITING.md)**
+
+---
+
+## 🖥️ CLI Reference
+
+The `llm-router` package provides a command-line tool for managing API keys, policies, rate-limit presets, and
+anonymizing text. A full command reference is available here:
+
+➡️ **[CLI Command Reference](llm_router_cli/README.md)**
 
 ---
 
@@ -226,7 +236,7 @@ addresses, hostnames, URLs, ports, connection strings).
 - ❌ `port=8080`, `host='...'` — connection details
 - ❌ Stack traces or internal provider addresses
 
-This protection applies to all error responses regardless of whether they originate from HTTP provider calls, 
+This protection applies to all error responses regardless of whether they originate from HTTP provider calls,
 streaming endpoints, or request validation.
 
 ---
@@ -326,25 +336,32 @@ A full list of environment variables is available at: [API README](llm_router_ap
 
 ### Authentication variables
 
-| Variable                                          | Default                                        | Description                                                                                          |
-|----------------------------------------|----------|-------------------------------------------------|----------------------|--------|
-| `LLM_ROUTER_AUTH_ENABLED`                         | `false`                                      | **Master switch** — `"true"` enables all authentication. Default is `false` (no auth).              |
-| `LLM_ROUTER_AUTH_KEY_STORE`                       | `memory`                                     | Key store backend: `vault`, `redis`, or `memory`.                                                      |
-| `LLM_ROUTER_AUTH_VAULT_ADDR`                      | *(empty)*                                    | HashiCorp Vault server URL (e.g. `https://vault.example.com`).                                        |
-| `LLM_ROUTER_AUTH_VAULT_PATH`                      | `secret/data/llm-router/api-keys`            | KV v2 mount path for key storage.                                                                      |
-| `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD`               | `kubernetes`                                 | Auth method: `kubernetes`, `approle`, or `token`.                                                        |
-| `LLM_ROUTER_AUTH_VAULT_ROLE_ID`                   | *(empty)*                                    | AppRole role ID (or K8s SA token for K8s auth).                                                         |
-| `LLM_ROUTER_AUTH_VAULT_SECRET_ID`                 | *(empty)*                                    | AppRole secret ID.                                                                                     |
-| `LLM_ROUTER_AUTH_VAULT_TOKEN`                     | *(empty)*                                    | Vault token (for token auth).                                                                          |
-| `LLM_ROUTER_AUTH_KEY_CACHE_TTL`                   | `300`                                        | Key cache TTL in seconds.                                                                              |
-| `LLM_ROUTER_AUTH_KEY_CACHE_JITTER`                | `60`                                         | Random jitter to prevent cache stampede.                                                               |
-| `LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED`              | `false`                                      | Enable rate limiting.                                                                                  |
-| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT`              | `60`                                         | Default rate limit (requests per minute).                                                              |
-| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`                | `/ping,/version,/models,/`                   | Comma-separated paths that bypass authentication.                                                      |
-| `LLM_ROUTER_AUTH_KEY_PREFIX`                      | `sk-litm`                                    | Key prefix (like LiteLLM/OpenAI format).                                                               |
-| `LLM_ROUTER_AUTH_KEY_LENGTH`                      | `48`                                         | Entropy bytes for key generation (produces 64-char key).                                               |
-| `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD`           | `3600`                                       | Old keys remain valid for this many seconds after rotation.                                            |
-| `LLM_ROUTER_AUTH_AUDIT`                           | `false`                                      | Record auth events in the audit log.                                                                   |
+| Variable                                     | Default                           | Description                                                                            |
+|----------------------------------------------|-----------------------------------|----------------------------------------------------------------------------------------|
+| `LLM_ROUTER_AUTH_ENABLED`                    | `false`                           | **Master switch** — `"true"` enables all authentication. Default is `false` (no auth). |
+| `LLM_ROUTER_AUTH_KEY_STORE`                  | `memory`                          | Key store backend: `vault`, `redis`, or `memory`.                                      |
+| `LLM_ROUTER_AUTH_VAULT_ADDR`                 | *(empty)*                         | HashiCorp Vault server URL (e.g. `https://vault.example.com`).                         |
+| `LLM_ROUTER_AUTH_VAULT_PATH`                 | `secret/data/llm-router/api-keys` | KV v2 mount path for key storage.                                                      |
+| `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD`          | `kubernetes`                      | Auth method: `kubernetes`, `approle`, or `token`.                                      |
+| `LLM_ROUTER_AUTH_VAULT_ROLE_ID`              | *(empty)*                         | AppRole role ID (or K8s SA token for K8s auth).                                        |
+| `LLM_ROUTER_AUTH_VAULT_SECRET_ID`            | *(empty)*                         | AppRole secret ID.                                                                     |
+| `LLM_ROUTER_AUTH_VAULT_TOKEN`                | *(empty)*                         | Vault token (for token auth).                                                          |
+| `LLM_ROUTER_AUTH_KEY_CACHE_TTL`              | `300`                             | Key cache TTL in seconds.                                                              |
+| `LLM_ROUTER_AUTH_KEY_CACHE_JITTER`           | `60`                              | Random jitter to prevent cache stampede.                                               |
+| **Auth Redis (separate from general REDIS)** |                                   |                                                                                        |
+| `LLM_ROUTER_AUTH_REDIS_HOST`                 | *(empty)*                         | Auth Redis host for key store and rate limiting.                                       |
+| `LLM_ROUTER_AUTH_REDIS_PORT`                 | `6379`                            | Auth Redis port.                                                                       |
+| `LLM_ROUTER_AUTH_REDIS_DB`                   | `0`                               | Auth Redis database number.                                                            |
+| `LLM_ROUTER_AUTH_REDIS_PASSWORD`             | *(not set)*                       | Auth Redis password.                                                                   |
+| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT`         | `60`                              | Default rate limit (requests per minute).                                              |
+| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`           | `/ping,/version,/models,/`        | Comma-separated paths that bypass authentication.                                      |
+| `LLM_ROUTER_AUTH_KEY_PREFIX`                 | `sk-litm`                         | Key prefix (like LiteLLM/OpenAI format).                                               |
+| `LLM_ROUTER_AUTH_KEY_LENGTH`                 | `48`                              | Entropy bytes for key generation (produces 64-char key).                               |
+| `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD`      | `3600`                            | Old keys remain valid for this many seconds after rotation.                            |
+| `LLM_ROUTER_AUTH_AUDIT`                      | `false`                           | Record auth events in the audit log.                                                   |
+
+> **Note:** Rate limiting is always applied when authentication is enabled — there is no separate toggle for it.
+> Auth Redis (`LLM_ROUTER_AUTH_REDIS_*`) is independent from general Redis (`LLM_ROUTER_REDIS_*`).
 
 > See full authentication docs: **[llm_router_api/AUTHENTICATION.md](llm_router_api/AUTHENTICATION.md)**
 
@@ -367,34 +384,36 @@ streaming mechanisms can be found at: [Endpoints Overview](llm_router_api/endpoi
 ### Highlights
 
 | Endpoint                                | Method | Auth (when `LLM_ROUTER_AUTH_ENABLED=true`) | Description                                     |
-|-----------------------------------------|--------|---------------------------------------------|-------------------------------------------------|
-| `/ping`                                 | GET    | ✅ Public                                    | Health‑check                                    |
-| `/version`                              | GET    | ✅ Public                                    | Return router version                           |
-| `/`                                     | GET    | ✅ Public                                    | Ollama health endpoint                          |
-| `/models`                               | GET    | ❌ Requires `chat` permission                | List OpenAI‑compatible models                   |
-| `/v1/models`                            | GET    | ❌ Requires `chat` permission                | List OpenAI‑compatible models (v1)              |
-| `/tags`                                 | GET    | ✅ Public                                    | List Ollama model tags                          |
-| `/api/v0/models`                        | GET    | ❌ Requires `chat` permission                | List LM Studio models                           |
-| `/metrics`                              | GET    | ✅ Public                                    | Prometheus metrics (requires Redis)             |
-| `/chat/completions`                     | POST   | ❌ Requires `chat` permission                | OpenAI‑style chat completion                    |
-| `/api/chat/completions`                 | POST   | ❌ Requires `chat` permission                | OpenAI‑style chat completion (with prefix)      |
-| `/v1/chat/completions`                  | POST   | ❌ Requires `chat` permission                | vLLM‑like chat completion                       |
-| `/v1/messages`                          | POST   | ❌ Requires `anthropic` permission           | Anthropic‑compatible messages endpoint (Claude) |
-| `/responses`                            | POST   | ❌ Requires `chat` permission                | OpenAI‑like responses endpoint                  |
-| `/v1/responses`                         | POST   | ❌ Requires `chat` permission                | OpenAI‑like responses endpoint (v1)             |
-| `/embeddings`                           | POST   | ❌ Requires `embedding` permission           | Standard embeddings                             |
-| `/api/embeddings`                       | POST   | ❌ Requires `embedding` permission           | Standard embeddings (with prefix)               |
-| `/v1/embeddings`                        | POST   | ❌ Requires `embedding` permission           | OpenAI‑compatible embeddings endpoint           |
-| `/api/embed`                            | POST   | ❌ Requires `embedding` permission           | Ollama‑native embeddings endpoint               |
-| `/api/chat`                             | POST   | ❌ Requires `ollama` permission              | Ollama‑style chat completion                    |
-| `/api/conversation_with_model`          | POST   | ❌ Requires `builtin` permission             | Built‑in standard chat                          |
-| `/api/extended_conversation_with_model` | POST   | ❌ Requires `builtin` permission             | Built‑in chat with extended fields              |
-| `/api/generative_answer`                | POST   | ❌ Requires `builtin` permission             | Answer a question using provided context        |
-| `/api/translate`                        | POST   | ❌ Requires `builtin` permission             | Translate texts                                 |
-| `/api/generate_questions`               | POST   | ❌ Requires `builtin` permission             | Generate questions from texts                   |
-| `/api/simplify_text`                    | POST   | ❌ Requires `builtin` permission             | Simplify input texts                            |
+|-----------------------------------------|--------|--------------------------------------------|-------------------------------------------------|
+| `/ping`                                 | GET    | ✅ Public                                   | Health‑check                                    |
+| `/version`                              | GET    | ✅ Public                                   | Return router version                           |
+| `/`                                     | GET    | ✅ Public                                   | Ollama health endpoint                          |
+| `/models`                               | GET    | ✅ Public                                   | List OpenAI‑compatible models                   |
+| `/v1/models`                            | GET    | ❌ Requires `chat` permission               | List OpenAI‑compatible models (v1)              |
+| `/tags`                                 | GET    | ✅ Public                                   | List Ollama model tags                          |
+| `/api/v0/models`                        | GET    | ❌ Requires `chat` permission               | List LM Studio models                           |
+| `/metrics`                              | GET    | ✅ Public                                   | Prometheus metrics (requires Redis)             |
+| `/chat/completions`                     | POST   | ❌ Requires `chat` permission               | OpenAI‑style chat completion                    |
+| `/api/chat/completions`                 | POST   | ❌ Requires `chat` permission               | OpenAI‑style chat completion (with prefix)      |
+| `/v1/chat/completions`                  | POST   | ❌ Requires `chat` permission               | vLLM‑like chat completion                       |
+| `/v1/messages`                          | POST   | ❌ Requires `anthropic` permission          | Anthropic‑compatible messages endpoint (Claude) |
+| `/responses`                            | POST   | ❌ Requires `chat` permission               | OpenAI‑like responses endpoint                  |
+| `/v1/responses`                         | POST   | ❌ Requires `chat` permission               | OpenAI‑like responses endpoint (v1)             |
+| `/embeddings`                           | POST   | ❌ Requires `embedding` permission          | Standard embeddings                             |
+| `/api/embeddings`                       | POST   | ❌ Requires `embedding` permission          | Standard embeddings (with prefix)               |
+| `/v1/embeddings`                        | POST   | ❌ Requires `embedding` permission          | OpenAI‑compatible embeddings endpoint           |
+| `/api/embed`                            | POST   | ❌ Requires `embedding` permission          | Ollama‑native embeddings endpoint               |
+| `/api/chat`                             | POST   | ❌ Requires `ollama` permission             | Ollama‑style chat completion                    |
+| `/api/conversation_with_model`          | POST   | ❌ Requires `builtin` permission            | Built‑in standard chat                          |
+| `/api/extended_conversation_with_model` | POST   | ❌ Requires `builtin` permission            | Built‑in chat with extended fields              |
+| `/api/generative_answer`                | POST   | ❌ Requires `builtin` permission            | Answer a question using provided context        |
+| `/api/translate`                        | POST   | ❌ Requires `builtin` permission            | Translate texts                                 |
+| `/api/generate_questions`               | POST   | ❌ Requires `builtin` permission            | Generate questions from texts                   |
+| `/api/simplify_text`                    | POST   | ❌ Requires `builtin` permission            | Simplify input texts                            |
 
-> **Note:** By default `LLM_ROUTER_AUTH_ENABLED=false`, so all endpoints are accessible without authentication. Set it to `"true"` to enforce auth. The `_public` list (default `/ping,/version,/models,/`) can be customized via `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`.
+> **Note:** By default `LLM_ROUTER_AUTH_ENABLED=false`, so all endpoints are accessible without authentication. Set it
+> to `"true"` to enforce auth. The `_public` list (default `/ping,/version,/models,/`) can be customized via
+`LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`.
 
 ---
 

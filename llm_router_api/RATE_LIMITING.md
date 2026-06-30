@@ -49,18 +49,19 @@ Example: `auth:ratelimit:dev-a1b2c3d3:192.168.1.100`
 
 ### Environment Variables
 
-| Variable                             | Default  | Description                                                   |
-|--------------------------------------|----------|---------------------------------------------------------------|
-| `LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED` | `false`  | Enable rate limiting                                          |
-| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` | `60`     | Default rate limit (requests per minute)                      |
-| `LLM_ROUTER_AUTH_KEY_STORE`          | `redis`  | Key store backend (Redis is required for rate limiting) |
+| Variable                             | Default | Description                              |
+|--------------------------------------|---------|------------------------------------------|
+| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` | `60`    | Default rate limit (requests per minute) |
 
 ### Enabling Rate Limiting
 
+Rate limiting is applied **automatically** when authentication is enabled — there is no separate toggle. Just enable
+auth
+and configure the default rate limit:
+
 ```bash
 export LLM_ROUTER_AUTH_ENABLED=true
-export LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED=true
-export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=60  # 60 requests per minute per key
+export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=60  # 60 requests per minute per key (default)
 python -m llm_router_api.rest_api
 ```
 
@@ -146,11 +147,9 @@ When `LLM_ROUTER_USE_PROMETHEUS=true`, the rate limiter exposes:
 
 ### Per-User Quotas (Default)
 
-Each API key gets `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` requests per minute:
-
-```bash
-export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=60  # 1 req/sec
-```
+Each API key gets the policy's `rate_limit` in requests per minute — the default is **60 rpm** when no per-key or
+per-policy override exists. This value is set directly on the resolved `EndpointPolicy`, not via an environment
+variable.
 
 **Recommended values:**
 
@@ -163,22 +162,34 @@ export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=60  # 1 req/sec
 
 ### Tiered Rate Limiting (Policy-Based)
 
-Higher-tier users can get increased limits via policy override:
+Higher-tier users can get increased limits via policy override — either inline in the seed file or via CLI presets:
 
 ```bash
-# Developer tier (default)
-export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=60
+# Developer tier (default, hardcoded 60 rpm when no per-key override exists)
 
-# Admin tier (can be configured per-key)
-# In seed file:
+# Admin tier (per-key override in seed file):
 #   "policy_override": { "rate_limit": 300 }
+
+# Or via CLI preset:
+llm-router auth rate-limit apply key-id --preset enterprise
 ```
 
 ---
 
 ## Redis Requirements
 
-**Redis is required** when rate limiting is enabled. The rate limiter stores state in Redis sorted sets:
+**Redis is always required** when authentication is enabled (rate limiting has no separate toggle — it is applied
+unconditionally once auth is active). The rate limiter stores state in Redis sorted sets and uses the **Auth Redis**
+connection (`LLM_ROUTER_AUTH_REDIS_*`), which is independent from general Redis (`LLM_ROUTER_REDIS_*`):
+
+```bash
+# Auth Redis for both key store AND rate limiting
+export LLM_ROUTER_AUTH_REDIS_HOST=127.0.0.1
+export LLM_ROUTER_AUTH_REDIS_PORT=6379
+export LLM_ROUTER_AUTH_REDIS_DB=0
+```
+
+If using `memory` as the key store, `LLM_ROUTER_AUTH_REDIS_HOST` must still be set for rate limiting to work.
 
 - **Memory usage:** ~100 bytes per entry (score + member + set overhead)
 - **At 60 req/min per key:** ~60 entries per bucket × ~100 bytes = ~6 KB per key
@@ -223,25 +234,26 @@ appendfsync everysec
 
 ### 1. Always Enable Rate Limiting in Production
 
+Rate limiting has no separate toggle — it is applied automatically when authentication is enabled:
+
 ```bash
-export LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED=true
+export LLM_ROUTER_AUTH_ENABLED=true
 ```
 
 Without it, a leaked API key allows unlimited requests to your downstream providers.
 
 ### 2. Set up auth Redis connection
 
-Rate limiting **requires** a working Redis connection regardless of key store type
-(because the rate limiter manages its own sorted sets).  When using `--store redis`
-for keys, the same connection serves both purposes:
+Rate limiting **requires** a working Auth Redis connection regardless of key store type
+(because the rate limiter manages its own sorted sets):
 
 ```bash
+# When using redis for keys — same connection serves both purposes:
 export LLM_ROUTER_AUTH_KEY_STORE=redis
 export LLM_ROUTER_AUTH_REDIS_HOST=127.0.0.1
 ```
 
-When using `memory` store for keys, ensure `LLM_ROUTER_AUTH_REDIS_HOST` (or the
-general `LLM_ROUTER_REDIS_HOST`) is set so the rate limiter can connect.
+When using `memory` store for keys, `LLM_ROUTER_AUTH_REDIS_HOST` must still be set so the rate limiter can connect.
 
 ### 3. Monitor Rate Limit Events
 
@@ -274,21 +286,13 @@ export LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS="/ping,/version,/models,/,/health"
 
 ---
 
-## Migration from No-Limit
+## Migration from No-Auth / Default Rate
 
-**Before (no rate limiting):**
-
-```bash
-export LLM_ROUTER_AUTH_ENABLED=true
-export LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED=false  # or unset
-```
-
-**After (with rate limiting):**
+Rate limiting is applied automatically once authentication is enabled. To enable it with a custom default:
 
 ```bash
 export LLM_ROUTER_AUTH_ENABLED=true
-export LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED=true
-export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=60
+export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=60  # adjust as needed
 ```
 
 **Expected impact:**
@@ -319,6 +323,42 @@ Most HTTP clients support automatic retry with `Retry-After`. Check your client 
 - **Python `requests`:** Use `tenacity` or `backoff` library
 - **Go `http.Client`:** Implement retry logic with `Retry-After` header
 - **JavaScript `fetch`:** Parse `Retry-After` header and use `setTimeout`
+
+---
+
+## Rate Limit Presets
+
+The CLI ships with predefined rate-limit presets (loadable via `llm-router auth rate-limit list`). They are stored in
+`~/.llm-router/configs/rate_limiting-policies.json` or the package default at
+`resources/configs/rate_limiting-policies.json`.
+
+| Preset          | RPM | Daily Limit | Per-Second | Description                             |
+|-----------------|-----|-------------|------------|-----------------------------------------|
+| `free`          | 10  | —           | —          | Free tier — limited usage for testing   |
+| `basic`         | 60  | —           | —          | Standard (1 req/sec)                    |
+| `pro`           | 120 | —           | —          | Pro tier (2 req/sec)                    |
+| `enterprise`    | 500 | —           | —          | High throughput (8 req/sec)             |
+| `burst`         | 200 | —           | —          | Short bursts — elevated temporary limit |
+| `daily-10`      | —   | 10          | —          | Daily cap of 10 requests                |
+| `daily-100`     | —   | 100         | —          | Daily cap of 100 requests               |
+| `daily-1000`    | —   | 1000        | —          | Moderate batch processing               |
+| `daily-5000`    | —   | 5000        | —          | Regular batch processing                |
+| `hourly-60`     | 1   | —           | —          | Hourly cap of 60 requests (1/min)       |
+| `per-second-1`  | 60  | —           | 1          | Steady pace: 1 req/sec                  |
+| `per-second-5`  | 300 | —           | 5          | Intensive access: 5 req/sec             |
+| `internal-tool` | 300 | —           | —          | Internal tools — elevated limits        |
+
+Apply a preset to an existing key:
+
+```bash
+llm-router auth rate-limit apply key-id --preset pro
+```
+
+Remove the override (revert to the default policy rate limit):
+
+```bash
+llm-router auth rate-limit remove key-id
+```
 
 ---
 
