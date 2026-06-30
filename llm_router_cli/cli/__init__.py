@@ -9,6 +9,8 @@ Usage::
     llm-router auth key rotate <key-id>
     llm-router auth policy list
     llm-router auth policy create <name> <json-policy>
+    llm-router config discover localhost 192.168.1.50 -o models-config.json
+    llm-router config merge base.json override.json -o merged-config.json
     llm-router anonymizer run --algorithm fast_masker [input_file]
 """
 
@@ -46,7 +48,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     argv = argv if argv is not None else sys.argv[1:]
 
-    # Version-only parser — all subcommands are delegated to auth / anonymizer.
+    # Version-only parser — all subcommands are delegated to auth / config / anonymizer.
     parser = argparse.ArgumentParser(
         prog="llm-router",
         description="LLM Router CLI — manage API keys, policies, and more",
@@ -111,6 +113,16 @@ def main(argv: list[str] | None = None) -> int:
             help=f"Do not apply {desc}.",
         )
 
+    # Register the ``config`` subparser (auto-discover local providers and merge configs).
+    from .commands.config import register_config_subparser  # noqa: E402
+
+    config_parser = subparsers.add_parser(
+        "config",
+        help="Auto-discover local providers and generate/merge models-config.json",
+    )
+    config_sub = config_parser.add_subparsers(dest="config_command")
+    register_config_subparser(config_sub, nest_auth=False)
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -121,6 +133,11 @@ def main(argv: list[str] | None = None) -> int:
         from .commands.auth import main as _auth_main
 
         return _auth_main(argv[1:])  # strip "auth" off
+
+    if args.command == "config":
+        from .commands.config import main as _config_main
+
+        return _config_main(argv[1:])  # strip "config" off
 
     if args.command == "anonymizer":
         from .commands.anonymizer import main as _anon_main
