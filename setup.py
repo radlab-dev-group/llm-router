@@ -41,6 +41,9 @@ setup(
         ],
         exclude=("tests", "docs"),
     ),
+    package_data={
+        "llm_router_cli.resources": ["configs/*.json"],
+    },
     python_requires=">=3.10",
     install_requires=[
         "llm-router-plugins @ "
@@ -49,7 +52,8 @@ setup(
     extras_require=extras,
     entry_points={
         "console_scripts": {
-            "llm-router-fast-masker=llm_router_cli.fast_masker:main",
+            "llm-router=llm_router_cli.cli:main",
+            "llm-router-fast-masker=llm_router_cli.masker.fast_masker:main",
         }
     },
 )

@@ -55,6 +55,10 @@ class OpenAIResponsesHandler(OpenAIResponseHandler):
     """
     Responses endpoint that re‑uses the chat implementation but targets the
     ``/responses`` route of an OpenAI‑compatible service.
+
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``chat`` permission) — registered at ``/v1/responses`` by
+    :data:`~llm_router_api.core.auth.policies.engine._ENDPOINT_PERMISSION_MAP`.
     """
 
     def __init__(
@@ -84,7 +88,10 @@ class OpenAIResponsesHandler(OpenAIResponseHandler):
 class OpenAIResponsesV1Handler(OpenAIResponseHandler):
     """
     Responses endpoint that re‑uses the chat implementation but targets the
-    ``/responses`` route of an OpenAI‑compatible service.
+    ``/v1/responses`` route of an OpenAI‑compatible service.
+
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``chat`` permission).
     """
 
     def __init__(
@@ -115,6 +122,10 @@ class OpenAICompletionHandler(OpenAIResponseHandler):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/chat/completions`` route of an OpenAI‑compatible service.
+
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``chat`` permission). Registered at ``/api/chat/completions``
+    (with default prefix) and ``/chat/completions`` (alt path).
     """
 
     def __init__(
@@ -151,6 +162,10 @@ class OpenAIEmbeddingsHandler(PassthroughI):
     """
     Embeddings endpoint that targets the ``/embeddings``
     route of an OpenAI‑compatible service.
+
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``embedding`` permission). Registered at ``/api/embeddings``
+    (with default prefix) and ``/embeddings`` (base path).
     """
 
     def __init__(
@@ -213,6 +228,9 @@ class OpenAIEmbeddingsV1Handler(PassthroughI):
     """
     Embeddings endpoint that targets the ``/v1/embeddings``
     route of an OpenAI‑compatible service.
+
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``embedding`` permission).
     """
 
     def __init__(
@@ -247,6 +265,10 @@ class OpenAICompletionHandlerWOApi(OpenAIResponseHandler):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/chat/completions`` route of an OpenAI‑compatible service.
+
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``chat`` permission). Registered at ``/chat/completions``
+    (without default prefix — no ``/api`` prefix applied).
     """
 
     def __init__(
@@ -355,6 +377,10 @@ class OpenAIModelsHandler(PassthroughI):
 
     It overrides the HTTP method to ``GET`` and disables the global API
     prefix, exposing the route directly under ``/models``.
+
+    Auth: **public** — listed in the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``
+    (``/ping,/version,/models,/``) and in
+    :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP` as ``"_public"``.
     """
 
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
@@ -457,6 +483,15 @@ class OpenAIModelsHandler(PassthroughI):
 
 
 class OpenAIModelsV1Handler(OpenAIModelsHandler):
+    """
+    Variant of :class:`OpenAIModelsHandler` that registers at ``/v1/models``.
+
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``chat`` permission) — not in the default public endpoints list, though
+    it is covered by the prefix‑match logic in
+    :meth:`AuthMiddleware._is_public_endpoint` (maps ``/v1/models`` → ``/models``).
+    """
+
     def __init__(
         self,
         logger_file_name: Optional[str] = None,

@@ -29,6 +29,8 @@ class OllamaEmbeddingsHandler(PassthroughI):
     """
     Embeddings endpoint that targets the ``/api/embed``
     route of an Ollama‑compatible service.
+
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``embedding`` permission). Registered at ``/api/embed`` (with prefix).
     """
 
     def __init__(
@@ -84,21 +86,11 @@ class OllamaEmbeddingsHandler(PassthroughI):
 
 class OllamaHomeHandler(EndpointWithHttpRequestI):
     """
-    Endpoint that returns a list of available model tags from the Ollama
-    service.
+    Simple health‑check endpoint that returns a plain text confirmation that the
+    Ollama service is running.
 
-    The endpoint is registered under the name ``tags`` and supports the HTTP
-    ``GET`` method.  No request parameters are required; the response
-    contains a ``models`` key with a list of model identifiers.
-
-    Attributes
-    ----------
-    REQUIRED_ARGS : list
-        Empty – the endpoint does not require positional arguments.
-    OPTIONAL_ARGS : list
-        Empty – the endpoint does not accept optional arguments.
-    SYSTEM_PROMPT_NAME : None
-        No system prompt is used for this endpoint.
+    Registered at ``/`` (no prefix).
+    Auth: **public** — in the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` list.
     """
 
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
@@ -159,11 +151,12 @@ class OllamaHomeHandler(EndpointWithHttpRequestI):
 
 class OllamaTagsHandler(EndpointWithHttpRequestI):
     """
-    Health‑check endpoint that returns a plain text confirmation that the
-    Ollama service is running.
+    Health‑check endpoint that returns a list of available model tags from the
+    Ollama service.
 
-    The endpoint is registered under the root path ``/`` and only supports
-    the HTTP ``GET`` method.  It does not require any request parameters.
+    Registered at ``/api/tags`` (with default prefix).
+    Auth: **public** — explicitly listed in :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
+    as ``"_public"``.
     """
 
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
@@ -210,8 +203,8 @@ class OllamaChatHandler(PassthroughI):
     """
     Base endpoint for forwarding chat‑style requests to an Ollama compatible API.
 
-    The class does not enforce any required or optional arguments; the
-    concrete subclasses specify the appropriate HTTP method and route.
+    Registered at ``/api/chat`` (with default prefix).
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``ollama`` permission).
     """
 
     REQUIRED_ARGS = None

@@ -1,0 +1,13 @@
+# Authentication dependencies (core — always required)
+bcrypt
+
+# Auth key store backends — install the ones you need:
+redis            # for `--store redis` (multi-process stateful)
+hvault           # for `--store vault` (HashiCorp Vault KV v2)
+
+# Audit logging — needed when `LLM_ROUTER_AUTH_AUDIT=true`
+# GPG-backed audit log storage
+gnupg
+
+# Prometheus metrics — needed when `LLM_ROUTER_USE_PROMETHEUS=true`
+prometheus-client

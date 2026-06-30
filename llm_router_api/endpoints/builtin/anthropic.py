@@ -15,6 +15,9 @@ from llm_router_api.core.api_types.anthropic import AnthropicConverters
 class AnthropicChatHandler(PassthroughI):
     """
     Handler for Anthropic Messages API.
+
+    Registered at ``/v1/messages`` (no prefix).
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``anthropic`` permission).
     """
 
     def __init__(

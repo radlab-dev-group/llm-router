@@ -42,9 +42,10 @@ class FastTextMasking(EndpointWithHttpRequestI):
     Endpoint that masks a plain‑text string using the library's default
     rule set.
 
-    The endpoint does **not** require any specific request parameters
-    (``REQUIRED_ARGS`` and ``OPTIONAL_ARGS`` are set to ``None``) because
-    it only expects a single ``text`` field inside the JSON body.  The
+    Registered at ``/api/fast_text_mask`` (with default prefix).
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+
+    The endpoint expects a ``text`` field inside the JSON body.  The
     ``direct_return`` flag is enabled so the processed payload is returned
     directly to the client without additional wrapping.
     """

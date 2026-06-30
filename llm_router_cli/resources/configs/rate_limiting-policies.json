@@ -1,0 +1,74 @@
+[
+  {
+    "name": "free",
+    "rpm": 10,
+    "description": "Free tier — limited usage for testing"
+  },
+  {
+    "name": "basic",
+    "rpm": 60,
+    "description": "Standard (1 request per second)"
+  },
+  {
+    "name": "pro",
+    "rpm": 120,
+    "description": "Pro tier (2 requests per second)"
+  },
+  {
+    "name": "enterprise",
+    "rpm": 500,
+    "description": "High throughput (8 requests per second)"
+  },
+  {
+    "name": "burst",
+    "rpm": 200,
+    "description": "Short bursts — elevated temporary limit"
+  },
+  {
+    "name": "daily-10",
+    "daily_limit": 10,
+    "rpm": null,
+    "description": "Daily cap of 10 requests (~0.007/min)"
+  },
+  {
+    "name": "daily-100",
+    "daily_limit": 100,
+    "rpm": null,
+    "description": "Daily cap of 100 requests (~0.07/min)"
+  },
+  {
+    "name": "daily-1000",
+    "daily_limit": 1000,
+    "rpm": null,
+    "description": "Moderate batch processing (~0.7/min)"
+  },
+  {
+    "name": "daily-5000",
+    "daily_limit": 5000,
+    "rpm": null,
+    "description": "Regular batch processing (~3.5/min)"
+  },
+  {
+    "name": "hourly-60",
+    "hourly_limit": 60,
+    "rpm": 1,
+    "description": "Hourly cap of 60 requests (1/min)"
+  },
+  {
+    "name": "per-second-1",
+    "rpm": 60,
+    "per_second_limit": 1,
+    "description": "Steady pace: 1 request per second (60/min)"
+  },
+  {
+    "name": "per-second-5",
+    "rpm": 300,
+    "per_second_limit": 5,
+    "description": "Intensive access: 5 requests per second (300/min)"
+  },
+  {
+    "name": "internal-tool",
+    "rpm": 300,
+    "description": "Internal tools — elevated limits (5 requests per second)"
+  }
+]

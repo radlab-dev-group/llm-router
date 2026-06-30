@@ -27,9 +27,8 @@ class LmStudioModelsHandler(PassthroughI):
     Endpoint that returns the list of model identifiers available in the
     LM Studio service.
 
-    The endpoint is registered under the name ``models`` and supports the
-    HTTP ``GET`` method.  No request parameters are required; the response
-    contains a ``models`` key with a list of model IDs.
+    Registered at ``/api/v0/models`` (with default prefix).
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true`` (``chat`` permission).
     """
 
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
@@ -103,6 +102,9 @@ class LLMStudioChatV0Handler(OpenAIResponseHandler):
     """
     Completion endpoint that re‑uses the chat implementation but targets the
     ``/api/v0/chat/completions`` route of an OpenAI‑compatible service.
+
+    Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
+    (``chat`` permission). Registered at ``/api/v0/chat/completions``.
     """
 
     def __init__(
