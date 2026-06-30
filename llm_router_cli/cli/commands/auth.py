@@ -26,8 +26,6 @@ import argparse
 import asyncio
 
 from pathlib import Path
-
-
 # ---------------------------------------------------------------------------
 # Shared argument helpers — avoid repeating the same --store / --auth-redis-*
 # arguments on every subparser.
