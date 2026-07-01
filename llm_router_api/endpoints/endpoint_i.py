@@ -609,7 +609,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         self._check_method_is_allowed(method=method)
 
         # Hook function to prepare response
-        self._prepare_response_function[Optional[Callable]] = None
+        self._prepare_response_function: Optional[Callable] = None
 
         # marker when ep stared
         self._start_time = None
