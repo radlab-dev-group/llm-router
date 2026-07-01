@@ -18,6 +18,7 @@ try:
         "PROMETHEUS_MULTIPROC_DIR",
         MetricsHandler.prometheus_multiproc_dir_path(),
     )
+    MetricsHandler.prepare_prometheus_multiproc_dir()
 
     from prometheus_client import (
         CollectorRegistry,
