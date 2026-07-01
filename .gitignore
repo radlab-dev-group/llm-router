@@ -214,5 +214,8 @@ local-https/
 /logs/prometheus_multiproc/gauge_all_3054639.db
 
 TODO__*
+logs/prometheus_multiproc/*.db
+
+.venv-mypy/
 .venv-pylint/
-/logs/prometheus_multiproc/*.db
+

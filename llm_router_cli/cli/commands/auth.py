@@ -27,8 +27,6 @@ import argparse
 
 from pathlib import Path
 
-import typing as t
-
 # ---------------------------------------------------------------------------
 # Shared argument helpers — avoid repeating the same --store / --auth-redis-*
 # arguments on every subparser.
@@ -788,11 +786,10 @@ def _handle_policy(args, sub: list) -> int:
 # Rate-limit handler.
 # ---------------------------------------------------------------------------
 
-_RATE_LIMIT_COMMANDS: dict[str, t.Callable[[list[str]], int]] = {  # noqa: F821
-    # Forward references — functions defined below; resolved at call time.
-    "list": _rl_list,  # noqa: F821
-    "apply": _rl_apply,  # noqa: F821
-    "remove": _rl_remove,  # noqa: F821
+_RATE_LIMIT_COMMANDS = {
+    "list": lambda sub: _rl_list(sub),
+    "apply": lambda sub: _rl_apply(sub),
+    "remove": lambda sub: _rl_remove(sub),
 }
 
 

@@ -16,6 +16,7 @@ from typing import Optional
 from flask import Flask, request, Response
 from rdl_ml_utils.utils.logger import prepare_logger
 
+from llm_router_api.core.metrics_handler import MetricsHandler
 from llm_router_api.base.constants import USE_PROMETHEUS, REST_API_LOG_LEVEL
 
 # ----------------------------------------------------------------------
@@ -25,12 +26,13 @@ from llm_router_api.base.constants import USE_PROMETHEUS, REST_API_LOG_LEVEL
 IS_PROMETHEUS_AVAILABLE = False
 try:
     # Directory where each worker stores its own *.db* files.
-    # Rhe path can be changed (e.g. to ./logs/prometheus_multiproc) in
-    # your deployment script.
-    os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", "./logs/prometheus_multiproc")
-
-    from llm_router_api.core.metrics_handler import MetricsHandler
-
+    # The path can be overridden via the ``PROMETHEUS_MULTIPROC_DIR``
+    # environment variable.  Default (when the var is unset)::
+    #
+    #     $HOME/.llm-router/metrics/prometheus/multiproc
+    #
+    _DEFAULT_MULTIPROC_DIR = MetricsHandler.prometheus_multiproc_dir_path()
+    os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", _DEFAULT_MULTIPROC_DIR)
     MetricsHandler.prepare_prometheus_multiproc_dir()
 
     from prometheus_client import (
