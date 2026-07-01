@@ -123,7 +123,8 @@ def main() -> None:
 
     if not target_models:
         print(
-            "No embedding models found. Provide them with --models or ensure the router "
+            "No embedding models found. "
+            "Provide them with --models or ensure the router "
             "exposes /api/tags with `is_embedding` flags."
         )
         return

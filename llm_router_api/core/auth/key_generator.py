@@ -65,10 +65,12 @@ class KeyGenerator:
         pattern = rf"^{re.escape(cls.PREFIX)}[a-zA-Z0-9]{{{cls.MIN_LENGTH},}}$"
         if not re.match(pattern, key):
             return False, (
-                f"Invalid key format: expected {cls.PREFIX}<48+ alphanumeric characters>"
+                f"Invalid key format: expected "
+                f"{cls.PREFIX}<48+ alphanumeric characters>"
             )
         return True, ""
 
     @property
     def prefix(self) -> str:
+        """Return the key prefix (e.g. ``'sk-litm-'``)."""
         return self.PREFIX

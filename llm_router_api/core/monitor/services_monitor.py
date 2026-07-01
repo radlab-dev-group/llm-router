@@ -109,7 +109,7 @@ class LLMRouterServicesMonitor:
         if ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS <= 0:
             return
 
-        if not len(self._all_strategies):
+        if not self._all_strategies:
             self.logger.warning(
                 "[services-monitor] There are no strategies to check health "
                 "(llm-router-services are not used). "
@@ -177,11 +177,13 @@ class LLMRouterServicesMonitor:
             if self._probe_host(host):
                 new_available[strategy_name] = host
                 self.logger.debug(
-                    f"[services-monitor.status] host {host} is available"
+                    "[services-monitor.status] host %s is available",
+                    host,
                 )
             else:
                 self.logger.warning(
-                    f"[services-monitor.status] host {host} is unreachable"
+                    "[services-monitor.status] host %s is unreachable",
+                    host,
                 )
 
         self.available_hosts = new_available

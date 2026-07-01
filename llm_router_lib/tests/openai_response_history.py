@@ -19,10 +19,10 @@ conversation = [
     {"role": "user", "content": "Wymień 2 zastosowania AI w medycynie."},
 ]
 
-responses_result = client.responses.create(
+RESPONSE_RESULT = client.responses.create(
     model="google/gemma-3-12b-it",
     # model="gpt-oss:120b",
     input=conversation,
 )
 
-print(responses_result.output_text)
+print(RESPONSE_RESULT.output_text)

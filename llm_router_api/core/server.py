@@ -50,8 +50,8 @@ def run_flask_server(host: str, port: int, debug: bool = False):
             logger_file_name=REST_API_LOG_FILE_NAME,
             logger_level=logger_level,
         ).prepare_flask_app().run(host=host, port=port, debug=debug)
-    except RuntimeError as e:
-        raise RuntimeError(f"Failed to run flask server: {e}")
+    except RuntimeError as exc:
+        raise RuntimeError(f"Failed to run flask server: {exc}") from exc
 
 
 def run_gunicorn_server(
@@ -69,10 +69,10 @@ def run_gunicorn_server(
     """
     try:
         from gunicorn.app.base import BaseApplication
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "Gunicorn is not installed. Install it with: pip install gunicorn"
-        )
+        ) from exc
 
     class StandaloneApplication(BaseApplication):
         """
@@ -145,10 +145,10 @@ def run_waitress_server(host: str, port: int, threads: int = 4):
     """
     try:
         from waitress import serve
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "Waitress is not installed. Install it with: pip install waitress"
-        )
+        ) from exc
 
     app = FlaskEngine(
         prompts_dir=PROMPTS_DIR,

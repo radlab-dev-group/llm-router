@@ -93,4 +93,4 @@ class ChooseProviderStrategyI(ABC):
         options: Dict[str, Any], default: None
             Options passed to the chosen provider.
         """
-        pass
+        # Default implementation does nothing; subclasses override as needed.

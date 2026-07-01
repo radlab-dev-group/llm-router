@@ -22,10 +22,12 @@ from __future__ import annotations
 import os
 import sys
 import json
-import argparse
 import asyncio
+import argparse
 
 from pathlib import Path
+
+import typing as t
 
 # ---------------------------------------------------------------------------
 # Shared argument helpers — avoid repeating the same --store / --auth-redis-*
@@ -86,7 +88,8 @@ def _add_key_id_arg(p: argparse.ArgumentParser) -> None:
 
 _SEED_DIR = Path.home() / ".llm-router"
 
-# Default seed file path for memory key store — also used by constants.py and the shell script.
+# Default seed file path for memory key store — also used by constants.py
+# and the shell script.
 _DEFAULT_SEED_FILE = str(_SEED_DIR / "configs" / "auth" / "memory-keys.json")
 
 
@@ -248,7 +251,10 @@ def _handle_key_list(args, key_args) -> int:
         max_w["EXPIRES"],
     )
 
-    hdr = f"{'KEY_ID':<{w[0]}} {'PREFIX':<{w[1]}} {'POLICY':<{w[2]}} {'ACTIVE':<{w[3]}} {'EXPIRES':<{w[4]}}"
+    hdr = (
+        f"{'KEY_ID':<{w[0]}} {'PREFIX':<{w[1]}} "
+        f"{'POLICY':<{w[2]}} {'ACTIVE':<{w[3]}} {'EXPIRES':<{w[4]}}"
+    )
     print(hdr)
     print("-" * len(hdr))
 
@@ -332,6 +338,8 @@ def _handle_key_reveal(args, key_args) -> int:
         print("Error: key_id is required for reveal.")
         return 1
 
+    from llm_router_api.core.auth.key_store import create_key_store
+
     key_store, _ = create_key_store(
         store_type=args.store, **_auth_redis_kwargs(args)
     )
@@ -373,6 +381,8 @@ def _key_mutate(args, key_args: list[str], action: str) -> int:
     if not key_id:
         print(f"Error: key_id is required for {action}.")
         return 1
+
+    from llm_router_api.core.auth.key_store import create_key_store
 
     key_store, _ = create_key_store(
         store_type=args.store, **_auth_redis_kwargs(args)
@@ -475,7 +485,8 @@ def _load_rate_limit_presets() -> list[dict]:
 
 
 def register_rate_limit_subparser(parser: argparse.ArgumentParser) -> None:
-    """Register the ``rate-limit`` sub-subcommands under *parser* (the auth subparsers)."""
+    """Register the ``rate-limit`` sub-subcommands under
+    *parser* (the auth subparsers)."""
     rl_parser = parser.add_parser(
         "rate-limit",
         help="Manage rate limiting presets and per-key overrides",
@@ -483,7 +494,7 @@ def register_rate_limit_subparser(parser: argparse.ArgumentParser) -> None:
     rl_sub = rl_parser.add_subparsers(dest="rate_limit_command")
 
     # -- list --
-    rl_list = rl_sub.add_parser(
+    _ = rl_sub.add_parser(
         "list",
         help="List available rate-limit presets",
     )
@@ -619,7 +630,7 @@ def register_auth_subparser(
     )
     policy_sub = policy_parser.add_subparsers(dest="policy_command")
 
-    policy_list = policy_sub.add_parser(
+    _ = policy_sub.add_parser(
         "list",
         help="List available policies",
     )
@@ -656,8 +667,6 @@ def main(argv: list[str] | None = None) -> int:
     int
         Exit code.
     """
-    from llm_router_api.core.auth.key_store import create_key_store
-
     if argv is None:
         argv = sys.argv[1:]
 
@@ -701,7 +710,8 @@ def _handle_key(args, sub: list, seed_file: str) -> int:
 
     if not sub:
         print(
-            "Usage: llm-router auth key <generate|list|delete|disable|enable|rotate|reveal>"
+            "Usage: llm-router auth key <"
+            "generate|list|delete|disable|enable|rotate|reveal>"
         )
         return 1
 
@@ -778,10 +788,11 @@ def _handle_policy(args, sub: list) -> int:
 # Rate-limit handler.
 # ---------------------------------------------------------------------------
 
-_RATE_LIMIT_COMMANDS = {
-    "list": lambda sub: _rl_list(sub),
-    "apply": lambda sub: _rl_apply(sub),
-    "remove": lambda sub: _rl_remove(sub),
+_RATE_LIMIT_COMMANDS: dict[str, t.Callable[[list[str]], int]] = {  # noqa: F821
+    # Forward references — functions defined below; resolved at call time.
+    "list": _rl_list,  # noqa: F821
+    "apply": _rl_apply,  # noqa: F821
+    "remove": _rl_remove,  # noqa: F821
 }
 
 
@@ -862,10 +873,8 @@ def _rl_apply(sub: list[str]) -> int:
         rate_limit = max(1, daily_limit // 1440)
 
     # Apply based on store type
-    from pathlib import Path as _Path
-
     seed_file = _DEFAULT_SEED_FILE
-    seed_path = _Path(seed_file)
+    seed_path = Path(seed_file)
 
     if store == "memory":
         # Edit seed file directly
@@ -877,7 +886,7 @@ def _rl_apply(sub: list[str]) -> int:
 
         keys = json.loads(seed_path.read_text(encoding="utf-8"))
         if not isinstance(keys, list):
-            print(f"Error: Seed file must contain a JSON array.")
+            print("Error: Seed file must contain a JSON array.")
             return 1
 
         found = False
@@ -897,7 +906,8 @@ def _rl_apply(sub: list[str]) -> int:
 
         seed_path.write_text(json.dumps(keys, indent=2) + "\n", encoding="utf-8")
         print(
-            f"Applied preset '{preset_name}' (rate_limit={rate_limit}/min) to key {key_id}."
+            f"Applied preset '{preset_name}' (rate_limit='{rate_limit}'/min)"
+            f" to key {key_id}."
         )
 
     elif store == "redis":
@@ -927,12 +937,14 @@ def _rl_apply(sub: list[str]) -> int:
         policy_override["rate_limit"] = rate_limit
         r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
         print(
-            f"Applied preset '{preset_name}' (rate_limit={rate_limit}/min) to key {key_id}."
+            f"Applied preset '{preset_name}' (rate_limit='{rate_limit}'/min)"
+            f" to key {key_id}."
         )
 
     elif store == "vault":
         print(
-            "Error: 'rate-limit apply' on vault store requires Vault API. Use seed file or --store memory."
+            "Error: 'rate-limit apply' on vault store, requires Vault API. "
+            "Use seed file or --store memory."
         )
         return 1
 
@@ -962,10 +974,8 @@ def _rl_remove(sub: list[str]) -> int:
     store = getattr(parsed, "store", "memory")
     redis_kwargs = _auth_redis_kwargs(parsed)
 
-    from pathlib import Path as _Path
-
     seed_file = _DEFAULT_SEED_FILE
-    seed_path = _Path(seed_file)
+    seed_path = Path(seed_file)
 
     if store == "memory":
         if not seed_path.exists():
@@ -974,7 +984,7 @@ def _rl_remove(sub: list[str]) -> int:
 
         keys = json.loads(seed_path.read_text(encoding="utf-8"))
         if not isinstance(keys, list):
-            print(f"Error: Seed file must contain a JSON array.")
+            print("Error: Seed file must contain a JSON array.")
             return 1
 
         found = False
@@ -1036,7 +1046,8 @@ def _rl_remove(sub: list[str]) -> int:
 
     elif store == "vault":
         print(
-            "Error: 'rate-limit remove' on vault store requires Vault API. Use seed file or --store memory."
+            "Error: 'rate-limit remove' on vault store"
+            ", requires Vault API. Use seed file or --store memory."
         )
         return 1
 

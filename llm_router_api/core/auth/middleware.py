@@ -40,8 +40,10 @@ class AuthMiddleware:
 
     Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
     ``/ping,/version,/models,/``) bypass all checks — they are always accessible
-    regardless of auth configuration.  See :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
-    for the full mapping of authenticated endpoints to their required permission types.
+    regardless of auth configuration.  See
+    :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
+    for the full mapping of authenticated endpoints
+    to their required permission types.
     """
 
     def __init__(
@@ -59,6 +61,7 @@ class AuthMiddleware:
 
     @property
     def logger(self):
+        """Lazily initialize and return the logger."""
         if self._logger is None:
             from rdl_ml_utils.utils.logger import prepare_logger
 

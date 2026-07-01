@@ -3,28 +3,28 @@
 All endpoints are exposed under the REST API service. Unless stated otherwise, methods are POST and consume/produce
 JSON.
 
-The default API prefix is `/api` (configurable via `LLM_ROUTER_EP_PREFIX`).  Endpoints registered with
+The default API prefix is `/api` (configurable via `LLM_ROUTER_EP_PREFIX`). Endpoints registered with
 `dont_add_api_prefix=True` appear without this prefix (e.g. `/models` instead of `/api/models`).
 
 ### Authentication
 
 When `LLM_ROUTER_AUTH_ENABLED=true`, endpoints are divided into **public** and **auth‑required**:
 
-| Scope          | Description                                                                    | Env var                               |
-|----------------|--------------------------------------------------------------------------------|---------------------------------------|
-| Public         | Bypass all auth checks — always accessible                                     | `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`    |
-| Auth‑required  | Return **401 Unauthorized** if no valid API key is provided                    | `LLM_ROUTER_AUTH_ENABLED=true`        |
+| Scope         | Description                                                 | Env var                            |
+|---------------|-------------------------------------------------------------|------------------------------------|
+| Public        | Bypass all auth checks — always accessible                  | `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS` |
+| Auth‑required | Return **401 Unauthorized** if no valid API key is provided | `LLM_ROUTER_AUTH_ENABLED=true`     |
 
 Public endpoints (default): `/ping`, `/version`, `/models`, `/`, plus any path matching `/v1{public}` (e.g.
-`/v1/models`).  All other endpoints require a valid API key with the appropriate policy permission:
+`/v1/models`). All other endpoints require a valid API key with the appropriate policy permission:
 
-| Permission type    | What it grants access to                                    |
-|--------------------|-------------------------------------------------------------|
-| `chat`             | Chat completions, model listing, responses                  |
-| `embedding`        | Embeddings endpoints                                        |
-| `anthropic`        | Anthropic Messages API (`/v1/messages`)                     |
-| `ollama`           | Ollama‑style chat completion                                |
-| `builtin`          | Built‑in utility endpoints (translate, generate, etc.)      |
+| Permission type | What it grants access to                               |
+|-----------------|--------------------------------------------------------|
+| `chat`          | Chat completions, model listing, responses             |
+| `embedding`     | Embeddings endpoints                                   |
+| `anthropic`     | Anthropic Messages API (`/v1/messages`)                |
+| `ollama`        | Ollama‑style chat completion                           |
+| `builtin`       | Built‑in utility endpoints (translate, generate, etc.) |
 
 API keys are checked in order of priority:
 

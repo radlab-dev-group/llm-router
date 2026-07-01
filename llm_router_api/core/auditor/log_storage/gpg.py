@@ -108,7 +108,7 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
         date_str = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         out_file_name = f"{audit_type}__{date_str}.audit"
         out_file_path = DEFAULT_AUDITOR_OUT_DIR / out_file_name
-        with open(out_file_path, "wt") as f:
+        with open(out_file_path, "wt", encoding="utf-8") as f:
             audit_str = json.dumps(audit_log, indent=2, ensure_ascii=False)
             encrypted_data = self._gpg.encrypt(
                 audit_str,
@@ -140,7 +140,7 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
             If the public key file does not exist.
         """
         if not self.AUDITOR_PUB_KEY_FILE.exists():
-            raise Exception(
+            raise RuntimeError(
                 f"GPG public key {self.AUDITOR_PUB_KEY_FILE} does not exists!"
             )
 
@@ -153,10 +153,10 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
         try:
             temp_name = f"perm_check_{uuid.uuid4().hex}.audit"
             temp_path = DEFAULT_AUDITOR_OUT_DIR / temp_name
-            with open(temp_path, "wt") as f:
+            with open(temp_path, "wt", encoding="utf-8") as f:
                 f.write("llm-router")
             temp_path.unlink()
-        except Exception as exc:
+        except Exception as inner_exc:
             raise PermissionError(
-                f"Unable to write to {DEFAULT_AUDITOR_OUT_DIR}: {exc}"
-            )
+                f"Unable to write to {DEFAULT_AUDITOR_OUT_DIR}: {inner_exc}"
+            ) from inner_exc

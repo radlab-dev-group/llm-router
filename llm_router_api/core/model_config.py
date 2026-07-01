@@ -3,6 +3,7 @@ Module providing ApiModelConfig for loading model configurations from a JSON fil
 """
 
 import json
+
 from typing import Dict, List
 
 
@@ -58,10 +59,10 @@ class ApiModelConfig:
             If the file cannot be parsed as valid JSON.
         """
         try:
-            with open(self.models_config_path, "rt") as f:
+            with open(self.models_config_path, "rt", encoding="utf-8") as f:
                 return json.load(f)
-        except json.JSONDecodeError:
-            raise RuntimeError("Invalid JSON format in models config file")
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Invalid JSON format in models config file") from exc
 
     def _read_active_models(self) -> Dict[str, str]:
         """
@@ -72,10 +73,10 @@ class ApiModelConfig:
             model names. Returns an empty dict if no models are defined.
         """
         models_config = self._try_to_load_config()
-        if len(models_config):
+        if models_config:
             exists_model = False
-            for model_type, model_list in models_config.items():
-                if len(model_list):
+            for _mtype, model_list in models_config.items():
+                if model_list:
                     exists_model = True
                     break
             if not exists_model:

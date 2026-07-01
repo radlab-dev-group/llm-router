@@ -252,8 +252,8 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
             # SGD update: θ := θ - lr * 2 * error * x
             grad_scale = 2.0 * error * self._lr
             theta = self._theta[key]
-            for i in range(len(theta)):
-                theta[i] -= grad_scale * x[i]
+            for i, val in enumerate(theta):
+                theta[i] = val - grad_scale * x[i]
             self._theta[key] = theta
 
             # opcjonalne logowanie

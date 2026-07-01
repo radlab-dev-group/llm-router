@@ -5,7 +5,8 @@ Anthropic API integration utilities.
 from __future__ import annotations
 
 import datetime
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict
+
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
 
@@ -48,6 +49,7 @@ class AnthropicConverters:
     class Payload:
         @staticmethod
         def convert_payload(params: Dict[str, Any]) -> Dict[str, Any]:
+            """Convert OpenAI payload to Anthropic format."""
             openai_messages = params.get("messages", [])
             anthropic_messages = []
             system_prompt = None

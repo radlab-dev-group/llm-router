@@ -8,7 +8,8 @@ in a future release.
 Typical usage::
 
     llm-router auth anonymizer run --algorithm fast_masker <input_file>
-    echo "My phone is +48 123 456 789" | llm-router auth anonymizer run --algorithm fast_masker
+    echo "My phone is +48 123 456 789" \
+        | llm-router auth anonymizer run --algorithm fast_masker
 
 Output is written to stdout by default; use ``--output`` / ``-o`` to direct it
 to a file.
@@ -16,8 +17,9 @@ to a file.
 
 from __future__ import annotations
 
-import argparse
 import sys
+import argparse
+
 from pathlib import Path
 
 

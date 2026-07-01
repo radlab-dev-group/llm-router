@@ -25,7 +25,7 @@ import logging
 import datetime
 
 from copy import deepcopy
-from typing import Optional, Dict, Any, Iterable, List, Tuple
+from typing import Optional, Dict, Any, Iterable, List, Tuple, Callable
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -332,7 +332,7 @@ class SecureEndpointI(abc.ABC):
         """
         if not audit_log:
             if force_end:
-                raise Exception("Cannot end audit! Audit log is not set!")
+                raise RuntimeError("Cannot end audit! Audit log is not set!")
             return
 
         if force_end or audit_log["begin"]["payload"] != payload:
@@ -416,7 +416,7 @@ class SecureEndpointI(abc.ABC):
         if (
             self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
             or not payload
-            or type(payload) is not dict
+            or not isinstance(payload, dict)
         ):
             return payload, {}
 
@@ -599,17 +599,17 @@ class EndpointI(SecureEndpointI, abc.ABC):
         self._call_for_each_user_msg = call_for_each_user_msg
 
         self._ep_types_str = api_types
-        if self._ep_types_str is None or not len(self._ep_types_str):
+        if self._ep_types_str is None or not self._ep_types_str:
             raise RuntimeError("Endpoint api type is required!")
 
-        if not len(set(self._ep_types_str).intersection(set(API_TYPES))):
+        if not set(self._ep_types_str).intersection(set(API_TYPES)):
             raise RuntimeError(f"Supported api types are [{', '.join(API_TYPES)}]!")
 
         self._api_type_dispatcher = ApiTypesDispatcher()
         self._check_method_is_allowed(method=method)
 
         # Hook function to prepare response
-        self._prepare_response_function = None
+        self._prepare_response_function: Optional[Callable] = None
 
         # marker when ep stared
         self._start_time = None
@@ -930,7 +930,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
     def _get_choices_from_response(response):
         j_response = response.json()
         choices = j_response.get("choices", [])
-        if not len(choices):
+        if not choices:
             if "message" in j_response:
                 choices = [j_response]
 
@@ -955,11 +955,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         ValueError
             If any required key is missing from *params*.
         """
-        if (
-            params is None
-            or self.REQUIRED_ARGS is None
-            or not len(self.REQUIRED_ARGS)
-        ):
+        if params is None or self.REQUIRED_ARGS is None or not self.REQUIRED_ARGS:
             return
 
         missing = [arg for arg in self.REQUIRED_ARGS if arg not in params]
@@ -1297,7 +1293,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             map_prompt = None
             prompt_str_force = None
             prompt_str_postfix = None
-            if type(params) is dict:
+            if isinstance(params, dict):
                 map_prompt = params.pop("map_prompt", {})
                 prompt_str_force = params.pop("prompt_str_force", "")
                 prompt_str_postfix = params.pop("prompt_str_postfix", "")
@@ -1481,7 +1477,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             if self._prepare_response_function:
                 return self._prepare_response_function(response)
             return response.json()
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             provider_id = api_model_provider.id if api_model_provider else "unknown"
             self.logger.error(
                 "Provider [%s] response is not valid JSON — body: %s",
@@ -1729,7 +1725,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 if p in params:
                     _params[p] = params[p]
         else:
-            raise Exception(f"Unsupported API type: {api_type}")
+            raise ValueError(f"Unsupported API type: {api_type}")
         return _params
 
     @staticmethod
@@ -1769,7 +1765,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         should treat the returned mapping as the definitive payload to be
         forwarded.
         """
-        if model_provider is None or params is None or type(params) is not dict:
+        if model_provider is None or params is None or not isinstance(params, dict):
             return params
 
         if not model_provider.tool_calling:

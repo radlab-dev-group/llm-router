@@ -206,7 +206,7 @@ class FlaskEndpointRegistrar:
                     ),
                     400,
                 )
-            except Exception as exc:
+            except Exception:
                 self._logger.exception(
                     f"Unhandled exception in endpoint: {endpoint.__class__.__name__}",
                 )

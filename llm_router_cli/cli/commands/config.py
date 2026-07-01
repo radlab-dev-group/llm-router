@@ -292,10 +292,102 @@ def _clean_config(config: Dict[str, Any]) -> None:
                     mval.pop("response_format", None)
 
 
+def _scan_and_merge(
+    host: str,
+    explicit_port: int,
+    prov: Dict[str, Any],
+    config: Dict[str, Any],
+) -> None:
+    """Discover one provider on one host and merge its config into *config*.
+
+    Parameters
+    ----------
+    host : str
+        Target hostname or IP.
+    explicit_port : int
+        Non-zero to scan only that port (plus default provider ports); zero
+        to scan the defaults only.
+    prov : Dict[str, Any]
+        Provider definition from ``_PROVIDER_DEFS``.
+    config : Dict[str, Any]
+        Accumulator dict updated in-place.
+    """
+    # Determine which ports to scan for this provider.
+    if explicit_port != 0:
+        # Explicit port → use it plus all default provider ports
+        # so we don't miss Ollama on :11434 when user only knows about :8080.
+        ports_to_scan = [explicit_port] + list(prov["ports"])
+    else:
+        # No explicit port → just the provider's defaults.
+        ports_to_scan = list(prov["ports"])
+
+    # Scan all candidate ports; pick the first one that serves models.
+    best_port = None
+    for port in ports_to_scan:
+        if _health_check_with_path(host, port, prov["health_path"]):
+            _, group = _build_config_for_provider(prov, host, port)
+            # Check if it actually has models (not just a health endpoint).
+            if group and "models_raw" not in group:
+                best_port = port
+                break
+
+    if best_port is None:
+        return  # provider unreachable on any checked port
+
+    # Build final config entry for the winning port.
+    group_name, group = _build_config_for_provider(prov, host, best_port)
+    _merge_group(config, group_name, group)
+
+
+def _merge_group(
+    config: Dict[str, Any], group_name: str, group: Dict[str, Any]
+) -> None:
+    """Merge *group* into *config*, deduplicating providers by (host, port).
+
+    Parameters
+    ----------
+    config : Dict[str, Any]
+        Accumulator dict updated in-place.
+    group_name : str
+        Config group key (e.g. ``"chat"``).
+    group : Dict[str, Any]
+        Model definitions from one provider on one host.
+    """
+    if group_name in config:
+        # Merge models by name across hosts — each model gets one provider per
+        # (host, port).
+        for model_name, model_data in group.items():
+            if model_name not in config[group_name]:
+                config[group_name][model_name] = model_data
+            else:
+                _merge_providers(config[group_name][model_name], model_data)
+    else:
+        config[group_name] = group
+
+
+def _merge_providers(
+    existing_model: Dict[str, Any], new_model: Dict[str, Any]
+) -> None:
+    """Add *new_model* provider to *existing_model* without duplicating host.
+
+    Parameters
+    ----------
+    existing_model : Dict[str, Any]
+        The existing model entry, modified in-place.
+    new_model : Dict[str, Any]
+        The new model entry whose provider list is merged.
+    """
+    new_provider = new_model.get("providers", [{}])[0]
+    existing_providers = existing_model.get("providers", [])
+    new_host_port = new_provider.get("api_host", "")
+    if not any(p.get("api_host") == new_host_port for p in existing_providers):
+        existing_providers.append(new_provider)
+
+
 def _generate_config(
     hosts: List[Tuple[str, int]], all_ports: bool = False
 ) -> Dict[str, Any]:
-    """Run discovery across all provider definitions for every host and build the config dict.
+    """Run discovery across all provider definitions for every host
 
     Each entry in *hosts* is ``(raw_host, explicit_port)`` — when *explicit_port* is
     non-zero only that port is scanned (for ``host:port`` inputs); otherwise the
@@ -305,51 +397,7 @@ def _generate_config(
 
     for host, explicit_port in hosts:
         for prov in _PROVIDER_DEFS:
-            # Determine which ports to scan for this provider.
-            if explicit_port != 0:
-                # Explicit port → use it plus all default provider ports
-                # so we don't miss Ollama on :11434 when user only knows about :8080.
-                ports_to_scan = [explicit_port] + list(prov["ports"])
-            else:
-                # No explicit port → just the provider's defaults.
-                ports_to_scan = list(prov["ports"])
-
-            # Scan all candidate ports; pick the first one that serves models.
-            best_port = None
-            for port in ports_to_scan:
-                if _health_check_with_path(host, port, prov["health_path"]):
-                    group_name_local, group = _build_config_for_provider(
-                        prov, host, port
-                    )
-                    # Check if it actually has models (not just a health endpoint).
-                    if group and "models_raw" not in group:
-                        best_port = port
-                        break
-
-            if best_port is None:
-                continue  # provider unreachable on any checked port
-
-            # Build final config entry for the winning port.
-            group_name, group = _build_config_for_provider(prov, host, best_port)
-            if group_name in config:
-                # Merge models by name across hosts — each model gets one provider per (host, port).
-                for model_name, model_data in group.items():
-                    if model_name not in config[group_name]:
-                        config[group_name][model_name] = model_data
-                    else:
-                        # Add a new provider entry without duplicating (host, port).
-                        new_provider = model_data.get("providers", [{}])[0]
-                        existing_providers = config[group_name][model_name].get(
-                            "providers", []
-                        )
-                        new_host_port = new_provider.get("api_host", "")
-                        if not any(
-                            p.get("api_host") == new_host_port
-                            for p in existing_providers
-                        ):
-                            existing_providers.append(new_provider)
-            else:
-                config[group_name] = group
+            _scan_and_merge(host, explicit_port, prov, config)
 
     # Remove internal debug fields before returning.
     _clean_config(config)
@@ -365,8 +413,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llm-router config",
         description=(
-            "Auto-discover local LLM providers (Ollama, vLLM, LM Studio) on a given host, "
-            "fetch their available models, and produce a models-config.json ready for the router."
+            "Auto-discover local LLM providers"
+            " (Ollama, vLLM, LM Studio) on a given host,"
+            " fetch their available models, and produce"
+            " a models-config.json ready for the router."
         ),
     )
     subparsers = parser.add_subparsers(dest="config_action")
@@ -493,6 +543,25 @@ def _dedup_providers(models_group: Dict[str, Any]) -> None:
         model_data["providers"] = filtered
 
 
+def _merge_active_models(val: Any, active: Dict[str, List[str]]) -> None:
+    """Union all active model lists from *val* into *active*.
+
+    Parameters
+    ----------
+    val : Any
+        The ``active_models`` value from a config file.
+    active : Dict[str, List[str]]
+        Accumulator dict updated in-place.
+    """
+    if not isinstance(val, dict):
+        return
+    for group, models in val.items():
+        if isinstance(models, list):
+            if group not in active:
+                active[group] = []
+            active[group].extend(models)
+
+
 def _do_merge(args: argparse.Namespace) -> int:
     """Merge multiple models-config.json files into one."""
     configs_arg: list[str] = getattr(args, "configs", [])
@@ -508,18 +577,14 @@ def _do_merge(args: argparse.Namespace) -> int:
         for key, val in cfg.items():
             if key == "active_models":
                 # Union all active model lists
-                for group, models in val.items():
-                    if isinstance(models, list):
-                        if group not in active:
-                            active[group] = []
-                        active[group].extend(models)
+                _merge_active_models(val, active)
             elif isinstance(val, dict):
                 merged = _deep_merge(merged, {key: val})
 
     # Deduplicate providers across all model groups
-    for key in merged:
-        if isinstance(merged[key], dict):
-            _dedup_providers(merged[key])
+    for _key, _group in merged.items():
+        if isinstance(_group, dict):
+            _dedup_providers(_group)
 
     active_models: Dict[str, List[str]] = {}
     for group_name, models in merged.items():

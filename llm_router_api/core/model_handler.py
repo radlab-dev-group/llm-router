@@ -85,6 +85,14 @@ class ApiModel:
         )
 
     def as_dict(self) -> Dict[str, Any]:
+        """
+        Return the configuration as a dictionary.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary representation of this ApiModelConfig instance.
+        """
         return {
             "id": self.id,
             "name": self.name,
@@ -159,7 +167,7 @@ class ModelHandler:
         providers = self.api_model_config.models_configs[model_name].get(
             "providers", []
         )
-        if not len(providers):
+        if not providers:
             return None
 
         if fake:
@@ -222,7 +230,7 @@ class ModelHandler:
             models = []
             for name in names:
                 _p = models_configs[name].get("providers", [])
-                if not len(_p):
+                if not _p:
                     continue
 
                 model = _p[0].copy()

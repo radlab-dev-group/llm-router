@@ -7,6 +7,7 @@ stream‑handling code easier to test/mocks.
 """
 
 import requests
+
 from requests import Response
 from typing import Optional, Dict, Any, Iterator
 
@@ -34,6 +35,7 @@ class HttpRequestExecutor:
 
     @property
     def stream_handler(self):
+        """Return the internal StreamHandler instance."""
         return self._stream_handler
 
     # --------------------------------------------------------------------- #
@@ -101,7 +103,7 @@ class HttpRequestExecutor:
                 api_model_provider=api_model_provider,
             )
         except Exception:
-            raise
+            raise  # pylint: disable=raise-missing-from
 
     # --------------------------------------------------------------------- #
     # Public streaming request – dispatcher to StreamHandler helpers
@@ -162,7 +164,7 @@ class HttpRequestExecutor:
                     api_model_provider=api_model_provider,
                     force_text=force_text,
                 )
-            elif is_openai or is_ollama_to_openai or is_anthropic_to_openai:
+            if is_openai or is_ollama_to_openai or is_anthropic_to_openai:
                 return self._stream_handler.stream_openai(
                     url="",
                     payload=params,
@@ -392,12 +394,12 @@ class HttpRequestExecutor:
         supported; a ``GET`` will raise an exception.
         """
         if self._endpoint.prepare_response_function is None:
-            raise Exception(
+            raise RuntimeError(
                 "_prepare_response_function must be implemented "
                 "when calling api for each user message"
             )
         if self._endpoint.method != "POST":
-            raise Exception(
+            raise RuntimeError(
                 "_call_http_request_for_each_user_message "
                 'is not implemented for "GET" method'
             )

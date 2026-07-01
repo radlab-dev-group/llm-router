@@ -180,7 +180,8 @@ class KeepAliveMonitor:
             self.redis_client.delete(key)
 
         self.logger.debug(
-            f"[keep-alive-monitor] deleting {self._next_wakeup_zset_key()}"
+            "[keep-alive-monitor] deleting %s",
+            self._next_wakeup_zset_key(),
         )
         self.redis_client.delete(self._next_wakeup_zset_key())
 

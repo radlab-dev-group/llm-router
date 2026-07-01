@@ -16,15 +16,16 @@ Usage::
 
 from __future__ import annotations
 
-# Mark this as a CLI run before any import from ``llm_router_api`` that could
-# trigger the startup configuration validation (in ``constants.py``).
-import llm_router_api.base.const_global as _cg  # noqa: E402
-
-_cg.IS_CLI_COMMAND = True
-
 import sys
 import argparse
+
 from importlib.metadata import version as _pkg_version
+
+# Mark this as a CLI run before any import from ``llm_router_api`` that could
+# trigger the startup configuration validation (in ``constants.py``).
+import llm_router_api.base.const_global as _cg
+
+_cg.IS_CLI_COMMAND = True
 
 
 def _version() -> str:
@@ -113,7 +114,8 @@ def main(argv: list[str] | None = None) -> int:
             help=f"Do not apply {desc}.",
         )
 
-    # Register the ``config`` subparser (auto-discover local providers and merge configs).
+    # Register the ``config`` subparser
+    # (auto-discover local providers and merge configs).
     from .commands.config import register_config_subparser  # noqa: E402
 
     config_parser = subparsers.add_parser(

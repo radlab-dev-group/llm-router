@@ -27,7 +27,9 @@ class VaultKeyStore(KeyStoreInterface):
         auth_method: str = "kubernetes",
         role_id: str = "",
         secret_id: str = "",
-        k8s_service_account: str = "/var/run/secrets/kubernetes.io/serviceaccount/token",
+        k8s_service_account: str = (
+            "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        ),
         k8s_review_path: str = "/kubernetes/review",
         redis_client=None,
         cache_ttl: int = 300,
@@ -73,7 +75,7 @@ class VaultKeyStore(KeyStoreInterface):
     ) -> None:
         """Authenticate to Vault using the selected method."""
         if auth_method == "kubernetes":
-            with open(sa_path, "r") as f:
+            with open(sa_path, "r", encoding="utf-8") as f:
                 jwt = f.read().strip()
             self._client.auth_kubernetes(
                 role=os.environ.get("LLM_ROUTER_AUTH_VAULT_ROLE_ID", role_id),
@@ -107,8 +109,6 @@ class VaultKeyStore(KeyStoreInterface):
         Scans all keys in Vault since hashes are stored with random salts
         and cannot be looked up by hash directly.
         """
-        import hvault
-
         kv_path = self._mount_path.rstrip("/")
         try:
             secret = self._client.secrets.kv.v2.list_secrets(
@@ -275,7 +275,8 @@ class VaultKeyStore(KeyStoreInterface):
         }
         await self.create_key(new_record)
 
-        # Ensure grace_until is persisted (create_key always writes grace_until: None, override it)
+        # Ensure grace_until is persisted (create_key always writes grace_until:
+        # None, override it)
         await self.update_grace_until(new_id, new_record["grace_until"])
 
         # Invalidate old

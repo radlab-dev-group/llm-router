@@ -6,9 +6,9 @@ client = OpenAI(
     api_key="ollama",
 )
 
-responses_result = client.responses.create(
+RESPONSE_RESULT = client.responses.create(
     model="google/gemma-3-12b-it",
     # model="gpt-oss:120b",
     input="Write a short poem about the color blue",
 )
-print(responses_result.output_text)
+print(RESPONSE_RESULT.output_text)
