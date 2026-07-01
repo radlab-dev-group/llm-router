@@ -25,7 +25,7 @@ import logging
 import datetime
 
 from copy import deepcopy
-from typing import Optional, Dict, Any, Iterable, List, Tuple
+from typing import Optional, Dict, Any, Iterable, List, Tuple, Callable
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -609,7 +609,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         self._check_method_is_allowed(method=method)
 
         # Hook function to prepare response
-        self._prepare_response_function = None
+        self._prepare_response_function[Optional[Callable]] = None
 
         # marker when ep stared
         self._start_time = None
