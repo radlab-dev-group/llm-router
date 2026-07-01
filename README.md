@@ -1,6 +1,6 @@
 # LLM Router - Open-Source AI Gateway for Local and Cloud LLM Infrastructure
 
-**Version: 0.6.1**
+**Version: 0.6.2**
 
 [**LLM Router**](https://llm-router.cloud) is a service that can be deployed on‑premises or in the cloud. It adds a
 layer between any application and the LLM provider. In real time it controls traffic, distributes load among providers
@@ -130,8 +130,11 @@ pip install .[api]
 pip install .[api,metrics]
 ```
 
-> **Note:** When Prometheus metrics are enabled, `LLM_ROUTER_USE_PROMETHEUS=1` must be set and **Redis is required** (
-> used for provider availability state).
+> **Note:** When Prometheus metrics are enabled, `LLM_ROUTER_USE_PROMETHEUS=1`
+> must be set and **Redis is required** (used for provider availability state).  
+> The multiproc directory defaults to
+> `$HOME/.llm-router/metrics/prometheus/multiproc`
+> — override via the ``PROMETHEUS_MULTIPROC_DIR`` environment variable if needed.
 
 Then start the application with the environment variable set:
 
@@ -290,27 +293,28 @@ A full list of environment variables is available at: [API README](llm_router_ap
 
 ### Core variables
 
-| Variable                           | Default                                | Description                                                                                                          |
-|------------------------------------|----------------------------------------|----------------------------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_PROMPTS_DIR`           | `resources/prompts`                    | Directory containing predefined system prompts.                                                                      |
-| `LLM_ROUTER_MODELS_CONFIG`         | `resources/configs/models-config.json` | Path to the models configuration JSON file.                                                                          |
-| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`   | `pl`                                   | Default language for endpoint prompts.                                                                               |
-| `LLM_ROUTER_TIMEOUT`               | `0`                                    | Timeout (seconds) for llm-router API calls.                                                                          |
-| `LLM_ROUTER_EXTERNAL_TIMEOUT`      | `300`                                  | Timeout (seconds) for external model API calls.                                                                      |
-| `LLM_ROUTER_MAX_REQUEST_BODY_SIZE` | `10485760` (10 MB)                     | Maximum allowed request body size in bytes. Larger payloads are rejected with HTTP 413 to prevent memory exhaustion. |
-| `LLM_ROUTER_LOG_FILENAME`          | `llm-router.log`                       | Name of the log file.                                                                                                |
-| `LLM_ROUTER_LOG_LEVEL`             | `INFO`                                 | Logging level (e.g., INFO, DEBUG).                                                                                   |
-| `LLM_ROUTER_EP_PREFIX`             | `/api`                                 | Prefix for all API endpoints.                                                                                        |
-| `LLM_ROUTER_MINIMUM`               | `False`                                | Run service in proxy‑only mode.                                                                                      |
-| `LLM_ROUTER_IN_DEBUG`              | `False`                                | Run server in debug mode.                                                                                            |
-| `LLM_ROUTER_BALANCE_STRATEGY`      | `balanced`                             | Load‑balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`.     |
-| `LLM_ROUTER_SERVER_TYPE`           | `flask`                                | Server implementation: `flask`, `gunicorn`, `waitress`.                                                              |
-| `LLM_ROUTER_SERVER_PORT`           | `8080`                                 | Port on which the server listens.                                                                                    |
-| `LLM_ROUTER_SERVER_HOST`           | `localhost`                            | Host address for the server.                                                                                         |
-| `LLM_ROUTER_SERVER_WORKERS_COUNT`  | `2`                                    | Number of workers.                                                                                                   |
-| `LLM_ROUTER_SERVER_THREADS_COUNT`  | `8`                                    | Number of worker threads.                                                                                            |
-| `LLM_ROUTER_SERVER_WORKER_CLASS`   | `None`                                 | Worker class for servers that support it.                                                                            |
-| `LLM_ROUTER_USE_PROMETHEUS`        | `False`                                | Enable Prometheus metrics (`/metrics` endpoint).                                                                     |
+| Variable                           | Default                                          | Description                                                                                                                            |
+|------------------------------------|--------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_PROMPTS_DIR`           | `resources/prompts`                              | Directory containing predefined system prompts.                                                                                        |
+| `LLM_ROUTER_MODELS_CONFIG`         | `resources/configs/models-config.json`           | Path to the models configuration JSON file.                                                                                            |
+| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`   | `pl`                                             | Default language for endpoint prompts.                                                                                                 |
+| `LLM_ROUTER_TIMEOUT`               | `0`                                              | Timeout (seconds) for llm-router API calls.                                                                                            |
+| `LLM_ROUTER_EXTERNAL_TIMEOUT`      | `300`                                            | Timeout (seconds) for external model API calls.                                                                                        |
+| `LLM_ROUTER_MAX_REQUEST_BODY_SIZE` | `10485760` (10 MB)                               | Maximum allowed request body size in bytes. Larger payloads are rejected with HTTP 413 to prevent memory exhaustion.                   |
+| `LLM_ROUTER_LOG_FILENAME`          | `llm-router.log`                                 | Name of the log file.                                                                                                                  |
+| `LLM_ROUTER_LOG_LEVEL`             | `INFO`                                           | Logging level (e.g., INFO, DEBUG).                                                                                                     |
+| `LLM_ROUTER_EP_PREFIX`             | `/api`                                           | Prefix for all API endpoints.                                                                                                          |
+| `LLM_ROUTER_MINIMUM`               | `False`                                          | Run service in proxy‑only mode.                                                                                                        |
+| `LLM_ROUTER_IN_DEBUG`              | `False`                                          | Run server in debug mode.                                                                                                              |
+| `LLM_ROUTER_BALANCE_STRATEGY`      | `balanced`                                       | Load‑balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`.                       |
+| `LLM_ROUTER_SERVER_TYPE`           | `flask`                                          | Server implementation: `flask`, `gunicorn`, `waitress`.                                                                                |
+| `LLM_ROUTER_SERVER_PORT`           | `8080`                                           | Port on which the server listens.                                                                                                      |
+| `LLM_ROUTER_SERVER_HOST`           | `localhost`                                      | Host address for the server.                                                                                                           |
+| `LLM_ROUTER_SERVER_WORKERS_COUNT`  | `2`                                              | Number of workers.                                                                                                                     |
+| `LLM_ROUTER_SERVER_THREADS_COUNT`  | `8`                                              | Number of worker threads.                                                                                                              |
+| `LLM_ROUTER_SERVER_WORKER_CLASS`   | `None`                                           | Worker class for servers that support it.                                                                                              |
+| `LLM_ROUTER_USE_PROMETHEUS`        | `False`                                          | Enable Prometheus metrics (`/metrics` endpoint).                                                                                       |
+| `PROMETHEUS_MULTIPROC_DIR`         | `$HOME/.llm-router/metrics/prometheus/multiproc` | Directory where prometheus multiprocess worker data files are stored. Overrides are allowed but the default works in most deployments. |
 
 ### Masking & guardrail variables
 
