@@ -9,10 +9,15 @@ from __future__ import annotations
 
 import os
 
+from llm_router_api.core.metrics_handler import MetricsHandler
+
 
 IS_PROMETHEUS_AVAILABLE = False
 try:
-    os.environ.setdefault("PROMETHEUS_MULTIPROC_DIR", "./logs/prometheus_multiproc")
+    os.environ.setdefault(
+        "PROMETHEUS_MULTIPROC_DIR",
+        MetricsHandler.prometheus_multiproc_dir_path(),
+    )
 
     from prometheus_client import (
         CollectorRegistry,

@@ -75,17 +75,28 @@ class MetricsHandler:
         Ensure a clean directory for prometheus_client's multiprocess mode.
         The directory is stored in the environment variable
         ``PROMETHEUS_MULTIPROC_DIR`` – the client library reads it automatically.
+
+        Default (when the env var is unset)::
+
+            $HOME/.llm-router/metrics/prometheus/multiproc
         """
         dir_path = os.getenv("PROMETHEUS_MULTIPROC_DIR")
         if not dir_path:
-            # Use a sub‑directory of the system temp dir; you can also set
-            # a fixed path via the env var if you prefer.
-            dir_path = os.path.join(
-                tempfile.gettempdir(), "./logs/prometheus_multiproc"
-            )
+            dir_path = MetricsHandler.prometheus_multiproc_dir_path()
             os.environ["PROMETHEUS_MULTIPROC_DIR"] = dir_path
 
         # Remove any stale files from a previous run (important when hot‑reloading).
         if os.path.isdir(dir_path):
             shutil.rmtree(dir_path)
         os.makedirs(dir_path, exist_ok=True)
+
+    @staticmethod
+    def prometheus_multiproc_dir_path():
+        dir_path = os.path.join(
+            os.path.expanduser("~"),
+            ".llm-router",
+            "metrics",
+            "prometheus",
+            "multiproc",
+        )
+        return dir_path
