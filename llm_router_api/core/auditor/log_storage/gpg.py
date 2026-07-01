@@ -69,9 +69,7 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
         """
 
         self._import_result = None
-        self._gpg = gnupg.GPG(
-            gnupghome=str(self.AUDITOR_PUB_KEY_DIR)
-        )  # pylint: disable=unexpected-keyword-arg
+        self._gpg = gnupg.GPG(gnupghome=str(self.AUDITOR_PUB_KEY_DIR))  # pylint: disable=unexpected-keyword-arg
         self._gpg.encoding = "utf-8"
 
         self.__verify()
