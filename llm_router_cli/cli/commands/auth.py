@@ -27,6 +27,8 @@ import argparse
 
 from pathlib import Path
 
+import typing as t
+
 # ---------------------------------------------------------------------------
 # Shared argument helpers — avoid repeating the same --store / --auth-redis-*
 # arguments on every subparser.
@@ -786,10 +788,11 @@ def _handle_policy(args, sub: list) -> int:
 # Rate-limit handler.
 # ---------------------------------------------------------------------------
 
-_RATE_LIMIT_COMMANDS = {
-    "list": lambda sub: _rl_list(sub),
-    "apply": lambda sub: _rl_apply(sub),
-    "remove": lambda sub: _rl_remove(sub),
+_RATE_LIMIT_COMMANDS: dict[str, t.Callable[[list[str]], int]] = {  # noqa: F821
+    # Forward references — functions defined below; resolved at call time.
+    "list": _rl_list,  # noqa: F821
+    "apply": _rl_apply,  # noqa: F821
+    "remove": _rl_remove,  # noqa: F821
 }
 
 
@@ -870,10 +873,8 @@ def _rl_apply(sub: list[str]) -> int:
         rate_limit = max(1, daily_limit // 1440)
 
     # Apply based on store type
-    from pathlib import Path as _Path  # pylint: disable=reimport
-
     seed_file = _DEFAULT_SEED_FILE
-    seed_path = _Path(seed_file)
+    seed_path = Path(seed_file)
 
     if store == "memory":
         # Edit seed file directly
@@ -973,10 +974,8 @@ def _rl_remove(sub: list[str]) -> int:
     store = getattr(parsed, "store", "memory")
     redis_kwargs = _auth_redis_kwargs(parsed)
 
-    from pathlib import Path as _Path  # pylint: disable=reimport
-
     seed_file = _DEFAULT_SEED_FILE
-    seed_path = _Path(seed_file)
+    seed_path = Path(seed_file)
 
     if store == "memory":
         if not seed_path.exists():

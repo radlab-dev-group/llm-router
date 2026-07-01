@@ -109,7 +109,7 @@ class KeepAlive:
         endpoint = self._endpoint_for(api_type, api_host)
         if not endpoint:
             self._logger.warning(
-                "[keep-alive] unsupported " "api_type=%s (model=%s)",  # pylint: disable=W1404
+                "[keep-alive] unsupported " "api_type=%s (model=%s)",
                 api_type,
                 req.model_name,
             )
@@ -122,7 +122,7 @@ class KeepAlive:
             )
             response.raise_for_status()
             self._logger.debug(
-                "[keep-alive] response model=%s " "api_type=%s status=%s",  # pylint: disable=W1404
+                "[keep-alive] response model=%s " "api_type=%s status=%s",
                 req.model_name,
                 req.model_name,
                 response.status_code,
@@ -138,7 +138,7 @@ class KeepAlive:
             return
 
         self._logger.info(
-            "[keep-alive] Sending prompt to %s " "model=%s host=%s",  # pylint: disable=W1404
+            "[keep-alive] Sending prompt to %s " "model=%s host=%s",
             api_type,
             req.model_name,
             req.host,
