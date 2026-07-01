@@ -1,6 +1,5 @@
 import os
 import shutil
-import tempfile
 import threading
 
 from flask import current_app
