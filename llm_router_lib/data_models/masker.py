@@ -31,8 +31,6 @@ class FastMaskerModel(BaseMaskerModel):
     generic masking strategy.
     """
 
-    ...
-
 
 #
 #
