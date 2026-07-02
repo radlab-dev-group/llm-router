@@ -451,16 +451,15 @@ class StreamHandler:
     ) -> Iterator[bytes]:
         request_kwargs = {
             "url": url,
-            "timeout": endpoint.timeout,
             "stream": True,
             "headers": headers,
         }
         if method == "POST":
             request_kwargs["json"] = payload
-            resp = requests.post(**request_kwargs)
+            resp = requests.post(**request_kwargs, timeout=endpoint.timeout)
         else:
             request_kwargs["params"] = payload
-            resp = requests.get(**request_kwargs)
+            resp = requests.get(**request_kwargs, timeout=endpoint.timeout)
 
         with resp as r:
             r.raise_for_status()
@@ -764,16 +763,15 @@ class StreamHandler:
                 try:
                     req_kwargs = {
                         "url": url,
-                        "timeout": endpoint.timeout,
                         "stream": True,
                         "headers": headers,
                     }
                     if method == "POST":
                         req_kwargs["json"] = payload
-                        resp = requests.post(**req_kwargs)
+                        resp = requests.post(**req_kwargs, timeout=endpoint.timeout)
                     else:
                         req_kwargs["params"] = payload
-                        resp = requests.get(**req_kwargs)
+                        resp = requests.get(**req_kwargs, timeout=endpoint.timeout)
 
                     with resp:
                         resp.raise_for_status()
