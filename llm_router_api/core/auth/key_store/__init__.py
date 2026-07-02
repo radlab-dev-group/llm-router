@@ -5,7 +5,7 @@ Key store factory — selects the concrete backend based on ``store_type``.
 from __future__ import annotations
 
 import os
-import random
+import secrets
 
 from .interface import KeyStoreInterface
 from .memory import MemoryKeyStore
@@ -133,7 +133,7 @@ def create_key_store(
     if cache_ttl and int(cache_ttl) > 0:
         from .redis_cache import RedisKeyStoreCache
 
-        ttl = int(cache_ttl) + random.randint(0, int(cache_jitter or "0"))
+        ttl = int(cache_ttl) + secrets.randbelow(int(cache_jitter or "0") + 1)
         store = RedisKeyStoreCache(store, redis_client=shared_client, ttl=ttl)
 
     return store, shared_client

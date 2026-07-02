@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import redis
-import random
+import secrets
 import asyncio
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
@@ -45,7 +45,7 @@ class RedisKeyStoreCache(KeyStoreInterface):
     def _set_with_jitter(self, key: str, value: str) -> None:
         if self._redis is None:
             return
-        ttl = self._ttl + random.randint(0, self._jitter)
+        ttl = self._ttl + secrets.randbelow(self._jitter + 1)
         self._redis.setex(key, ttl, value)
 
     def _invalidate(self, key_id: str, key_hash: str) -> None:
