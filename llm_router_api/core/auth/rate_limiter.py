@@ -14,6 +14,39 @@ import redis
 from dataclasses import dataclass
 
 
+# Atomowy Lua script: czyszczenie starego, sprawdzanie limitu i ew. dodanie requestu.
+# Zwraca tablice {allowed, remaining_or_oldest_ts}:
+#   allowed == 1 -> dozwolony, remaining to liczba dostepnych slotow PO tym requeste
+#   allowed == 0 -> odrzucony, remaining = czas do odswiezienia (najstarszy entry + window - now)
+_ATOMIC_LUA = """
+    local bucket = KEYS[1]
+    local now      = tonumber(ARGV[1])
+    local window   = tonumber(ARGV[2])
+    local limit    = tonumber(ARGV[3])
+
+    -- Usun entry poza oknem
+    redis.call('zremrangebyscore', bucket, 0, now - window)
+
+    -- Polacz bierace
+    local count = redis.call('zcard', bucket)
+
+    if count >= limit then
+        -- Odrzucony — policz retry_after z najstarszego entry
+        local oldest = redis.call('zrange', bucket, 0, 0, 'withscores')
+        local oldest_ts = oldest[1][2]
+        local retry_after = math.ceil(oldest_ts + window - now)
+        if retry_after < 1 then retry_after = 1 end
+        return {0, retry_after}
+    end
+
+    -- Dozwolony — dodaj ten request
+    local member = now .. ':' .. ARGV[4]
+    redis.call('zadd', bucket, now, member)
+    redis.call('expire', bucket, window + 1)
+    return {1, limit - count - 1}
+"""
+
+
 @dataclass
 class RateLimitResult:
     """Result of a rate limit check."""
@@ -55,10 +88,21 @@ class RedisRateLimiter:
                 password=redis_password,
             )
         self.WINDOW = window
+        # Register the Lua script once on first use (EVALSHA optimization)
+        self._atomic_script: redis.Script | None = None
+
+    def _get_atomic_script(self) -> redis.Script:
+        """Return a registered EVALSHA-ready Script for the atomic rate-limit logic."""
+        if self._atomic_script is None:
+            self._atomic_script = self._redis.register_script(_ATOMIC_LUA)
+        return self._atomic_script
 
     def is_allowed(self, key_id: str, ip: str, limit: int) -> RateLimitResult:
         """
         Check if a request is within the rate limit.
+
+        Uses an atomic Redis Lua script so that check-then-set cannot be
+        interleaved by concurrent requests.
 
         Parameters
         ----------
@@ -75,34 +119,21 @@ class RedisRateLimiter:
             Whether the request is allowed and how many are remaining.
         """
         now = time.time()
-        window_start = now - self.WINDOW
         bucket = f"{self.PREFIX}:{key_id}:{ip}"
 
-        # Remove old entries outside the window
-        self._redis.zremrangebyscore(bucket, 0, window_start)
+        script = self._get_atomic_script()
+        result = script(
+            keys=[bucket],
+            args=[now, self.WINDOW, limit, uuid.uuid4().hex[:6]],
+        )
 
-        # Count current entries in window
-        current_count = self._redis.zcard(bucket)
-
-        if current_count >= limit:
-            # Get the oldest entry to calculate retry_after
-            oldest = self._redis.zrange(bucket, 0, 0, withscores=True)
-            if oldest:
-                oldest_ts = oldest[0][1]
-                retry_after = int(oldest_ts + self.WINDOW - now) + 1
-                retry_after = max(1, retry_after)
-            else:
-                retry_after = self.WINDOW
+        # Lua returns {allowed, value} — both are strings in decode_responses=True mode
+        allowed = int(result[0]) == 1
+        if allowed:
+            remaining = int(result[1])
+            return RateLimitResult(allowed=True, remaining=remaining, retry_after=0)
+        else:
+            retry_after = int(result[1])
             return RateLimitResult(
                 allowed=False, remaining=0, retry_after=retry_after
             )
-
-        # Add this request
-        member = f"{now}:{uuid.uuid4().hex[:6]}"
-        pipe = self._redis.pipeline()
-        pipe.zadd(bucket, {member: now})
-        pipe.expire(bucket, self.WINDOW + 1)
-        pipe.execute()
-
-        remaining = limit - current_count - 1
-        return RateLimitResult(allowed=True, remaining=remaining, retry_after=0)

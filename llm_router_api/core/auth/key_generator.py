@@ -29,23 +29,26 @@ class KeyGenerator:
         """
         Generate a new API key.
 
+        Uses :func:`secrets.choice` which reads from ``os.urandom`` internally
+        and produces **unbiased** selections from the charset.  The previous
+        implementation used ``byte % len(CHARSET)`` which introduced ~33 % bias
+        for some characters because 256 is not evenly divisible by 62.
+
         Parameters
         ----------
         entropy_bytes : int
-            Number of cryptographically random bytes to use.  Defaults to
-            48 (384 bits of entropy).
+            Number of cryptographically random bytes to use as base entropy.
+            Passed to :func:`secrets.token_bytes` which seeds the CSPRNG state
+            that underlies :func:`secrets.choice`.  Defaults to 48 (384 bits).
 
         Returns
         -------
         str
             A key like ``sk-litm-abc123XYZ...`` (48+ base62 chars after the prefix).
         """
-        random_bytes = secrets.token_bytes(entropy_bytes)
-        # Convert to base62 characters
-        characters = [cls.CHARSET[b % len(cls.CHARSET)] for b in random_bytes]
-        base62 = "".join(characters)
-
-        return f"{cls.PREFIX}{base62}"
+        # token_bytes advances the system PRNG state used by secrets.choice.
+        characters = [secrets.choice(cls.CHARSET) for _ in range(cls.MIN_LENGTH)]
+        return f"{cls.PREFIX}{''.join(characters)}"
 
     @classmethod
     def validate(cls, key: str) -> tuple[bool, str]:

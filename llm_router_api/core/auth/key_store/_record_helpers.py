@@ -26,3 +26,21 @@ DEFAULT_RECORD_FIELDS = {
     "is_active": True,
     "rotate_at": None,
 }
+
+
+def build_key_record(raw: dict) -> dict:
+    """Normalize a raw key record into the standard ApiKeyRecord shape.
+
+    Fills defaults from :data:`DEFAULT_RECORD_FIELDS` where keys are missing,
+    and ensures required interface fields are present. Plaintext is *never*
+    included — only available at creation time.
+    """
+    record = dict(raw)  # avoid mutating caller
+    for field, default in DEFAULT_RECORD_FIELDS.items():
+        if field not in record:
+            record[field] = default
+    record.setdefault("key_hash", None)
+    record.setdefault("key_plain", None)
+    record.setdefault("metadata", {})
+    record.setdefault("policy_override", None)
+    return record

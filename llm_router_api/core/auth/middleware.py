@@ -225,14 +225,12 @@ class AuthMiddleware:
             key_id = f"x-api-key:{key[:7] if len(key) > 6 else key}"
             return key, key_id
 
-        # Priority 3: query parameter
-        query_key = request_obj.args.get("api_key") or request_obj.args.get(
-            "api-key"
-        )
-        if query_key:
-            key = query_key.strip()
-            key_id = f"query:{key[:7] if len(key) > 6 else key}"
-            return key, key_id
+        # Priority 3 (deprecated): reject api_key in query strings but log a warning
+        # to help identify clients still using the insecure channel.
+        if "api_key" in request_obj.args or "api-key" in request_obj.args:
+            self.logger.warning(
+                "api_key in query string rejected; use Authorization or x-api-key header"
+            )
 
         return None, ""
 
