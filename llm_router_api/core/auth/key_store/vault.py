@@ -16,12 +16,7 @@ import bcrypt
 import logging
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
-from llm_router_api.core.auth.key_store._record_helpers import (
-    build_key_record,
-    gen_key_prefix,
-)
-
-_logger = logging.getLogger(__name__)
+from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix
 
 _logger = logging.getLogger(__name__)
 
