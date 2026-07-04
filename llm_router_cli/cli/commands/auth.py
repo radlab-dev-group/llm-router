@@ -786,12 +786,6 @@ def _handle_policy(args, sub: list) -> int:
 # Rate-limit handler.
 # ---------------------------------------------------------------------------
 
-_RATE_LIMIT_COMMANDS = {
-    "list": lambda sub: _rl_list(sub),
-    "apply": lambda sub: _rl_apply(sub),
-    "remove": lambda sub: _rl_remove(sub),
-}
-
 
 def _handle_rate_limit(sub: list[str]) -> int:
     """Handle rate-limit subcommands."""
@@ -800,11 +794,14 @@ def _handle_rate_limit(sub: list[str]) -> int:
         return 1
 
     cmd = sub[0]
-    handler = _RATE_LIMIT_COMMANDS.get(cmd)
-    if handler is None:
-        print(f"Unknown rate-limit command: {cmd}")
-        return 1
-    return handler(sub)
+    if cmd == "list":
+        return _rl_list(sub)
+    if cmd == "apply":
+        return _rl_apply(sub)
+    if cmd == "remove":
+        return _rl_remove(sub)
+    print(f"Unknown rate-limit command: {cmd}")
+    return 1
 
 
 def _rl_list(sub: list[str]) -> int:
