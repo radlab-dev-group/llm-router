@@ -229,7 +229,8 @@ class AuthMiddleware:
         # to help identify clients still using the insecure channel.
         if "api_key" in request_obj.args or "api-key" in request_obj.args:
             self.logger.warning(
-                "api_key in query string rejected; use Authorization or x-api-key header"
+                "api_key in query string rejected; "
+                "use Authorization or x-api-key header"
             )
 
         return None, ""

@@ -23,6 +23,8 @@ from llm_router_api.core.auth.key_store._record_helpers import (
 
 _logger = logging.getLogger(__name__)
 
+_logger = logging.getLogger(__name__)
+
 
 class VaultKeyStore(KeyStoreInterface):
     """HashiCorp Vault KV v2 as the source of truth for API keys."""

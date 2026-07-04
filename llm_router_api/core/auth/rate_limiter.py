@@ -17,7 +17,8 @@ from dataclasses import dataclass
 # Atomowy Lua script: czyszczenie starego, sprawdzanie limitu i ew. dodanie requestu.
 # Zwraca tablice {allowed, remaining_or_oldest_ts}:
 #   allowed == 1 -> dozwolony, remaining to liczba dostepnych slotow PO tym requeste
-#   allowed == 0 -> odrzucony, remaining = czas do odswiezienia (najstarszy entry + window - now)
+#   allowed == 0 -> odrzucony, remaining = czas do odswiezienia
+#   (najstarszy entry + window - now)
 _ATOMIC_LUA = """
     local bucket = KEYS[1]
     local now      = tonumber(ARGV[1])

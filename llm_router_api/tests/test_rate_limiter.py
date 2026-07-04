@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+
 from typing import Any
 
-import pytest
+from llm_router_api.core.auth.rate_limiter import RedisRateLimiter, RateLimitResult
+
 
 # ---------------------------------------------------------------------------
 # FakeRedis mimics Redis sorted-set commands for unit testing without a server.
 # ---------------------------------------------------------------------------
-
-
 class FakeRedis:
     """Minimal fake that supports the sorted-set operations used by the rate limiter."""
 
@@ -139,13 +138,6 @@ class FakeScript:
 
 # ---------------------------------------------------------------------------
 # The rate limiter under test
-# ---------------------------------------------------------------------------
-
-from llm_router_api.core.auth.rate_limiter import RedisRateLimiter, RateLimitResult
-
-
-# ---------------------------------------------------------------------------
-# Tests
 # ---------------------------------------------------------------------------
 
 

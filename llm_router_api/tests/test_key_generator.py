@@ -1,11 +1,12 @@
-"""Tests for KeyGenerator — verifies format, length, and unbiased character distribution."""
+"""
+Tests for KeyGenerator — verifies format, length,
+and unbiased character distribution.
+"""
 
 from __future__ import annotations
 
 import string
 from collections import Counter
-
-import pytest
 
 from llm_router_api.core.auth.key_generator import KeyGenerator
 
@@ -23,7 +24,10 @@ class TestKeyFormat:
         assert key.startswith(KeyGenerator.PREFIX)
 
     def test_min_length(self) -> None:
-        """Generated key should have at least MIN_LENGTH base62 characters after prefix."""
+        """
+        Generated key should have at least MIN_LENGTH
+        base62 characters after the prefix
+        """
         key = KeyGenerator.generate()
         suffix = key[len(KeyGenerator.PREFIX) :]
         assert len(suffix) >= KeyGenerator.MIN_LENGTH
@@ -38,7 +42,8 @@ class TestKeyFormat:
         """Should accept custom entropy_bytes parameter."""
         key = KeyGenerator.generate(entropy_bytes=32)
         suffix = key[len(KeyGenerator.PREFIX) :]
-        # 32 bytes can produce up to floor(32*8/log2(62)) ≈ 44 chars, so may be less than MIN_LENGTH
+        # 32 bytes can produce up to floor(32*8/log2(62))
+        #   ≈ 44 chars, so may be less than MIN_LENGTH
         # Actually the generation keeps generating until MIN_LENGTH is reached
         assert len(suffix) >= KeyGenerator.MIN_LENGTH
 
