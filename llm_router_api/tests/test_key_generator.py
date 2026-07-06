@@ -141,13 +141,13 @@ class TestKeyValidation:
         assert "Invalid key format" in msg
 
     def test_invalid_prefix(self) -> None:
-        valid, msg = KeyGenerator.validate(
+        valid, _ = KeyGenerator.validate(
             "wrong-prefix-" + "a" * KeyGenerator.MIN_LENGTH
         )
         assert valid is False
 
     def test_special_chars_rejected(self) -> None:
-        valid, msg = KeyGenerator.validate(KeyGenerator.PREFIX + "abc!@#")
+        valid, _ = KeyGenerator.validate(KeyGenerator.PREFIX + "abc!@#")
         assert (
             valid is False
             or len(KeyGenerator.PREFIX + "abc!@#")

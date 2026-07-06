@@ -45,7 +45,7 @@ class FakeRedis:
         items = sorted(self._data[bucket].items(), key=lambda x: x[1])
         sliced = items[start : stop + 1 if stop >= 0 else None]
         if withscores:
-            return [(m, s) for m, s in sliced]
+            return list(sliced)
         return [m for m, s in sliced]
 
     def zadd(self, bucket: str, mapping: dict[str, float]) -> int:
@@ -122,8 +122,7 @@ class FakeScript:
             if oldest:
                 oldest_ts = oldest[0][1]
                 retry_after = int(oldest_ts + window - now)
-                if retry_after < 1:
-                    retry_after = 1
+                retry_after = max(retry_after, 1)
             else:
                 retry_after = 1
             return [str(0), str(retry_after)]
@@ -156,7 +155,7 @@ class TestRateLimiterAtomicity:
 
     def test_denies_over_limit(self) -> None:
         """Should deny requests that exceed the rate limit."""
-        for i in range(5):
+        for _ in range(5):
             self.limiter.is_allowed("key2", "10.0.0.1", 5)
 
         result = self.limiter.is_allowed("key2", "10.0.0.1", 5)
@@ -166,9 +165,9 @@ class TestRateLimiterAtomicity:
 
     def test_separate_keys_have_separate_limits(self) -> None:
         """Different key_ids should have independent rate limits."""
-        for i in range(3):
+        for _ in range(3):
             self.limiter.is_allowed("keyA", "10.0.0.1", 5)
-        for i in range(3):
+        for _ in range(3):
             self.limiter.is_allowed("keyB", "10.0.0.1", 5)
 
         # Both should still be allowed (only 3/5 used each)
@@ -179,9 +178,9 @@ class TestRateLimiterAtomicity:
 
     def test_separate_ips_have_separate_limits(self) -> None:
         """Different client IPs should have independent rate limits."""
-        for i in range(3):
+        for _ in range(3):
             self.limiter.is_allowed("key1", "10.0.0.1", 5)
-        for i in range(3):
+        for _ in range(3):
             self.limiter.is_allowed("key1", "10.0.0.2", 5)
 
         # Both should still be allowed (only 3/5 used each)
@@ -192,7 +191,7 @@ class TestRateLimiterAtomicity:
 
     def test_retry_after_positive(self) -> None:
         """When denied, retry_after should be a positive integer."""
-        for i in range(5):
+        for _ in range(5):
             self.limiter.is_allowed("key3", "10.0.0.1", 5)
 
         result = self.limiter.is_allowed("key3", "10.0.0.1", 5)
