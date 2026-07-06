@@ -1474,8 +1474,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 f"Provider {provider_id} returned HTTP {response.status_code}"
             )
         try:
-            if self._prepare_response_function:
-                return self._prepare_response_function(response)
+            if self._prepare_response_function is not None:
+                result = self._prepare_response_function(response)
+                return result
             return response.json()
         except json.JSONDecodeError:
             provider_id = api_model_provider.id if api_model_provider else "unknown"
