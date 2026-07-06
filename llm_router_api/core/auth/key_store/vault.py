@@ -128,11 +128,8 @@ class VaultKeyStore(KeyStoreInterface):
             )
         except Exception as exc:
             # If Vault is down we return None (the caller will reject the key)
-            (
-                self.logger.error("Vault list_secrets failed: %s", exc)
-                if hasattr(self, "logger")
-                else None
-            )
+            # self.logger.error("Vault list_secrets failed: %s", exc)
+            print("Vault list_secrets failed: %s", exc)
             return None
 
         secrets_data = secret.get("data", {}) or {}
