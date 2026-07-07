@@ -766,24 +766,16 @@ class EndpointI(SecureEndpointI, abc.ABC):
         error_message = (
             sanitize_error_message(str(body)) if body else "Error while processing"
         )
-        if any(t in self._ep_types_str for t in ALL_PROVIDERS):
-            error_body = {
-                "error": {
-                    "message": error_message,
-                    "type": "api_error",  # or ``invalid_request_error``
-                    "param": None,
-                    "code": status_code,
-                }
-            }
-        else:
-            if body is None or not str(body):
-                error_body = {"status": False}
-            else:
-                error_body = {
-                    "status": False,
-                    "body": sanitize_error_message(str(body)),
-                }
-
+        is_provider = any(t in self._ep_types_str for t in ALL_PROVIDERS)
+        error_body = {
+            "error": {
+                "message": error_message,
+                "type": "api_error" if is_provider else "builtin_error",
+                "param": None,
+                "code": status_code,
+            },
+            "status": False,
+        }
         return error_body, status_code
 
     # ------------------------------------------------------------------
@@ -1089,12 +1081,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
 
         # Code - definition
-        #  * 400 - Rise by internal httprequest
-        #  * 404 - Not Found
+        #  * 429 - Too Many Requests (rate limited)
         #  * 503 - Service Unavailable
         #  * 504 - Gateway Timeout
         #  * > 500 - General error
-        RETRY_WHEN_STATUS = [400, 404, 429, 503, 504, 500]
+        RETRY_WHEN_STATUS = [429, 503, 504, 500]
         TIME_TO_WAIT_SEC = 0.1
         MAX_RECONNECTIONS = 10
 
@@ -1243,30 +1234,18 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         params=params, options=options, fake=True
                     )
 
-                    (
-                        is_openai_to_ollama,
-                        is_ollama_to_openai,
-                        is_ollama,
-                        is_openai,
-                        is_openai_to_lmstudio,
-                        is_ollama_to_lmstudio,
-                        is_lmstudio_passthrough,
-                    ) = self._http_executor.stream_handler.resolve_stream_type(
-                        endpoint_ep_types=self._ep_types_str,
-                        api_model_provider=api_model_provider,
+                    stream_type = (
+                        self._http_executor.stream_handler.resolve_stream_type(
+                            endpoint_ep_types=self._ep_types_str,
+                            api_model_provider=api_model_provider,
+                        )
                     )
 
                     return self._http_executor.stream_response(
                         ep_url="",
                         params=params,
                         options=options,
-                        is_ollama=is_ollama,
-                        is_openai_to_ollama=is_openai_to_ollama,
-                        is_ollama_to_openai=is_ollama_to_openai,
-                        is_openai=is_openai,
-                        is_openai_to_lmstudio=is_openai_to_lmstudio,
-                        is_ollama_to_lmstudio=is_ollama_to_lmstudio,
-                        is_lmstudio=is_lmstudio_passthrough,
+                        stream_type=stream_type,
                         api_model_provider=api_model_provider,
                         force_text="Content blocked by guardrail. "
                         "Reason: Not safe content!",
@@ -1352,11 +1331,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 return self._return_response_or_rerun(
                     api_model_provider=api_model_provider,
                     ep_url=ep_url,
-                    prompt_str=prompt_str,
+                    prompt_str=prompt_str or "",
                     orig_params=orig_params,
                     params=params,
-                    options=options,
-                    reconnect_number=reconnect_number,
+                    options=options or {},
+                    reconnect_number=reconnect_number or 0,
                 )
 
             if prompt_name is not None:
@@ -1377,18 +1356,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         "Streaming is available only for single message"
                     )
 
-                (
-                    is_openai_to_ollama,
-                    is_ollama_to_openai,
-                    is_ollama,
-                    is_openai,
-                    is_openai_to_lmstudio,
-                    is_ollama_to_lmstudio,
-                    is_lmstudio_passthrough,
-                    is_anthropic_to_openai,
-                    is_openai_to_anthropic,
-                    is_anthropic,
-                ) = self._http_executor.stream_handler.resolve_stream_type(
+                stream_type = self._http_executor.stream_handler.resolve_stream_type(
                     endpoint_ep_types=self._ep_types_str,
                     api_model_provider=api_model_provider,
                 )
@@ -1397,27 +1365,18 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     ep_url=ep_url,
                     params=params,
                     options=options,
-                    is_ollama=is_ollama,
-                    is_openai_to_ollama=is_openai_to_ollama,
-                    is_ollama_to_openai=is_ollama_to_openai,
-                    is_openai=is_openai,
-                    is_openai_to_lmstudio=is_openai_to_lmstudio,
-                    is_ollama_to_lmstudio=is_ollama_to_lmstudio,
-                    is_lmstudio=is_lmstudio_passthrough,
-                    is_anthropic_to_openai=is_anthropic_to_openai,
-                    is_openai_to_anthropic=is_openai_to_anthropic,
-                    is_anthropic=is_anthropic,
+                    stream_type=stream_type,
                     api_model_provider=api_model_provider,
                 )
 
             return self._return_response_or_rerun(
                 api_model_provider=api_model_provider,
                 ep_url=ep_url,
-                prompt_str=prompt_str,
+                prompt_str=prompt_str or "",
                 orig_params=orig_params,
                 params=params,
-                options=options,
-                reconnect_number=reconnect_number,
+                options=options or {},
+                reconnect_number=reconnect_number or 0,
             )
         except Exception as e:
             self.logger.exception(e)
@@ -1474,8 +1433,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 f"Provider {provider_id} returned HTTP {response.status_code}"
             )
         try:
-            if self._prepare_response_function:
-                return self._prepare_response_function(response)
+            if self._prepare_response_function is not None:
+                result = self._prepare_response_function(response)
+                return result
             return response.json()
         except json.JSONDecodeError:
             provider_id = api_model_provider.id if api_model_provider else "unknown"

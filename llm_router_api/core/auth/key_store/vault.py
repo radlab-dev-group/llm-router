@@ -13,8 +13,12 @@ import time
 import uuid
 import bcrypt
 
+import logging
+
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix
+
+_logger = logging.getLogger(__name__)
 
 
 class VaultKeyStore(KeyStoreInterface):
@@ -107,7 +111,14 @@ class VaultKeyStore(KeyStoreInterface):
         """Look up a key record by its plaintext key using bcrypt.checkpw.
 
         Scans all keys in Vault since hashes are stored with random salts
-        and cannot be looked up by hash directly.
+        and cannot be looked up by hash directly.  This is **O(n)** and may
+        cause high latency when many keys exist — consider migrating to the
+        :meth:`get_key_by_hash` path (which the ``RedisKeyStoreCache`` layer
+        handles automatically) for production workloads with >50 keys.
+
+        .. note::
+           Each authentication triggers *one* ``list_secrets`` call plus one
+           ``read_secret_version`` per Vault key until a match is found.
         """
         kv_path = self._mount_path.rstrip("/")
         try:
@@ -115,11 +126,22 @@ class VaultKeyStore(KeyStoreInterface):
                 path=kv_path,
                 mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
             )
-        except Exception:
+        except Exception as exc:
+            # If Vault is down we return None (the caller will reject the key)
+            # self.logger.error("Vault list_secrets failed: %s", exc)
+            print("Vault list_secrets failed: %s", exc)
             return None
 
         secrets_data = secret.get("data", {}) or {}
         keys = secrets_data.get("keys") or []
+
+        # Warn when scanning many keys (indicates need for hash-based lookup)
+        if len(keys) > 50:
+            _logger.warning(
+                "Vault scan of %d keys per plain-text auth check — "
+                "consider using get_key_by_hash (cached) for better performance",
+                len(keys),
+            )
 
         for key_name in keys:
             try:
@@ -332,13 +354,22 @@ class VaultKeyStore(KeyStoreInterface):
         )
 
     async def delete_key(self, key_id: str) -> None:
+        """Delete key from Vault.
+
+        Only "not found" / 404 errors are silently ignored (key may have been
+        deleted externally).  Network or authentication errors propagate to the
+        caller so that failures are not masked.
+        """
         try:
             self._client.delete_secret(
                 path=key_id,
                 mount_point=self._mount_path,
             )
-        except Exception:  # key may not exist — treat as no-op
-            pass
+        except Exception as exc:
+            # Treat HTTP 404 as "key already gone" — no-op
+            if "404" in str(exc) or "not found" in str(exc).lower():
+                return
+            raise
 
     async def list_keys(self) -> list[dict]:
         """List all keys under the mount path, including disabled ones."""
@@ -381,13 +412,26 @@ class VaultKeyStore(KeyStoreInterface):
             return []
 
     async def update_last_used(self, key_id: str) -> None:
-        """Update last_used_at for a key."""
-        record = await self.get_key_by_id(key_id)
-        if record:
-            record["last_used_at"] = time.time()
-            await self.create_key(
-                {**record, "key_plain": "placeholder"}
-            )  # placeholder
+        """Update last_used_at for a key via targeted write — never re-hashes."""
+        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
+        try:
+            secret_data = self._client.secrets.kv.v2.read_secret_version(
+                path=kv_path,
+                mount_point=(
+                    self._mount_path.split("/")[0]
+                    if "/" in self._mount_path
+                    else None
+                ),
+            )
+            record = secret_data.get("data", {}).get("data", {}) or {}
+        except Exception:  # key not found — fire-and-forget semantics
+            return
+        record["last_used_at"] = time.time()
+        self._client.write_secret(
+            path=key_id,
+            mount_point=self._mount_path,
+            data={"data": record},
+        )
 
     def update_last_used_sync(self, key_id: str) -> None:
         """Sync version of :meth:`update_last_used`.

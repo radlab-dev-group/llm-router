@@ -24,32 +24,30 @@ from llm_router_api.core.errors import sanitize_error_message
 # Helper enum for stream‑type resolution
 # ------------------------------------------------#
 class StreamConversion(Enum):
-    """Flags indicating which conversion path should be taken."""
+    """
+    Flags indicating which conversion path should be taken.
+    """
 
-    OPENAI_TO_OLLAMA = auto()
-    OLLAMA_TO_OPENAI = auto()
     OLLAMA = auto()
     OPENAI = auto()
+    ANTHROPIC = auto()
+    OPENAI_TO_OLLAMA = auto()
+    OLLAMA_TO_OPENAI = auto()
     OPENAI_TO_LMSTUDIO = auto()
     OLLAMA_TO_LMSTUDIO = auto()
     LMSTUDIO_PASSTHROUGH = auto()
     ANTHROPIC_TO_OPENAI = auto()
     OPENAI_TO_ANTHROPIC = auto()
-    ANTHROPIC = auto()
 
 
 class StreamHandler:
     """
-    Centralised helper for all streaming interactions.
+    Centralized helper for all streaming interactions.
 
     The methods mirror the previous module‑level functions but are now
     instance methods.  They still accept the ``endpoint`` argument so
-    that timeout, logging and model‑unset logic stay unchanged.
+    that timeout, logging, and model‑unset logic stay unchanged.
     """
-
-    # ------------------------------------------------#
-    # Internal utilities – extracted to avoid repetition
-    # ------------------------------------------------#
 
     @staticmethod
     @contextlib.contextmanager
@@ -226,7 +224,7 @@ class StreamHandler:
                     endpoint, payload, api_model_provider, options
                 ):
                     yield from self._force_iter_openai(
-                        force_text, api_model_provider
+                        force_text or "", api_model_provider
                     )
 
             return _iter()
@@ -265,7 +263,7 @@ class StreamHandler:
                     endpoint, payload, api_model_provider, options
                 ):
                     yield from self._force_iter_lmstudio(
-                        force_text, api_model_provider
+                        force_text or "", api_model_provider
                     )
 
             return _iter()
@@ -302,7 +300,7 @@ class StreamHandler:
                     endpoint, payload, api_model_provider, options
                 ):
                     yield from self._force_iter_ollama(
-                        force_text, api_model_provider
+                        force_text or "", api_model_provider
                     )
 
             return _iter()
@@ -332,8 +330,6 @@ class StreamHandler:
         """
         Anthropic-native streaming – returns the raw SSE bytes unchanged.
         """
-        # Anthropic doesn't have a simple 'force_text' iteration yet, but we can
-        # add it if needed
         headers["Accept"] = "text/event-stream"
         headers["anthropic-version"] = "2023-06-01"
 
@@ -1091,17 +1087,13 @@ class StreamHandler:
     @staticmethod
     def resolve_stream_type(
         endpoint_ep_types: list, api_model_provider
-    ) -> tuple[bool, bool, bool, bool, bool, bool, bool, bool, bool, bool]:
+    ) -> Optional[StreamConversion]:
         """
         Determine which streaming conversion should be applied.
 
-        Returns a tuple:
-        (is_openai_to_ollama, is_ollama_to_openai,
-         is_ollama, is_openai,
-         is_openai_to_lmstudio, is_ollama_to_lmstudio,
-         is_lmstudio_passthrough,
-         is_anthropic_to_openai, is_openai_to_anthropic,
-         is_anthropic)
+        Returns the matching ``StreamConversion`` enum value, or ``None``
+        when no conversion is needed (endpoint and provider are both
+        OpenAI-compatible).
         """
         provider_type = str(api_model_provider.api_type)
 
@@ -1188,17 +1180,9 @@ class StreamHandler:
             flags[StreamConversion.OLLAMA_TO_LMSTUDIO] = True
 
         # ------------------------------------#
-        # Return the tuple in the original (now extended) order
+        # Return the single matching enum (exactly one flag is True)
         # ------------------------------------#
-        return (
-            flags[StreamConversion.OPENAI_TO_OLLAMA],
-            flags[StreamConversion.OLLAMA_TO_OPENAI],
-            flags[StreamConversion.OLLAMA],
-            flags[StreamConversion.OPENAI],
-            flags[StreamConversion.OPENAI_TO_LMSTUDIO],
-            flags[StreamConversion.OLLAMA_TO_LMSTUDIO],
-            flags[StreamConversion.LMSTUDIO_PASSTHROUGH],
-            flags[StreamConversion.ANTHROPIC_TO_OPENAI],
-            flags[StreamConversion.OPENAI_TO_ANTHROPIC],
-            flags[StreamConversion.ANTHROPIC],
-        )
+        for conv, flag in flags.items():
+            if flag:
+                return conv
+        return None

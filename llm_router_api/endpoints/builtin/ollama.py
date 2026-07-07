@@ -219,8 +219,8 @@ class OllamaChatHandler(PassthroughI):
         self,
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
-        prompt_handler: Optional[ModelHandler] = None,
-        model_handler: Optional[PromptHandler] = None,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
         ep_name="chat",
         method="POST",
         dont_add_api_prefix: bool = False,
@@ -236,9 +236,9 @@ class OllamaChatHandler(PassthroughI):
             Log file name; defaults to the library’s standard configuration.
         logger_level : Optional[str]
             Logging level; defaults to :data:`REST_API_LOG_LEVEL`.
-        prompt_handler : Optional[ModelHandler]
+        prompt_handler : Optional[PromptHandler]
             Handler for prompt templates (passed through to the backend).
-        model_handler : Optional[PromptHandler]
+        model_handler : Optional[ModelHandler]
             Handler for model configuration.
         ep_name : str
             Endpoint name; defaults to ``"chat"``.
