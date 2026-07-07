@@ -12,7 +12,7 @@ from requests import Response
 from typing import Optional, Dict, Any, Iterator
 
 from llm_router_api.core.model_handler import ApiModel
-from llm_router_api.core.stream_handler import StreamHandler
+from llm_router_api.core.stream_handler import StreamHandler, StreamConversion
 from llm_router_api.core.errors import sanitize_error_message
 
 
@@ -114,46 +114,29 @@ class HttpRequestExecutor:
         params: Dict[str, Any],
         api_model_provider: ApiModel,
         options: Optional[Dict[str, Any]] = None,
-        is_ollama: bool = False,
-        is_openai_to_ollama: bool = False,
-        is_ollama_to_openai: bool = False,
-        is_openai: bool = False,
-        is_openai_to_lmstudio: bool = False,
-        is_ollama_to_lmstudio: bool = False,
-        is_lmstudio: bool = False,
-        is_anthropic_to_openai: bool = False,
-        is_openai_to_anthropic: bool = False,
-        is_anthropic: bool = False,
+        stream_type: Optional["StreamConversion"] = None,
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
         Perform a streaming request and yield byte chunks.
 
-        Conventions:
-        - ``openai`` means OpenAI‑style SSE streaming (also used by LM Studio).
-        - ``ollama`` means Ollama NDJSON streaming.
-        - ``anthropic`` means Anthropic Messages SSE streaming.
-        - ``*_to_*`` flags indicate stream conversion direction.
-        - ``is_lmstudio_passthrough`` means the provider and endpoint are both
-          LM Studio, so we simply forward the raw stream (identical to the
-          OpenAI‑compatible path).
+        Parameters
+        ----------
+        stream_type : StreamConversion | None
+            Which conversion path to use.  Exactly one of the ten
+            ``StreamConversion`` members must be selected by the caller;
+            ``None`` means passthrough (OpenAI-compatible).
         """
-        self.logger.debug(
-            "Stream type:\n"
-            f"  * is_ollama={is_ollama}\n"
-            f"  * is_openai={is_openai}\n"
-            f"  * is_openai_to_ollama={is_openai_to_ollama}\n"
-            f"  * is_openai_to_lmstudio={is_openai_to_lmstudio}\n"
-            f"  * is_ollama_to_openai={is_ollama_to_openai}\n"
-            f"  * is_ollama_to_lmstudio={is_ollama_to_lmstudio}\n"
-            f"  * is_lmstudio_passthrough={is_lmstudio}\n"
-            f"  * is_anthropic_to_openai={is_anthropic_to_openai}\n"
-            f"  * is_openai_to_anthropic={is_openai_to_anthropic}\n"
-            f"  * is_anthropic={is_anthropic}\n"
-        )
+        self.logger.debug("Stream type: %s", stream_type)
 
+        # ----------------------------------------------------------------- #
+        # Pre‑flight force_text override (used by guardrail blocking)
+        # ----------------------------------------------------------------- #
         if force_text:
-            if is_ollama or is_openai_to_ollama:
+            if stream_type in (
+                StreamConversion.OLLAMA,
+                StreamConversion.OPENAI_TO_OLLAMA,
+            ):
                 return self._stream_handler.stream_ollama(
                     url="",
                     payload=params,
@@ -164,7 +147,11 @@ class HttpRequestExecutor:
                     api_model_provider=api_model_provider,
                     force_text=force_text,
                 )
-            if is_openai or is_ollama_to_openai or is_anthropic_to_openai:
+            if stream_type in (
+                StreamConversion.OPENAI,
+                StreamConversion.OLLAMA_TO_OPENAI,
+                StreamConversion.ANTHROPIC_TO_OPENAI,
+            ):
                 return self._stream_handler.stream_openai(
                     url="",
                     payload=params,
@@ -175,7 +162,11 @@ class HttpRequestExecutor:
                     api_model_provider=api_model_provider,
                     force_text=force_text,
                 )
-            elif is_lmstudio or is_openai_to_lmstudio or is_ollama_to_lmstudio:
+            if stream_type in (
+                StreamConversion.LMSTUDIO_PASSTHROUGH,
+                StreamConversion.OPENAI_TO_LMSTUDIO,
+                StreamConversion.OLLAMA_TO_LMSTUDIO,
+            ):
                 return self._stream_handler.stream_lmstudio(
                     url="",
                     payload=params,
@@ -186,29 +177,6 @@ class HttpRequestExecutor:
                     api_model_provider=api_model_provider,
                     force_text=force_text,
                 )
-            # Add anthropic force_text if needed
-
-        # Exactly one mode must be selected
-        selected = [
-            is_openai,
-            is_ollama,
-            is_openai_to_ollama,
-            is_ollama_to_openai,
-            is_openai_to_lmstudio,
-            is_ollama_to_lmstudio,
-            is_lmstudio,
-            is_anthropic_to_openai,
-            is_openai_to_anthropic,
-            is_anthropic,
-        ]
-        if sum(1 for x in selected if x) != 1:
-            raise RuntimeError(
-                "Exactly one streaming mode must be selected: "
-                "is_ollama | is_openai | is_openai_to_ollama | "
-                "is_ollama_to_openai | is_openai_to_lmstudio | "
-                "is_ollama_to_lmstudio | is_lmstudio_passthrough | "
-                "is_anthropic_to_openai | is_openai_to_anthropic | is_anthropic"
-            )
 
         # common preparation
         params["model"] = (
@@ -230,115 +198,119 @@ class HttpRequestExecutor:
         # ----------------------------------------------------------------- #
         # Dispatch to the appropriate StreamHandler method
         # ----------------------------------------------------------------- #
-        if is_ollama:
-            return self._stream_handler.stream_ollama(
-                url=full_url,
-                payload=params,
-                method=method,
-                headers=headers,
-                options=options,
-                endpoint=self._endpoint,
-                api_model_provider=api_model_provider,
-                force_text=force_text,
-            )
-
-        if is_openai_to_ollama:
-            return self._stream_handler.stream_openai_to_ollama(
-                url=full_url,
-                payload=params,
-                method=method,
-                headers=headers,
-                options=options,
-                endpoint=self._endpoint,
-                api_model_provider=api_model_provider,
-                force_text=force_text,
-            )
-
-        if is_ollama_to_openai:
-            return self._stream_handler.stream_ollama_to_openai(
-                url=full_url,
-                payload=params,
-                method=method,
-                headers=headers,
-                options=options,
-                endpoint=self._endpoint,
-                api_model_provider=api_model_provider,
-                force_text=force_text,
-            )
-
-        if is_openai_to_lmstudio:
-            return self._stream_handler.stream_openai_to_lmstudio(
-                url=full_url,
-                payload=params,
-                method=method,
-                headers=headers,
-                options=options,
-                endpoint=self._endpoint,
-                api_model_provider=api_model_provider,
-                force_text=force_text,
-            )
-
-        if is_ollama_to_lmstudio:
-            return self._stream_handler.stream_ollama_to_lmstudio(
-                url=full_url,
-                payload=params,
-                method=method,
-                headers=headers,
-                options=options,
-                endpoint=self._endpoint,
-                api_model_provider=api_model_provider,
-                force_text=force_text,
-            )
-
-        if is_lmstudio:
-            # LMStudio ↔ LMStudio – the stream format is already OpenAI‑compatible,
-            # so we can forward it unchanged.
-            return self._stream_handler.stream_lmstudio(
-                url=full_url,
-                payload=params,
-                method=method,
-                headers=headers,
-                options=options,
-                endpoint=self._endpoint,
-                api_model_provider=api_model_provider,
-                force_text=force_text,
-            )
-
-        if is_anthropic_to_openai:
-            return self._stream_handler.stream_anthropic_to_openai(
-                url=full_url,
-                payload=params,
-                method=method,
-                headers=headers,
-                options=options,
-                endpoint=self._endpoint,
-                api_model_provider=api_model_provider,
-                force_text=force_text,
-            )
-
-        if is_anthropic:
-            return self._stream_handler.stream_anthropic(
-                url=full_url,
-                payload=params,
-                method=method,
-                headers=headers,
-                options=options,
-                endpoint=self._endpoint,
-                api_model_provider=api_model_provider,
-                force_text=force_text,
-            )
-
-        # is_openai (default fallback)
-        return self._stream_handler.stream_openai(
-            url=full_url,
-            payload=params,
-            method=method,
-            headers=headers,
-            options=options,
-            endpoint=self._endpoint,
-            api_model_provider=api_model_provider,
-            force_text=force_text,
-        )
+        match stream_type:
+            case StreamConversion.OLLAMA:
+                return self._stream_handler.stream_ollama(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.OPENAI_TO_OLLAMA:
+                return self._stream_handler.stream_openai_to_ollama(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.OLLAMA_TO_OPENAI:
+                return self._stream_handler.stream_ollama_to_openai(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.OPENAI_TO_LMSTUDIO:
+                return self._stream_handler.stream_openai_to_lmstudio(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.OLLAMA_TO_LMSTUDIO:
+                return self._stream_handler.stream_ollama_to_lmstudio(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.LMSTUDIO_PASSTHROUGH:
+                # LMStudio ↔ LMStudio – the stream format is already OpenAI‑compatible,
+                # so we can forward it unchanged.
+                return self._stream_handler.stream_lmstudio(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.ANTHROPIC_TO_OPENAI:
+                return self._stream_handler.stream_anthropic_to_openai(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.OPENAI_TO_ANTHROPIC:
+                return self._stream_handler.stream_openai_to_anthropic(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.ANTHROPIC:
+                return self._stream_handler.stream_anthropic(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.OPENAI | None:
+                return self._stream_handler.stream_openai(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
 
     # --------------------------------------------------------------------- #
     # Private helpers
