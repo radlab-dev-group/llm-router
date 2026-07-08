@@ -84,6 +84,10 @@ API keys are checked in order of priority:
 - **POST** `/api/generate_article_from_text` — Generate a short article from a single text.
 - **POST** `/api/create_full_article_from_texts` — Generate a full article from multiple texts.
 
+#### Masking Endpoint (Built‑in, requires `builtin` permission when auth enabled)
+
+- **POST** `/api/fast_text_mask` — Mask PII in plain text using the built‑in FastText masking ruleset. Accepts a `text` field in the JSON body and returns masked content. Does not use guardrails or provider routing (`EP_DONT_NEED_GUARDRAIL_AND_MASKING = True`).
+
 ### Streaming vs. Non‑Streaming Responses
 
 - **Streaming (`stream: true` – default)**

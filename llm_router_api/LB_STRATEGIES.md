@@ -90,13 +90,25 @@ coordination is performed via Redis, ensuring safe concurrent operation across m
 
 ---
 
+### 6. `AdaptiveStrategy` (beta)
+
+* **Description:** An experimental strategy that extends `DynamicWeightedStrategy` with online learning. It dynamically
+  adjusts weights to minimize the intervals between consecutive provider selections, with strong penalties for failures
+  (interval < 0.5s) and performance degradation. Maps predicted cost to selection weights using softmax with
+  temperature and minimum probability parameters.
+* **When to use:** Experimental — suitable for testing in non-critical environments where adaptive load balancing is
+  desired but `DynamicWeightedStrategy` does not provide the right tuning characteristics.
+* **Implementation:** Implemented in `llm_router_api.core.lb.strategies.beta.adaptive.AdaptiveStrategy`.
+
+---
+
 ## Environments and Redis installation
 
 The connection details for Redis can be configured using environment variables:
 
 | Environment variable          | Default           | Description                               |
 |-------------------------------|-------------------|-------------------------------------------|
-| `LLM_ROUTER_BALANCE_STRATEGY` | `first_available` | Enables this strategy.                    |
+| `LLM_ROUTER_BALANCE_STRATEGY` | `balanced`        | Load‑balancing strategy name (e.g., balanced, weighted, dynamic_weighted, first_available, first_available_optim). |
 | `LLM_ROUTER_REDIS_HOST`       | –                 | Hostname of the Redis server (mandatory). |
 | `LLM_ROUTER_REDIS_PORT`       | –                 | Port of the Redis server (mandatory).     |
 | `LLM_ROUTER_REDIS_DB`         | `0`               | Optional Redis database index.            |

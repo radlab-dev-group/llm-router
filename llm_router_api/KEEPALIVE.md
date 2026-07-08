@@ -20,6 +20,7 @@ It consists of two main components:
 4. **Scheduling** – `KeepAliveMonitor` stores metadata in Redis:
     * A hash key (`keepalive:provider:<model>:<host>`) with `keep_alive_seconds`.
     * A sorted‑set (`keepalive:providers:next_wakeup`) that orders providers by the next scheduled wake‑up timestamp.
+    * A sorted‑set (`keepalive:model:<model_name>:hosts`) that tracks all hosts where a model is currently loaded, used for host reuse in optimised strategies.
 5. **Background loop** – The monitor thread wakes up every `check_interval` seconds, fetches due providers, verifies
    that the host is free (via the optional `is_host_free_callback`), and invokes `KeepAlive.send`. After a successful
    ping, the next wake‑up time is recomputed.
