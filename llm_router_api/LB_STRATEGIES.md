@@ -106,13 +106,13 @@ coordination is performed via Redis, ensuring safe concurrent operation across m
 
 The connection details for Redis can be configured using environment variables:
 
-| Environment variable          | Default           | Description                               |
-|-------------------------------|-------------------|-------------------------------------------|
-| `LLM_ROUTER_BALANCE_STRATEGY` | `balanced`        | Load‑balancing strategy name (e.g., balanced, weighted, dynamic_weighted, first_available, first_available_optim). |
-| `LLM_ROUTER_REDIS_HOST`       | –                 | Hostname of the Redis server (mandatory). |
-| `LLM_ROUTER_REDIS_PORT`       | –                 | Port of the Redis server (mandatory).     |
-| `LLM_ROUTER_REDIS_DB`         | `0`               | Optional Redis database index.            |
-| `LLM_ROUTER_REDIS_TIMEOUT`    | `60`              | Connection timeout in seconds.            |
+| Environment variable          | Default    | Description                                                                                                        |
+|-------------------------------|------------|--------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_BALANCE_STRATEGY` | `balanced` | Load‑balancing strategy name (e.g., balanced, weighted, dynamic_weighted, first_available, first_available_optim). |
+| `LLM_ROUTER_REDIS_HOST`       | –          | Hostname of the Redis server (mandatory).                                                                          |
+| `LLM_ROUTER_REDIS_PORT`       | –          | Port of the Redis server (mandatory).                                                                              |
+| `LLM_ROUTER_REDIS_DB`         | `0`        | Optional Redis database index.                                                                                     |
+| `LLM_ROUTER_REDIS_TIMEOUT`    | `60`       | Connection timeout in seconds.                                                                                     |
 
 ---
 
