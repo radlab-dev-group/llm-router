@@ -79,8 +79,7 @@ Request → MaskerPipeline → GuardrailPipeline → UtilsPipeline → Model Pro
 |-------------------------------|-------|------------------------------------------------------------------------------------------------------------------------------------|
 | **`langchain_rag`**           | Local | Retrieves relevant document chunks from a FAISS vector store and injects them into the payload for Retrieval‑Augmented Generation. |
 | **`simple_semantic_routing`** | Local | Two‑stage heuristic model selection: intent classification + complexity analysis. Activated when `payload["model"] == "auto"`.     |
-
-### Configuration
+| **`semantic_biencoder_routing`** | Local | Embedding‑based semantic routing using FAISS — matches user messages against pre‑configured target embeddings to select the best model. See [Semantic BiEncoder Routing](#semantic-biencoder-routing) for configuration details. |
 
 Pipelines are configured via environment variables:
 
@@ -98,14 +97,44 @@ export LLM_ROUTER_FORCE_MASKING=1
 export LLM_ROUTER_MASKING_WITH_AUDIT=1
 ```
 
----
+### Semantic BiEncoder Routing
 
-## 🛡️ Monitoring
+The `semantic_biencoder_routing` plugin uses a neural embedding model (**radlab/semantic-euro-bert-encoder-v1**) to compute semantic embeddings for a set of pre‑configured routing targets. Each target has a `name`, a `model_name` (the model to route to), a `description`, and a list of `examples`. At query time the user message is embedded and matched against all stored target embeddings using FAISS (`IndexFlatIP` on L2‑normalised vectors = cosine similarity). The best‑matching target determines the selected model.
 
-| Component            | Description                                                                         |
-|----------------------|-------------------------------------------------------------------------------------|
-| **KeepAliveMonitor** | Periodically pings model endpoints to keep them warm (prevents cold‑start latency). |
-| **ProviderMonitor**  | Tracks per‑provider availability using Redis as a shared state store.               |
+#### How it works
+
+**1. Index building (on first load or when the persist directory is missing):**
+
+- For each routing target, its `description` and `examples` are combined into text.
+- The text is split into overlapping **token chunks** using a sliding window (`chunk_size` tokens, `chunk_overlap` tokens overlap).
+- Each chunk is embedded via the BiEncoder model (e.g. `radlab/semantic-euro-bert-encoder-v1`).
+- All embedding vectors are **L2‑normalised** to unit length.
+- Vectors are inserted into a `faiss.IndexFlatIP` index (inner product).
+- A docstore maps each FAISS document ID to its target name (for reverse lookup).
+
+**2. Routing (query):**
+
+- The user message is embedded and L2‑normalised.
+- FAISS performs a nearest‑neighbor search returning the `top_k` closest chunks.
+- Scores are **aggregated per target**: the mean cosine similarity of all chunks belonging to the same target is computed.
+- The target with the **highest mean similarity** wins and its `model_name` is returned.
+
+**3. Persistence:**
+
+The FAISS index and docstore are saved to disk (files `index.faiss` and `docstore.pkl`) under the configured persist directory. On subsequent starts the index is loaded from disk — embeddings are **not recomputed**. If the embedding model changes (different output dimension) the index is automatically rebuilt.
+
+**Example routing targets:**
+
+| Target name       | Model routed to  | Description                                                        |
+|-------------------|------------------|--------------------------------------------------------------------|
+| `code-generation`    | `qwen3.6:35b`  | Code‑related tasks: writing, debugging, refactoring.               |
+| `math-analysis`      | `qwen3.6:35b`  | Mathematical computations, statistical analysis, quantitative reasoning. |
+| `creative-writing`   | `gpt-oss:120b` | Creative and generative writing: stories, poems, marketing content. |
+| `general-assistant`  | `gpt-oss:120b` | Everyday questions, explanations, research, conversation.           |
+| `data-science`       | `qwen3.6:35b`  | Data analysis, visualization, ML pipelines, reporting.             |
+| `system-admin`       | `gpt-oss:120b` | System administration, DevOps, infrastructure, technical ops.      |
+
+### Configuration
 | **ServicesMonitor**  | Periodically health‑checks the llm-router-services endpoints (guardrails, maskers). |
 
 ---
@@ -335,6 +364,16 @@ A full list of environment variables is available at: [API README](llm_router_ap
 | `LLM_ROUTER_REDIS_DB`       | `0`         | Redis database number.                                      |
 
 > **Redis is now mandatory.** The router raises `RuntimeError` at startup if Redis is unavailable.
+
+### Semantic BiEncoder Routing variables
+
+| Variable                                                    | Default                                  | Description                                                        |
+|-------------------------------------------------------------|------------------------------------------|--------------------------------------------------------------------|
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL`              | `radlab/semantic-euro-bert-encoder-v1`  | Override the embedding model name or local path.                   |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS`            | *(empty)*                               | Pipe‑separated list of target names (overrides all targets).       |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE`         | `256`                                   | Token chunk size for embedding.                                    |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP`      | `64`                                    | Token overlap between consecutive chunks.                          |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR`        | *(empty)*                               | Directory for FAISS index + docstore persistence (`index.faiss`, `docstore.pkl`). |
 
 ### Authentication variables
 

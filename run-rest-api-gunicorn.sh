@@ -119,9 +119,21 @@ export LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD=${LLM_ROUTER_AUTH_ROTATION_GRACE_PE
 export LLM_ROUTER_AUTH_AUDIT=${LLM_ROUTER_AUTH_AUDIT:-""}
 
 # ==================================================================================
-# Utilities/plugins available: [langchain_rag,simple_semantic_routing]
+# Utilities/plugins available: [simple_semantic_routing,semantic_biencoder_routing,langchain_rag]
 #export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"simple_semantic_routing,langchain_rag"}
-export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-""}
+export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"semantic_biencoder_routing"}
+
+# ------------ Semantic BiEncoder Routing Configuration
+# Embedding model identifier (HuggingFace / local path)
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL:-"radlab/semantic-euro-bert-encoder-v1"}
+# Pipe-separated list of target names (overrides all targets in config)
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS:-""}
+# Token chunk size for embedding
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE:-256}
+# Token overlap between chunks
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP:-64}
+# Directory for FAISS index + docstore persistence (index.faiss, docstore.pkl)
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR:-""}
 
 # ------------ LangChainRAG Configuration
 # Sample local configuration:
