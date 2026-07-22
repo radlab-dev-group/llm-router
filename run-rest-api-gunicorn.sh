@@ -39,7 +39,7 @@ export LLM_ROUTER_EXTERNAL_TIMEOUT=${LLM_ROUTER_EXTERNAL_TIMEOUT:-300}
 
 # ==================================================================================
 # Redis configuration (used f.e. in fa_* strategies)
-export LLM_ROUTER_REDIS_HOST=${LLM_ROUTER_REDIS_HOST:-"192.168.100.67"}
+export LLM_ROUTER_REDIS_HOST=${LLM_ROUTER_REDIS_HOST:-""}
 export LLM_ROUTER_REDIS_PORT=${LLM_ROUTER_REDIS_PORT:-6379}
 
 # ==================================================================================
@@ -76,7 +76,7 @@ export LLM_ROUTER_MASKER_PII_HOST=${LLM_ROUTER_MASKER_PII_HOST:-""}
 
 # ==================================================================================
 # Authentication
-export LLM_ROUTER_AUTH_ENABLED=${LLM_ROUTER_AUTH_ENABLED:-0}
+export LLM_ROUTER_AUTH_ENABLED=${LLM_ROUTER_AUTH_ENABLED:-false}
 
 # Key store backend: vault | redis | memory
 export LLM_ROUTER_AUTH_KEY_STORE=${LLM_ROUTER_AUTH_KEY_STORE:-"memory"}
