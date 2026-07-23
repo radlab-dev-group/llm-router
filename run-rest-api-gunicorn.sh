@@ -124,18 +124,19 @@ export LLM_ROUTER_AUTH_AUDIT=${LLM_ROUTER_AUTH_AUDIT:-""}
 export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"semantic_biencoder_routing"}
 
 # ------------ Semantic BiEncoder Routing Configuration
-# Full JSON config as a single env var (alternative to the individual vars below).
-# When set, it overrides ALL other biencoder settings and is parsed directly.
+# Config source of truth: JSON file (via CONFIG env var).
+# Individual env vars below can override settings from the JSON file.
+# To use all values from the JSON file, leave these unset or empty.
 export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG:-""}
-# Embedding model identifier (HuggingFace / local path)
+# Embedding model identifier (HuggingFace / local path) — overrides JSON when set
 export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL:-""}
-# Pipe-separated list of target names (overrides all targets in config)
+# Pipe-separated list of target names (overrides all targets in config) — overrides JSON when set
 export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS:-""}
-# Token chunk size for embedding
-export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE:-0}
-# Token overlap between chunks
-export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP:-0}
-# Directory for FAISS index + docstore persistence (index.faiss, docstore.pkl)
+# Token chunk size for embedding — overrides JSON when set
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE:-}
+# Token overlap between chunks — overrides JSON when set
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP:-}
+# Directory for FAISS index + docstore persistence (index.faiss, docstore.pkl) — overrides JSON when set
 export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR:-""}
 
 # ------------ LangChainRAG Configuration
