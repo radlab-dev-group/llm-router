@@ -131,6 +131,15 @@ The FAISS index and docstore are saved to disk (files `index.faiss` and `docstor
 directory. On subsequent starts the index is loaded from disk — embeddings are **not recomputed**. If the embedding
 model changes (different output dimension) the index is automatically rebuilt.
 
+Full example JSON config with `routing_targets` and their `examples` is available in the plugins repo:
+[`llm_router_plugins/resources/routing/semantic_biencoder.json`](
+https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/resources/routing/semantic_biencoder.json
+).
+Detailed variable descriptions and usage examples:
+[Plugin Routing README](
+https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/README.md#24-configuration
+).
+
 **Example routing targets:**
 
 | Target name         | Model routed to | Description                                                              |
@@ -373,13 +382,14 @@ A full list of environment variables is available at: [API README](llm_router_ap
 
 ### Semantic BiEncoder Routing variables
 
-| Variable                                              | Default                                | Description                                                                       |
-|-------------------------------------------------------|----------------------------------------|-----------------------------------------------------------------------------------|
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL`         | `radlab/semantic-euro-bert-encoder-v1` | Override the embedding model name or local path.                                  |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS`       | *(empty)*                              | Pipe‑separated list of target names (overrides all targets).                      |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE`    | `256`                                  | Token chunk size for embedding.                                                   |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP` | `64`                                   | Token overlap between consecutive chunks.                                         |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR`   | *(empty)*                              | Directory for FAISS index + docstore persistence (`index.faiss`, `docstore.pkl`). |
+| Variable                                              | Default   | Description                                                                                                                                                                                                                                         |
+|-------------------------------------------------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG`        | *(empty)* | **Config source of truth** — either a raw JSON string (starts with `{`) or a file path. When unset, falls back to the bundled `semantic_biencoder.json`. Individual env vars below override values from the loaded config only when explicitly set. |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL`         | *(empty)* | Override the embedding model name or local path.                                                                                                                                                                                                    |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS`       | *(empty)* | Pipe‑separated list of target names (overrides all targets).                                                                                                                                                                                        |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE`    | *(empty)* | Token chunk size for embedding.                                                                                                                                                                                                                     |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP` | *(empty)* | Token overlap between consecutive chunks.                                                                                                                                                                                                           |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR`   | *(empty)* | Directory for FAISS index + docstore persistence (`index.faiss`, `docstore.pkl`).                                                                                                                                                                   |
 
 ### LangChainRAG variables
 
