@@ -121,7 +121,7 @@ export LLM_ROUTER_AUTH_AUDIT=${LLM_ROUTER_AUTH_AUDIT:-""}
 # ==================================================================================
 # Utilities/plugins available: [simple_semantic_routing,semantic_biencoder_routing,langchain_rag]
 #export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"simple_semantic_routing,langchain_rag"}
-export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"semantic_biencoder_routing"}
+export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-""}
 
 # ------------ Semantic BiEncoder Routing Configuration
 # Config source of truth: JSON file (via CONFIG env var).
