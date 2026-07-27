@@ -78,6 +78,9 @@ When `LLM_ROUTER_REDIS_HOST` is set, the router uses Redis for load-balancing st
 
 ## Semantic BiEncoder Routing variables
 
+Requires the `llm-router-plugins` package. When `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` includes
+`semantic_biencoder_routing`, these variables configure the plugin:
+
 | Variable                                              | Default   | Description                                                                                                                                                                               |
 |-------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG`        | *(empty)* | Config source of truth — raw JSON string or file path. Falls back to bundled `semantic_biencoder.json`. Individual env vars below override loaded config values only when explicitly set. |
