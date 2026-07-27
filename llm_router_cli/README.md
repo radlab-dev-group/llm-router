@@ -1,6 +1,6 @@
 # llm-router CLI — Command Reference
 
-**Package:** `llm-router` (v0.6.6)
+**Package:** `llm-router`
 **Entry points:**
 
 - `llm-router` — main CLI tool (auth, anonymizer)
@@ -12,7 +12,7 @@
 ```bash
 pip install llm-router[api]
 llm-router --help
-llm-router --version   # 0.6.0
+llm-router --version
 ```
 
 ---
