@@ -17,7 +17,9 @@ from llm_router_api.core.auth.key_generator import KeyGenerator
 
 
 class TestKeyFormat:
-    """Verify the generated key format matches expectations."""
+    """
+    Verify the generated key format matches expectations.
+    """
 
     def test_prefix(self) -> None:
         key = KeyGenerator.generate()
@@ -33,13 +35,19 @@ class TestKeyFormat:
         assert len(suffix) >= KeyGenerator.MIN_LENGTH
 
     def test_alphanumeric_chars_only(self) -> None:
-        """All characters after the prefix should be alphanumeric (base62)."""
+        """
+        All characters after the prefix should be alphanumeric (base62).
+        """
+
         key = KeyGenerator.generate()
         suffix = key[len(KeyGenerator.PREFIX) :]
         assert all(c in string.ascii_letters + string.digits for c in suffix)
 
     def test_custom_entropy(self) -> None:
-        """Should accept custom entropy_bytes parameter."""
+        """
+        Should accept custom entropy_bytes parameter.
+        """
+
         key = KeyGenerator.generate(entropy_bytes=32)
         suffix = key[len(KeyGenerator.PREFIX) :]
         # 32 bytes can produce up to floor(32*8/log2(62))
@@ -48,7 +56,10 @@ class TestKeyFormat:
         assert len(suffix) >= KeyGenerator.MIN_LENGTH
 
     def test_different_keys_generated(self) -> None:
-        """Two consecutive calls should produce different keys."""
+        """
+        Two consecutive calls should produce different keys.
+        """
+
         key1 = KeyGenerator.generate()
         key2 = KeyGenerator.generate()
         assert key1 != key2
@@ -74,7 +85,10 @@ class TestNoModuloBias:
     CHARSET_SIZE = len(KeyGenerator.CHARSET)
 
     def test_character_distribution_is_unbiased(self) -> None:
-        """Collect character frequencies across many keys and verify uniformity."""
+        """
+        Collect character frequencies across many keys and verify uniformity.
+        """
+
         chars: list[str] = []
         for _ in range(self.NUM_KEYS):
             key = KeyGenerator.generate(
@@ -101,7 +115,10 @@ class TestNoModuloBias:
         )
 
     def test_no_character_dominates(self) -> None:
-        """No single character should appear more than ~2x the expected frequency."""
+        """
+        No single character should appear more than ~2x the expected frequency.
+        """
+
         chars: list[str] = []
         for _ in range(self.NUM_KEYS):
             key = KeyGenerator.generate(entropy_bytes=64)
@@ -126,7 +143,9 @@ class TestNoModuloBias:
 
 
 class TestKeyValidation:
-    """Verify the validate() method."""
+    """
+    Verify the validate() method.
+    """
 
     def test_valid_key(self) -> None:
         valid, msg = KeyGenerator.validate(

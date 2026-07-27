@@ -22,7 +22,9 @@ _logger = logging.getLogger(__name__)
 
 
 class VaultKeyStore(KeyStoreInterface):
-    """HashiCorp Vault KV v2 as the source of truth for API keys."""
+    """
+    HashiCorp Vault KV v2 as the source of truth for API keys.
+    """
 
     def __init__(
         self,
@@ -77,7 +79,10 @@ class VaultKeyStore(KeyStoreInterface):
         sa_path: str,
         review_path: str,
     ) -> None:
-        """Authenticate to Vault using the selected method."""
+        """
+        Authenticate to Vault using the selected method.
+        """
+
         if auth_method == "kubernetes":
             with open(sa_path, "r", encoding="utf-8") as f:
                 jwt = f.read().strip()
@@ -169,7 +174,10 @@ class VaultKeyStore(KeyStoreInterface):
         return None
 
     def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
-        """Synchronous version of :meth:`get_key_by_plain`."""
+        """
+        Synchronous version of :meth:`get_key_by_plain`.
+        """
+
         return self._run_async(self.get_key_by_plain(key_plain))
 
     # -- KeyStoreInterface forwarding -------------------------------
@@ -310,7 +318,10 @@ class VaultKeyStore(KeyStoreInterface):
         return new_plain
 
     async def disable_key(self, key_id: str) -> None:
-        """Deactivate a key by setting is_active=False."""
+        """
+        Deactivate a key by setting is_active=False.
+        """
+
         kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
             secret_data = self._client.secrets.kv.v2.read_secret_version(
@@ -332,7 +343,10 @@ class VaultKeyStore(KeyStoreInterface):
         )
 
     async def enable_key(self, key_id: str) -> None:
-        """Re-activate a previously deactivated key."""
+        """
+        Re-activate a previously deactivated key.
+        """
+
         kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
             secret_data = self._client.secrets.kv.v2.read_secret_version(
@@ -372,7 +386,10 @@ class VaultKeyStore(KeyStoreInterface):
             raise
 
     async def list_keys(self) -> list[dict]:
-        """List all keys under the mount path, including disabled ones."""
+        """
+        List all keys under the mount path, including disabled ones.
+        """
+
         try:
             response = self._client.list_secret(
                 path=self._mount_path.rstrip("/"),
@@ -412,7 +429,10 @@ class VaultKeyStore(KeyStoreInterface):
             return []
 
     async def update_last_used(self, key_id: str) -> None:
-        """Update last_used_at for a key via targeted write — never re-hashes."""
+        """
+        Update last_used_at for a key via targeted write — never re-hashes.
+        """
+
         kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
             secret_data = self._client.secrets.kv.v2.read_secret_version(
@@ -449,7 +469,10 @@ class VaultKeyStore(KeyStoreInterface):
             pass
 
     async def update_grace_until(self, key_id: str, grace_until: float) -> None:
-        """Update grace_until for a key (read-modify-write to preserve the record)."""
+        """
+        Update grace_until for a key (read-modify-write to preserve the record).
+        """
+
         kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
             secret_data = self._client.secrets.kv.v2.read_secret_version(

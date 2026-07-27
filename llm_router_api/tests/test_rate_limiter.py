@@ -13,7 +13,9 @@ from llm_router_api.core.auth.rate_limiter import RedisRateLimiter, RateLimitRes
 # FakeRedis mimics Redis sorted-set commands for unit testing without a server.
 # ---------------------------------------------------------------------------
 class FakeRedis:
-    """Minimal fake that supports the sorted-set operations used by the rate limiter."""
+    """
+    Minimal fake that supports the sorted-set operations used by the rate limiter.
+    """
 
     def __init__(self) -> None:
         self._data: dict[str, dict[str, float]] = {}  # bucket -> {member: score}
@@ -60,7 +62,10 @@ class FakeRedis:
         return True
 
     def register_script(self, script_text: str):
-        """Register a Lua script — stores it for EVAL invocation."""
+        """
+        Register a Lua script — stores it for EVAL invocation.
+        """
+
         script = FakeScript(script_text, self)
         self._scripts.append(script)
         return script
@@ -71,11 +76,17 @@ class FakeRedis:
             pass
 
     def evalsha(self, sha: str, numkeys: int, *args):
-        """Fallback for when EVALSHA is not loaded."""
+        """
+        Fallback for when EVALSHA is not loaded.
+        """
+
         return self._raw_eval(args)
 
     def _raw_eval(self, args):
-        """Handle evaluation from register_script wrapper."""
+        """
+        Handle evaluation from register_script wrapper.
+        """
+
         # Find the registered script
         for script in self._scripts:
             result = script.execute(args)
@@ -85,14 +96,19 @@ class FakeRedis:
 
 
 class FakeScript:
-    """Minimal Lua evaluator that handles the specific atomic rate-limit script."""
+    """
+    Minimal Lua evaluator that handles the specific atomic rate-limit script.
+    """
 
     def __init__(self, script_text: str, redis: FakeRedis):
         self._script = script_text
         self._redis = redis
 
     def execute(self, args):
-        """Execute the Lua script logic directly in Python (since we can't run Lua)."""
+        """
+        Execute the Lua script logic directly in Python (since we can't run Lua).
+        """
+
         # Parse KEYS and ARGV from args
         if not args or len(args) < 4:
             return []
@@ -106,7 +122,10 @@ class FakeScript:
         return []
 
     def __call__(self, keys: list[str], args: list):
-        """Execute the Lua script for this call."""
+        """
+        Execute the Lua script for this call.
+        """
+
         bucket = keys[0]
         now, window, limit, uuid_part = args[0], args[1], args[2], args[3]
 
@@ -141,20 +160,28 @@ class FakeScript:
 
 
 class TestRateLimiterAtomicity:
-    """Verify the Lua-based rate limiter works correctly."""
+    """
+    Verify the Lua-based rate limiter works correctly.
+    """
 
     def setup_method(self) -> None:
         self.fake_redis = FakeRedis()
         self.limiter = RedisRateLimiter(redis_client=self.fake_redis, window=60)
 
     def test_allows_within_limit(self) -> None:
-        """Should allow requests within the rate limit."""
+        """
+        Should allow requests within the rate limit.
+        """
+
         result = self.limiter.is_allowed("key1", "10.0.0.1", 5)
         assert result.allowed is True
         assert result.remaining == 4
 
     def test_denies_over_limit(self) -> None:
-        """Should deny requests that exceed the rate limit."""
+        """
+        Should deny requests that exceed the rate limit.
+        """
+
         for _ in range(5):
             self.limiter.is_allowed("key2", "10.0.0.1", 5)
 
@@ -164,7 +191,10 @@ class TestRateLimiterAtomicity:
         assert result.retry_after > 0
 
     def test_separate_keys_have_separate_limits(self) -> None:
-        """Different key_ids should have independent rate limits."""
+        """
+        Different key_ids should have independent rate limits.
+        """
+
         for _ in range(3):
             self.limiter.is_allowed("keyA", "10.0.0.1", 5)
         for _ in range(3):
@@ -177,7 +207,10 @@ class TestRateLimiterAtomicity:
         assert r_b.allowed is True
 
     def test_separate_ips_have_separate_limits(self) -> None:
-        """Different client IPs should have independent rate limits."""
+        """
+        Different client IPs should have independent rate limits.
+        """
+
         for _ in range(3):
             self.limiter.is_allowed("key1", "10.0.0.1", 5)
         for _ in range(3):
@@ -190,7 +223,10 @@ class TestRateLimiterAtomicity:
         assert r_ip2.allowed is True
 
     def test_retry_after_positive(self) -> None:
-        """When denied, retry_after should be a positive integer."""
+        """
+        When denied, retry_after should be a positive integer.
+        """
+
         for _ in range(5):
             self.limiter.is_allowed("key3", "10.0.0.1", 5)
 
@@ -201,10 +237,15 @@ class TestRateLimiterAtomicity:
 
 
 class TestRateLimiterLuaScript:
-    """Verify that the Lua script is registered and used."""
+    """
+    Verify that the Lua script is registered and used.
+    """
 
     def test_script_is_registered(self) -> None:
-        """The atomic Lua script should be registered on first use."""
+        """
+        The atomic Lua script should be registered on first use.
+        """
+
         self.fake_redis = FakeRedis()
         limiter = RedisRateLimiter(redis_client=self.fake_redis, window=60)
 
@@ -217,7 +258,9 @@ class TestRateLimiterLuaScript:
 
 
 class TestRateLimitResult:
-    """Verify RateLimitResult dataclass."""
+    """
+    Verify RateLimitResult dataclass.
+    """
 
     def test_allowed_result(self) -> None:
         result = RateLimitResult(allowed=True, remaining=5, retry_after=0)

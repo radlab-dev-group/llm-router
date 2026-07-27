@@ -90,7 +90,9 @@ class PermissionEngine:
         if isinstance(record, dict):
 
             class _AttrDict(dict):
-                """A dict that also supports ``obj.attr`` access."""
+                """
+                A dict that also supports ``obj.attr`` access.
+                """
 
                 def __getattr__(self, attr: str) -> Any:  # noqa: D105
                     val = self.get(attr)
@@ -192,7 +194,10 @@ class PermissionEngine:
         )
 
     def _get_policy(self, record: Any) -> EndpointPolicy:
-        """Resolve the policy for a key record (object or dict)."""
+        """
+        Resolve the policy for a key record (object or dict).
+        """
+
         # 1. policy_override
         if record.policy_override:
             policy = self._parse_override(record.policy_override)
@@ -210,7 +215,10 @@ class PermissionEngine:
         return policy
 
     def _parse_override(self, override: dict) -> EndpointPolicy:
-        """Parse an inline policy override into an EndpointPolicy."""
+        """
+        Parse an inline policy override into an EndpointPolicy.
+        """
+
         perms = {}
         for ep, perms_config in override.get("permissions", {}).items():
             if isinstance(perms_config, EndpointPermission):
@@ -227,5 +235,8 @@ class PermissionEngine:
         )
 
     def add_custom_policy(self, name: str, policy: EndpointPolicy) -> None:
-        """Register a custom policy that can be referenced by keys."""
+        """
+        Register a custom policy that can be referenced by keys.
+        """
+
         self._custom_policies[name] = policy

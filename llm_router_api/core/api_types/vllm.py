@@ -73,7 +73,10 @@ class VLLMConverters:
     class Payload:
         @staticmethod
         def convert_payload(params: Dict[str, Any]) -> Dict[str, Any]:
-            """Map vLLM parameters to OpenAI-compatible format."""
+            """
+            Map vLLM parameters to OpenAI-compatible format.
+            """
+
             for f, t in VLLMConverters.PARAMS_MAPPING_FROM_TO:
                 if f in params:
                     if t is not None:

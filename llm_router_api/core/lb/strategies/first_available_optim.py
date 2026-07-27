@@ -192,19 +192,31 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     # Helper utilities
     # -----------------------------------------------------------------
     def _last_host_key(self, model_name: str) -> str:
-        """Redis key that stores the last host used for a given model."""
+        """
+        Redis key that stores the last host used for a given model.
+        """
+
         return f"{self._get_redis_key(model_name)}:last_host"
 
     def _last_used_key(self, model_name: str) -> str:
-        """Redis key that stores the timestamp of the last model usage."""
+        """
+        Redis key that stores the timestamp of the last model usage.
+        """
+
         return f"{self._get_redis_key(model_name)}:last_used"
 
     def _model_hosts_set_key(self, model_name: str) -> str:
-        """Redis set key that holds all hosts where *model_name* is loaded."""
+        """
+        Redis set key that holds all hosts where *model_name* is loaded.
+        """
+
         return f"{self._get_redis_key(model_name)}:hosts"
 
     def _host_occupancy_key(self, host_name: str) -> str:
-        """Redis hash key that stores the model currently occupying *host_name*."""
+        """
+        Redis hash key that stores the model currently occupying *host_name*.
+        """
+
         return self._host_key(host_name)
 
     def _try_acquire(self, model_name: str, provider: Dict) -> Optional[Dict]:

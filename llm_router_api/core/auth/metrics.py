@@ -37,7 +37,9 @@ except ImportError:
 
 
 class AuthMetrics:
-    """Prometheus metrics for authentication."""
+    """
+    Prometheus metrics for authentication.
+    """
 
     def __init__(self, registry=None) -> None:
         if not IS_PROMETHEUS_AVAILABLE:
@@ -79,7 +81,10 @@ class AuthMetrics:
         )
 
     def record_attempt(self, result: str, key_id: str = "unknown") -> None:
-        """Record an authentication attempt result."""
+        """
+        Record an authentication attempt result.
+        """
+
         if self._registry is None:
             return
         self.TOTAL.labels(result=result, key_id=key_id).inc()
@@ -92,13 +97,19 @@ class AuthMetrics:
         self.LATENCY.labels(step=step).observe(seconds)
 
     def record_rate_limit(self, key_id: str, endpoint: str) -> None:
-        """Record a rate limit event."""
+        """
+        Record a rate limit event.
+        """
+
         if self._registry is None:
             return
         self.RATE_LIMIT.labels(key_id=key_id, endpoint=endpoint).inc()
 
     def set_budget(self, key_id: str, used: int, total: int) -> None:
-        """Set the current budget usage gauge for a key."""
+        """
+        Set the current budget usage gauge for a key.
+        """
+
         if self._registry is None:
             return
         self.BUDGET.labels(key_id=key_id, budget_total=total).set(used)

@@ -278,7 +278,10 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
         return
 
     def export_state(self) -> Dict:
-        """Eksport stanu do serializacji."""
+        """
+        Eksport stanu do serializacji.
+        """
+
         return {
             "theta": self._theta,
             "ema_interval": self._ema_interval,
@@ -298,7 +301,10 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
         }
 
     def import_state(self, state: Dict) -> None:
-        """Import stanu z serializacji."""
+        """
+        Import stanu z serializacji.
+        """
+
         self._theta = dict(state.get("theta", {}))
         self._ema_interval = dict(state.get("ema_interval", {}))
         self._ema_trend = dict(state.get("ema_trend", {}))

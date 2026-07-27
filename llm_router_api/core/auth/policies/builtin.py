@@ -21,15 +21,24 @@ _builtin_policies: dict[str, EndpointPolicy] = {
 
 
 def list_builtin_policies() -> list[str]:
-    """Return names of all builtin policies."""
+    """
+    Return names of all builtin policies.
+    """
+
     return list(_builtin_policies.keys())
 
 
 def get_builtin_policy(name: str) -> EndpointPolicy | None:
-    """Return a builtin policy by name, or ``None``."""
+    """
+    Return a builtin policy by name, or ``None``.
+    """
+
     return _builtin_policies.get(name)
 
 
 def register_policy(name: str, policy: EndpointPolicy) -> None:
-    """Register a custom policy (for CLI ``auth policy create``)."""
+    """
+    Register a custom policy (for CLI ``auth policy create``).
+    """
+
     _builtin_policies[name] = policy

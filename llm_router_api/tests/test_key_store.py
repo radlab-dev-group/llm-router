@@ -21,7 +21,10 @@ from pathlib import Path
 
 @pytest.fixture()
 def memory_store(tmp_path: Path) -> dict[str, Any]:
-    """MemoryKeyStore with seed_file in a temp directory."""
+    """
+    MemoryKeyStore with seed_file in a temp directory.
+    """
+
     from llm_router_api.core.auth.key_store.memory import MemoryKeyStore
 
     seed = tmp_path / "keys.json"
@@ -30,7 +33,9 @@ def memory_store(tmp_path: Path) -> dict[str, Any]:
 
 
 class FakeRedis:
-    """In-memory fake Redis for testing without a real server."""
+    """
+    In-memory fake Redis for testing without a real server.
+    """
 
     def __init__(self) -> None:
         self._data: dict[str, str] = {}
@@ -72,7 +77,9 @@ class FakeRedis:
 
 
 class _FakePipeline:
-    """Minimal fake Redis pipeline supporting mset/execute."""
+    """
+    Minimal fake Redis pipeline supporting mset/execute.
+    """
 
     def __init__(self, redis: FakeRedis) -> None:
         self._redis = redis
@@ -93,7 +100,10 @@ class _FakePipeline:
 
 @pytest.fixture()
 def redis_store() -> dict[str, Any]:
-    """RedisKeyStore backed by FakeRedis."""
+    """
+    RedisKeyStore backed by FakeRedis.
+    """
+
     from llm_router_api.core.auth.key_store.redis_store import RedisKeyStore
 
     fake_redis = FakeRedis()
@@ -102,7 +112,9 @@ def redis_store() -> dict[str, Any]:
 
 
 class _MockSecret:
-    """Minimal mock for a Vault KV secret."""
+    """
+    Minimal mock for a Vault KV secret.
+    """
 
     def __init__(self, data: dict[str, Any]) -> None:
         self.data = data
@@ -110,7 +122,9 @@ class _MockSecret:
 
 
 class _MockVaultClient:
-    """Minimal mock of hvault.Client for testing VaultKeyStore without Vault."""
+    """
+    Minimal mock of hvault.Client for testing VaultKeyStore without Vault.
+    """
 
     def __init__(self, **kwargs) -> None:
         self._secrets: dict[str, dict] = {}
@@ -175,7 +189,9 @@ class _MockVaultClient:
 
 
 class _MockV2:
-    """Mock for secrets.kv.v2."""
+    """
+    Mock for secrets.kv.v2.
+    """
 
     def __init__(self, parent: _MockVaultClient) -> None:
         self._parent = parent
@@ -204,7 +220,9 @@ class _MockV2:
 
 
 class _MockKV:
-    """Mock for secrets.kv."""
+    """
+    Mock for secrets.kv.
+    """
 
     def __init__(self, parent: _MockVaultClient) -> None:
         self._parent = parent
@@ -215,7 +233,9 @@ class _MockKV:
 
 
 class _MockSecrets:
-    """Mock for secrets."""
+    """
+    Mock for secrets.
+    """
 
     def __init__(self, parent: _MockVaultClient) -> None:
         self._parent = parent
@@ -227,13 +247,19 @@ class _MockSecrets:
 
 @pytest.fixture()
 def vault_client() -> _MockVaultClient:
-    """Fresh mock Vault client."""
+    """
+    Fresh mock Vault client.
+    """
+
     return _MockVaultClient()
 
 
 @pytest.fixture()
 def vault_store(vault_client: _MockVaultClient) -> dict[str, Any]:
-    """VaultKeyStore backed by a mock hvault client."""
+    """
+    VaultKeyStore backed by a mock hvault client.
+    """
+
     import os
     import sys
 
@@ -290,7 +316,10 @@ def vault_store(vault_client: _MockVaultClient) -> dict[str, Any]:
     ids=["memory", "redis", "vault"],
 )
 def key_store(request: Any) -> dict[str, Any]:
-    """Yields a fresh key store instance for each backend."""
+    """
+    Yields a fresh key store instance for each backend.
+    """
+
     return request.getfixturevalue(request.param)
 
 
@@ -300,7 +329,9 @@ def key_store(request: Any) -> dict[str, Any]:
 
 
 class TestCreateKey:
-    """create_key: must hash plaintext, store record, return plaintext."""
+    """
+    create_key: must hash plaintext, store record, return plaintext.
+    """
 
     def test_returns_plaintext(self, key_store: dict[str, Any]) -> None:
         store = key_store["store"]
@@ -343,7 +374,10 @@ class TestCreateKey:
             ), f"{key_store['type']} should not store key_plain"
 
     def test_creates_unique_key_id(self, key_store: dict[str, Any]) -> None:
-        """Each create_key call must produce a unique key_id."""
+        """
+        Each create_key call must produce a unique key_id.
+        """
+
         store = key_store["store"]
         _ = asyncio_run(store.create_key({"key_plain": "sk-key-1"}))
         _ = asyncio_run(store.create_key({"key_plain": "sk-key-2"}))
@@ -361,7 +395,10 @@ class TestCreateKey:
         assert keys[0]["policy_name"] == "developer"
 
     def test_does_not_mutate_input_dict(self, key_store: dict[str, Any]) -> None:
-        """create_key must not mutate the caller's input dict."""
+        """
+        create_key must not mutate the caller's input dict.
+        """
+
         store = key_store["store"]
         input_record = {"key_plain": "sk-no-mutate", "policy_name": "readonly"}
         original_copy = dict(input_record)
@@ -372,7 +409,9 @@ class TestCreateKey:
 
 
 class TestGetByKeyHash:
-    """get_key_by_hash: must return the correct record."""
+    """
+    get_key_by_hash: must return the correct record.
+    """
 
     def test_returns_record_for_known_hash(self, key_store: dict[str, Any]) -> None:
         store = key_store["store"]
@@ -400,7 +439,9 @@ class TestGetByKeyHash:
 
 
 class TestGetByKeyId:
-    """get_key_by_id: must return the correct record."""
+    """
+    get_key_by_id: must return the correct record.
+    """
 
     def test_returns_record_for_known_id(self, key_store: dict[str, Any]) -> None:
         store = key_store["store"]
@@ -423,7 +464,9 @@ class TestGetByKeyId:
 
 
 class TestGetByKeyPlain:
-    """get_key_by_plain: must find the key via bcrypt/ prefix match."""
+    """
+    get_key_by_plain: must find the key via bcrypt/ prefix match.
+    """
 
     def test_returns_record_for_known_plaintext(
         self, key_store: dict[str, Any]
@@ -447,7 +490,9 @@ class TestGetByKeyPlain:
 
 
 class TestSyncMethods:
-    """Sync wrappers must work in all contexts."""
+    """
+    Sync wrappers must work in all contexts.
+    """
 
     def test_get_key_by_hash_sync_returns_none(
         self, key_store: dict[str, Any]
@@ -459,7 +504,10 @@ class TestSyncMethods:
         assert result is None
 
     def test_update_last_used_available(self, key_store: dict[str, Any]) -> None:
-        """All backends must support update_last_used."""
+        """
+        All backends must support update_last_used.
+        """
+
         store = key_store["store"]
         plain = "sk-lastused-" + uuid.uuid4().hex[:8]
         asyncio_run(store.create_key({"key_plain": plain}))
@@ -473,7 +521,9 @@ class TestSyncMethods:
 
 
 class TestRotateKey:
-    """rotate_key: must create new key and deactivate old."""
+    """
+    rotate_key: must create new key and deactivate old.
+    """
 
     def test_new_key_is_different(self, key_store: dict[str, Any]) -> None:
         store = key_store["store"]
@@ -523,7 +573,9 @@ class TestRotateKey:
 
 
 class TestDeleteKey:
-    """delete_key: must remove the key."""
+    """
+    delete_key: must remove the key.
+    """
 
     def test_key_unfindable_after_delete(self, key_store: dict[str, Any]) -> None:
         store = key_store["store"]
@@ -553,14 +605,19 @@ class TestDeleteKey:
         assert len(keys) == 0
 
     def test_delete_missing_key_is_noop(self, key_store: dict[str, Any]) -> None:
-        """Deleting a non-existent key must NOT raise."""
+        """
+        Deleting a non-existent key must NOT raise.
+        """
+
         store = key_store["store"]
         # Should not raise
         asyncio_run(store.delete_key("key-nonexistent-that-does-not-exist"))
 
 
 class TestListKeys:
-    """list_keys: must return all active keys as summaries."""
+    """
+    list_keys: must return all active keys as summaries.
+    """
 
     def test_returns_all_active_keys(self, key_store: dict[str, Any]) -> None:
         store = key_store["store"]
@@ -602,7 +659,10 @@ class TestListKeys:
 
 
 def asyncio_run(coro):
-    """Run an async coroutine in a synchronous test context."""
+    """
+    Run an async coroutine in a synchronous test context.
+    """
+
     import asyncio
 
     try:

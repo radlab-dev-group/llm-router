@@ -10,12 +10,18 @@ import uuid
 
 
 def gen_key_prefix(key_plain: str) -> str:
-    """Return the first 7 characters of *key_plain*, or the whole string if shorter."""
+    """
+    Return the first 7 characters of *key_plain*, or the whole string if shorter.
+    """
+
     return key_plain[:7] if len(key_plain) > 6 else key_plain
 
 
 def gen_default_key_id() -> str:
-    """Generate a default key ID with ``key-`` prefix."""
+    """
+    Generate a default key ID with ``key-`` prefix.
+    """
+
     return f"key-{uuid.uuid4().hex[:8]}"
 
 

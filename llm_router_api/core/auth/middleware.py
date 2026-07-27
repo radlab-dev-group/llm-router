@@ -61,7 +61,10 @@ class AuthMiddleware:
 
     @property
     def logger(self):
-        """Lazily initialize and return the logger."""
+        """
+        Lazily initialize and return the logger.
+        """
+
         if self._logger is None:
             from rdl_ml_utils.utils.logger import prepare_logger
 
@@ -193,7 +196,10 @@ class AuthMiddleware:
 
     # -- helpers -------------------------------------------------
     def _is_public_endpoint(self, path: str) -> bool:
-        """Check if a path is on the public endpoints list."""
+        """
+        Check if a path is on the public endpoints list.
+        """
+
         public_str = self._config.get("public_endpoints", "/ping,/version,/models,/")
         public_list = [p.strip() for p in public_str.split(",") if p.strip()]
 
@@ -210,7 +216,10 @@ class AuthMiddleware:
         return False
 
     def _extract_key(self, request_obj) -> tuple[str | None, str]:
-        """Extract the API key from headers or query string. Returns (key, key_id)."""
+        """
+        Extract the API key from headers or query string. Returns (key, key_id).
+        """
+
         # Priority 1: Authorization: Bearer <key>
         auth_header = request_obj.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
@@ -236,7 +245,10 @@ class AuthMiddleware:
         return None, ""
 
     def _get_model_name(self, request_obj) -> str | None:
-        """Extract the model name from the request payload."""
+        """
+        Extract the model name from the request payload.
+        """
+
         if request_obj.is_json:
             data = request_obj.get_json(silent=True)
             if data and isinstance(data, dict):
@@ -244,14 +256,20 @@ class AuthMiddleware:
         return None
 
     def _get_client_ip(self, request_obj) -> str:
-        """Get the client IP, respecting X-Forwarded-For."""
+        """
+        Get the client IP, respecting X-Forwarded-For.
+        """
+
         forwarded = request_obj.headers.get("X-Forwarded-For")
         if forwarded:
             return forwarded.split(",")[0].strip()
         return request_obj.remote_addr or "unknown"
 
     def _update_last_used(self, key_record: dict) -> None:
-        """Mark the key as used (async-friendly)."""
+        """
+        Mark the key as used (async-friendly).
+        """
+
         key_id = key_record.get("key_id")
         if not key_id:
             return
@@ -271,12 +289,18 @@ class AuthMiddleware:
             ).start()
 
     async def _update_last_used_async(self, key_id: str) -> None:
-        """Async version of last-used update."""
+        """
+        Async version of last-used update.
+        """
+
         if hasattr(self._store, "update_last_used"):
             await self._store.update_last_used(key_id)
 
     def _update_last_used_sync(self, key_id: str) -> None:
-        """Sync version of last-used update."""
+        """
+        Sync version of last-used update.
+        """
+
         if hasattr(self._store, "update_last_used"):
             self._store.update_last_used_sync(key_id)
 
@@ -352,7 +376,10 @@ def install_auth_middleware(
 
     @flask_app.after_request
     def add_auth_headers(response):
-        """Add auth-related headers to every response."""
+        """
+        Add auth-related headers to every response.
+        """
+
         if hasattr(g, "api_key_id") and g.api_key_id:
             response.headers["X-Auth-Key"] = (
                 g.api_key_prefix

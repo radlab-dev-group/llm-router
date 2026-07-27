@@ -50,7 +50,9 @@ _ATOMIC_LUA = """
 
 @dataclass
 class RateLimitResult:
-    """Result of a rate limit check."""
+    """
+    Result of a rate limit check.
+    """
 
     allowed: bool
     remaining: int
@@ -93,7 +95,10 @@ class RedisRateLimiter:
         self._atomic_script: redis.Script | None = None
 
     def _get_atomic_script(self) -> redis.Script:
-        """Return a registered EVALSHA-ready Script for the atomic rate-limit logic."""
+        """
+        Return a registered EVALSHA-ready Script for the atomic rate-limit logic.
+        """
+
         if self._atomic_script is None:
             self._atomic_script = self._redis.register_script(_ATOMIC_LUA)
         return self._atomic_script

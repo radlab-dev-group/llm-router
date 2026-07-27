@@ -96,7 +96,9 @@ class OllamaConverters:
     """
 
     class FromOpenAI:
-        """Converters for OpenAI‑style embedding responses."""
+        """
+        Converters for OpenAI‑style embedding responses.
+        """
 
         @staticmethod
         def convert_embedding(response: dict) -> dict:
