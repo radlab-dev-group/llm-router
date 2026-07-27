@@ -71,7 +71,9 @@ class AuthCommand:
 
     @staticmethod
     def _add_store_and_redis_args(p: argparse.ArgumentParser) -> None:
-        """Add ``--store`` and all ``--auth-redis-*`` flags to *p*."""
+        """
+        Add ``--store`` and all ``--auth-redis-*`` flags to *p*.
+        """
         p.add_argument(
             "--store",
             default="memory",
@@ -103,14 +105,18 @@ class AuthCommand:
 
     @staticmethod
     def _add_key_id_arg(p: argparse.ArgumentParser) -> None:
-        """Add the positional ``key_id`` argument to *p*."""
+        """
+        Add the positional ``key_id`` argument to *p*.
+        """
         p.add_argument("key_id", help="Key ID to operate on")
 
     # ---- Seed / store setup -----------------------------------------------
 
     @classmethod
     def _ensure_seed_env(cls) -> str:
-        """Ensure seed directory structure and return the seed file path."""
+        """
+        Ensure seed directory structure and return the seed file path.
+        """
         cls.SEED_DIR.mkdir(exist_ok=True)
         auth_dir = cls.SEED_DIR / "configs" / "auth"
         auth_dir.mkdir(parents=True, exist_ok=True)
@@ -119,7 +125,9 @@ class AuthCommand:
 
     @classmethod
     def _seed_policies(cls, config_dir: Path) -> None:
-        """Copy the shipped policies JSON into *config_dir* when it does not exist yet."""
+        """
+        Copy the shipped policies JSON into *config_dir* when it does not exist yet.
+        """
         dest = config_dir / "rate_limiting-policies.json"
         if dest.exists():
             return
@@ -143,7 +151,9 @@ class AuthCommand:
 
     @staticmethod
     def _auth_redis_kwargs(args) -> dict:
-        """Build redis kwargs for auth key store (CLI args → env vars → defaults)."""
+        """
+        Build redis kwargs for auth key store (CLI args → env vars → defaults).
+        """
         return {
             "redis_host": getattr(args, "auth_redis_host", None)
             or os.environ.get("LLM_ROUTER_AUTH_REDIS_HOST"),
@@ -164,7 +174,9 @@ class AuthCommand:
 
     @staticmethod
     def _extract_key_id(argv: list[str]) -> str | None:
-        """Extract the positional key ID from argv (first non-flag token)."""
+        """
+        Extract the positional key ID from argv (first non-flag token).
+        """
         for arg in argv:
             if not arg.startswith("-"):
                 return arg
@@ -172,7 +184,9 @@ class AuthCommand:
 
     @classmethod
     def _make_redis_client(cls, redis_kwargs: dict) -> Any:
-        """Create and return a Redis client from *redis_kwargs* with env fallbacks."""
+        """
+        Create and return a Redis client from *redis_kwargs* with env fallbacks.
+        """
         import redis as _redis_mod
 
         host = redis_kwargs.get("redis_host") or os.environ.get(
@@ -195,7 +209,9 @@ class AuthCommand:
 
     @classmethod
     def _read_seed_keys(cls) -> tuple[list | None, int]:
-        """Read and validate the seed file. Returns ``(keys_list, 0)`` or ``(None, 1)``."""
+        """
+        Read and validate the seed file. Returns ``(keys_list, 0)`` or ``(None, 1)``.
+        """
         seed_file = cls.DEFAULT_SEED_FILE
         seed_path = Path(seed_file)
         if not seed_path.exists():
@@ -273,7 +289,9 @@ class AuthCommand:
 
     @classmethod
     def register_rate_limit_subparser(cls, parser: argparse.ArgumentParser) -> None:
-        """Register the ``rate-limit`` sub-subcommands under *parser*."""
+        """
+        Register the ``rate-limit`` sub-subcommands under *parser*.
+        """
         rl_parser = parser.add_parser(
             cls.RATE_LIMIT_NAME,
             help="Manage rate limiting presets and per-key overrides",
@@ -299,7 +317,9 @@ class AuthCommand:
         parser: argparse.ArgumentParser | argparse._SubParsersAction,
         nest_auth: bool = True,
     ) -> None:
-        """Register the ``auth`` subparser with its child commands."""
+        """
+        Register the ``auth`` subparser with its child commands.
+        """
         if nest_auth:
             auth_parser = parser.add_parser(
                 cls.NAME, help="Manage API keys and authentication"
@@ -385,7 +405,9 @@ class AuthCommand:
 
     @classmethod
     def run(cls, argv: list[str] | None = None) -> int:
-        """Standalone entry point: parse args and dispatch to handlers."""
+        """
+        Standalone entry point: parse args and dispatch to handlers.
+        """
         if argv is None:
             argv = sys.argv[1:]
 
@@ -422,7 +444,9 @@ class AuthCommand:
     # ---- Key handler commands (all private methods on the class) ----------
 
     def _handle_key(self, args, sub: list[str], seed_file: str) -> int:
-        """Route key subcommands via the dispatch table."""
+        """
+        Route key subcommands via the dispatch table.
+        """
         if not sub:
             print(f"Usage: llm-router auth key <{'|'.join(self._KEY_COMMANDS)}>")
             return 1
@@ -453,7 +477,9 @@ class AuthCommand:
         return handler(args, key_args)
 
     def _key_generate(self, args, key_args) -> int:
-        """Handle the 'generate' subcommand."""
+        """
+        Handle the 'generate' subcommand.
+        """
         from llm_router_api.core.auth.key_generator import KeyGenerator
         from llm_router_api.core.auth.key_store import create_key_store
         from llm_router_api.core.auth.policies.builtin import get_builtin_policy
@@ -491,7 +517,9 @@ class AuthCommand:
         return 0
 
     def _key_list(self, args, key_args) -> int:
-        """Handle the 'list' subcommand."""
+        """
+        Handle the 'list' subcommand.
+        """
         from llm_router_api.core.auth.key_store import create_key_store
 
         key_store, _ = create_key_store(
@@ -553,7 +581,9 @@ class AuthCommand:
     def _key_action(
         self, key_store, key_id: str, action: str, *, seed_file=None
     ) -> int:
-        """Handle delete / disable / enable — they share the same flow."""
+        """
+        Handle delete / disable / enable — they share the same flow.
+        """
         method_name = f"{action}_key"
         success_msg = (
             f"Key {key_id} {'deleted' if action == 'delete' else action + 'd'}."
@@ -574,19 +604,27 @@ class AuthCommand:
         return 0
 
     def _key_mutate_delete(self, args, key_args) -> int:
-        """dispatch → _key_mutate with action='delete'."""
+        """
+        dispatch → _key_mutate with action='delete'.
+        """
         return self._key_mutate(args, key_args, "delete")
 
     def _key_mutate_disable(self, args, key_args) -> int:
-        """dispatch → _key_mutate with action='disable'."""
+        """
+        dispatch → _key_mutate with action='disable'.
+        """
         return self._key_mutate(args, key_args, "disable")
 
     def _key_mutate_enable(self, args, key_args) -> int:
-        """dispatch → _key_mutate with action='enable'."""
+        """
+        dispatch → _key_mutate with action='enable'.
+        """
         return self._key_mutate(args, key_args, "enable")
 
     def _key_mutate(self, args, key_args: list[str], action: str) -> int:
-        """Shared dispatcher for delete / disable / enable."""
+        """
+        Shared dispatcher for delete / disable / enable.
+        """
         key_id = self._extract_key_id(key_args)
         if not key_id:
             print(f"Error: key_id is required for {action}.")
@@ -601,7 +639,9 @@ class AuthCommand:
         return self._key_action(key_store, key_id, action, seed_file=seed_file)
 
     def _key_rotate(self, args, key_args) -> int:
-        """Handle the 'rotate' subcommand."""
+        """
+        Handle the 'rotate' subcommand.
+        """
         from llm_router_api.core.auth.key_store import create_key_store
 
         key_id = self._extract_key_id(key_args)
@@ -628,7 +668,9 @@ class AuthCommand:
         return 0
 
     def _key_reveal(self, args, key_args) -> int:
-        """Handle the 'reveal' subcommand."""
+        """
+        Handle the 'reveal' subcommand.
+        """
         from llm_router_api.core.auth.key_store import create_key_store
 
         key_id = self._extract_key_id(key_args)
@@ -655,7 +697,9 @@ class AuthCommand:
     # ---- Policy handler ---------------------------------------------------
 
     def _handle_policy(self, args, sub: list[str]) -> int:
-        """Handle policy subcommands."""
+        """
+        Handle policy subcommands.
+        """
         from llm_router_api.core.auth.policies.engine import EndpointPolicy
         from llm_router_api.core.auth.policies.builtin import (
             list_builtin_policies,
@@ -694,7 +738,9 @@ class AuthCommand:
     # ---- Rate-limit handler -----------------------------------------------
 
     def _handle_rate_limit(self, sub: list[str]) -> int:
-        """Handle rate-limit subcommands."""
+        """
+        Handle rate-limit subcommands.
+        """
         if not sub:
             print("Usage: llm-router auth rate-limit <list|apply|remove> ...")
             return 1
@@ -711,7 +757,9 @@ class AuthCommand:
         return handler(sub)
 
     def _rl_list(self, sub: list[str]) -> int:
-        """List all available rate-limit presets."""
+        """
+        List all available rate-limit presets.
+        """
         presets = self._load_rate_limit_presets()
         if not presets:
             print("No presets found.")
@@ -733,7 +781,9 @@ class AuthCommand:
         return 0
 
     def _rl_apply(self, sub: list[str]) -> int:
-        """Apply a rate-limit preset to an existing key."""
+        """
+        Apply a rate-limit preset to an existing key.
+        """
         if len(sub) < 2:
             print("Usage: llm-router auth rate-limit apply <key_id> --preset <name>")
             return 1
@@ -808,7 +858,9 @@ class AuthCommand:
         return 0
 
     def _rl_remove(self, sub: list[str]) -> int:
-        """Remove rate-limit override from a key."""
+        """
+        Remove rate-limit override from a key.
+        """
         if len(sub) < 2:
             print("Usage: llm-router auth rate-limit remove <key_id>")
             return 1
@@ -876,7 +928,9 @@ class AuthCommand:
 
     @staticmethod
     def _rl_parser(add_preset: bool = False) -> argparse.ArgumentParser:
-        """Build the shared argument parser for rate-limit subcommands."""
+        """
+        Build the shared argument parser for rate-limit subcommands.
+        """
         p = argparse.ArgumentParser(add_help=False)
         p.add_argument("--store", default="memory")
         p.add_argument("--auth-redis-host", default=None)

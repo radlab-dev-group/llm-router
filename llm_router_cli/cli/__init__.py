@@ -29,7 +29,9 @@ _cg.IS_CLI_COMMAND = True
 
 
 def _version() -> str:
-    """Return the installed package version (e.g. ``0.6.0``)."""
+    """
+    Return the installed package version (e.g. ``0.6.0``).
+    """
     return _pkg_version("llm-router")
 
 

@@ -100,7 +100,9 @@ class ConfigCommand:
 
     @staticmethod
     def _add_discover_args(p: argparse.ArgumentParser) -> None:
-        """Add the shared arguments for the ``discover`` subcommand."""
+        """
+        Add the shared arguments for the ``discover`` subcommand.
+        """
         p.add_argument(
             "hosts", nargs="+", help="Target hosts to scan for local LLM providers."
         )
@@ -127,7 +129,9 @@ class ConfigCommand:
 
     @staticmethod
     def _add_merge_args(p: argparse.ArgumentParser) -> None:
-        """Add the shared arguments for the ``merge`` subcommand."""
+        """
+        Add the shared arguments for the ``merge`` subcommand.
+        """
         p.add_argument(
             "configs",
             nargs="+",
@@ -146,7 +150,9 @@ class ConfigCommand:
 
     @staticmethod
     def _parse_host(raw: str) -> Tuple[str, int, str]:
-        """Split ``host:port`` into ``(host, port, protocol)``."""
+        """
+        Split ``host:port`` into ``(host, port, protocol)``.
+        """
         protocol = "http"
         scheme_end = raw.find("://")
         if scheme_end != -1:
@@ -171,14 +177,18 @@ class ConfigCommand:
 
     @staticmethod
     def _sanitize(name: str) -> str:
-        """Sanitize a model name / path for safe use as an identifier key."""
+        """
+        Sanitize a model name / path for safe use as an identifier key.
+        """
         return name.replace("/", "_").replace(":", "_").replace(" ", "_")
 
     # ---- Registration ------------------------------------------------------
 
     @classmethod
     def register_parser(cls, subparsers: argparse._SubParsersAction) -> None:
-        """Register the ``config`` subparser with its child commands."""
+        """
+        Register the ``config`` subparser with its child commands.
+        """
         discover_p = subparsers.add_parser("discover", help=cls.DISCOVER_HELP)
         cls._add_discover_args(discover_p)
 
@@ -189,7 +199,9 @@ class ConfigCommand:
 
     @classmethod
     def run(cls, argv: list[str] | None = None) -> int:
-        """Standalone entry point: parse args and dispatch."""
+        """
+        Standalone entry point: parse args and dispatch.
+        """
         if argv is None:
             argv = sys.argv[1:]
 
@@ -213,7 +225,9 @@ class ConfigCommand:
 
     @staticmethod
     def _get_flag(args: argparse.Namespace, name: str, default: bool) -> bool:
-        """Safely read a boolean CLI flag, falling back to *default*."""
+        """
+        Safely read a boolean CLI flag, falling back to *default*.
+        """
         return bool(getattr(args, name, default))
 
     # ---- Discovery helpers -------------------------------------------------
@@ -226,7 +240,9 @@ class ConfigCommand:
         timeout: float = 0.5,
         protocol: str = "http",
     ) -> bool:
-        """Return True when a HTTP service responds on ``{protocol}://{host}:{port}{path}``."""
+        """
+        Return True when a HTTP service responds on ``{protocol}://{host}:{port}{path}``.
+        """
         try:
             resp = requests.get(f"{protocol}://{host}:{port}{path}", timeout=timeout)
             return resp.status_code < 500
@@ -237,7 +253,9 @@ class ConfigCommand:
     def _fetch_ollama_models(
         host: str, port: int, protocol: str = "http"
     ) -> List[Dict[str, Any]]:
-        """Fetch Ollama model info via ``GET /api/tags``."""
+        """
+        Fetch Ollama model info via ``GET /api/tags``.
+        """
         url = f"{protocol}://{host}:{port}/api/tags"
         try:
             resp = requests.get(url, timeout=2)
@@ -269,7 +287,9 @@ class ConfigCommand:
     def _fetch_openai_style_models(
         host: str, port: int, protocol: str = "http"
     ) -> List[Dict[str, Any]]:
-        """Fetch models via ``GET /v1/models`` (OpenAI-compatible format)."""
+        """
+        Fetch models via ``GET /v1/models`` (OpenAI-compatible format).
+        """
         url = f"{protocol}://{host}:{port}/v1/models"
         try:
             resp = requests.get(url, timeout=2)
@@ -289,7 +309,9 @@ class ConfigCommand:
         extra_meta: Dict[str, Any] | None = None,
         protocol: str = "http",
     ) -> Dict[str, Any]:
-        """Build a single provider entry for the config."""
+        """
+        Build a single provider entry for the config.
+        """
         safe_model = ConfigCommand._sanitize(model_name)
         safe_host = ConfigCommand._sanitize(host).replace(":", "_")
         provider_id = f"{api_type}_{safe_model}_{safe_host}:{port}"
@@ -322,7 +344,9 @@ class ConfigCommand:
     def _build_config_for_provider(
         provider_def: Dict[str, Any], host: str, port: int, protocol: str = "http"
     ) -> Tuple[str, Dict[str, Any]]:
-        """Discover models for one provider and return the config group dict."""
+        """
+        Discover models for one provider and return the config group dict.
+        """
         api_type = provider_def["api_type"]
         group_name = provider_def["group_name"]
         model_name_key = provider_def["model_name_key"]
@@ -377,7 +401,9 @@ class ConfigCommand:
 
     @staticmethod
     def _strip_debug_fields(obj: Any) -> None:
-        """Recursively remove internal debug fields from *obj* (in-place)."""
+        """
+        Recursively remove internal debug fields from *obj* (in-place).
+        """
         if isinstance(obj, dict):
             for key in list(obj.keys()):
                 val = obj[key]
@@ -399,7 +425,9 @@ class ConfigCommand:
         config: Dict[str, Any],
         collect_all: bool = False,
     ) -> None:
-        """Discover one provider on one host and merge its config into *config*."""
+        """
+        Discover one provider on one host and merge its config into *config*.
+        """
         if explicit_port != 0:
             ports_to_scan = [explicit_port]
         else:
@@ -449,7 +477,9 @@ class ConfigCommand:
     def _accumulate_group(
         config: Dict[str, Any], group_name: str, group: Dict[str, Any]
     ) -> None:
-        """Merge *group* into *config*, deduplicating providers by (host, port)."""
+        """
+        Merge *group* into *config*, deduplicating providers by (host, port).
+        """
         if group_name in config:
             for model_name, model_data in group.items():
                 if model_name not in config[group_name]:
@@ -465,7 +495,9 @@ class ConfigCommand:
     def _add_provider_to_model(
         existing_model: Dict[str, Any], new_model: Dict[str, Any]
     ) -> None:
-        """Add *new_model* provider to *existing_model* without duplicating host."""
+        """
+        Add *new_model* provider to *existing_model* without duplicating host.
+        """
         new_provider = new_model.get("providers", [{}])[0]
         existing_providers = existing_model.get("providers", [])
         new_host_port = new_provider.get("api_host", "")
@@ -476,7 +508,9 @@ class ConfigCommand:
     def _generate_config(
         cls, hosts: List[Tuple[str, int, str]], all_ports: bool = False
     ) -> Dict[str, Any]:
-        """Run discovery across all provider definitions for every host."""
+        """
+        Run discovery across all provider definitions for every host.
+        """
         config: Dict[str, Any] = {}
         for host, explicit_port, protocol in hosts:
             for prov in ConfigCommand.PROVIDER_DEFINITIONS:
@@ -495,7 +529,9 @@ class ConfigCommand:
 
     @staticmethod
     def _load_config(path: str) -> Dict[str, Any]:
-        """Load a JSON config file."""
+        """
+        Load a JSON config file.
+        """
         try:
             with open(path, "r", encoding="utf-8") as fh:
                 return json.load(fh)
@@ -505,7 +541,9 @@ class ConfigCommand:
 
     @staticmethod
     def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
-        """Recursively merge *overlay* into *base* (overlay wins on conflict)."""
+        """
+        Recursively merge *overlay* into *base* (overlay wins on conflict).
+        """
         result = dict(base)
         for key, val in overlay.items():
             if (
@@ -520,7 +558,9 @@ class ConfigCommand:
 
     @staticmethod
     def _dedup_providers(models_group: Dict[str, Any]) -> None:
-        """Deduplicate provider entries (same ``api_host`` → keep first)."""
+        """
+        Deduplicate provider entries (same ``api_host`` → keep first).
+        """
         for model_name in list(models_group.keys()):
             model_data = models_group[model_name]
             if not isinstance(model_data, dict):
@@ -539,7 +579,9 @@ class ConfigCommand:
 
     @staticmethod
     def _merge_active_models(val: Any, active: Dict[str, List[str]]) -> None:
-        """Union all active model lists from *val* into *active*."""
+        """
+        Union all active model lists from *val* into *active*.
+        """
         if not isinstance(val, dict):
             return
         for group, models in val.items():
@@ -552,7 +594,9 @@ class ConfigCommand:
 
     @classmethod
     def _do_discover(cls, args: argparse.Namespace) -> int:
-        """Shared discovery logic invoked by both the CLI and tests."""
+        """
+        Shared discovery logic invoked by both the CLI and tests.
+        """
         raw_hosts = getattr(args, "hosts", ["localhost"])
         hosts: List[Tuple[str, int, str]] = [cls._parse_host(h) for h in raw_hosts]
         config = cls._generate_config(
@@ -592,7 +636,9 @@ class ConfigCommand:
 
     @classmethod
     def _do_merge(cls, args: argparse.Namespace) -> int:
-        """Merge multiple models-config.json files into one."""
+        """
+        Merge multiple models-config.json files into one.
+        """
         configs_arg: list[str] = getattr(args, "configs", [])
 
         merged: Dict[str, Any] = {}

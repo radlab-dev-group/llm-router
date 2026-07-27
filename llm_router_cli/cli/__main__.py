@@ -1,4 +1,6 @@
-"""Allow ``python -m llm_router_cli.cli``."""
+"""
+Allow ``python -m llm_router_cli.cli``.
+"""
 
 import sys
 

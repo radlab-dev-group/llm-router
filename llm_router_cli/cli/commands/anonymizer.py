@@ -55,7 +55,9 @@ class AnonymizerCommand:
 
     @staticmethod
     def _add_common_args(p: argparse.ArgumentParser) -> None:
-        """Add the standard ``anonymizer run`` arguments to *p*."""
+        """
+        Add the standard ``anonymizer run`` arguments to *p*.
+        """
         p.add_argument(
             "--algorithm",
             required=True,
