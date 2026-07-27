@@ -39,8 +39,8 @@ class AuthMiddleware:
     4. **Rate-limit** (sliding window check).
 
     Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
-    ``/ping,/version,/models,/,/metrics``) bypass all checks — they are always accessible
-    regardless of auth configuration.  See
+    ``/ping,/version,/models,/,/metrics``) bypass all checks — they are
+    always accessible regardless of auth configuration. See
     :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
     for the full mapping of authenticated endpoints
     to their required permission types.

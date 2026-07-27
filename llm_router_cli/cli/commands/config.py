@@ -124,7 +124,8 @@ class ConfigCommand:
             "--no-active",
             action="store_true",
             default=False,
-            help="Skip writing the active_models section (produce provider entries only).",
+            help="Skip writing the active_models section "
+            "(produce provider entries only).",
         )
 
     @staticmethod
@@ -241,7 +242,8 @@ class ConfigCommand:
         protocol: str = "http",
     ) -> bool:
         """
-        Return True when a HTTP service responds on ``{protocol}://{host}:{port}{path}``.
+        Return True when a HTTP service responds on
+        ``{protocol}://{host}:{port}{path}``.
         """
         try:
             resp = requests.get(f"{protocol}://{host}:{port}{path}", timeout=timeout)

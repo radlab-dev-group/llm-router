@@ -24,14 +24,16 @@ from pathlib import Path
 
 
 class AnonymizerCommand:
-    """Encapsulates the *anonymizer run* subcommand.
+    """
+    Encapsulates the *anonymizer run* subcommand.
 
     This class owns all argument definitions, parsing, and masking logic
     for the anonymiser so that no module-level ``_`` functions leak out
     of this file.
 
     Public API (exactly two methods):
-      - :meth:`register_parser`  – register *anonymizer run* under a parent argparse parser.
+      - :meth:`register_parser`  – register *anonymizer run*
+      under a parent argparse parser.
       - :meth:`run`             – standalone entry point; parse + mask.
     """
 
@@ -41,7 +43,7 @@ class AnonymizerCommand:
 
     # ---- Argument definitions (class-level constants) ----------------------
 
-    _ALGO_HELP = "Anonymisation algorithm to use (pii is not yet implemented)"
+    _ALGO_HELP = "Anonymization algorithm to use (pii is not yet implemented)"
 
     _DISABLE_FLAGS: list[tuple[str, str]] = [
         ("phone", "phone-number anonymisation"),
@@ -157,10 +159,13 @@ class AnonymizerCommand:
 
     @classmethod
     def _mask(cls, args) -> int:  # noqa: C901
-        """Core masking logic shared by :meth:`run` and :meth:`_handle_anonymizer_from_args`.
+        """
+        Core masking logic shared by :meth:`run`
+        and :meth:`_handle_anonymizer_from_args`.
 
         Handles two calling conventions:
-          - :meth:`run` (standalone): input/output are string paths ("-" means stdin/stdout).
+          - :meth:`run` (standalone): input/output are string paths
+          ("-" means stdin/stdout).
           - auth dispatcher (_handle_anonymizer_from_args): same as above.
         """
         algorithm = args.algorithm

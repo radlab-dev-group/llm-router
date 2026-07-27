@@ -83,7 +83,8 @@ class AuthCommand:
         p.add_argument(
             "--auth-redis-host",
             default=None,
-            help="Redis host for auth key store (default: env LLM_ROUTER_AUTH_REDIS_HOST)",
+            help="Redis host for auth key store "
+            "(default: env LLM_ROUTER_AUTH_REDIS_HOST)",
         )
         p.add_argument(
             "--auth-redis-port",
@@ -570,7 +571,8 @@ class AuthCommand:
                 else "none"
             )
             line = (
-                f"{k['key_id']:<{w[0]}} {k['key_prefix']:<{w[1]}} {k['policy_name']:<{w[2]}} "
+                f"{k['key_id']:<{w[0]}} {k['key_prefix']:<{w[1]}} "
+                f"{k['policy_name']:<{w[2]}} "
                 f"{'yes' if k.get('is_active') else 'no':<{w[3]}} {exp_str:<{w[4]}}"
             )
             if show_plain and "key_plain" in k:
@@ -831,7 +833,8 @@ class AuthCommand:
                 json.dumps(keys, indent=2) + "\n", encoding="utf-8"
             )
             print(
-                f"Applied preset '{preset_name}' (rate_limit='{rate_limit}'/min) to key {key_id}."
+                f"Applied preset '{preset_name}' "
+                f"(rate_limit='{rate_limit}'/min) to key {key_id}."
             )
 
         elif store == "redis":
@@ -842,7 +845,8 @@ class AuthCommand:
             policy_override["rate_limit"] = rate_limit
             r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
             print(
-                f"Applied preset '{preset_name}' (rate_limit='{rate_limit}'/min) to key {key_id}."
+                f"Applied preset '{preset_name}' "
+                f"(rate_limit='{rate_limit}'/min) to key {key_id}."
             )
 
         elif store == "vault":
@@ -894,7 +898,8 @@ class AuthCommand:
                 json.dumps(keys, indent=2) + "\n", encoding="utf-8"
             )
             print(
-                f"Removed rate-limit override for key {key_id} (will use global default)."
+                f"Removed rate-limit override for key {key_id} "
+                f"(will use global default)."
             )
 
         elif store == "redis":
@@ -909,7 +914,8 @@ class AuthCommand:
             else:
                 r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
             print(
-                f"Removed rate-limit override for key {key_id} (will use global default)."
+                f"Removed rate-limit override for key {key_id} "
+                f"(will use global default)."
             )
 
         elif store == "vault":

@@ -35,7 +35,8 @@ class BaseConversationServiceInterface(abc.ABC):
     # Relative URL of the endpoint to call
     endpoint: str = ""
 
-    # Pydantic model class used to validate the request payload (None for GET endpoints).
+    # Pydantic model class used to validate
+    # the request payload (None for GET endpoints).
     model_cls: type | None = None
 
     def __init__(self, http: HttpRequester, logger: logging.Logger | None = None):
