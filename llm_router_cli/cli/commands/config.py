@@ -115,23 +115,25 @@ def _health_check(
 
 
 def _health_check_with_path(
-    host: str, port: int, path: str, timeout: float = 0.5
+    host: str, port: int, path: str, timeout: float = 0.5, protocol: str = "http"
 ) -> bool:
     """Return ``True`` when a HTTP service responds on ``{host}:{port}{path}``."""
     try:
-        resp = requests.get(f"http://{host}:{port}{path}", timeout=timeout)
+        resp = requests.get(f"{protocol}://{host}:{port}{path}", timeout=timeout)
         return resp.status_code < 500
     except (requests.RequestException, OSError):
         return False
 
 
-def _fetch_ollama_models(host: str, port: int) -> List[Dict[str, Any]]:
+def _fetch_ollama_models(
+    host: str, port: int, protocol: str = "http"
+) -> List[Dict[str, Any]]:
     """Fetch Ollama model info via ``GET /api/tags``.
 
     Returns a list of dicts with at least ``id`` and optional metadata
     (context_length, capabilities, etc.).
     """
-    url = f"http://{host}:{port}/api/tags"
+    url = f"{protocol}://{host}:{port}/api/tags"
     try:
         resp = requests.get(url, timeout=2)
         resp.raise_for_status()
@@ -160,12 +162,14 @@ def _fetch_ollama_models(host: str, port: int) -> List[Dict[str, Any]]:
         return []
 
 
-def _fetch_openai_style_models(host: str, port: int) -> List[Dict[str, Any]]:
+def _fetch_openai_style_models(
+    host: str, port: int, protocol: str = "http"
+) -> List[Dict[str, Any]]:
     """Fetch models via ``GET /v1/models`` (OpenAI-compatible format).
 
     Returns a list of dicts with at least ``id`` and optional metadata.
     """
-    url = f"http://{host}:{port}/v1/models"
+    url = f"{protocol}://{host}:{port}/v1/models"
     try:
         resp = requests.get(url, timeout=2)
         resp.raise_for_status()
@@ -186,6 +190,7 @@ def _build_provider_entry(
     port: int,
     model_name: str,
     extra_meta: Dict[str, Any] | None = None,
+    protocol: str = "http",
 ) -> Dict[str, Any]:
     """Build a single provider entry for the config."""
     safe_host = host.replace(".", "_")
@@ -194,7 +199,7 @@ def _build_provider_entry(
 
     entry: Dict[str, Any] = {
         "id": provider_id,
-        "api_host": f"http://{host}:{port}",
+        "api_host": f"{protocol}://{host}:{port}",
         "api_token": "",
         "api_type": api_type,
         "input_size": 0,
