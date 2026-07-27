@@ -30,7 +30,6 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_SERVER_THREADS_COUNT`  | `8`                                    | Number of worker threads (for servers that support them).                                                        |
 | `LLM_ROUTER_SERVER_WORKER_CLASS`   | `None`                                 | Worker class for servers that support it (e.g. gevent).                                                          |
 | `LLM_ROUTER_USE_PROMETHEUS`        | `False`                                | Enable Prometheus metrics collection (`/metrics` endpoint).                                                      |
-| `LLM_ROUTER_HOST`                  | `http://localhost:8080`                | Router host address (used by clients to connect to the router).                                                  |
 
 > See also `PROMETHEUS_MULTIPROC_DIR` for the directory where Prometheus multiprocess worker data files are stored.
 
@@ -53,11 +52,11 @@ When `LLM_ROUTER_REDIS_HOST` is set, the router uses Redis for load-balancing st
 
 ### Payload masking
 
-| Variable                               | Default       | Description                                                             |
-|----------------------------------------|---------------|-------------------------------------------------------------------------|
-| `LLM_ROUTER_FORCE_MASKING`             | `False`       | Enable masking of every endpoint's payload before provider call.        |
-| `LLM_ROUTER_MASKING_STRATEGY_PIPELINE` | `fast_masker` | Comma-separated list of masker plugins (e.g. `fast_masker,pii_masker`). |
-| `LLM_ROUTER_MASKING_WITH_AUDIT`        | `False`       | Record each masking operation in the audit log.                         |
+| Variable                               | Default   | Description                                                             |
+|----------------------------------------|-----------|-------------------------------------------------------------------------|
+| `LLM_ROUTER_FORCE_MASKING`             | `False`   | Enable masking of every endpoint's payload before provider call.        |
+| `LLM_ROUTER_MASKING_STRATEGY_PIPELINE` | *(empty)* | Comma-separated list of masker plugins (e.g. `fast_masker,pii_masker`). |
+| `LLM_ROUTER_MASKING_WITH_AUDIT`        | `False`   | Record each masking operation in the audit log.                         |
 
 ### Request guardrails
 
@@ -78,8 +77,6 @@ When `LLM_ROUTER_REDIS_HOST` is set, the router uses Redis for load-balancing st
 ---
 
 ## Semantic BiEncoder Routing variables
-
-Variables for the semantic-biencoder routing plugin:
 
 | Variable                                              | Default   | Description                                                                                                                                                                               |
 |-------------------------------------------------------|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
