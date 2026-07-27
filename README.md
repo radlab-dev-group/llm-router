@@ -75,12 +75,11 @@ Request → MaskerPipeline → GuardrailPipeline → UtilsPipeline → Model Pro
 
 ### Utility Plugins
 
-| Plugin ID                     | Type  | Description                                                                                                                        |
-|-------------------------------|-------|------------------------------------------------------------------------------------------------------------------------------------|
-| **`langchain_rag`**           | Local | Retrieves relevant document chunks from a FAISS vector store and injects them into the payload for Retrieval‑Augmented Generation. |
-| **`simple_semantic_routing`** | Local | Two‑stage heuristic model selection: intent classification + complexity analysis. Activated when `payload["model"] == "auto"`.     |
-
-### Configuration
+| Plugin ID                        | Type  | Description                                                                                                                                                                                                                      |
+|----------------------------------|-------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **`langchain_rag`**              | Local | Retrieves relevant document chunks from a FAISS vector store and injects them into the payload for Retrieval‑Augmented Generation.                                                                                               |
+| **`simple_semantic_routing`**    | Local | Two‑stage heuristic model selection: intent classification + complexity analysis. Activated when `payload["model"] == "auto"`.                                                                                                   |
+| **`semantic_biencoder_routing`** | Local | Embedding‑based semantic routing using FAISS — matches user messages against pre‑configured target embeddings to select the best model. See [Semantic BiEncoder Routing](#semantic-biencoder-routing) for configuration details. |
 
 Pipelines are configured via environment variables:
 
@@ -98,15 +97,59 @@ export LLM_ROUTER_FORCE_MASKING=1
 export LLM_ROUTER_MASKING_WITH_AUDIT=1
 ```
 
----
+### Semantic BiEncoder Routing
 
-## 🛡️ Monitoring
+The `semantic_biencoder_routing` plugin uses a neural embedding model (**google/embeddinggemma-300m**) to
+compute semantic embeddings for a set of pre‑configured routing targets. Each target has a `name`, a `model_name` (the
+model to route to), a `description`, and a list of `examples`. At query time the user message is embedded and matched
+against all stored target embeddings using FAISS (`IndexFlatIP` on L2‑normalised vectors = cosine similarity). The
+best‑matching target determines the selected model.
 
-| Component            | Description                                                                         |
-|----------------------|-------------------------------------------------------------------------------------|
-| **KeepAliveMonitor** | Periodically pings model endpoints to keep them warm (prevents cold‑start latency). |
-| **ProviderMonitor**  | Tracks per‑provider availability using Redis as a shared state store.               |
-| **ServicesMonitor**  | Periodically health‑checks the llm-router-services endpoints (guardrails, maskers). |
+#### How it works
+
+**1. Index building (on first load or when the persist directory is missing):**
+
+- For each routing target, its `description` and `examples` are combined into text.
+- The text is split into overlapping **token chunks** using a sliding window (`chunk_size` tokens, `chunk_overlap`
+  tokens overlap).
+- Each chunk is embedded via the BiEncoder model (e.g. `google/embeddinggemma-300m`).
+- All embedding vectors are **L2‑normalised** to unit length.
+- Vectors are inserted into a `faiss.IndexFlatIP` index (inner product).
+- A docstore maps each FAISS document ID to its target name (for reverse lookup).
+
+**2. Routing (query):**
+
+- The user message is embedded and L2‑normalised.
+- FAISS performs a nearest‑neighbor search returning the `top_k` closest chunks.
+- Scores are **aggregated per target**: the mean cosine similarity of all chunks belonging to the same target is
+  computed.
+- The target with the **highest mean similarity** wins and its `model_name` is returned.
+
+**3. Persistence:**
+
+The FAISS index and docstore are saved to disk (files `index.faiss` and `docstore.pkl`) under the configured persist
+directory. On subsequent starts the index is loaded from disk — embeddings are **not recomputed**. If the embedding
+model changes (different output dimension) the index is automatically rebuilt.
+
+Full example JSON config with `routing_targets` and their `examples` is available in the plugins repo:
+[`llm_router_plugins/resources/routing/semantic_biencoder.json`](
+https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/resources/routing/semantic_biencoder.json
+).
+Detailed variable descriptions and usage examples:
+[Plugin Routing README](
+https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/README.md#24-configuration
+).
+
+**Example routing targets:**
+
+| Target name         | Model routed to | Description                                                              |
+|---------------------|-----------------|--------------------------------------------------------------------------|
+| `code-generation`   | `qwen3.6:35b`   | Code‑related tasks: writing, debugging, refactoring.                     |
+| `math-analysis`     | `qwen3.6:35b`   | Mathematical computations, statistical analysis, quantitative reasoning. |
+| `creative-writing`  | `gpt-oss:120b`  | Creative and generative writing: stories, poems, marketing content.      |
+| `general-assistant` | `gpt-oss:120b`  | Everyday questions, explanations, research, conversation.                |
+| `data-science`      | `qwen3.6:35b`   | Data analysis, visualization, ML pipelines, reporting.                   |
+| `system-admin`      | `gpt-oss:120b`  | System administration, DevOps, infrastructure, technical ops.            |
 
 ---
 
@@ -132,7 +175,7 @@ pip install .[api,metrics]
 > must be set and **Redis is required** (used for provider availability state).  
 > The multiproc directory defaults to
 > `$HOME/.llm-router/metrics/prometheus/multiproc`
-> — override via the ``PROMETHEUS_MULTIPROC_DIR`` environment variable if needed.
+> — override via the `PROMETHEUS_MULTIPROC_DIR` environment variable if needed.
 
 Then start the application with the environment variable set:
 
@@ -302,16 +345,16 @@ A full list of environment variables is available at: [API README](llm_router_ap
 | `LLM_ROUTER_LOG_FILENAME`          | `llm-router.log`                                 | Name of the log file.                                                                                                                  |
 | `LLM_ROUTER_LOG_LEVEL`             | `INFO`                                           | Logging level (e.g., INFO, DEBUG).                                                                                                     |
 | `LLM_ROUTER_EP_PREFIX`             | `/api`                                           | Prefix for all API endpoints.                                                                                                          |
-| `LLM_ROUTER_MINIMUM`               | `False`                                          | Run service in proxy‑only mode.                                                                                                        |
-| `LLM_ROUTER_IN_DEBUG`              | `False`                                          | Run server in debug mode.                                                                                                              |
-| `LLM_ROUTER_BALANCE_STRATEGY`      | `balanced`                                       | Load‑balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`.                       |
+| `LLM_ROUTER_MINIMUM`               | `1`                                              | Run service in proxy‑only mode.                                                                                                        |
+| `LLM_ROUTER_IN_DEBUG`              | `1`                                              | Run server in debug mode.                                                                                                              |
+| `LLM_ROUTER_BALANCE_STRATEGY`      | `first_available`                                | Load‑balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`.                       |
 | `LLM_ROUTER_SERVER_TYPE`           | `flask`                                          | Server implementation: `flask`, `gunicorn`, `waitress`.                                                                                |
 | `LLM_ROUTER_SERVER_PORT`           | `8080`                                           | Port on which the server listens.                                                                                                      |
-| `LLM_ROUTER_SERVER_HOST`           | `localhost`                                      | Host address for the server.                                                                                                           |
-| `LLM_ROUTER_SERVER_WORKERS_COUNT`  | `2`                                              | Number of workers.                                                                                                                     |
-| `LLM_ROUTER_SERVER_THREADS_COUNT`  | `8`                                              | Number of worker threads.                                                                                                              |
+| `LLM_ROUTER_SERVER_HOST`           | `0.0.0.0`                                        | Host address for the server.                                                                                                           |
+| `LLM_ROUTER_SERVER_WORKERS_COUNT`  | `4`                                              | Number of workers.                                                                                                                     |
+| `LLM_ROUTER_SERVER_THREADS_COUNT`  | `16`                                             | Number of worker threads.                                                                                                              |
 | `LLM_ROUTER_SERVER_WORKER_CLASS`   | `None`                                           | Worker class for servers that support it.                                                                                              |
-| `LLM_ROUTER_USE_PROMETHEUS`        | `False`                                          | Enable Prometheus metrics (`/metrics` endpoint).                                                                                       |
+| `LLM_ROUTER_USE_PROMETHEUS`        | `1`                                              | Enable Prometheus metrics (`/metrics` endpoint).                                                                                       |
 | `PROMETHEUS_MULTIPROC_DIR`         | `$HOME/.llm-router/metrics/prometheus/multiproc` | Directory where prometheus multiprocess worker data files are stored. Overrides are allowed but the default works in most deployments. |
 
 ### Masking & guardrail variables
@@ -334,7 +377,44 @@ A full list of environment variables is available at: [API README](llm_router_ap
 | `LLM_ROUTER_REDIS_PASSWORD` | *(not set)* | Redis password.                                             |
 | `LLM_ROUTER_REDIS_DB`       | `0`         | Redis database number.                                      |
 
-> **Redis is now mandatory.** The router raises `RuntimeError` at startup if Redis is unavailable.
+> **Note:** When `LLM_ROUTER_REDIS_HOST` is set, the router uses Redis for load‑balancing state and provider
+> availability tracking.
+
+### Semantic BiEncoder Routing variables
+
+| Variable                                              | Default   | Description                                                                                                                                                                                                                                         |
+|-------------------------------------------------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG`        | *(empty)* | **Config source of truth** — either a raw JSON string (starts with `{`) or a file path. When unset, falls back to the bundled `semantic_biencoder.json`. Individual env vars below override values from the loaded config only when explicitly set. |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL`         | *(empty)* | Override the embedding model name or local path.                                                                                                                                                                                                    |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS`       | *(empty)* | Pipe‑separated list of target names (overrides all targets).                                                                                                                                                                                        |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE`    | *(empty)* | Token chunk size for embedding.                                                                                                                                                                                                                     |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP` | *(empty)* | Token overlap between consecutive chunks.                                                                                                                                                                                                           |
+| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR`   | *(empty)* | Directory for FAISS index + docstore persistence (`index.faiss`, `docstore.pkl`).                                                                                                                                                                   |
+
+### LangChainRAG variables
+
+| Variable                                 | Default   | Description                                                                                       |
+|------------------------------------------|-----------|---------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_LANGCHAIN_RAG_COLLECTION`    | *(empty)* | Vector store collection name.                                                                     |
+| `LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER`      | *(empty)* | Path to the embedding model (e.g. `/mnt/data2/llms/models/community/google/embeddinggemma-300m`). |
+| `LLM_ROUTER_LANGCHAIN_RAG_DEVICE`        | `cpu`     | Compute device for the embedding model (`cpu`, `cuda:0`, …).                                      |
+| `LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE`    | `1024`    | Chunk size for document splitting.                                                                |
+| `LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP` | `100`     | Overlap between consecutive chunks.                                                               |
+| `LLM_ROUTER_LANGCHAIN_RAG_PERSIST_DIR`   | *(empty)* | Directory for LangChainRAG index persistence.                                                     |
+
+> **Note:** LangChainRAG requires the `llm-router-plugins` package. When `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` includes
+`langchain_rag`, these variables configure the RAG plugin behavior.
+
+### Plugin Pipeline variables
+
+| Variable                            | Default                      | Description                                                                                      |
+|-------------------------------------|------------------------------|--------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` | `semantic_biencoder_routing` | Comma‑separated list of utility plugins to apply (e.g. `simple_semantic_routing,langchain_rag`). |
+
+> **Note:** Utility plugins run per‑request in the pipeline between endpoint processing and model provider dispatch.
+> Available plugins: `simple_semantic_routing`, `semantic_biencoder_routing`, `langchain_rag`. Each plugin has
+> additional
+> configuration documented above.
 
 ### Authentication variables
 
@@ -360,7 +440,7 @@ A full list of environment variables is available at: [API README](llm_router_ap
 | `LLM_ROUTER_AUTH_KEY_PREFIX`                 | `sk-litm`                         | Key prefix (like LiteLLM/OpenAI format).                                               |
 | `LLM_ROUTER_AUTH_KEY_LENGTH`                 | `48`                              | Entropy bytes for key generation (produces 64-char key).                               |
 | `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD`      | `3600`                            | Old keys remain valid for this many seconds after rotation.                            |
-| `LLM_ROUTER_AUTH_AUDIT`                      | `false`                           | Record auth events in the audit log.                                                   |
+| `LLM_ROUTER_AUTH_AUDIT`                      | *(empty)*                         | Record auth events in the audit log.                                                   |
 
 > **Note:** Rate limiting is always applied when authentication is enabled — there is no separate toggle for it.
 > Auth Redis (`LLM_ROUTER_AUTH_REDIS_*`) is independent from general Redis (`LLM_ROUTER_REDIS_*`).

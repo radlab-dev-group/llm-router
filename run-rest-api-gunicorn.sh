@@ -39,7 +39,7 @@ export LLM_ROUTER_EXTERNAL_TIMEOUT=${LLM_ROUTER_EXTERNAL_TIMEOUT:-300}
 
 # ==================================================================================
 # Redis configuration (used f.e. in fa_* strategies)
-export LLM_ROUTER_REDIS_HOST=${LLM_ROUTER_REDIS_HOST:-"192.168.100.67"}
+export LLM_ROUTER_REDIS_HOST=${LLM_ROUTER_REDIS_HOST:-""}
 export LLM_ROUTER_REDIS_PORT=${LLM_ROUTER_REDIS_PORT:-6379}
 
 # ==================================================================================
@@ -76,7 +76,7 @@ export LLM_ROUTER_MASKER_PII_HOST=${LLM_ROUTER_MASKER_PII_HOST:-""}
 
 # ==================================================================================
 # Authentication
-export LLM_ROUTER_AUTH_ENABLED=${LLM_ROUTER_AUTH_ENABLED:-0}
+export LLM_ROUTER_AUTH_ENABLED=${LLM_ROUTER_AUTH_ENABLED:-false}
 
 # Key store backend: vault | redis | memory
 export LLM_ROUTER_AUTH_KEY_STORE=${LLM_ROUTER_AUTH_KEY_STORE:-"memory"}
@@ -119,14 +119,30 @@ export LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD=${LLM_ROUTER_AUTH_ROTATION_GRACE_PE
 export LLM_ROUTER_AUTH_AUDIT=${LLM_ROUTER_AUTH_AUDIT:-""}
 
 # ==================================================================================
-# Utilities/plugins available: [langchain_rag,simple_semantic_routing]
+# Utilities/plugins available: [simple_semantic_routing,semantic_biencoder_routing,langchain_rag]
 #export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"simple_semantic_routing,langchain_rag"}
 export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-""}
+
+# ------------ Semantic BiEncoder Routing Configuration
+# Config source of truth: JSON file (via CONFIG env var).
+# Individual env vars below can override settings from the JSON file.
+# To use all values from the JSON file, leave these unset or empty.
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG:-""}
+# Embedding model identifier (HuggingFace / local path) — overrides JSON when set
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL:-""}
+# Pipe-separated list of target names (overrides all targets in config) — overrides JSON when set
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS:-""}
+# Token chunk size for embedding — overrides JSON when set
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE:-}
+# Token overlap between chunks — overrides JSON when set
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP:-}
+# Directory for FAISS index + docstore persistence (index.faiss, docstore.pkl) — overrides JSON when set
+export LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR=${LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR:-""}
 
 # ------------ LangChainRAG Configuration
 # Sample local configuration:
 #export LLM_ROUTER_LANGCHAIN_RAG_COLLECTION=${LLM_ROUTER_LANGCHAIN_RAG_COLLECTION:-"sample_collection"}
-#export LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER=${LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER:-"/mnt/data2/llms/models/community/google/embeddinggemma-300m"}
+#export LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER=${LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER:-"google/embeddinggemma-300m"}
 #export LLM_ROUTER_LANGCHAIN_RAG_DEVICE=${LLM_ROUTER_LANGCHAIN_RAG_DEVICE:-"cpu"}
 #export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE=${LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE:-1024}
 #export LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP=${LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP:-100}

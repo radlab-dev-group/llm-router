@@ -3,10 +3,6 @@ gunicorn
 redis
 prometheus_client
 python-dateutil
-
 gnupg
-redis
-
 tqdm
 requests
-python-gnupg

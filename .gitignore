@@ -219,3 +219,5 @@ logs/prometheus_multiproc/*.db
 .venv-mypy/
 .venv-pylint/
 
+docstore.pkl
+index.faiss
