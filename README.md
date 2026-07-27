@@ -419,29 +419,29 @@ A full list of environment variables is available at: [API README](llm_router_ap
 
 ### Authentication variables
 
-| Variable                                     | Default                           | Description                                                                            |
-|----------------------------------------------|-----------------------------------|----------------------------------------------------------------------------------------|
-| `LLM_ROUTER_AUTH_ENABLED`                    | `false`                           | **Master switch** — `"true"` enables all authentication. Default is `false` (no auth). |
-| `LLM_ROUTER_AUTH_KEY_STORE`                  | `memory`                          | Key store backend: `vault`, `redis`, or `memory`.                                      |
-| `LLM_ROUTER_AUTH_VAULT_ADDR`                 | *(empty)*                         | HashiCorp Vault server URL (e.g. `https://vault.example.com`).                         |
-| `LLM_ROUTER_AUTH_VAULT_PATH`                 | `secret/data/llm-router/api-keys` | KV v2 mount path for key storage.                                                      |
-| `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD`          | `kubernetes`                      | Auth method: `kubernetes`, `approle`, or `token`.                                      |
-| `LLM_ROUTER_AUTH_VAULT_ROLE_ID`              | *(empty)*                         | AppRole role ID (or K8s SA token for K8s auth).                                        |
-| `LLM_ROUTER_AUTH_VAULT_SECRET_ID`            | *(empty)*                         | AppRole secret ID.                                                                     |
-| `LLM_ROUTER_AUTH_VAULT_TOKEN`                | *(empty)*                         | Vault token (for token auth).                                                          |
-| `LLM_ROUTER_AUTH_KEY_CACHE_TTL`              | `300`                             | Key cache TTL in seconds.                                                              |
-| `LLM_ROUTER_AUTH_KEY_CACHE_JITTER`           | `60`                              | Random jitter to prevent cache stampede.                                               |
-| **Auth Redis (separate from general REDIS)** |                                   |                                                                                        |
-| `LLM_ROUTER_AUTH_REDIS_HOST`                 | *(empty)*                         | Auth Redis host for key store and rate limiting.                                       |
-| `LLM_ROUTER_AUTH_REDIS_PORT`                 | `6379`                            | Auth Redis port.                                                                       |
-| `LLM_ROUTER_AUTH_REDIS_DB`                   | `0`                               | Auth Redis database number.                                                            |
-| `LLM_ROUTER_AUTH_REDIS_PASSWORD`             | *(not set)*                       | Auth Redis password.                                                                   |
-| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT`         | `60`                              | Default rate limit (requests per minute).                                              |
-| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`           | `/ping,/version,/models,/`        | Comma-separated paths that bypass authentication.                                      |
-| `LLM_ROUTER_AUTH_KEY_PREFIX`                 | `sk-litm`                         | Key prefix (like LiteLLM/OpenAI format).                                               |
-| `LLM_ROUTER_AUTH_KEY_LENGTH`                 | `48`                              | Entropy bytes for key generation (produces 64-char key).                               |
-| `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD`      | `3600`                            | Old keys remain valid for this many seconds after rotation.                            |
-| `LLM_ROUTER_AUTH_AUDIT`                      | *(empty)*                         | Record auth events in the audit log.                                                   |
+| Variable                                     | Default                             | Description                                                                            |
+|----------------------------------------------|-------------------------------------|----------------------------------------------------------------------------------------|
+| `LLM_ROUTER_AUTH_ENABLED`                    | `false`                             | **Master switch** — `"true"` enables all authentication. Default is `false` (no auth). |
+| `LLM_ROUTER_AUTH_KEY_STORE`                  | `memory`                            | Key store backend: `vault`, `redis`, or `memory`.                                      |
+| `LLM_ROUTER_AUTH_VAULT_ADDR`                 | *(empty)*                           | HashiCorp Vault server URL (e.g. `https://vault.example.com`).                         |
+| `LLM_ROUTER_AUTH_VAULT_PATH`                 | `secret/data/llm-router/api-keys`   | KV v2 mount path for key storage.                                                      |
+| `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD`          | `kubernetes`                        | Auth method: `kubernetes`, `approle`, or `token`.                                      |
+| `LLM_ROUTER_AUTH_VAULT_ROLE_ID`              | *(empty)*                           | AppRole role ID (or K8s SA token for K8s auth).                                        |
+| `LLM_ROUTER_AUTH_VAULT_SECRET_ID`            | *(empty)*                           | AppRole secret ID.                                                                     |
+| `LLM_ROUTER_AUTH_VAULT_TOKEN`                | *(empty)*                           | Vault token (for token auth).                                                          |
+| `LLM_ROUTER_AUTH_KEY_CACHE_TTL`              | `300`                               | Key cache TTL in seconds.                                                              |
+| `LLM_ROUTER_AUTH_KEY_CACHE_JITTER`           | `60`                                | Random jitter to prevent cache stampede.                                               |
+| **Auth Redis (separate from general REDIS)** |                                     |                                                                                        |
+| `LLM_ROUTER_AUTH_REDIS_HOST`                 | *(empty)*                           | Auth Redis host for key store and rate limiting.                                       |
+| `LLM_ROUTER_AUTH_REDIS_PORT`                 | `6379`                              | Auth Redis port.                                                                       |
+| `LLM_ROUTER_AUTH_REDIS_DB`                   | `0`                                 | Auth Redis database number.                                                            |
+| `LLM_ROUTER_AUTH_REDIS_PASSWORD`             | *(not set)*                         | Auth Redis password.                                                                   |
+| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT`         | `60`                                | Default rate limit (requests per minute).                                              |
+| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`           | `/ping,/version,/models,/,/metrics` | Comma-separated paths that bypass authentication.                                      |
+| `LLM_ROUTER_AUTH_KEY_PREFIX`                 | `sk-litm`                           | Key prefix (like LiteLLM/OpenAI format).                                               |
+| `LLM_ROUTER_AUTH_KEY_LENGTH`                 | `48`                                | Entropy bytes for key generation (produces 64-char key).                               |
+| `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD`      | `3600`                              | Old keys remain valid for this many seconds after rotation.                            |
+| `LLM_ROUTER_AUTH_AUDIT`                      | *(empty)*                           | Record auth events in the audit log.                                                   |
 
 > **Note:** Rate limiting is always applied when authentication is enabled — there is no separate toggle for it.
 > Auth Redis (`LLM_ROUTER_AUTH_REDIS_*`) is independent from general Redis (`LLM_ROUTER_REDIS_*`).
@@ -497,8 +497,6 @@ streaming mechanisms can be found at: [Endpoints Overview](llm_router_api/endpoi
 > **Note:** By default `LLM_ROUTER_AUTH_ENABLED=false`, so all endpoints are accessible without authentication. Set it
 > to `"true"` to enforce auth. The `_public` list (default `/ping,/version,/models,/`) can be customized via
 `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`.
-
----
 
 ## 🌐 Web Applications
 
