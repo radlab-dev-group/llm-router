@@ -1,6 +1,6 @@
 # llm-router CLI — Command Reference
 
-**Package:** `llm-router` (v0.6.1)
+**Package:** `llm-router` (v0.6.6)
 **Entry points:**
 
 - `llm-router` — main CLI tool (auth, anonymizer)
