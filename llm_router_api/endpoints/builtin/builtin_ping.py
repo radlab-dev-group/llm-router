@@ -24,7 +24,7 @@ class Ping(EndpointWithHttpRequestI):
 
     Registered at ``/ping`` (no prefix).
     Auth: **public** — in the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` list
-    (``/ping,/version,/models,/``).
+    (``/ping,/version,/models,/,/metrics``).
 
     This endpoint is typically used by monitoring tools to verify that the service
     is up and responding. It does not require any request parameters.
