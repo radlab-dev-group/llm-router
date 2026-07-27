@@ -493,7 +493,8 @@ class _StartAppVerificator:
         self.__verify_utils_plugins_langchain_rag()
 
     def dont_run_if_something_is_wrong(self):
-        """Verify all startup assumptions and the plugins system.
+        """
+        Verify all startup assumptions and the plugins system.
 
         Calls through to each individual verification method; if any
         checks fail they will raise before this function returns.

@@ -103,7 +103,8 @@ class MemoryKeyStore(KeyStoreInterface):
             self._by_hash[key_hash] = key_id
 
     def _persist_seeds(self, seed_file: str) -> None:
-        """Write all current keys back to the seed file.
+        """
+        Write all current keys back to the seed file.
 
         All records are persisted with their current ``is_active`` state —
         deleted keys (popped from ``_keys``) are dropped; disabled keys

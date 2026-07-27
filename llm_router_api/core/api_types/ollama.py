@@ -38,7 +38,8 @@ class OllamaType(ApiTypesI):
     """
 
     def chat_ep(self) -> str:
-        """Return the URL path for Ollama’s chat endpoint.
+        """
+        Return the URL path for Ollama’s chat endpoint.
 
         Returns
         -------
@@ -48,7 +49,8 @@ class OllamaType(ApiTypesI):
         return "/api/chat"
 
     def completions_ep(self) -> str:
-        """Return the URL path for the completions endpoint.
+        """
+        Return the URL path for the completions endpoint.
 
         Ollama uses the same endpoint as chat, so this method forwards to
         :meth:`chat_ep`.
@@ -61,7 +63,8 @@ class OllamaType(ApiTypesI):
         return self.chat_ep()
 
     def responses_ep(self) -> str:
-        """Return the URL path for the responses endpoint.
+        """
+        Return the URL path for the responses endpoint.
 
         Returns
         -------
@@ -71,7 +74,8 @@ class OllamaType(ApiTypesI):
         return "v1/responses"
 
     def embeddings_ep(self) -> str:
-        """Return the URL path for the embeddings endpoint.
+        """
+        Return the URL path for the embeddings endpoint.
 
         Returns
         -------
@@ -87,7 +91,8 @@ class OllamaType(ApiTypesI):
 
 
 class OllamaConverters:
-    """Namespace for payload‑conversion utilities.
+    """
+    Namespace for payload‑conversion utilities.
 
     Nested ``From<Provider>`` classes convert third‑party responses into the
     shape expected by Ollama’s API.  At present only a conversion from the
@@ -102,7 +107,8 @@ class OllamaConverters:
 
         @staticmethod
         def convert_embedding(response: dict) -> dict:
-            """Translate an OpenAI embedding payload to Ollama’s format.
+            """
+            Translate an OpenAI embedding payload to Ollama’s format.
 
             Parameters
             ----------

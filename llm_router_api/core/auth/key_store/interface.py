@@ -23,7 +23,8 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
 
     @staticmethod
     def _run_async(coro) -> Any:
-        """Run an async coroutine from a synchronous context.
+        """
+        Run an async coroutine from a synchronous context.
 
         If a running event loop exists, schedules *coro* on it via
         ``asyncio.run_coroutine_threadsafe``.  Otherwise runs it with

@@ -1,4 +1,6 @@
-"""Tests for RedisRateLimiter — verifies atomic Lua script behavior."""
+"""
+Tests for RedisRateLimiter — verifies atomic Lua script behavior.
+"""
 
 from __future__ import annotations
 

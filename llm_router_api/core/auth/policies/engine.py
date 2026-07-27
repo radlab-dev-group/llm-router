@@ -85,8 +85,9 @@ class PermissionEngine:
 
     @staticmethod
     def _normalize(record: Any) -> Any:
-        """Ensure *record* supports attribute access
-        (works for dicts or ApiKeyRecord)."""
+        """
+        Ensure *record* supports attribute access (works for dicts or ApiKeyRecord).
+        """
         if isinstance(record, dict):
 
             class _AttrDict(dict):

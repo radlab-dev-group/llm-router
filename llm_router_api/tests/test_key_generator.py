@@ -71,7 +71,8 @@ class TestKeyFormat:
 
 
 class TestNoModuloBias:
-    """Verify that the key generator produces uniform character distribution.
+    """
+    Verify that the key generator produces uniform character distribution.
 
     The old implementation used ``b % len(CHARSET)`` which creates bias because
     256 is not evenly divisible by 62.  Values 0-3 appear with probability 4/256

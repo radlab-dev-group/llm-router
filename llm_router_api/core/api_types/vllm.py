@@ -12,7 +12,8 @@ from llm_router_api.core.api_types.types_i import ApiTypesI
 
 
 class VllmType(ApiTypesI):
-    """Concrete API descriptor for vLLM.
+    """
+    Concrete API descriptor for vLLM.
 
     The class implements the abstract methods defined in
     :class:`~llm_router_api.core.api_types.types_i.ApiTypesI`.  Each method

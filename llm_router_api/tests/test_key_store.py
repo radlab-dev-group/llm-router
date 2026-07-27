@@ -1,4 +1,5 @@
-"""Parameterized interface-level tests for all KeyStore backends.
+"""
+Parameterized interface-level tests for all KeyStore backends.
 
 Every test runs against MemoryKeyStore, RedisKeyStore (with mock Redis),
 and VaultKeyStore (with mocked hvault). Store-specific tests are in
@@ -344,8 +345,10 @@ class TestCreateKey:
     def test_does_not_expose_plaintext_in_store(
         self, key_store: dict[str, Any]
     ) -> None:
-        """After create_key, the stored record must NOT contain
-        key_plain (except Memory stores it for seed files)."""
+        """
+        After create_key, the stored record must NOT contain
+        key_plain (except Memory stores it for seed files).
+        """
         store = key_store["store"]
         plain = "sk-test-key-" + uuid.uuid4().hex[:16]
         asyncio_run(store.create_key({"key_plain": plain}))

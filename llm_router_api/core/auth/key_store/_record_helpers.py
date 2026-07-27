@@ -1,4 +1,5 @@
-"""Shared helpers for API key record construction across all KeyStore backends.
+"""
+Shared helpers for API key record construction across all KeyStore backends.
 
 All KeyStore implementations (Memory, Redis, Vault) use the same
 key-prefix algorithm and default field values — this module centralizes them.
@@ -35,7 +36,8 @@ DEFAULT_RECORD_FIELDS = {
 
 
 def build_key_record(raw: dict) -> dict:
-    """Normalize a raw key record into the standard ApiKeyRecord shape.
+    """
+    Normalize a raw key record into the standard ApiKeyRecord shape.
 
     Fills defaults from :data:`DEFAULT_RECORD_FIELDS` where keys are missing,
     and ensures required interface fields are present. Plaintext is *never*

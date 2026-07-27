@@ -29,7 +29,8 @@ except ImportError:
 
 
 def _make_shared_redis_client(kwargs: dict) -> redis.Redis | None:
-    """Return a single ``redis.Redis`` instance shared between store and cache.
+    """
+    Return a single ``redis.Redis`` instance shared between store and cache.
 
     Prefer an explicitly passed ``redis_client`` from *kwargs*; otherwise build
     one from the standard ``redis_host/port/db/password`` kwargs so that both

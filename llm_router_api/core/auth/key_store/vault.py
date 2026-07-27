@@ -113,7 +113,8 @@ class VaultKeyStore(KeyStoreInterface):
         return self._run_async(self._wrapped.get_key_by_hash(key_hash))
 
     async def get_key_by_plain(self, key_plain: str) -> dict | None:
-        """Look up a key record by its plaintext key using bcrypt.checkpw.
+        """
+        Look up a key record by its plaintext key using bcrypt.checkpw.
 
         Scans all keys in Vault since hashes are stored with random salts
         and cannot be looked up by hash directly.  This is **O(n)** and may
@@ -368,7 +369,8 @@ class VaultKeyStore(KeyStoreInterface):
         )
 
     async def delete_key(self, key_id: str) -> None:
-        """Delete key from Vault.
+        """
+        Delete key from Vault.
 
         Only "not found" / 404 errors are silently ignored (key may have been
         deleted externally).  Network or authentication errors propagate to the
@@ -454,7 +456,8 @@ class VaultKeyStore(KeyStoreInterface):
         )
 
     def update_last_used_sync(self, key_id: str) -> None:
-        """Sync version of :meth:`update_last_used`.
+        """
+        Sync version of :meth:`update_last_used`.
 
         .. note::
            Fire-and-forget — the task may be dropped if the event loop
