@@ -63,67 +63,37 @@ def main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command")
 
     # Register the ``auth`` subparser with its own sub-commands (key, policy).
-    from .commands.auth import register_auth_subparser  # noqa: E402
+    from .commands.auth import AuthCommand  # noqa: E402
 
     auth_parser = subparsers.add_parser(
         "auth",
         help="Manage API keys and authentication",
     )
     auth_sub = auth_parser.add_subparsers(dest="auth_command")
-    register_auth_subparser(auth_sub, nest_auth=False)
+    AuthCommand.register_parser(auth_sub, nest_auth=False)  # type: ignore[arg-type]
 
-    # Register the ``anonymizer`` subparser with its own ``run`` subcommand.
+    # Register the ``anonymizer`` subparser.
+    from .commands.anonymizer import (  # noqa: E402
+        AnonymizerCommand,
+    )
+
     anon_parser = subparsers.add_parser(
         "anonymizer",
         help="Anonymise text using a selectable algorithm",
     )
     anon_sub = anon_parser.add_subparsers(dest="anonymizer_command")
-
-    _run_cmd = anon_sub.add_parser(
-        "run",
-        help="Run text anonymisation",
-    )
-    _run_cmd.add_argument(
-        "--algorithm",
-        required=True,
-        choices=["fast_masker", "pii"],
-        help="Anonymisation algorithm to use (pii is not yet implemented)",
-    )
-    _run_cmd.add_argument(
-        "input",
-        nargs="?",
-        default="-",
-        help="Input file path (defaults to STDIN).",
-    )
-    _run_cmd.add_argument(
-        "-o",
-        "--output",
-        default="-",
-        help="Output file path (defaults to STDOUT).",
-    )
-    for flag, desc in [
-        ("phone", "phone-number anonymisation"),
-        ("url", "URL anonymisation"),
-        ("ip", "IP-address anonymisation"),
-        ("pesel", "PESEL anonymisation"),
-        ("email", "e-mail anonymisation"),
-    ]:
-        _run_cmd.add_argument(
-            f"--disable-{flag}",
-            action="store_true",
-            help=f"Do not apply {desc}.",
-        )
+    AnonymizerCommand.register_parser(anon_sub)  # type: ignore[arg-type]
 
     # Register the ``config`` subparser
     # (auto-discover local providers and merge configs).
-    from .commands.config import register_config_subparser  # noqa: E402
+    from .commands.config import ConfigCommand  # noqa: E402
 
     config_parser = subparsers.add_parser(
         "config",
         help="Auto-discover local providers and generate/merge models-config.json",
     )
     config_sub = config_parser.add_subparsers(dest="config_command")
-    register_config_subparser(config_sub)
+    ConfigCommand.register_parser(config_sub)  # type: ignore[arg-type]
 
     args = parser.parse_args(argv)
 
@@ -132,19 +102,19 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "auth":
-        from .commands.auth import main as _auth_main
+        from .commands.auth import AuthCommand as _AuthCmd
 
-        return _auth_main(argv[1:])  # strip "auth" off
+        return _AuthCmd.run(argv[1:])
 
     if args.command == "config":
-        from .commands.config import main as _config_main
+        from .commands.config import ConfigCommand as _ConfigCmd
 
-        return _config_main(argv[1:])  # strip "config" off
+        return _ConfigCmd.run(argv[1:])
 
     if args.command == "anonymizer":
-        from .commands.anonymizer import main as _anon_main
+        from .commands.anonymizer import AnonymizerCommand as _AnonCmd
 
-        return _anon_main(argv[1:])  # strip "anonymizer" off
+        return _AnonCmd.run(argv[1:])
 
     # Unknown command
     parser.print_help()

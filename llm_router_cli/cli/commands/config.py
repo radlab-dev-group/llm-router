@@ -17,774 +17,603 @@ import requests
 from typing import Any, Dict, List, Tuple
 
 
-# ---------------------------------------------------------------------------
-# Host parsing
-# ---------------------------------------------------------------------------
+class ConfigCommand:
+    """Encapsulates the ``config`` CLI subcommand and all its children.
 
-
-def _parse_host(raw: str) -> Tuple[str, int, str]:
-    """Split ``host:port`` into ``(host, port, protocol)``.
-
-    If no explicit port is given (no colon in *raw*), returns ``(raw, 0, proto)`` —
-    the caller then uses the provider's default ports.
-
-    The *protocol* captures the URL scheme (``http`` or ``https``); defaults to
-    ``"http"`` when no scheme is present.
-
-    Examples
-    --------
-    >>> _parse_host("localhost")
-    ('localhost', 0, 'http')
-    >>> _parse_host("192.168.100.65:8080")
-    ('192.168.100.65', 8080, 'http')
-    >>> _parse_host("https://192.168.100.65:8080")
-    ('192.168.100.65', 8080, 'https')
-    >>> _parse_host("::1")
-    ('::1', 0, 'http')
+    Public API (exactly two methods):
+      - :meth:`register_parser`  – register *config* under a parent argparse parser.
+      - :meth:`run`             – standalone entry point; parse + dispatch.
     """
-    protocol = "http"
 
-    # Capture scheme if present (http / https).
-    scheme_end = raw.find("://")
-    if scheme_end != -1:
-        protocol = raw[:scheme_end]
-        raw = raw[scheme_end + 3 :]
-
-    # Bracket-notation IPv6: [::1]:8080
-    if raw.startswith("["):
-        end = raw.find("]")
-        if end != -1 and ":" in raw[end + 1 :]:
-            host_port = raw[end + 1 :]
-            port_str = host_port.lstrip(":")
-            return raw[1:end], int(port_str), protocol
-        return raw, 0, protocol
-    # Plain IPv4 or hostname:port (at most one colon).
-    if raw.count(":") <= 1:
-        parts = raw.rsplit(":", 1)
-        if len(parts) == 2 and parts[1].isdigit():
-            return parts[0], int(parts[1]), protocol
-        return raw, 0, protocol
-    # Two or more colons → bare IPv6 address (e.g. ``::1``, ``fe80::``).
-    return raw, 0, protocol
-
-
-def _sanitize(name: str) -> str:
-    """Sanitize a model name / path for safe use as an identifier key.
-
-    Replaces slashes and colons (common in model names like
-    ``facebook/blenderbot-400M`` → ``facebook_blenderbot-400M``) as well as
-    spaces, producing a single string suitable for dict keys or file names.
-    """
-    return name.replace("/", "_").replace(":", "_").replace(" ", "_")
-
-
-# ---------------------------------------------------------------------------
-# Provider registry
-# ---------------------------------------------------------------------------
-
-_PROVIDER_DEFS: List[Dict[str, Any]] = [
-    {
-        "api_type": "ollama",
-        "group_name": "ollama_models",
-        "ports": [11434, 18765],
-        "health_path": "/",
-        "models_path": "/api/tags",
-        "fetch_type": "ollama",  # <-- drives model-listing logic below
-        # Response: {"models": [{"name": "..."}, ...]}
-        "model_name_key": "id",  # we normalise to {"id": name} before lookup
-        "tool_calling_hint": False,
-    },
-    {
-        "api_type": "vllm",
-        "group_name": "vllm_models",
-        "ports": [8000, 7000],
-        "health_path": "/health",
-        "models_path": "/v1/models",
-        "fetch_type": "openai_style",  # OpenAI-compatible /v1/models endpoint
-        # Response: {"data": [{"id": "...", "root": "..."}, ...]} (OpenAI format)
-        "model_name_key": "id",
-        "tool_calling_hint": True,
-    },
-    {
-        "api_type": "lmstudio",
-        "group_name": "lmstudio_models",
-        "ports": [1234, 1235],
-        "health_path": "/",
-        "models_path": "/v1/models",
-        "fetch_type": "openai_style",
-        # Response: {"data": [{"id": "..."}, ...]} (OpenAI format)
-        "model_name_key": "id",
-        "tool_calling_hint": True,
-    },
-]
-
-
-# ---------------------------------------------------------------------------
-# Discovery helpers
-# ---------------------------------------------------------------------------
-
-
-def _health_check(
-    host: str,
-    port: int,
-    path: str = "/",
-    timeout: float = 0.5,
-    protocol: str = "http",
-) -> bool:
-    """Return ``True`` when a HTTP service responds on ``{protocol}://{host}:{port}{path}``."""
-    try:
-        resp = requests.get(f"{protocol}://{host}:{port}{path}", timeout=timeout)
-        return resp.status_code < 500
-    except (requests.RequestException, OSError):
-        return False
-
-
-def _fetch_ollama_models(
-    host: str, port: int, protocol: str = "http"
-) -> List[Dict[str, Any]]:
-    """Fetch Ollama model info via ``GET /api/tags``.
-
-    Returns a list of dicts with at least ``id`` and optional metadata
-    (context_length, capabilities, etc.).
-    """
-    url = f"{protocol}://{host}:{port}/api/tags"
-    try:
-        resp = requests.get(url, timeout=2)
-        resp.raise_for_status()
-        data = resp.json()
-        models: List[Dict[str, Any]] = []
-        for m in data.get("models", []):
-            detail = m.get("details", {})
-            # Ollama puts capabilities both at top-level and under details.
-            top_caps = set(m.get("capabilities") or [])
-            det_caps = set(detail.get("capabilities") or []) | set(
-                detail.get("families") or []
-            )
-            all_caps = top_caps | det_caps
-            models.append(
-                {
-                    "id": m["name"],
-                    "context_length": detail.get("context_length"),
-                    "tool_calling": any(
-                        kw in all_caps
-                        for kw in ("tools", "tool_use", "function_call")
-                    ),
-                }
-            )
-        return models
-    except (requests.RequestException, OSError, KeyError, ValueError):
-        return []
-
-
-def _fetch_openai_style_models(
-    host: str, port: int, protocol: str = "http"
-) -> List[Dict[str, Any]]:
-    """Fetch models via ``GET /v1/models`` (OpenAI-compatible format).
-
-    Returns a list of dicts with at least ``id`` and optional metadata.
-    """
-    url = f"{protocol}://{host}:{port}/v1/models"
-    try:
-        resp = requests.get(url, timeout=2)
-        resp.raise_for_status()
-        data = resp.json()
-        return data.get("data", [])
-    except (requests.RequestException, OSError, ValueError):
-        return []
-
-
-# ---------------------------------------------------------------------------
-# Config builder
-# ---------------------------------------------------------------------------
-
-
-def _build_provider_entry(
-    api_type: str,
-    host: str,
-    port: int,
-    model_name: str,
-    extra_meta: Dict[str, Any] | None = None,
-    protocol: str = "http",
-) -> Dict[str, Any]:
-    """Build a single provider entry for the config."""
-    safe_model = _sanitize(model_name)
-    safe_host = _sanitize(host).replace(":", "_")  # keep colon separator in host key
-    provider_id = f"{api_type}_{safe_model}_{safe_host}:{port}"
-
-    entry: Dict[str, Any] = {
-        "id": provider_id,
-        "api_host": f"{protocol}://{host}:{port}",
-        "api_token": "",
-        "api_type": api_type,
-        "input_size": 0,
-        "model_path": safe_model,
-        "keep_alive": None,
-        "tool_calling": False,
-    }
-
-    if extra_meta:
-        # Pass through recognised metadata keys.
-        for key in ("input_size", "tool_calling"):
-            val = extra_meta.get(key)
-            if val is not None:
-                entry[key] = val
-        max_length = extra_meta.get("max_context_length") or extra_meta.get(
-            "root_max_window_tokens"
-        )
-        if max_length and isinstance(max_length, int):
-            entry["input_size"] = max_length
-
-    return entry
-
-
-def _build_config_for_provider(
-    provider_def: Dict[str, Any],
-    host: str,
-    port: int,
-    protocol: str = "http",
-) -> Tuple[str, Dict[str, Any]]:
-    """Discover models for one provider and return the config group dict.
-
-    Parameters
-    ----------
-    provider_def : Dict[str, Any]
-        Entry from ``_PROVIDER_DEFS`` (includes *fetch_type* since 0.6.7).
-    host : str
-        Target hostname or IP.
-    port : int
-        Port to query.
-    protocol : str
-        HTTP scheme (``"http"`` or ``"https"``).
-
-    Returns
-    -------
-    Tuple[str, Dict[str, Any]]
-        ``(group_name, group_dict)`` ready to be merged into the final config.
-    """
-    api_type = provider_def["api_type"]
-    group_name = provider_def["group_name"]
-    model_name_key = provider_def["model_name_key"]
-
-    is_openai_style = provider_def.get("fetch_type") == "openai_style"
-
-    raw_models = (
-        _fetch_openai_style_models(host, port, protocol)
-        if is_openai_style
-        else _fetch_ollama_models(host, port, protocol)
+    NAME = "config"
+    DISCOVER_HELP = (
+        "Scan one or more hosts for local LLM servers and generate config"
     )
+    MERGE_HELP = "Merge multiple models-config.json files into one output file"
 
-    group: Dict[str, Any] = {}
-    models_data: Dict[str, Any] = {"models_raw": raw_models}
-    if api_type == "vllm":
-        models_data["response_format"] = "openai"
-    elif api_type == "lmstudio":
-        models_data["response_format"] = "openai"
+    # ---- Provider registry (class-level constant) -------------------------
 
-    for item in raw_models:
-        name = item.get(model_name_key, "")
-        if not name:
-            continue
-        safe_name = _sanitize(name)
+    PROVIDER_DEFINITIONS: List[Dict[str, Any]] = [
+        {
+            "api_type": "ollama",
+            "group_name": "ollama_models",
+            "ports": [11434, 18765],
+            "health_path": "/",
+            "models_path": "/api/tags",
+            "fetch_type": "ollama",
+            "model_name_key": "id",
+            "tool_calling_hint": False,
+        },
+        {
+            "api_type": "vllm",
+            "group_name": "vllm_models",
+            "ports": [8000, 7000],
+            "health_path": "/health",
+            "models_path": "/v1/models",
+            "fetch_type": "openai_style",
+            "model_name_key": "id",
+            "tool_calling_hint": True,
+        },
+        {
+            "api_type": "lmstudio",
+            "group_name": "lmstudio_models",
+            "ports": [1234, 1235],
+            "health_path": "/",
+            "models_path": "/v1/models",
+            "fetch_type": "openai_style",
+            "model_name_key": "id",
+            "tool_calling_hint": True,
+        },
+    ]
 
-        # Collect metadata to pass through to the provider entry.
-        extra: Dict[str, Any] | None = None
-        if isinstance(item, dict):
-            meta_keys = (
-                "input_size",
-                "tool_calling",
-                "context_length",
-                "root_max_window_tokens",
-                "max_context_length",
-            )
-            extra = {k: v for k, v in item.items() if k in meta_keys}
-            # Ollama sends context_length; normalise to input_size.
-            ctx = extra.pop("context_length", None) or extra.pop(
-                "max_context_length", None
-            )
-            if ctx and isinstance(ctx, int):
-                extra["input_size"] = ctx
+    # ---- Argument-adding helpers -------------------------------------------
 
-        group[safe_name] = {
-            "providers": [
-                _build_provider_entry(
-                    api_type, host, port, safe_name, extra, protocol
+    @staticmethod
+    def _add_discover_args(p: argparse.ArgumentParser) -> None:
+        """Add the shared arguments for the ``discover`` subcommand."""
+        p.add_argument(
+            "hosts", nargs="+", help="Target hosts to scan for local LLM providers."
+        )
+        p.add_argument(
+            "-o",
+            "--output-config-file",
+            dest="output_config_file",
+            default=None,
+            help="Output path for the generated config file. "
+            "When omitted (or ``-``), write to stdout.",
+        )
+        p.add_argument(
+            "--all-ports",
+            action="store_true",
+            default=False,
+            help="Check all known ports even if the first one is already reachable.",
+        )
+        p.add_argument(
+            "--no-active",
+            action="store_true",
+            default=False,
+            help="Skip writing the active_models section (produce provider entries only).",
+        )
+
+    @staticmethod
+    def _add_merge_args(p: argparse.ArgumentParser) -> None:
+        """Add the shared arguments for the ``merge`` subcommand."""
+        p.add_argument(
+            "configs",
+            nargs="+",
+            help="Input config files to merge (at least one required).",
+        )
+        p.add_argument(
+            "-o",
+            "--output-config-file",
+            dest="output_config_file",
+            default=None,
+            help="Output path for the merged config file. "
+            "When omitted (or ``-``), write to stdout.",
+        )
+
+    # ---- Host parsing / utilities ------------------------------------------
+
+    @staticmethod
+    def _parse_host(raw: str) -> Tuple[str, int, str]:
+        """Split ``host:port`` into ``(host, port, protocol)``."""
+        protocol = "http"
+        scheme_end = raw.find("://")
+        if scheme_end != -1:
+            protocol = raw[:scheme_end]
+            raw = raw[scheme_end + 3 :]
+
+        if raw.startswith("["):
+            end = raw.find("]")
+            if end != -1 and ":" in raw[end + 1 :]:
+                host_port = raw[end + 1 :]
+                port_str = host_port.lstrip(":")
+                return raw[1:end], int(port_str), protocol
+            return raw, 0, protocol
+
+        if raw.count(":") <= 1:
+            parts = raw.rsplit(":", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                return parts[0], int(parts[1]), protocol
+            return raw, 0, protocol
+
+        return raw, 0, protocol
+
+    @staticmethod
+    def _sanitize(name: str) -> str:
+        """Sanitize a model name / path for safe use as an identifier key."""
+        return name.replace("/", "_").replace(":", "_").replace(" ", "_")
+
+    # ---- Registration ------------------------------------------------------
+
+    @classmethod
+    def register_parser(cls, subparsers: argparse._SubParsersAction) -> None:
+        """Register the ``config`` subparser with its child commands."""
+        discover_p = subparsers.add_parser("discover", help=cls.DISCOVER_HELP)
+        cls._add_discover_args(discover_p)
+
+        merge_p = subparsers.add_parser("merge", help=cls.MERGE_HELP)
+        cls._add_merge_args(merge_p)
+
+    # ---- Public run() entry point ------------------------------------------
+
+    @classmethod
+    def run(cls, argv: list[str] | None = None) -> int:
+        """Standalone entry point: parse args and dispatch."""
+        if argv is None:
+            argv = sys.argv[1:]
+
+        parser = argparse.ArgumentParser(
+            prog="llm-router config",
+            description=(
+                "Auto-discover local LLM providers "
+                "(Ollama, vLLM, LM Studio) on a given host, "
+                "fetch their available models, and produce "
+                "a models-config.json ready for the router."
+            ),
+        )
+        subparsers = parser.add_subparsers(dest="config_action")
+        cls.register_parser(subparsers)  # type: ignore[arg-type]
+        args = parser.parse_args(argv)
+
+        action = getattr(args, "config_action", None)
+        if action == "merge":
+            return cls._do_merge(args)
+        return cls._do_discover(args)
+
+    @staticmethod
+    def _get_flag(args: argparse.Namespace, name: str, default: bool) -> bool:
+        """Safely read a boolean CLI flag, falling back to *default*."""
+        return bool(getattr(args, name, default))
+
+    # ---- Discovery helpers -------------------------------------------------
+
+    @staticmethod
+    def _health_check(
+        host: str,
+        port: int,
+        path: str = "/",
+        timeout: float = 0.5,
+        protocol: str = "http",
+    ) -> bool:
+        """Return True when a HTTP service responds on ``{protocol}://{host}:{port}{path}``."""
+        try:
+            resp = requests.get(f"{protocol}://{host}:{port}{path}", timeout=timeout)
+            return resp.status_code < 500
+        except (requests.RequestException, OSError):
+            return False
+
+    @staticmethod
+    def _fetch_ollama_models(
+        host: str, port: int, protocol: str = "http"
+    ) -> List[Dict[str, Any]]:
+        """Fetch Ollama model info via ``GET /api/tags``."""
+        url = f"{protocol}://{host}:{port}/api/tags"
+        try:
+            resp = requests.get(url, timeout=2)
+            resp.raise_for_status()
+            data = resp.json()
+            models: List[Dict[str, Any]] = []
+            for m in data.get("models", []):
+                detail = m.get("details", {})
+                top_caps = set(m.get("capabilities") or [])
+                det_caps = set(detail.get("capabilities") or []) | set(
+                    detail.get("families") or []
                 )
-            ],
-            "providers_sleep": [],
+                all_caps = top_caps | det_caps
+                models.append(
+                    {
+                        "id": m["name"],
+                        "context_length": detail.get("context_length"),
+                        "tool_calling": any(
+                            kw in all_caps
+                            for kw in ("tools", "tool_use", "function_call")
+                        ),
+                    }
+                )
+            return models
+        except (requests.RequestException, OSError, KeyError, ValueError):
+            return []
+
+    @staticmethod
+    def _fetch_openai_style_models(
+        host: str, port: int, protocol: str = "http"
+    ) -> List[Dict[str, Any]]:
+        """Fetch models via ``GET /v1/models`` (OpenAI-compatible format)."""
+        url = f"{protocol}://{host}:{port}/v1/models"
+        try:
+            resp = requests.get(url, timeout=2)
+            resp.raise_for_status()
+            return resp.json().get("data", [])
+        except (requests.RequestException, OSError, ValueError):
+            return []
+
+    # ---- Config builder helpers ---------------------------------------------
+
+    @staticmethod
+    def _build_provider_entry(
+        api_type: str,
+        host: str,
+        port: int,
+        model_name: str,
+        extra_meta: Dict[str, Any] | None = None,
+        protocol: str = "http",
+    ) -> Dict[str, Any]:
+        """Build a single provider entry for the config."""
+        safe_model = ConfigCommand._sanitize(model_name)
+        safe_host = ConfigCommand._sanitize(host).replace(":", "_")
+        provider_id = f"{api_type}_{safe_model}_{safe_host}:{port}"
+
+        entry: Dict[str, Any] = {
+            "id": provider_id,
+            "api_host": f"{protocol}://{host}:{port}",
+            "api_token": "",
+            "api_type": api_type,
+            "input_size": 0,
+            "model_path": safe_model,
+            "keep_alive": None,
+            "tool_calling": False,
         }
-        group[safe_name].update(models_data)
 
-    return group_name, group
+        if extra_meta:
+            for key in ("input_size", "tool_calling"):
+                val = extra_meta.get(key)
+                if val is not None:
+                    entry[key] = val
+            max_length = extra_meta.get("max_context_length") or extra_meta.get(
+                "root_max_window_tokens"
+            )
+            if max_length and isinstance(max_length, int):
+                entry["input_size"] = max_length
 
+        return entry
 
-def _strip_debug_fields(obj: Any) -> None:
-    """Recursively remove internal debug fields from *obj* (in-place).
+    @staticmethod
+    def _build_config_for_provider(
+        provider_def: Dict[str, Any], host: str, port: int, protocol: str = "http"
+    ) -> Tuple[str, Dict[str, Any]]:
+        """Discover models for one provider and return the config group dict."""
+        api_type = provider_def["api_type"]
+        group_name = provider_def["group_name"]
+        model_name_key = provider_def["model_name_key"]
+        is_openai_style = provider_def.get("fetch_type") == "openai_style"
 
-    Removes ``"models_raw"`` and ``"response_format"`` at any nesting depth.
-    Called once at the end of discovery instead of multiple manual ``pop()``s.
-    """
-    if isinstance(obj, dict):
-        for key in list(obj.keys()):
-            val = obj[key]
-            if key in ("models_raw", "response_format"):
-                obj.pop(key)
-            elif isinstance(val, (dict, list)):
-                _strip_debug_fields(val)
-    elif isinstance(obj, list):
-        for item in obj:
-            _strip_debug_fields(item)
+        raw_models = (
+            ConfigCommand._fetch_openai_style_models(host, port, protocol)
+            if is_openai_style
+            else ConfigCommand._fetch_ollama_models(host, port, protocol)
+        )
 
+        group: Dict[str, Any] = {}
+        models_data: Dict[str, Any] = {"models_raw": raw_models}
+        if api_type == "vllm":
+            models_data["response_format"] = "openai"
+        elif api_type == "lmstudio":
+            models_data["response_format"] = "openai"
 
-def _scan_and_merge(
-    host: str,
-    explicit_port: int,
-    protocol: str,
-    prov: Dict[str, Any],
-    config: Dict[str, Any],
-    collect_all: bool = False,
-) -> None:
-    """Discover one provider on one host and merge its config into *config*.
+        for item in raw_models:
+            name = item.get(model_name_key, "")
+            if not name:
+                continue
+            safe_name = ConfigCommand._sanitize(name)
 
-    Scans candidate ports; picks the **first** that serves models.
-    When ``collect_all=True``, scans **all** matching ports instead.
+            extra: Dict[str, Any] | None = None
+            if isinstance(item, dict):
+                meta_keys = (
+                    "input_size",
+                    "tool_calling",
+                    "context_length",
+                    "root_max_window_tokens",
+                    "max_context_length",
+                )
+                extra = {k: v for k, v in item.items() if k in meta_keys}
+                ctx = extra.pop("context_length", None) or extra.pop(
+                    "max_context_length", None
+                )
+                if ctx and isinstance(ctx, int):
+                    extra["input_size"] = ctx
 
-    Parameters
-    ----------
-    host : str
-        Target hostname or IP.
-    explicit_port : int
-        Non-zero to scan only that port (zero → scan the defaults only).
-    protocol : str
-        HTTP scheme for URLs (``"http"`` or ``"https"``).
-    prov : Dict[str, Any]
-        Provider definition from ``_PROVIDER_DEFS``.
-    config : Dict[str, Any]
-        Accumulator dict updated in-place.
-    collect_all : bool
-        When ``True``, models from every reachable port are collected; when
-        ``False`` (default), only the first match is used.
-    """
-    # Determine which ports to scan for this provider.
-    # Key fix: when an explicit port is given, scan ONLY that port — no
-    # default-provider-port fallback.  Without this guard the discover command
-    # would silently reach Ollama on :11434 even though the user only asked
-    # about :8081.
-    if explicit_port != 0:
-        ports_to_scan = [explicit_port]
-    else:
-        ports_to_scan = list(prov["ports"])
+            group[safe_name] = {
+                "providers": [
+                    ConfigCommand._build_provider_entry(
+                        api_type, host, port, safe_name, extra, protocol
+                    )
+                ],
+                "providers_sleep": [],
+            }
+            group[safe_name].update(models_data)
 
-    best_port = None
-    for port in ports_to_scan:
-        if _health_check(host, port, path=prov["health_path"], protocol=protocol):
-            _, group = _build_config_for_provider(prov, host, port, protocol)
-            # Check if it actually has models (not just a health endpoint).
-            if group and "models_raw" not in group:
-                best_port = port
-                if not collect_all:
-                    break  # stop at first match when not collecting all
+        return group_name, group
 
-    if best_port is None:
-        return  # provider unreachable on any checked port
+    @staticmethod
+    def _strip_debug_fields(obj: Any) -> None:
+        """Recursively remove internal debug fields from *obj* (in-place)."""
+        if isinstance(obj, dict):
+            for key in list(obj.keys()):
+                val = obj[key]
+                if key in ("models_raw", "response_format"):
+                    obj.pop(key)
+                elif isinstance(val, (dict, list)):
+                    ConfigCommand._strip_debug_fields(val)
+        elif isinstance(obj, list):
+            for item in obj:
+                ConfigCommand._strip_debug_fields(item)
 
-    # Build final config entry for the winning port(s).
-    if collect_all:
+    @classmethod
+    def _scan_and_merge(
+        cls,
+        host: str,
+        explicit_port: int,
+        protocol: str,
+        prov: Dict[str, Any],
+        config: Dict[str, Any],
+        collect_all: bool = False,
+    ) -> None:
+        """Discover one provider on one host and merge its config into *config*."""
+        if explicit_port != 0:
+            ports_to_scan = [explicit_port]
+        else:
+            ports_to_scan = list(prov["ports"])
+
+        best_port = None
         for port in ports_to_scan:
-            if not _health_check(
+            if cls._health_check(
                 host, port, path=prov["health_path"], protocol=protocol
             ):
-                continue
-            group_name, group = _build_config_for_provider(
-                prov, host, port, protocol
-            )
-            if group and "models_raw" not in group:
-                _accumulate_group(config, group_name, group)
-    else:
-        group_name, group = _build_config_for_provider(
-            prov, host, best_port, protocol
-        )
-        _accumulate_group(config, group_name, group)
+                _, group = ConfigCommand._build_config_for_provider(
+                    prov, host, port, protocol
+                )
+                if group and "models_raw" not in group:
+                    best_port = port
+                    if not collect_all:
+                        break
 
+        if best_port is None:
+            return
 
-def _accumulate_group(
-    config: Dict[str, Any], group_name: str, group: Dict[str, Any]
-) -> None:
-    """Merge *group* into *config*, deduplicating providers by (host, port).
-
-    Parameters
-    ----------
-    config : Dict[str, Any]
-        Accumulator dict updated in-place.
-    group_name : str
-        Config group key (e.g. ``"chat"``).
-    group : Dict[str, Any]
-        Model definitions from one provider on one host.
-    """
-    if group_name in config:
-        # Merge models by name across hosts — each model gets one provider per
-        # (host, port).
-        for model_name, model_data in group.items():
-            if model_name not in config[group_name]:
-                config[group_name][model_name] = model_data
-            else:
-                _add_provider_to_model(config[group_name][model_name], model_data)
-    else:
-        config[group_name] = group
-
-
-def _add_provider_to_model(
-    existing_model: Dict[str, Any], new_model: Dict[str, Any]
-) -> None:
-    """Add *new_model* provider to *existing_model* without duplicating host.
-
-    Parameters
-    ----------
-    existing_model : Dict[str, Any]
-        The existing model entry, modified in-place.
-    new_model : Dict[str, Any]
-        The new model entry whose provider list is merged.
-    """
-    new_provider = new_model.get("providers", [{}])[0]
-    existing_providers = existing_model.get("providers", [])
-    new_host_port = new_provider.get("api_host", "")
-    if not any(p.get("api_host") == new_host_port for p in existing_providers):
-        existing_providers.append(new_provider)
-
-
-def _generate_config(
-    hosts: List[Tuple[str, int, str]], all_ports: bool = False
-) -> Dict[str, Any]:
-    """Run discovery across all provider definitions for every host.
-
-    Parameters
-    ----------
-    hosts : List[Tuple[str, int, str]]
-        Each entry is ``(host, explicit_port, protocol)`` — when *explicit_port*
-        is non-zero only that port is scanned; otherwise the default provider
-        ports are used.  *protocol* is the HTTP scheme (``"http"`` or ``"https"``).
-    all_ports : bool
-        When ``True``, every known port for each provider is scanned
-        and models are collected from all reachable ones rather than stopping at the
-        first success.
-    """
-    config: Dict[str, Any] = {}
-
-    for host, explicit_port, protocol in hosts:
-        for prov in _PROVIDER_DEFS:
-            _scan_and_merge(
-                host, explicit_port, protocol, prov, config, collect_all=all_ports
-            )
-
-    # Strip internal debug fields before returning.
-    _strip_debug_fields(config)
-    return config
-
-
-# ---------------------------------------------------------------------------
-# Shared argument helpers — avoid repeating arguments across entry points.
-# Both ``main()`` and ``register_config_subparser()`` use these.
-# ---------------------------------------------------------------------------
-
-_DISCOVER_PARSER_KWARGS = {
-    "help": "Scan one or more hosts for local LLM servers and generate config",
-}
-
-_MERGE_PARSER_KWARGS = {
-    "help": "Merge multiple models-config.json files into one output file",
-}
-
-
-def _get_flag(args: argparse.Namespace, name: str, default: bool) -> bool:
-    """Safely read a boolean CLI flag, falling back to *default*."""
-    return bool(getattr(args, name, default))
-
-
-def _add_discover_args(p: argparse.ArgumentParser) -> None:
-    """Add the shared arguments for the ``discover`` subcommand."""
-    p.add_argument(
-        "hosts",
-        nargs="+",
-        help="Target hosts to scan for local LLM providers.",
-    )
-    p.add_argument(
-        "-o",
-        "--output-config-file",
-        dest="output_config_file",
-        default=None,
-        help=(
-            "Output path for the generated config file. "
-            "When omitted (or ``-``), write to stdout."
-        ),
-    )
-    p.add_argument(
-        "--all-ports",
-        action="store_true",
-        default=False,
-        help="Check all known ports even if the first one is already reachable.",
-    )
-    p.add_argument(
-        "--no-active",
-        action="store_true",
-        default=False,
-        help="Skip writing the active_models section (produce provider entries only).",
-    )
-
-
-def _add_merge_args(p: argparse.ArgumentParser) -> None:
-    """Add the shared arguments for the ``merge`` subcommand."""
-    p.add_argument(
-        "configs",
-        nargs="+",
-        help="Input config files to merge (at least one required).",
-    )
-    p.add_argument(
-        "-o",
-        "--output-config-file",
-        dest="output_config_file",
-        default=None,
-        help=(
-            "Output path for the merged config file. "
-            "When omitted (or ``-``), write to stdout."
-        ),
-    )
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="llm-router config",
-        description=(
-            "Auto-discover local LLM providers"
-            " (Ollama, vLLM, LM Studio) on a given host,"
-            " fetch their available models, and produce"
-            " a models-config.json ready for the router."
-        ),
-    )
-    subparsers = parser.add_subparsers(dest="config_action")
-
-    discover_p = subparsers.add_parser("discover", **_DISCOVER_PARSER_KWARGS)
-    _add_discover_args(discover_p)
-
-    merge_p = subparsers.add_parser("merge", **_MERGE_PARSER_KWARGS)
-    _add_merge_args(merge_p)
-
-    return parser
-
-
-def main(argv: list[str] | None = None) -> int:
-    """Entry point for ``llm-router config``.
-
-    Parameters
-    ----------
-    argv : list[str] | None
-        Command-line arguments after ``config``. Defaults to ``sys.argv[2:]``.
-
-    Returns
-    -------
-    int
-        Exit code (0 on success, 1 on error).
-    """
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-
-    action = getattr(args, "config_action", None)
-    if action == "merge":
-        return _do_merge(args)
-    return _do_discover(args)
-
-
-# ---------------------------------------------------------------------------
-# Merge subcommand
-# ---------------------------------------------------------------------------
-
-
-def _load_config(path: str) -> Dict[str, Any]:
-    """Load a JSON config file."""
-    try:
-        with open(path, "r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
-        print(f"Error reading {path}: {exc}", file=sys.stderr)
-        return {}
-
-
-def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
-    """Recursively merge *overlay* into *base* (overlay wins on conflict)."""
-    result = dict(base)
-    for key, val in overlay.items():
-        if key in result and isinstance(result[key], dict) and isinstance(val, dict):
-            result[key] = _deep_merge(result[key], val)
+        if collect_all:
+            for port in ports_to_scan:
+                if not cls._health_check(
+                    host, port, path=prov["health_path"], protocol=protocol
+                ):
+                    continue
+                group_name, group = ConfigCommand._build_config_for_provider(
+                    prov, host, port, protocol
+                )
+                if group and "models_raw" not in group:
+                    cls._accumulate_group(config, group_name, group)
         else:
-            result[key] = val
-    return result
+            group_name, group = ConfigCommand._build_config_for_provider(
+                prov, best_port, protocol
+            )
+            cls._accumulate_group(config, group_name, group)
 
+    @staticmethod
+    def _accumulate_group(
+        config: Dict[str, Any], group_name: str, group: Dict[str, Any]
+    ) -> None:
+        """Merge *group* into *config*, deduplicating providers by (host, port)."""
+        if group_name in config:
+            for model_name, model_data in group.items():
+                if model_name not in config[group_name]:
+                    config[group_name][model_name] = model_data
+                else:
+                    ConfigCommand._add_provider_to_model(
+                        config[group_name][model_name], model_data
+                    )
+        else:
+            config[group_name] = group
 
-def _dedup_providers(models_group: Dict[str, Any]) -> None:
-    """Deduplicate provider entries (same ``api_host`` → keep first)."""
-    for model_name in list(models_group.keys()):
-        model_data = models_group[model_name]
-        if not isinstance(model_data, dict):
-            continue
-        providers = model_data.get("providers")
-        if not isinstance(providers, list):
-            continue
-        seen: set[str] = set()
-        filtered: list[Dict[str, Any]] = []
-        for p in providers:
-            host = p.get("api_host", "")
-            if host not in seen:
-                seen.add(host)
-                filtered.append(p)
-        model_data["providers"] = filtered
+    @staticmethod
+    def _add_provider_to_model(
+        existing_model: Dict[str, Any], new_model: Dict[str, Any]
+    ) -> None:
+        """Add *new_model* provider to *existing_model* without duplicating host."""
+        new_provider = new_model.get("providers", [{}])[0]
+        existing_providers = existing_model.get("providers", [])
+        new_host_port = new_provider.get("api_host", "")
+        if not any(p.get("api_host") == new_host_port for p in existing_providers):
+            existing_providers.append(new_provider)
 
+    @classmethod
+    def _generate_config(
+        cls, hosts: List[Tuple[str, int, str]], all_ports: bool = False
+    ) -> Dict[str, Any]:
+        """Run discovery across all provider definitions for every host."""
+        config: Dict[str, Any] = {}
+        for host, explicit_port, protocol in hosts:
+            for prov in ConfigCommand.PROVIDER_DEFINITIONS:
+                cls._scan_and_merge(
+                    host,
+                    explicit_port,
+                    protocol,
+                    prov,
+                    config,
+                    collect_all=all_ports,
+                )
+        ConfigCommand._strip_debug_fields(config)
+        return config
 
-def _merge_active_models(val: Any, active: Dict[str, List[str]]) -> None:
-    """Union all active model lists from *val* into *active*.
+    # ---- Merge subcommand helpers ------------------------------------------
 
-    Parameters
-    ----------
-    val : Any
-        The ``active_models`` value from a config file.
-    active : Dict[str, List[str]]
-        Accumulator dict updated in-place.
-    """
-    if not isinstance(val, dict):
-        return
-    for group, models in val.items():
-        if isinstance(models, list):
-            if group not in active:
-                active[group] = []
-            active[group].extend(models)
-
-
-def _do_merge(args: argparse.Namespace) -> int:
-    """Merge multiple models-config.json files into one."""
-    configs_arg: list[str] = getattr(args, "configs", [])
-
-    merged: Dict[str, Any] = {}
-    active: Dict[str, List[str]] = {}
-    failures: List[str] = []
-
-    for cfg_path in configs_arg:
-        cfg = _load_config(cfg_path)
-        if not cfg:
-            failures.append(cfg_path)
-            continue
-
-        for key, val in cfg.items():
-            if key == "active_models":
-                # Union all active model lists
-                _merge_active_models(val, active)
-            elif isinstance(val, dict):
-                merged = _deep_merge(merged, {key: val})
-
-    if failures:
-        for fp in failures:
-            print(f"Warning: skipped unreadable file {fp}", file=sys.stderr)
-
-    # Deduplicate providers across all model groups
-    for _key, _group in merged.items():
-        if isinstance(_group, dict):
-            _dedup_providers(_group)
-
-    active_models: Dict[str, List[str]] = {}
-    for group_name, models in merged.items():
-        if isinstance(models, dict) and any(
-            isinstance(v, dict) and "providers" in v for v in models.values()
-        ):
-            seen: set[str] = set(active_models.get(group_name, []))
-            all_models: List[str] = []
-            for name in models.keys():
-                if name not in seen:
-                    seen.add(name)
-                    all_models.append(name)
-            active_models[group_name] = all_models
-
-    # Add union from input files
-    for group, models in active.items():
-        existing = set(active_models.get(group, []))
-        for m in models:
-            if m not in existing:
-                existing.add(m)
-        active_models[group] = list(existing)
-
-    merged["active_models"] = active_models
-
-    output_json = json.dumps(merged, indent=2) + "\n"
-
-    out_config_file: str | None = getattr(args, "output_config_file", None)
-    if out_config_file and out_config_file != "-":
+    @staticmethod
+    def _load_config(path: str) -> Dict[str, Any]:
+        """Load a JSON config file."""
         try:
-            with open(out_config_file, "w", encoding="utf-8") as fh:
-                fh.write(output_json)
-            print(f"Merged config written to {out_config_file}")
-        except OSError as exc:
-            print(f"Error writing {out_config_file}: {exc}", file=sys.stderr)
-            return 1
-    else:
-        sys.stdout.write(output_json)
+            with open(path, "r", encoding="utf-8") as fh:
+                return json.load(fh)
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            print(f"Error reading {path}: {exc}", file=sys.stderr)
+            return {}
 
-    return 0
-
-
-def _do_discover(args: argparse.Namespace) -> int:
-    """Shared discovery logic invoked by both the CLI and tests."""
-    raw_hosts = getattr(
-        args, "hosts", ["localhost"]
-    )  # default to localhost when called without positional arg
-    hosts: List[Tuple[str, int, str]] = [_parse_host(h) for h in raw_hosts]
-    config = _generate_config(hosts, all_ports=_get_flag(args, "all_ports", False))
-
-    if not config:
-        print(
-            f"Warning: no local providers found at {', '.join(raw_hosts)}",
-            file=sys.stderr,
-        )
-        # Still write a minimal empty config.
-        config = {}
-
-    # Build active_models from provider groups.
-    # After _strip_debug_fields runs in _generate_config, every model dict has
-    # a clean "providers" key — no need to check for leaked debug fields.
-    if not _get_flag(args, "no_active", False):
-        active: Dict[str, List[str]] = {}
-        for group_name, models in config.items():
-            if isinstance(models, dict) and "providers" in next(
-                iter(models.values()), {}
+    @staticmethod
+    def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively merge *overlay* into *base* (overlay wins on conflict)."""
+        result = dict(base)
+        for key, val in overlay.items():
+            if (
+                key in result
+                and isinstance(result[key], dict)
+                and isinstance(val, dict)
             ):
-                active[group_name] = list(models.keys())
-        config["active_models"] = active
+                result[key] = ConfigCommand._deep_merge(result[key], val)
+            else:
+                result[key] = val
+        return result
 
-    output_json = json.dumps(config, indent=2) + "\n"
+    @staticmethod
+    def _dedup_providers(models_group: Dict[str, Any]) -> None:
+        """Deduplicate provider entries (same ``api_host`` → keep first)."""
+        for model_name in list(models_group.keys()):
+            model_data = models_group[model_name]
+            if not isinstance(model_data, dict):
+                continue
+            providers = model_data.get("providers")
+            if not isinstance(providers, list):
+                continue
+            seen: set[str] = set()
+            filtered: list[Dict[str, Any]] = []
+            for p in providers:
+                host = p.get("api_host", "")
+                if host not in seen:
+                    seen.add(host)
+                    filtered.append(p)
+            model_data["providers"] = filtered
 
-    output_config_file: str | None = getattr(args, "output_config_file", None)
-    if output_config_file and output_config_file != "-":
-        try:
-            with open(output_config_file, "w", encoding="utf-8") as fh:
-                fh.write(output_json)
-            print(f"Config written to {output_config_file}")
-        except OSError as exc:
-            print(f"Error writing {output_config_file}: {exc}", file=sys.stderr)
-            return 1
-    else:
-        sys.stdout.write(output_json)
+    @staticmethod
+    def _merge_active_models(val: Any, active: Dict[str, List[str]]) -> None:
+        """Union all active model lists from *val* into *active*."""
+        if not isinstance(val, dict):
+            return
+        for group, models in val.items():
+            if isinstance(models, list):
+                if group not in active:
+                    active[group] = []
+                active[group].extend(models)
 
-    return 0
+    # ---- Dispatch helpers (used by run()) ----------------------------------
 
+    @classmethod
+    def _do_discover(cls, args: argparse.Namespace) -> int:
+        """Shared discovery logic invoked by both the CLI and tests."""
+        raw_hosts = getattr(args, "hosts", ["localhost"])
+        hosts: List[Tuple[str, int, str]] = [cls._parse_host(h) for h in raw_hosts]
+        config = cls._generate_config(
+            hosts, all_ports=ConfigCommand._get_flag(args, "all_ports", False)
+        )
 
-def register_config_subparser(
-    subparsers: argparse._SubParsersAction,
-) -> None:
-    """Register the ``config`` subparser with its child commands.
+        if not config:
+            print(
+                f"Warning: no local providers found at {', '.join(raw_hosts)}",
+                file=sys.stderr,
+            )
+            config = {}
 
-    Parameters
-    ----------
-    subparsers : argparse._SubParsersAction
-        The parent subparsers action to register under (from top-level CLI).
-    """
-    # ``subparsers`` is already the parent subparsers action (e.g. from
-    # top-level CLI), so we register "discover" and "merge" directly under it.
-    discover_parser = subparsers.add_parser("discover", **_DISCOVER_PARSER_KWARGS)
-    _add_discover_args(discover_parser)
+        if not ConfigCommand._get_flag(args, "no_active", False):
+            active: Dict[str, List[str]] = {}
+            for group_name, models in config.items():
+                if isinstance(models, dict) and "providers" in next(
+                    iter(models.values()), {}
+                ):
+                    active[group_name] = list(models.keys())
+            config["active_models"] = active
 
-    merge_parser = subparsers.add_parser("merge", **_MERGE_PARSER_KWARGS)
-    _add_merge_args(merge_parser)
+        output_json = json.dumps(config, indent=2) + "\n"
+        output_config_file: str | None = getattr(args, "output_config_file", None)
+        if output_config_file and output_config_file != "-":
+            try:
+                with open(output_config_file, "w", encoding="utf-8") as fh:
+                    fh.write(output_json)
+                print(f"Config written to {output_config_file}")
+            except OSError as exc:
+                print(f"Error writing {output_config_file}: {exc}", file=sys.stderr)
+                return 1
+        else:
+            sys.stdout.write(output_json)
+
+        return 0
+
+    @classmethod
+    def _do_merge(cls, args: argparse.Namespace) -> int:
+        """Merge multiple models-config.json files into one."""
+        configs_arg: list[str] = getattr(args, "configs", [])
+
+        merged: Dict[str, Any] = {}
+        active: Dict[str, List[str]] = {}
+        failures: List[str] = []
+
+        for cfg_path in configs_arg:
+            cfg = ConfigCommand._load_config(cfg_path)
+            if not cfg:
+                failures.append(cfg_path)
+                continue
+            for key, val in cfg.items():
+                if key == "active_models":
+                    ConfigCommand._merge_active_models(val, active)
+                elif isinstance(val, dict):
+                    merged = ConfigCommand._deep_merge(merged, {key: val})
+
+        if failures:
+            for fp in failures:
+                print(f"Warning: skipped unreadable file {fp}", file=sys.stderr)
+
+        for _key, _group in merged.items():
+            if isinstance(_group, dict):
+                ConfigCommand._dedup_providers(_group)
+
+        active_models: Dict[str, List[str]] = {}
+        for group_name, models in merged.items():
+            if isinstance(models, dict) and any(
+                isinstance(v, dict) and "providers" in v for v in models.values()
+            ):
+                seen: set[str] = set(active_models.get(group_name, []))
+                all_models: List[str] = []
+                for name in models.keys():
+                    if name not in seen:
+                        seen.add(name)
+                        all_models.append(name)
+                active_models[group_name] = all_models
+
+        for group, models in active.items():
+            existing = set(active_models.get(group, []))
+            for m in models:
+                if m not in existing:
+                    existing.add(m)
+            active_models[group] = list(existing)
+
+        merged["active_models"] = active_models
+        output_json = json.dumps(merged, indent=2) + "\n"
+
+        out_config_file: str | None = getattr(args, "output_config_file", None)
+        if out_config_file and out_config_file != "-":
+            try:
+                with open(out_config_file, "w", encoding="utf-8") as fh:
+                    fh.write(output_json)
+                print(f"Merged config written to {out_config_file}")
+            except OSError as exc:
+                print(f"Error writing {out_config_file}: {exc}", file=sys.stderr)
+                return 1
+        else:
+            sys.stdout.write(output_json)
+
+        return 0
