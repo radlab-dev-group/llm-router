@@ -64,6 +64,16 @@ class ConfigCommand:
             "model_name_key": "id",
             "tool_calling_hint": True,
         },
+        {
+            "api_type": "llamacpp",
+            "group_name": "llamacpp_models",
+            "ports": [8080],
+            "health_path": "/health",
+            "models_path": "/v1/models",
+            "fetch_type": "openai_style",
+            "model_name_key": "id",
+            "tool_calling_hint": True,
+        },
     ]
 
     # ---- Argument-adding helpers -------------------------------------------
