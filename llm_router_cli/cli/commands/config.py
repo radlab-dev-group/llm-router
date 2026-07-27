@@ -376,6 +376,7 @@ class ConfigCommand:
             ports_to_scan = list(prov["ports"])
 
         best_port = None
+        first_group = None
         for port in ports_to_scan:
             if cls._health_check(
                 host, port, path=prov["health_path"], protocol=protocol
@@ -385,6 +386,8 @@ class ConfigCommand:
                 )
                 if group and "models_raw" not in group:
                     best_port = port
+                    if first_group is None:
+                        first_group = group
                     if not collect_all:
                         break
 
@@ -403,10 +406,14 @@ class ConfigCommand:
                 if group and "models_raw" not in group:
                     cls._accumulate_group(config, group_name, group)
         else:
-            group_name, group = ConfigCommand._build_config_for_provider(
-                prov, best_port, protocol
-            )
-            cls._accumulate_group(config, group_name, group)
+            if first_group is not None:
+                group = first_group
+            else:
+                # Fallback for collect_all=True edge case
+                _, group = ConfigCommand._build_config_for_provider(
+                    prov, host, best_port, protocol
+                )
+            cls._accumulate_group(config, prov["group_name"], group)
 
     @staticmethod
     def _accumulate_group(
