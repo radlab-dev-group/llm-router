@@ -33,19 +33,15 @@ from llm_router_api.base.constants import (
 # request-level logs also land in ``llm-router.log``.
 # ------------------------------------------------------------------ #
 
-_flask_fh: logging.Handler | None = None
-
 
 def _ensure_flask_logger_handlers(app) -> None:
     """Add a FileHandler to *app*'s logger if one is missing."""
-    global _flask_fh
-    flask_logger = app.logger  # type: ignore[attr-defined]
+    flask_logger = app.logger
     has_file = any(isinstance(h, logging.FileHandler) for h in flask_logger.handlers)
     if not has_file:
         fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
         fh = logging.FileHandler(REST_API_LOG_FILE_NAME)
         fh.setFormatter(fmt)
-        _flask_fh = fh
         flask_logger.addHandler(fh)
 
 
