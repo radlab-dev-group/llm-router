@@ -74,6 +74,26 @@ class ConfigCommand:
             "model_name_key": "id",
             "tool_calling_hint": True,
         },
+        {
+            "api_type": "koboldcpp",
+            "group_name": "koboldcpp_models",
+            "ports": [5001],
+            "health_path": "/",
+            "models_path": "/api/v1/models",
+            "fetch_type": "openai_style",
+            "model_name_key": "id",
+            "tool_calling_hint": True,
+        },
+        {
+            "api_type": "tabbyapi",
+            "group_name": "tabbyapi_models",
+            "ports": [8080],
+            "health_path": "/health",
+            "models_path": "/v1/models",
+            "fetch_type": "openai_style",
+            "model_name_key": "id",
+            "tool_calling_hint": True,
+        },
     ]
 
     # ---- Argument-adding helpers -------------------------------------------
