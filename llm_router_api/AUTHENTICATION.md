@@ -30,68 +30,8 @@ Client Request → AuthMiddleware → Key Store Lookup → Permission Engine →
 
 ## Environment Variables
 
-### Core Switch
-
-| Variable                    | Default  | Description                                      |
-|-----------------------------|----------|--------------------------------------------------|
-| `LLM_ROUTER_AUTH_ENABLED`   | `false`  | Master switch — `"true"` enables all auth        |
-| `LLM_ROUTER_AUTH_KEY_STORE` | `memory` | Key store backend: `vault`, `redis`, or `memory` |
-
-### Memory Store
-
-Seed file path: ``~/.llm-router/configs/auth/memory-keys.json`` (hardcoded, no env override).
-
-### Vault Backend
-
-| Variable                            | Default                           | Description                                         |
-|-------------------------------------|-----------------------------------|-----------------------------------------------------|
-| `LLM_ROUTER_AUTH_VAULT_ADDR`        | *(empty)*                         | Vault server URL (e.g. `https://vault.example.com`) |
-| `LLM_ROUTER_AUTH_VAULT_PATH`        | `secret/data/llm-router/api-keys` | KV v2 mount path for key storage                    |
-| `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD` | `kubernetes`                      | Auth method: `kubernetes`, `approle`, or `token`    |
-| `LLM_ROUTER_AUTH_VAULT_ROLE_ID`     | *(empty)*                         | AppRole role ID (or K8s SA token for K8s auth)      |
-| `LLM_ROUTER_AUTH_VAULT_SECRET_ID`   | *(empty)*                         | AppRole secret ID                                   |
-| `LLM_ROUTER_AUTH_VAULT_TOKEN`       | *(empty)*                         | Vault token (for token auth)                        |
-
-### Redis Cache
-
-| Variable                           | Default | Description                             |
-|------------------------------------|---------|-----------------------------------------|
-| `LLM_ROUTER_AUTH_KEY_CACHE_TTL`    | `300`   | Key cache TTL in seconds                |
-| `LLM_ROUTER_AUTH_KEY_CACHE_JITTER` | `60`    | Random jitter to prevent cache stampede |
-
-### Rate Limiting
-
-> **Note:** Rate limiting is always applied when authentication is enabled — there is no separate toggle.
-> Per-key limits are set via policy override or CLI presets.
-
-| Variable                             | Default | Description                                                                                              |
-|--------------------------------------|---------|----------------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` | `60`    | Global default rate limit (requests per minute, used as fallback when no per-key/policy override exists) |
-
-### Public Endpoints
-
-| Variable                           | Default                    | Description                            |
-|------------------------------------|----------------------------|----------------------------------------|
-| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS` | `/ping,/version,/models,/` | Comma-separated paths that bypass auth |
-
-### Key Generation
-
-| Variable                     | Default   | Description                                          |
-|------------------------------|-----------|------------------------------------------------------|
-| `LLM_ROUTER_AUTH_KEY_PREFIX` | `sk-litm` | Key prefix (like LiteLLM/OpenAI)                     |
-| `LLM_ROUTER_AUTH_KEY_LENGTH` | `48`      | Entropy bytes for key generation (produces 64 chars) |
-
-### Key Rotation
-
-| Variable                                | Default | Description                                                |
-|-----------------------------------------|---------|------------------------------------------------------------|
-| `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD` | `3600`  | Old keys remain valid for this many seconds after rotation |
-
-### Audit
-
-| Variable                | Default | Description                         |
-|-------------------------|---------|-------------------------------------|
-| `LLM_ROUTER_AUTH_AUDIT` | `false` | Record auth events in the audit log |
+All environment variables are documented in **[ENV_DEFINITIONS.md](./ENV_DEFINITIONS.md)**.
+Auth-specific vars start with `LLM_ROUTER_AUTH_*`.
 
 ---
 

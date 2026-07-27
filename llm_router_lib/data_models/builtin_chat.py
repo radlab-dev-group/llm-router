@@ -11,6 +11,14 @@ temperature, token limits, and language handling.
 from typing import List, Dict, Optional
 
 from llm_router_api.base.constants_base import DEFAULT_EP_LANGUAGE
+from llm_router_lib.core.constants import (
+    DEFAULT_TEMPERATURE,
+    DEFAULT_MAX_NEW_TOKENS,
+    DEFAULT_TOP_K,
+    DEFAULT_TOP_P,
+    DEFAULT_TYPICAL_P,
+    DEFAULT_REPETITION_PENALTY,
+)
 from llm_router_lib.data_models.base_model import BaseModelOptions
 from llm_router_lib.data_models.constants import (
     LANGUAGE_PARAM,
@@ -19,7 +27,7 @@ from llm_router_lib.data_models.constants import (
 )
 
 
-class _GenerativeOptions(BaseModelOptions):
+class GenerativeOptions(BaseModelOptions):
     """
     Core generation‑parameter mix‑in.
 
@@ -43,19 +51,19 @@ class _GenerativeOptions(BaseModelOptions):
         to the global default when omitted.
     """
 
-    temperature: float = 0.75
-    max_new_tokens: int = 256
+    temperature: float = DEFAULT_TEMPERATURE
+    max_new_tokens: int = DEFAULT_MAX_NEW_TOKENS
 
-    top_k: int = 50
-    top_p: float = 0.99
-    typical_p: float = 1.0
-    repetition_penalty: float = 1.2
+    top_k: int = DEFAULT_TOP_K
+    top_p: float = DEFAULT_TOP_P
+    typical_p: float = DEFAULT_TYPICAL_P
+    repetition_penalty: float = DEFAULT_REPETITION_PENALTY
     language: Optional[str] = DEFAULT_EP_LANGUAGE
 
 
-class _GenerativeOptionsModel(_GenerativeOptions):
+class GenerativeOptionsModel(GenerativeOptions):
     """
-    Extends ``_GenerativeOptions`` with the mandatory ``model_name`` field.
+    Extends ``GenerativeOptions`` with the mandatory ``model_name`` field.
 
     The ``model_name`` identifies which downstream LLM should be used for the
     request.
@@ -64,7 +72,7 @@ class _GenerativeOptionsModel(_GenerativeOptions):
     model_name: str
 
 
-class GenerativeConversationModel(_GenerativeOptionsModel):
+class GenerativeConversationModel(GenerativeOptionsModel):
     """
     Payload model for a simple conversation endpoint.
 

@@ -113,6 +113,8 @@ class BaseModelOptions(BaseModel):
 | `TranslateTextModel`                  | `texts` + `model_name`                 | generation opts                                                           |
 | `AnswerBasedOnTheContextModel`        | `question_str`, `texts` + `model_name` | `doc_name_in_answer`, `question_prompt`, `system_prompt`, generation opts |
 | `OpenAIChatModel` (OpenAI‑compatible) | `model`, `messages`                    | `stream`, `keep_alive`, `language`, `options`                             |
+| `SimplifyTextModel`                   | `texts`, `model_name`                  | generation opts                                                           |
+| `CreateArticleFromNewsListModel`      | `user_query`, `texts`, `model_name`    | `article_type`, generation opts                                           |
 
 *(All utility models inherit from `BaseModelOptions` and therefore share the `mask_payload` and `masker_pipeline`
 flags.)*
@@ -173,7 +175,34 @@ following exceptions (defined in `exceptions.py`):
 - `AuthenticationError` – HTTP 401/403 (invalid or missing token).
 - `RateLimitError` – HTTP 429 (too many requests).
 - `ValidationError` – HTTP 400 (malformed payload).
-- `NoArgsAndNoPayloadError` – client‑side validation when required arguments are missing.
+  | `NoArgsAndNoPayloadError` – client‑side validation when required arguments are missing.
+
+:::tip **Field naming across models**
+
+Models for the built‑in generative endpoints use ``model_name`` as the field key (e.g. ``GenerativeConversationModel``).
+The OpenAI‑compatible endpoint model uses ``model`` instead, to match the official OpenAI API schema:
+
+| Model class                     | Key for model identifier |
+|---------------------------------|--------------------------|
+| ``GenerativeConversationModel`` | ``model_name``           |
+| ``OpenAIChatModel``             | ``model``                |
+
+:::
+
+:::tip **Context manager support**
+
+All public types (`LLMRouterClient`, `HttpRequester`) implement ``__enter__`` / ``__exit__``, so they can be used with
+the
+``with`` statement to guarantee resource cleanup:
+
+```python
+from llm_router_lib import LLMRouterClient
+
+with LLMRouterClient(api="http://localhost:8080", token="...") as client:
+    result = client.conversation_with_model(payload)  # session closed automatically
+```
+
+:::
 
 ## Utilities
 
@@ -188,7 +217,7 @@ following exceptions (defined in `exceptions.py`):
 The repository includes a small test harness under `llm_router_lib/tests`. Example usage:
 
 ```bash
-python -m llm_router_lib.tests.llm-router-client
+python -m llm_router_lib.tests.llm_router_client
 ```
 
 This script spins up a `LLMRouterClient` instance and runs a suite of end‑to‑end tests covering conversation, extended

@@ -1,8 +1,23 @@
-import abc
-from typing import Dict, Any, Type, Optional
+"""
+Service interface for built‑in HTTP endpoints.
 
-from llm_router_lib.utils.http import HttpRequester
+Provides a reusable base class that handles:
+
+* POST and GET requests to a specific endpoint,
+* JSON response parsing with error translation into :class:`LLMRouterError`,
+* configurable request retry via :class:`~llm_router_lib.utils.http.HttpRequester`.
+
+Concrete service classes (e.g. ``ConversationService``, ``PingService``) extend this
+base class and bind an ``endpoint`` URL and a ``model_cls`` (Pydantic model for
+payload validation).
+"""
+
+import abc
+import logging
+from typing import Any, Dict
+
 from llm_router_lib.exceptions import LLMRouterError
+from llm_router_lib.utils.http import HttpRequester
 
 
 class BaseConversationServiceInterface(abc.ABC):
@@ -20,10 +35,11 @@ class BaseConversationServiceInterface(abc.ABC):
     # Relative URL of the endpoint to call
     endpoint: str = ""
 
-    # Pydantic model class used to validate the request payload.
-    model_cls: Type[Any] = None
+    # Pydantic model class used to validate
+    # the request payload (None for GET endpoints).
+    model_cls: type | None = None
 
-    def __init__(self, http: HttpRequester, logger):
+    def __init__(self, http: HttpRequester, logger: logging.Logger | None = None):
         """
         Initialise the service wrapper.
 
@@ -31,26 +47,40 @@ class BaseConversationServiceInterface(abc.ABC):
         ----------
         http : HttpRequester
             Helper object that knows how to perform HTTP requests.
-        logger : logging.Logger
+        logger : logging.Logger | None
             Logger instance used for debugging and error reporting.
         """
         self.http = http
         self.logger = logger
 
+    # ------------------------------------------------------------------ #
+    # JSON parsing helper (DRY: shared by call_post / call_get)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _parse_json_response(resp) -> dict[str, Any]:
+        """Parse a requests.Response as JSON, raising LLMRouterError on failure."""
+        try:
+            return resp.json()
+        except ValueError as inner_exc:
+            raise LLMRouterError(
+                f"Invalid JSON response from {resp.url}: {inner_exc}"
+            ) from inner_exc
+
+    # ------------------------------------------------------------------ #
     def call_post(self, raw_payload: Any) -> Dict[str, Any]:
         """
         Send a POST request to the configured endpoint and return the JSON body.
 
         The method does not perform payload validation itself; callers are
         expected to instantiate ``raw_payload`` using ``self.model_cls`` before
-        invoking ``call``.  If the HTTP response cannot be parsed as JSON, a
+        invoking this method.  If the HTTP response cannot be parsed as JSON, a
         ``LLMRouterError`` is raised to surface the problem to higher layers.
 
         Parameters
         ----------
         raw_payload : Any
             The request body, typically an instance of ``self.model_cls`` or a
-            dictionary produced by its ``model_dump`` method.
+            dictionary produced by its ``model_dump()`` method.
 
         Returns
         -------
@@ -63,28 +93,23 @@ class BaseConversationServiceInterface(abc.ABC):
             If the response body cannot be decoded as JSON.
         """
         resp = self.http.post(self.endpoint, json=raw_payload)
-        try:
-            j = resp.json()
-        except Exception as inner_exc:
-            raise LLMRouterError(
-                f"Invalid response format: {inner_exc}"
-            ) from inner_exc
-        return j
+        return self._parse_json_response(resp)
 
-    def call_get(self, raw_payload: Optional[Any] = None) -> Dict[str, Any]:
+    # ------------------------------------------------------------------ #
+    def call_get(self, raw_payload: Any | None = None) -> Dict[str, Any]:
         """
         Send a GET request to the configured endpoint and return the JSON body.
 
         The method does not perform payload validation itself; callers are
         expected to instantiate ``raw_payload`` using ``self.model_cls`` before
-        invoking ``call``.  If the HTTP response cannot be parsed as JSON, a
+        invoking this method.  If the HTTP response cannot be parsed as JSON, a
         ``LLMRouterError`` is raised to surface the problem to higher layers.
 
         Parameters
         ----------
-        raw_payload : Optional[Any]
+        raw_payload : Any | None
             Optional request body, typically an instance of ``self.model_cls``
-            or a dictionary produced by its ``model_dump`` method.
+            or a dictionary produced by its ``model_dump()`` method.
 
         Returns
         -------
@@ -97,10 +122,4 @@ class BaseConversationServiceInterface(abc.ABC):
             If the response body cannot be decoded as JSON.
         """
         resp = self.http.get(self.endpoint, json=raw_payload)
-        try:
-            j = resp.json()
-        except Exception as inner_exc:
-            raise LLMRouterError(
-                f"Invalid response format: {inner_exc}"
-            ) from inner_exc
-        return j
+        return self._parse_json_response(resp)

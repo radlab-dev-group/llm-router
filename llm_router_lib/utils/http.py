@@ -22,6 +22,10 @@ from typing import Any, Dict, Optional
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from llm_router_lib.core.constants import (
+    RETRY_BACKOFF_FACTOR,
+    RETRY_STATUS_CODELIST,
+)
 from llm_router_lib.exceptions import (
     AuthenticationError,
     RateLimitError,
@@ -40,11 +44,12 @@ class HttpRequester:
         A trailing slash is stripped automatically.
     token : str
         Bearer token used for ``Authorization`` header; if empty, no header is added.
-    timeout : int, default ``10``
+    timeout : int, default ``core.constants.DEFAULT_TIMEOUT_SECONDS``
         Per‑request timeout in seconds.
-    retries : int, default ``2``
+    retries : int, default ``core.constants.DEFAULT_RETRIES``
         Number of retry attempts for transient failures (status codes in
-        ``status_forcelist``).  The back‑off factor is ``0.5`` seconds.
+        ``RETRY_STATUS_CODELIST``).  The back‑off factor is ``RETRY_BACKOFF_FACTOR``
+        seconds.
     logger : Optional[logging.Logger]
         Logger instance; if omitted, a module‑level logger is created.
     """
@@ -69,8 +74,8 @@ class HttpRequester:
         # retry‑policy
         retry_strategy = Retry(
             total=retries,
-            backoff_factor=0.5,
-            status_forcelist=[429, 500, 502, 503, 504],
+            backoff_factor=RETRY_BACKOFF_FACTOR,
+            status_forcelist=RETRY_STATUS_CODELIST,
             allowed_methods=["GET", "POST", "PUT", "DELETE"],
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -182,3 +187,13 @@ class HttpRequester:
         self.logger.debug("POST %s", url)
         resp = self.session.post(url, json=json, timeout=self.timeout, **kwargs)
         return self._handle_response(resp)
+
+    def close(self) -> None:
+        """Close the underlying ``requests.Session`` to release connection resources."""
+        self.session.close()
+
+    def __enter__(self) -> "HttpRequester":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()

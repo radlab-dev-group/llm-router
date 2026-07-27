@@ -9,9 +9,14 @@ the model to a plain ``dict`` before invoking the appropriate service.
 """
 
 import logging
-
 from typing import Optional, Dict, Any, Union, List
 
+from pydantic import BaseModel
+
+from llm_router_lib.core.constants import (
+    DEFAULT_TIMEOUT_SECONDS,
+    DEFAULT_RETRIES,
+)
 from llm_router_lib.services.health import PingService, VersionService
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
@@ -23,6 +28,12 @@ from llm_router_lib.services.conversation import (
     ConversationService,
     ExtendedConversationService,
 )
+
+# ------------------------------------------------------------------ #
+# Type aliases for payload parameter union types (repeated across methods).
+# ------------------------------------------------------------------ #
+_ConvPayload = Union[Dict[str, Any], ConversationService.model_cls]
+_ExtConvPayload = Union[Dict[str, Any], ExtendedConversationService.model_cls]
 
 
 class LLMRouterClient:
@@ -54,9 +65,9 @@ class LLMRouterClient:
         self,
         api: str,
         token: Optional[str] = None,
-        timeout: int = 10,
-        retries: int = 2,
-        logger: Optional[logging.Logger] = None,
+        timeout: int | None = None,
+        retries: int | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         """
         Initialise the client with connection settings.
@@ -68,25 +79,41 @@ class LLMRouterClient:
         token : Optional[str]
             Authentication token; if omitted the ``Authorization`` header is not
             sent.
-        timeout : int, default ``10``
+        timeout : int, default ``DEFAULT_TIMEOUT_SECONDS``
             Seconds to wait for a response before timing out.
-        retries : int, default ``2``
+        retries : int, default ``DEFAULT_RETRIES``
             Number of automatic retry attempts for HTTP status codes defined in
-            ``HttpRequester``’s retry policy.
-        logger : Optional[logging.Logger]
+            ``HttpRequester``'s retry policy.
+        logger : logging.Logger | None
             Custom logger; if ``None`` a module‑level logger is created.
         """
         self.base_url = api.rstrip("/")
         self.token = token
-        self.timeout = timeout
-        self.retries = retries
+
+        # Resolve lazy defaults from the centralised constants module.
+        effective_timeout = (
+            timeout if timeout is not None else DEFAULT_TIMEOUT_SECONDS
+        )
+        effective_retries = retries if retries is not None else DEFAULT_RETRIES
+        self.timeout = effective_timeout
+        self.retries = effective_retries
         self.http = HttpRequester(
             base_url=self.base_url,
             token=self.token or "",
-            timeout=self.timeout,
-            retries=self.retries,
+            timeout=effective_timeout,
+            retries=effective_retries,
         )
         self.logger = logger or logging.getLogger(__name__)
+
+    def close(self) -> None:
+        """Close the underlying HTTP session to release resources."""
+        self.http.close()
+
+    def __enter__(self) -> "LLMRouterClient":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
 
     # ------------------------------------------------------------------ #
     def ping(self) -> Dict[str, Any]:
@@ -102,7 +129,7 @@ class LLMRouterClient:
         -------
         dict
             The JSON payload returned by the router, typically containing a
-            ``status`` field (e.g. ``{\"status\": \"ok\"}``).
+            ``status`` field (e.g. ``{"status": "ok"}``).
 
         Raises
         ------
@@ -135,10 +162,7 @@ class LLMRouterClient:
     # ------------------------------------------------------------------ #
     def conversation_with_model(
         self,
-        payload: Union[
-            Dict[str, Any],
-            ConversationService.model_cls,
-        ],
+        payload: _ConvPayload,
     ) -> Dict[str, Any]:
         """
         Call the standard conversation endpoint.
@@ -165,10 +189,7 @@ class LLMRouterClient:
     # ------------------------------------------------------------------ #
     def extended_conversation_with_model(
         self,
-        payload: Union[
-            Dict[str, Any],
-            ExtendedConversationService.model_cls,
-        ],
+        payload: _ExtConvPayload,
     ) -> Dict[str, Any]:
         """
         Call the extended conversation endpoint
@@ -236,19 +257,12 @@ class LLMRouterClient:
         NoArgsAndNoPayloadError
             If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
         """
-        if isinstance(payload, TranslateTextService.model_cls):
-            payload = payload.model_dump()
-        elif isinstance(payload, Dict):
-            pass  # payload already a dict, keep as-is
-        else:
-            if not texts or not model:
-                raise NoArgsAndNoPayloadError(
-                    "No payload and no arguments were passed!"
-                )
-            payload = TranslateTextService.model_cls(
-                model_name=model, texts=texts
-            ).model_dump()
-
+        payload = self._build_payload(
+            model_cls=TranslateTextService.model_cls,
+            payload_arg=payload,
+            model_name=model,
+            texts=texts,
+        )
         return TranslateTextService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
@@ -264,17 +278,48 @@ class LLMRouterClient:
         texts: Optional[Dict[str, List[str]] | List[str]] = None,
         question_str: Optional[str] = None,
     ) -> Dict[str, Any]:
-        if isinstance(payload, GenerativeAnswerService.model_cls):
-            payload = payload.model_dump()
-        elif isinstance(payload, Dict):
-            pass  # payload already a dict, keep as-is
-        else:
-            if not texts or not question_str or not model:
-                raise NoArgsAndNoPayloadError(
-                    "No payload and no arguments were passed!"
-                )
-            payload = GenerativeAnswerService.model_cls(
-                question_str=question_str, texts=texts, model_name=model
-            ).model_dump()
-
+        payload = self._build_payload(
+            model_cls=GenerativeAnswerService.model_cls,
+            payload_arg=payload,
+            model_name=model,
+            texts=texts,
+            question_str=question_str,
+        )
         return GenerativeAnswerService(self.http, self.logger).call_post(payload)
+
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _build_payload(
+        *,
+        model_cls: type | None,
+        payload_arg: Any,
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        """Normalise a payload to a ``dict``.
+
+        Handles three input shapes and builds from keyword arguments when the
+        caller passed individual parameters instead of a pre‑constructed payload:
+
+        1. **Pydantic model instance** → serialised via ``model_dump()``.
+        2. **Dict** → returned unchanged.
+        3. **None** → constructed from *extra* keyword arguments using the
+           provided *model_cls*; raises :class:`NoArgsAndNoPayloadError` if
+           required keys are missing.
+        """
+        if isinstance(payload_arg, BaseModel):
+            return payload_arg.model_dump()
+
+        if isinstance(payload_arg, Dict):
+            return payload_arg
+
+        # Neither a model nor a dict — build from named parameters.
+        if model_cls is not None and extra:
+            # Validate required keys are present.
+            for key in ("model_name", "texts"):
+                if extra.get(key) is None:
+                    raise NoArgsAndNoPayloadError(
+                        "No payload and no arguments were passed!"
+                    )
+            return model_cls(**extra).model_dump()
+
+        raise NoArgsAndNoPayloadError("No payload and no arguments were passed!")

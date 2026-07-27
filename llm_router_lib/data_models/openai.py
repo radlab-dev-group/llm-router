@@ -10,6 +10,7 @@ generation options from :class:`BaseModelOptions`.
 from typing import List, Dict, Any
 
 from llm_router_api.base.constants_base import DEFAULT_EP_LANGUAGE
+from llm_router_lib.core.constants import DEFAULT_KEEP_ALIVE, DEFAULT_OPTIONS
 from llm_router_lib.data_models.base_model import BaseModelOptions
 
 
@@ -28,13 +29,13 @@ class OpenAIChatModel(BaseModelOptions):
     stream : bool, default ``True``
         When ``True`` the endpoint returns a streaming response (Server‑Sent
         Events).  Setting it to ``False`` yields a single JSON payload.
-    keep_alive : str, default ``"30m"``
+    keep_alive : str, default ``DEFAULT_KEEP_ALIVE``
         Duration for which the model’s session should be kept alive on the
         backend.  The value follows the OpenAI convention (e.g. ``"30m"``,
         ``"1h"``).
     language : str, default ``DEFAULT_EP_LANGUAGE``
         Language code used by the router for any language‑specific handling.
-    options : Dict[str, Any], default ``{"num_ctx": 128000}``
+    options : Dict[str, Any], default ``DEFAULT_OPTIONS``
         Arbitrary additional parameters that are passed straight to the
         downstream provider.  The default sets a generous context window.
     """
@@ -43,10 +44,10 @@ class OpenAIChatModel(BaseModelOptions):
     messages: List[Dict[str, Any]]
 
     stream: bool = True
-    keep_alive: str = "30m"
+    keep_alive: str = DEFAULT_KEEP_ALIVE
     language: str = DEFAULT_EP_LANGUAGE
 
-    options: Dict[str, Any] = {"num_ctx": 128000}
+    options: Dict[str, Any] = DEFAULT_OPTIONS
 
 
 # Names of required fields for ``OpenAIChatModel``.

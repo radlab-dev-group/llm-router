@@ -1,4 +1,31 @@
-# If the flag is enabled, then all beta functions will be available.
-# It is strongly recommended to test it in the own case before
-# using beta function in a production environment.
-USE_BETA_FEATURES = False
+"""
+Central configuration values for ``llm_router_lib``.
+
+All magic numbers that appear in both *http.py* and *client.py* (timeouts,
+retries) as well as default generation parameters live here so they can be
+changed in a single place without risk of accidental drift.
+"""
+
+# ------------------------------------------------------------------ #
+# HTTP client defaults
+# ------------------------------------------------------------------ #
+
+DEFAULT_TIMEOUT_SECONDS: int = 10
+DEFAULT_RETRIES: int = 2
+RETRY_BACKOFF_FACTOR: float = 0.5
+RETRY_STATUS_CODELIST: list[int] = [429, 500, 502, 503, 504]
+
+# ------------------------------------------------------------------ #
+# Default generation parameters (used by builtin_chat.py / openai.py)
+# ------------------------------------------------------------------ #
+
+DEFAULT_TEMPERATURE: float = 0.75
+DEFAULT_MAX_NEW_TOKENS: int = 256
+DEFAULT_TOP_K: int = 50
+DEFAULT_TOP_P: float = 0.99
+DEFAULT_TYPICAL_P: float = 1.0
+DEFAULT_REPETITION_PENALTY: float = 1.2
+
+# OpenAI‑compatible endpoint defaults
+DEFAULT_KEEP_ALIVE: str = "30m"
+DEFAULT_OPTIONS: dict[str, int] = {"num_ctx": 128_000}

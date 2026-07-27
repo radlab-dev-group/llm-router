@@ -55,6 +55,9 @@ REST_API_LOG_LEVEL = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_LEVEL", "INFO"
 ).strip()
 
+# Write logs to a file (in addition to console) when true.
+LOG_TO_FILE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_TO_FILE")
+
 # Default prefix for each endpoint
 DEFAULT_API_PREFIX = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}EP_PREFIX", "/api"
@@ -160,9 +163,7 @@ MASKING_WITH_AUDIT = bool_env_value(
 
 # Masking strategy pipeline in case when FORCE_MASKING
 MASKING_STRATEGY_PIPELINE = str(
-    os.environ.get(
-        f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_STRATEGY_PIPELINE", "fast_masker"
-    )
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_STRATEGY_PIPELINE", "")
 )
 if MASKING_STRATEGY_PIPELINE:
     MASKING_STRATEGY_PIPELINE = [
@@ -321,7 +322,7 @@ LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT = int(
 # Public endpoints (always bypass auth)
 LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_PUBLIC_ENDPOINTS",
-    "/ping,/version,/models,/",
+    "/ping,/version,/models,/,/metrics",
 ).strip()
 
 # Key generation settings

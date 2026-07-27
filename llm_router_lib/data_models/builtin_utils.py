@@ -1,7 +1,7 @@
 """
 Pydantic‑style request models for the built‑in utility endpoints.
 
-Each class extends ``_GenerativeOptionsModel`` (which already supplies the
+Each class extends ``GenerativeOptionsModel`` (which already supplies the
 common generation parameters such as temperature, token limits, and language)
 and adds the fields required by a specific endpoint (e.g. a list of source
 texts, a single article text, or a question‑and‑context payload).  The
@@ -12,7 +12,7 @@ used by the corresponding endpoint classes.
 from typing import Dict, List, Optional
 
 from llm_router_lib.data_models.builtin_chat import (
-    _GenerativeOptionsModel,
+    GenerativeOptionsModel,
     GENAI_REQ_ARGS_BASE,
     GENAI_OPT_ARGS_BASE,
 )
@@ -21,9 +21,9 @@ from llm_router_lib.data_models.builtin_chat import (
 # -------------------------------------------------------------------
 # Generate question from texts
 # -------------------------------------------------------------------
-class GenerateQuestionFromTextsModel(_GenerativeOptionsModel):
+class GenerateQuestionFromTextsModel(GenerativeOptionsModel):
     """
-    Payload for the “generate‑questions” endpoint.
+    Payload for the "generate‑questions" endpoint.
 
     Attributes
     ----------
@@ -49,9 +49,9 @@ GENERATE_Q_OPT = ["number_of_questions"] + GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 # Generate article from text (like plg news stream)
 # -------------------------------------------------------------------
-class GenerateArticleFromTextModel(_GenerativeOptionsModel):
+class GenerateArticleFromTextModel(GenerativeOptionsModel):
     """
-    Payload for the “generate‑article” endpoint.
+    Payload for the "generate‑article" endpoint.
 
     Attributes
     ----------
@@ -73,9 +73,9 @@ GENERATE_ART_OPT = GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 # Translate text model
 # -------------------------------------------------------------------
-class TranslateTextModel(_GenerativeOptionsModel):
+class TranslateTextModel(GenerativeOptionsModel):
     """
-    Payload for the “translate” endpoint.
+    Payload for the "translate" endpoint.
 
     Attributes
     ----------
@@ -96,9 +96,9 @@ TRANSLATE_TEXT_OPT = GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 # Simplify text model
 # -------------------------------------------------------------------
-class SimplifyTextModel(_GenerativeOptionsModel):
+class SimplifyTextModel(GenerativeOptionsModel):
     """
-    Payload for the “simplify‑text” endpoint.
+    Payload for the "simplify‑text" endpoint.
 
     Attributes
     ----------
@@ -119,9 +119,9 @@ SIMPLIFY_TEXT_OPT = GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 # Create article from a mews list (like plg creator)
 # -------------------------------------------------------------------
-class CreateArticleFromNewsList(_GenerativeOptionsModel):
+class CreateArticleFromNewsListModel(GenerativeOptionsModel):
     """
-    Payload for the “full‑article” endpoint.
+    Payload for the "full‑article" endpoint.
 
     Attributes
     ----------
@@ -139,7 +139,7 @@ class CreateArticleFromNewsList(_GenerativeOptionsModel):
     article_type: str | None = None
 
 
-# Required fields for ``CreateArticleFromNewsList``.
+# Required fields for ``CreateArticleFromNewsListModel``.
 FULL_ARTICLE_REQ = ["user_query", "texts"] + GENAI_REQ_ARGS_BASE
 
 # Optional generation parameters for full‑article creation.
@@ -149,9 +149,9 @@ FULL_ARTICLE_OPT = ["article_type"] + GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 # Answer based on the context (RAG based)
 # -------------------------------------------------------------------
-class AnswerBasedOnTheContextModel(_GenerativeOptionsModel):
+class AnswerBasedOnTheContextModel(GenerativeOptionsModel):
     """
-    Payload for the “generative‑answer” endpoint.
+    Payload for the "generative‑answer" endpoint.
 
     Attributes
     ----------

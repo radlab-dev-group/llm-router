@@ -6,3 +6,4 @@ python-dateutil
 gnupg
 tqdm
 requests
+types-setuptools

@@ -27,7 +27,7 @@ from llm_router_lib.data_models.builtin_utils import (
     SIMPLIFY_TEXT_REQ,
     SIMPLIFY_TEXT_OPT,
     SimplifyTextModel,
-    CreateArticleFromNewsList,
+    CreateArticleFromNewsListModel,
     FULL_ARTICLE_REQ,
     FULL_ARTICLE_OPT,
     CONTEXT_ANSWER_REQ,
@@ -656,7 +656,7 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
         dict
             Normalised request payload.
         """
-        options = CreateArticleFromNewsList(**params)
+        options = CreateArticleFromNewsListModel(**params)
         _payload = options.model_dump()
 
         map_prompt = {
