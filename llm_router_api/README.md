@@ -197,7 +197,14 @@ Placeholders such as `##PLACEHOLDER##` can be replaced via `self._map_prompt` in
 When `LLM_ROUTER_USE_PROMETHEUS=1` (or `true`) the router automatically:
 
 - Exposes a `/metrics` endpoint (Prometheus format).
-- Tracks request counts, latency histograms, in‑progress gauges, and error counters.
+- Tracks HTTP request counts, latency histograms, in‑progress gauges, and error counters.
+- Tracks auth events, rate limits, and key budget usage.
+- **Tracks provider-level metrics:** calls per provider type, provider latency/errors, load balancing strategy
+  selection, pipeline funnel stages, retry attempts, token usage (input/output), streaming format distribution, and
+  payload conversion counts.
+
+See **[ROUTING_METRICS.md](./ROUTING_METRICS.md)** for the full list of 10 new router metrics with documentation,
+example PromQL queries, and Grafana dashboard snippets.
 
 You can scrape this endpoint with a Prometheus server or query it manually.
 
