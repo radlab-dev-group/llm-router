@@ -23,16 +23,47 @@ from llm_router_api.core.server import (
     run_waitress_server,
 )
 from llm_router_api.base.constants import (
-    SERVER_TYPE,
-    SERVER_PORT,
-    SERVER_HOST,
-    SERVER_WORKERS_COUNT,
-    SERVER_THREADS_COUNT,
-    SERVER_WORKERS_CLASS,
+    LOG_TO_FILE,
     LLM_ROUTER_API_TIMEOUT,
+    REST_API_LOG_FILE_NAME,
+    REST_API_LOG_LEVEL,
+    SERVER_HOST,
+    SERVER_PORT,
+    SERVER_THREADS_COUNT,
+    SERVER_TYPE,
+    SERVER_WORKERS_CLASS,
+    SERVER_WORKERS_COUNT,
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _setup_dual_logging():
+    """Configure root logger to write to both console and file.
+
+    FileHandler jest tworzony **tylko** gdy ``LLM_ROUTER_LOG_TO_FILE`` ma
+    wartość true — inaczej logi idą wyłącznie na konsolę (StreamHandler).
+
+    Flask.app.logger dostaje własny FileHandler z ``server.py``, bo moduł
+    flask nie jest jeszcze zaimportowany w tym miejscu.
+    """
+
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    root = logging.getLogger()
+    if not root.handlers:  # unikaj duplikatów przy ponownym imporcie
+        ch = logging.StreamHandler()
+        ch.setFormatter(fmt)
+        root.addHandler(ch)
+
+        # Conditionally add file handler.
+        if LOG_TO_FILE:
+            fh = logging.FileHandler(REST_API_LOG_FILE_NAME)
+            fh.setFormatter(fmt)
+            root.addHandler(fh)
+
+    log_level = getattr(logging, REST_API_LOG_LEVEL.upper(), logging.INFO)
+    root.setLevel(log_level)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -127,9 +158,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # Basic logging configuration for the “script” execution path.
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    # Set up logging: console always, file only when LLM_ROUTER_LOG_TO_FILE=1.
+    _setup_dual_logging()
     main()

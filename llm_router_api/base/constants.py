@@ -55,6 +55,9 @@ REST_API_LOG_LEVEL = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_LEVEL", "INFO"
 ).strip()
 
+# Write logs to a file (in addition to console) when true.
+LOG_TO_FILE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_TO_FILE")
+
 # Default prefix for each endpoint
 DEFAULT_API_PREFIX = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}EP_PREFIX", "/api"

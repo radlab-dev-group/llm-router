@@ -14,6 +14,8 @@ These helpers are used by ``rest_api.py`` to select the appropriate server
 based on command‑line flags or the ``SERVER_TYPE`` configuration constant.
 """
 
+import logging
+
 from typing import Optional
 
 from llm_router_api.core.engine import FlaskEngine
@@ -23,6 +25,28 @@ from llm_router_api.base.constants import (
     REST_API_LOG_FILE_NAME,
     REST_API_LOG_LEVEL,
 )
+
+# ------------------------------------------------------------------ #
+# Flask app.logger does not inherit handlers from the root logger
+# (Flask creates its own Logger instance).  This helper attaches the
+# same file handler that _setup_dual_logging() created on the root so
+# request-level logs also land in ``llm-router.log``.
+# ------------------------------------------------------------------ #
+
+_flask_fh: logging.Handler | None = None
+
+
+def _ensure_flask_logger_handlers(app) -> None:
+    """Add a FileHandler to *app*'s logger if one is missing."""
+    global _flask_fh
+    flask_logger = app.logger  # type: ignore[attr-defined]
+    has_file = any(isinstance(h, logging.FileHandler) for h in flask_logger.handlers)
+    if not has_file:
+        fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+        fh = logging.FileHandler(REST_API_LOG_FILE_NAME)
+        fh.setFormatter(fmt)
+        _flask_fh = fh
+        flask_logger.addHandler(fh)
 
 
 def run_flask_server(host: str, port: int, debug: bool = False):
@@ -43,13 +67,16 @@ def run_flask_server(host: str, port: int, debug: bool = False):
     """
     logger_level = "DEBUG" if debug else REST_API_LOG_LEVEL
 
+    flask_app = FlaskEngine(
+        prompts_dir=PROMPTS_DIR,
+        models_config_path=MODELS_CONFIG_FILE,
+        logger_file_name=REST_API_LOG_FILE_NAME,
+        logger_level=logger_level,
+    ).prepare_flask_app()
+    _ensure_flask_logger_handlers(flask_app)
+
     try:
-        FlaskEngine(
-            prompts_dir=PROMPTS_DIR,
-            models_config_path=MODELS_CONFIG_FILE,
-            logger_file_name=REST_API_LOG_FILE_NAME,
-            logger_level=logger_level,
-        ).prepare_flask_app().run(host=host, port=port, debug=debug)
+        flask_app.run(host=host, port=port, debug=debug)
     except RuntimeError as exc:
         raise RuntimeError(f"Failed to run flask server: {exc}") from exc
 
@@ -107,6 +134,7 @@ def run_gunicorn_server(
         logger_file_name=REST_API_LOG_FILE_NAME,
         logger_level=logger_level_app,
     ).prepare_flask_app()
+    _ensure_flask_logger_handlers(app)
 
     options = {
         "bind": f"{host}:{port}",
@@ -156,6 +184,7 @@ def run_waitress_server(host: str, port: int, threads: int = 4):
         logger_file_name=REST_API_LOG_FILE_NAME,
         logger_level=REST_API_LOG_LEVEL,
     ).prepare_flask_app()
+    _ensure_flask_logger_handlers(app)
 
     print(f"Starting Waitress server on {host}:{port} with {threads} threads...")
     serve(app, host=host, port=port, threads=threads, channel_timeout=300)
