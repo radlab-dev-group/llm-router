@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    # Register the ``auth`` subparser with its own sub-commands (key, policy).
+    # Lazily import command classes — avoid hard module dep at package-level.
     from .commands.auth import AuthCommand  # noqa: E402
 
     auth_parser = subparsers.add_parser(
@@ -72,28 +72,23 @@ def main(argv: list[str] | None = None) -> int:
     auth_sub = auth_parser.add_subparsers(dest="auth_command")
     AuthCommand.register_parser(auth_sub, nest_auth=False)  # type: ignore[arg-type]
 
-    # Register the ``anonymizer`` subparser.
-    from .commands.anonymizer import (  # noqa: E402
-        AnonymizerCommand,
-    )
+    from .commands.anonymizer import AnonymizerCommand as _AnonCmdReg  # noqa: E402
 
     anon_parser = subparsers.add_parser(
         "anonymizer",
         help="Anonymise text using a selectable algorithm",
     )
     anon_sub = anon_parser.add_subparsers(dest="anonymizer_command")
-    AnonymizerCommand.register_parser(anon_sub)  # type: ignore[arg-type]
+    _AnonCmdReg.register_parser(anon_sub)  # type: ignore[arg-type]
 
-    # Register the ``config`` subparser
-    # (auto-discover local providers and merge configs).
-    from .commands.config import ConfigCommand  # noqa: E402
+    from .commands.config import ConfigCommand as _CfgCmdReg  # noqa: E402
 
     config_parser = subparsers.add_parser(
         "config",
         help="Auto-discover local providers and generate/merge models-config.json",
     )
     config_sub = config_parser.add_subparsers(dest="config_command")
-    ConfigCommand.register_parser(config_sub)  # type: ignore[arg-type]
+    _CfgCmdReg.register_parser(config_sub)  # type: ignore[arg-type]
 
     args = parser.parse_args(argv)
 
@@ -102,19 +97,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "auth":
-        from .commands.auth import AuthCommand as _AuthCmd
-
-        return _AuthCmd.run(argv[1:])
+        return AuthCommand.run(argv[1:])
 
     if args.command == "config":
-        from .commands.config import ConfigCommand as _ConfigCmd
-
-        return _ConfigCmd.run(argv[1:])
+        return _CfgCmdReg.run(argv[1:])
 
     if args.command == "anonymizer":
-        from .commands.anonymizer import AnonymizerCommand as _AnonCmd
-
-        return _AnonCmd.run(argv[1:])
+        return _AnonCmdReg.run(argv[1:])
 
     # Unknown command
     parser.print_help()

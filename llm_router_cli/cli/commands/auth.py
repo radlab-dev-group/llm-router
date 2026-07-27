@@ -211,7 +211,10 @@ class AuthCommand:
 
     @classmethod
     def _load_rate_limit_presets(cls) -> list[dict]:
-        """Load predefined rate-limit presets (env var → user config → package resource → builtin)."""
+        """
+        Load predefined rate-limit presets
+        (env var → user config → package resource → builtin).
+        """
         env_path = os.environ.get("LLM_ROUTER_RATE_LIMITING_CONFIG", "").strip()
 
         def _try_load(path: Path) -> list[dict] | None:
@@ -525,7 +528,10 @@ class AuthCommand:
             max_w["ACTIVE"],
             max_w["EXPIRES"],
         )
-        hdr = f"{'KEY_ID':<{w[0]}} {'PREFIX':<{w[1]}} {'POLICY':<{w[2]}} {'ACTIVE':<{w[3]}} {'EXPIRES':<{w[4]}}"
+        hdr = (
+            f"{'KEY_ID':<{w[0]}} {'PREFIX':<{w[1]}} {'POLICY':<{w[2]}} "
+            f"{'ACTIVE':<{w[3]}} {'EXPIRES':<{w[4]}}"
+        )
         print(hdr)
         print("-" * len(hdr))
 
@@ -791,7 +797,8 @@ class AuthCommand:
 
         elif store == "vault":
             print(
-                "Error: 'rate-limit apply' on vault store, requires Vault API. Use seed file or --store memory."
+                "Error: 'rate-limit apply' on vault store, requires Vault API. "
+                "Use seed file or --store memory."
             )
             return 1
         else:
@@ -855,7 +862,8 @@ class AuthCommand:
 
         elif store == "vault":
             print(
-                "Error: 'rate-limit remove' on vault store, requires Vault API. Use seed file or --store memory."
+                "Error: 'rate-limit remove' on vault store, requires Vault API. "
+                "Use seed file or --store memory."
             )
             return 1
         else:
