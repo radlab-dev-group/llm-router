@@ -12,7 +12,9 @@ from llm_router_lib.data_models.builtin_utils import (
     TranslateTextModel,
     AnswerBasedOnTheContextModel,
 )
-from llm_router_lib.services.conversation import BaseConversationServiceInterface
+from llm_router_lib.services.service_interface import (
+    BaseConversationServiceInterface,
+)
 
 
 class TranslateTextService(BaseConversationServiceInterface):

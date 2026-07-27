@@ -30,9 +30,3 @@ class FastMaskerModel(BaseMaskerModel):
     attributes.  It is used when the pipeline is configured for a fast,
     generic masking strategy.
     """
-
-
-#
-#
-# class GenAIAnonymizerModel(BaseMaskerModel):
-#     model_name: str
