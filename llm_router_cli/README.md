@@ -1,10 +1,9 @@
 # llm-router CLI — Command Reference
 
-**Package:** `llm-router` (v0.6.1)
+**Package:** `llm-router`
 **Entry points:**
 
 - `llm-router` — main CLI tool (auth, anonymizer)
-- `llm-router-fast-masker` — deprecated, delegated to `llm-router auth anonymizer run --algorithm fast_masker`
 
 ---
 
@@ -13,7 +12,7 @@
 ```bash
 pip install llm-router[api]
 llm-router --help
-llm-router --version   # 0.6.0
+llm-router --version
 ```
 
 ---
@@ -212,20 +211,29 @@ llm-router config discover localhost 192.168.1.50 --all-ports
 llm-router config discover "10.0.0.1:8080" "ollama.local:11434"
 ```
 
-| Flag                | Default      | Description                                          |
-|---------------------|--------------|------------------------------------------------------|
-| `<hosts>`           | *(required)* | One or more hosts to scan (supports `host:port`)     |
-| `-o, --config-file` | *(stdout)*   | Output path for generated config                     |
-| `--all-ports`       | `false`      | Check all known ports even if first one is reachable |
-| `--no-active`       | `false`      | Skip writing the active_models section               |
+| Flag                       | Default      | Description                                          |
+|----------------------------|--------------|------------------------------------------------------|
+| `<hosts>`                  | *(required)* | One or more hosts to scan (supports `host:port`)     |
+| `-o, --output-config-file` | *(stdout)*   | Output path for generated config                     |
+| `--all-ports`              | `false`      | Check all known ports even if first one is reachable |
+| `--no-active`              | `false`      | Skip writing the active_models section               |
+
+> **Note on port scanning:** When you pass `host:port` (e.g. `"192.168.100.66:9090"`), the scanner checks that exact
+> port first for each provider type (Ollama, vLLM, LM Studio, llama.cpp, KoboldCpp, TabbyAPI). If no models are found on
+> the explicit port, it continues
+> scanning the **default ports** for every discovered provider. To restrict scanning to only the explicit port (without
+> fallback), use `--all-ports` in combination with specifying all known ports explicitly.
 
 **Auto-discovered providers:**
 
-| Provider  | Default Ports | Health Endpoint | Models Endpoint |
-|-----------|---------------|-----------------|-----------------|
-| Ollama    | 11434, 18765  | `/`             | `/api/tags`     |
-| vLLM      | 8000, 7000    | `/health`       | `/v1/models`    |
-| LM Studio | 1234, 1235    | `/`             | `/v1/models`    |
+| Provider  | Default Ports | Health Endpoint | Models Endpoint  |
+|-----------|---------------|-----------------|------------------|
+| Ollama    | 11434, 18765  | `/`             | `/api/tags`      |
+| vLLM      | 8000, 7000    | `/health`       | `/v1/models`     |
+| LM Studio | 1234, 1235    | `/`             | `/v1/models`     |
+| llama.cpp | 8080          | `/health`       | `/v1/models`     |
+| KoboldCpp | 5001          | `/`             | `/api/v1/models` |
+| TabbyAPI  | 8080          | `/health`       | `/v1/models`     |
 
 ### `merge` — Merge multiple models-config.json files
 
@@ -236,10 +244,10 @@ llm-router config merge base.json override.json -o merged-config.json
 Merges provider entries recursively (overlay wins on conflict), unions `active_models`, and deduplicates providers
 by `api_host`.
 
-| Flag           | Default      | Description                   |
-|----------------|--------------|-------------------------------|
-| `<configs>`    | *(required)* | Input config files to merge   |
-| `-o, --output` | *(stdout)*   | Output path for merged config |
+| Flag                       | Default      | Description                   |
+|----------------------------|--------------|-------------------------------|
+| `<configs>`                | *(required)* | Input config files to merge   |
+| `-o, --output-config-file` | *(stdout)*   | Output path for merged config |
 
 ---
 

@@ -29,7 +29,9 @@ _cg.IS_CLI_COMMAND = True
 
 
 def _version() -> str:
-    """Return the installed package version (e.g. ``0.6.0``)."""
+    """
+    Return the installed package version (e.g. ``0.6.0``).
+    """
     return _pkg_version("llm-router")
 
 
@@ -62,68 +64,33 @@ def main(argv: list[str] | None = None) -> int:
     )
     subparsers = parser.add_subparsers(dest="command")
 
-    # Register the ``auth`` subparser with its own sub-commands (key, policy).
-    from .commands.auth import register_auth_subparser  # noqa: E402
+    # Lazily import command classes — avoid hard module dep at package-level.
+    from .commands.auth import AuthCommand  # noqa: E402
 
     auth_parser = subparsers.add_parser(
         "auth",
         help="Manage API keys and authentication",
     )
     auth_sub = auth_parser.add_subparsers(dest="auth_command")
-    register_auth_subparser(auth_sub, nest_auth=False)
+    AuthCommand.register_parser(auth_sub, nest_auth=False)  # type: ignore[arg-type]
 
-    # Register the ``anonymizer`` subparser with its own ``run`` subcommand.
+    from .commands.anonymizer import AnonymizerCommand as _AnonCmdReg  # noqa: E402
+
     anon_parser = subparsers.add_parser(
         "anonymizer",
         help="Anonymise text using a selectable algorithm",
     )
     anon_sub = anon_parser.add_subparsers(dest="anonymizer_command")
+    _AnonCmdReg.register_parser(anon_sub)  # type: ignore[arg-type]
 
-    _run_cmd = anon_sub.add_parser(
-        "run",
-        help="Run text anonymisation",
-    )
-    _run_cmd.add_argument(
-        "--algorithm",
-        required=True,
-        choices=["fast_masker", "pii"],
-        help="Anonymisation algorithm to use (pii is not yet implemented)",
-    )
-    _run_cmd.add_argument(
-        "input",
-        nargs="?",
-        default="-",
-        help="Input file path (defaults to STDIN).",
-    )
-    _run_cmd.add_argument(
-        "-o",
-        "--output",
-        default="-",
-        help="Output file path (defaults to STDOUT).",
-    )
-    for flag, desc in [
-        ("phone", "phone-number anonymisation"),
-        ("url", "URL anonymisation"),
-        ("ip", "IP-address anonymisation"),
-        ("pesel", "PESEL anonymisation"),
-        ("email", "e-mail anonymisation"),
-    ]:
-        _run_cmd.add_argument(
-            f"--disable-{flag}",
-            action="store_true",
-            help=f"Do not apply {desc}.",
-        )
-
-    # Register the ``config`` subparser
-    # (auto-discover local providers and merge configs).
-    from .commands.config import register_config_subparser  # noqa: E402
+    from .commands.config import ConfigCommand as _CfgCmdReg  # noqa: E402
 
     config_parser = subparsers.add_parser(
         "config",
         help="Auto-discover local providers and generate/merge models-config.json",
     )
     config_sub = config_parser.add_subparsers(dest="config_command")
-    register_config_subparser(config_sub, nest_auth=False)
+    _CfgCmdReg.register_parser(config_sub)  # type: ignore[arg-type]
 
     args = parser.parse_args(argv)
 
@@ -131,20 +98,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
-    if args.command == "auth":
-        from .commands.auth import main as _auth_main
+    if args.command == AuthCommand.NAME:
+        return AuthCommand.run(argv[1:])
 
-        return _auth_main(argv[1:])  # strip "auth" off
+    if args.command == _CfgCmdReg.NAME:
+        return _CfgCmdReg.run(argv[1:])
 
-    if args.command == "config":
-        from .commands.config import main as _config_main
-
-        return _config_main(argv[1:])  # strip "config" off
-
-    if args.command == "anonymizer":
-        from .commands.anonymizer import main as _anon_main
-
-        return _anon_main(argv[1:])  # strip "anonymizer" off
+    if args.command == _AnonCmdReg.NAME:
+        return _AnonCmdReg.run(argv[1:])
 
     # Unknown command
     parser.print_help()

@@ -1,4 +1,6 @@
-"""llm-router Python packages."""
+"""
+llm-router Python packages.
+"""
 
 from importlib.metadata import version as _version
 
