@@ -215,9 +215,14 @@ llm-router config discover "10.0.0.1:8080" "ollama.local:11434"
 | Flag                | Default      | Description                                          |
 |---------------------|--------------|------------------------------------------------------|
 | `<hosts>`           | *(required)* | One or more hosts to scan (supports `host:port`)     |
-| `-o, --config-file` | *(stdout)*   | Output path for generated config                     |
+| `-o, --output-config-file` | *(stdout)*   | Output path for generated config                     |
 | `--all-ports`       | `false`      | Check all known ports even if first one is reachable |
 | `--no-active`       | `false`      | Skip writing the active_models section               |
+
+> **Note on port scanning:** When you pass `host:port` (e.g. `"192.168.100.66:9090"`), the scanner checks that exact
+> port first for each provider type (Ollama, vLLM, LM Studio). If no models are found on the explicit port, it continues
+> scanning the **default ports** for every discovered provider. To restrict scanning to only the explicit port (without
+> fallback), use `--all-ports` in combination with specifying all known ports explicitly.
 
 **Auto-discovered providers:**
 
@@ -236,10 +241,10 @@ llm-router config merge base.json override.json -o merged-config.json
 Merges provider entries recursively (overlay wins on conflict), unions `active_models`, and deduplicates providers
 by `api_host`.
 
-| Flag           | Default      | Description                   |
-|----------------|--------------|-------------------------------|
-| `<configs>`    | *(required)* | Input config files to merge   |
-| `-o, --output` | *(stdout)*   | Output path for merged config |
+| Flag                | Default      | Description                   |
+|---------------------|--------------|-------------------------------|
+| `<configs>`         | *(required)* | Input config files to merge   |
+| `-o, --output-config-file` | *(stdout)*   | Output path for merged config |
 
 ---
 

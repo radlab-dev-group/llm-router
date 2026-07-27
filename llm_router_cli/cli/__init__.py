@@ -123,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Auto-discover local providers and generate/merge models-config.json",
     )
     config_sub = config_parser.add_subparsers(dest="config_command")
-    register_config_subparser(config_sub, nest_auth=False)
+    register_config_subparser(config_sub)
 
     args = parser.parse_args(argv)
 
