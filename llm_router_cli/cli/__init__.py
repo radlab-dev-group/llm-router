@@ -96,13 +96,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
 
-    if args.command == "auth":
+    if args.command == AuthCommand.NAME:
         return AuthCommand.run(argv[1:])
 
-    if args.command == "config":
+    if args.command == _CfgCmdReg.NAME:
         return _CfgCmdReg.run(argv[1:])
 
-    if args.command == "anonymizer":
+    if args.command == _AnonCmdReg.NAME:
         return _AnonCmdReg.run(argv[1:])
 
     # Unknown command
