@@ -103,10 +103,12 @@ _PROVIDER_DEFS: List[Dict[str, Any]] = [
 # ---------------------------------------------------------------------------
 
 
-def _health_check(host: str, port: int, timeout: float = 0.5) -> bool:
+def _health_check(
+    host: str, port: int, timeout: float = 0.5, protocol: str = "http"
+) -> bool:
     """Return ``True`` when a HTTP service responds on ``{host}:{port}``."""
     try:
-        resp = requests.get(f"http://{host}:{port}/", timeout=timeout)
+        resp = requests.get(f"{protocol}://{host}:{port}/", timeout=timeout)
         return resp.status_code < 500
     except (requests.RequestException, OSError):
         return False
