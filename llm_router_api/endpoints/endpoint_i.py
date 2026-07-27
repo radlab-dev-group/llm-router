@@ -507,16 +507,24 @@ class EndpointI(SecureEndpointI, abc.ABC):
     """
 
     METHODS = ["GET", "POST"]
-    """Supported HTTP methods for any endpoint."""
+    """
+    Supported HTTP methods for any endpoint.
+    """
 
     REQUIRED_ARGS = []
-    """Names of parameters that **must** be supplied by the client."""
+    """
+    Names of parameters that **must** be supplied by the client.
+    """
 
     OPTIONAL_ARGS = []
-    """Names of parameters that are accepted but not required."""
+    """
+    Names of parameters that are accepted but not required.
+    """
 
     SYSTEM_PROMPT_NAME = {"pl": None, "en": None}
-    """Mapping of language codes to system‑prompt identifiers."""
+    """
+    Mapping of language codes to system‑prompt identifiers.
+    """
 
     # ------------------------------------------------------------------
     # Construction

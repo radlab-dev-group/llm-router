@@ -1,4 +1,5 @@
-"""Utility helpers for load‑balancing strategies.
+"""
+Utility helpers for load‑balancing strategies.
 
 The :class:`StrategyHelpers` class groups small, pure‑function helpers that
 are used across the routing strategies.  All helpers operate on data that

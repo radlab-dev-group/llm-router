@@ -83,7 +83,10 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
     @property
     def prepare_response_function(self):
-        """Return the response preparation function."""
+        """
+        Return the response preparation function.
+        """
+
         return self._prepare_response_function
 
     @EP.require_params

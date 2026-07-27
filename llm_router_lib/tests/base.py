@@ -1,4 +1,6 @@
-"""Base test classes for LLM Router integration tests."""
+"""
+Base test classes for LLM Router integration tests.
+"""
 
 import abc
 import json
@@ -11,7 +13,9 @@ if TYPE_CHECKING:
 
 
 class BaseEndpointTest(abc.ABC):
-    """Abstract base class for endpoint tests."""
+    """
+    Abstract base class for endpoint tests.
+    """
 
     # Subclasses set these as class attributes; they shadow the None defaults here.
     payload: Any = None
@@ -22,11 +26,15 @@ class BaseEndpointTest(abc.ABC):
 
     @abc.abstractmethod
     def client_method(self) -> "Callable[..., Any]":
-        """Return the LLMRouterClient method to invoke for this test."""
+        """
+        Return the LLMRouterClient method to invoke for this test.
+        """
         raise NotImplementedError
 
     def run(self, model_name: str) -> Any:
-        """Execute this test against *model_name* and return the result dict."""
+        """
+        Execute this test against *model_name* and return the result dict.
+        """
         print(f"Running {self.client_method}")
         if self.payload:
             print("- " * 50)

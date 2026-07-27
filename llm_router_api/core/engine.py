@@ -304,7 +304,10 @@ class FlaskEngine:
         auth_logger.info("[AUTH] Auth system initialized successfully")
 
     def _register_auth_metrics(self):
-        """Register auth Prometheus metrics."""
+        """
+        Register auth Prometheus metrics.
+        """
+
         from llm_router_api.core.auth.metrics import (  # pylint: disable=reimported
             AuthMetrics as _AuthMetrics,
         )

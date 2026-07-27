@@ -35,7 +35,10 @@ class HttpRequestExecutor:
 
     @property
     def stream_handler(self):
-        """Return the internal StreamHandler instance."""
+        """
+        Return the internal StreamHandler instance.
+        """
+
         return self._stream_handler
 
     # --------------------------------------------------------------------- #
@@ -322,7 +325,10 @@ class HttpRequestExecutor:
         api_model_provider: Optional[ApiModel],
         msg: str,
     ) -> None:
-        """Log the full error details on the server (includes URL, IP, etc.)."""
+        """
+        Log the full error details on the server (includes URL, IP, etc.).
+        """
+
         provider_id = api_model_provider.id if api_model_provider else "unknown"
         self.logger.error(
             "[%s] provider %s — URL: %s — error: %s",
@@ -338,7 +344,10 @@ class HttpRequestExecutor:
         api_model_provider: Optional[ApiModel],
         exc: Exception,
     ) -> RuntimeError:
-        """Build a sanitized error for the client — uses provider ID, not URL/IP."""
+        """
+        Build a sanitized error for the client — uses provider ID, not URL/IP.
+        """
+
         provider_id = api_model_provider.id if api_model_provider else "unknown"
         sanitized = sanitize_error_message(str(exc))
         return RuntimeError(f"[{method}] Provider {provider_id}: {sanitized}")

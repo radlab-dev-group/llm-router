@@ -125,7 +125,9 @@ class PrometheusMetrics:
     # Register the ``/metrics`` endpoint – it uses our custom registry.
     # ------------------------------------------------------------------
     def register_metrics_ep(self):
-        """Register the ``/metrics`` endpoint on the Flask app."""
+        """
+        Register the ``/metrics`` endpoint on the Flask app.
+        """
 
         @self.flask_app.route(self.METRICS_EP)
         def prometheus_metrics():
@@ -136,7 +138,10 @@ class PrometheusMetrics:
     # Create all metric objects with the custom registry.
     # ------------------------------------------------------------------
     def _prepare_request_hooks(self):
-        """Initialise Prometheus metric objects for request counting and latency."""
+        """
+        Initialise Prometheus metric objects for request counting and latency.
+        """
+
         self._logger.info("[Prometheus] preparing metrics request hooks")
 
         self.REQUEST_COUNT = Counter(
@@ -220,7 +225,9 @@ class PrometheusMetrics:
     # are now the multiprocess‑aware ones created above.
     # ------------------------------------------------------------------
     def _register_request_hooks(self):
-        """Attach Flask ``before_request`` and ``after_request`` hooks."""
+        """
+        Attach Flask ``before_request`` and ``after_request`` hooks.
+        """
 
         self._logger.info("[Prometheus] registering metrics request hooks")
 

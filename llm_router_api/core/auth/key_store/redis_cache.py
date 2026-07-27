@@ -16,7 +16,9 @@ from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
 
 class RedisKeyStoreCache(KeyStoreInterface):
-    """Thin cache wrapping any key store backend."""
+    """
+    Thin cache wrapping any key store backend.
+    """
 
     # -- cache key templates ----------------------------------------------------
     _HASH_KEY = "auth:key:hash:{hash}"
@@ -55,7 +57,10 @@ class RedisKeyStoreCache(KeyStoreInterface):
         self._redis.delete(self._cache_key_for_hash(key_hash))
 
     def _record_to_dict(self, record: dict) -> str:
-        """Serialize record to JSON string for Redis storage."""
+        """
+        Serialize record to JSON string for Redis storage.
+        """
+
         # Convert sets/tuples to lists for JSON compatibility
         serializable = {}
         for k, v in record.items():
@@ -68,7 +73,10 @@ class RedisKeyStoreCache(KeyStoreInterface):
     # -- sync helpers ----------------------------------------------
     @staticmethod
     def _run_async(coro):
-        """Run an async coroutine from a synchronous context."""
+        """
+        Run an async coroutine from a synchronous context.
+        """
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -132,14 +140,20 @@ class RedisKeyStoreCache(KeyStoreInterface):
         return await self._backend.list_keys()
 
     async def disable_key(self, key_id: str) -> None:
-        """Deactivate a key — forwards to backend and invalidates cache."""
+        """
+        Deactivate a key — forwards to backend and invalidates cache.
+        """
+
         old = await self.get_key_by_id(key_id)
         await self._backend.disable_key(key_id)
         if old:
             self._invalidate(key_id, old.get("key_hash", ""))
 
     async def enable_key(self, key_id: str) -> None:
-        """Re-activate a key — forwards to backend and invalidates cache."""
+        """
+        Re-activate a key — forwards to backend and invalidates cache.
+        """
+
         old = await self.get_key_by_id(key_id)
         await self._backend.enable_key(key_id)
         if old:
@@ -147,10 +161,14 @@ class RedisKeyStoreCache(KeyStoreInterface):
 
     # -- plaintext lookup (bypasses cache since salts are random) -------------
     async def get_key_by_plain(self, key_plain: str) -> dict | None:
-        """Delegate plaintext lookup to backend
-        — cannot be cached (random bcrypt salts)."""
+        """
+        Delegate plaintext lookup to backend — cannot be cached (random bcrypt salts).
+        """
         return await self._backend.get_key_by_plain(key_plain)
 
     def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
-        """Sync version of :meth:`get_key_by_plain`."""
+        """
+        Sync version of :meth:`get_key_by_plain`.
+        """
+
         return self._run_async(self.get_key_by_plain(key_plain))

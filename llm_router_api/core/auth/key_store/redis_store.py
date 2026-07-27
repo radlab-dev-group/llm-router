@@ -22,7 +22,9 @@ _DEFAULT_REDIS_PREFIX = "secret:llm-router:api-keys"
 
 
 class RedisKeyStore(KeyStoreInterface):
-    """Store API keys in Redis."""
+    """
+    Store API keys in Redis.
+    """
 
     def __init__(
         self,
@@ -53,7 +55,10 @@ class RedisKeyStore(KeyStoreInterface):
         return self._run_async(self.get_key_by_hash(key_hash))
 
     async def get_key_by_plain(self, key_plain: str) -> dict | None:
-        """Look up a key record by its plaintext key using bcrypt.checkpw."""
+        """
+        Look up a key record by its plaintext key using bcrypt.checkpw.
+        """
+
         cursor = 0
         while True:
             cursor, keys = self._redis.scan(
@@ -73,7 +78,10 @@ class RedisKeyStore(KeyStoreInterface):
         return None
 
     def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
-        """Run the async get_key_by_plain coroutine on the event loop."""
+        """
+        Run the async get_key_by_plain coroutine on the event loop.
+        """
+
         return self._run_async(self.get_key_by_plain(key_plain))
 
     async def get_key_by_hash(self, key_hash: str) -> dict | None:
@@ -157,7 +165,10 @@ class RedisKeyStore(KeyStoreInterface):
         return new_plain
 
     async def disable_key(self, key_id: str) -> None:
-        """Deactivate a key by setting is_active=False."""
+        """
+        Deactivate a key by setting is_active=False.
+        """
+
         raw = self._redis.get(self._key(key_id))
         if not raw:
             raise ValueError(f"Key {key_id} not found")
@@ -166,7 +177,10 @@ class RedisKeyStore(KeyStoreInterface):
         self._redis.set(self._key(key_id), json.dumps(record))
 
     async def enable_key(self, key_id: str) -> None:
-        """Re-activate a previously deactivated key."""
+        """
+        Re-activate a previously deactivated key.
+        """
+
         raw = self._redis.get(self._key(key_id))
         if not raw:
             raise ValueError(f"Key {key_id} not found")
@@ -203,7 +217,10 @@ class RedisKeyStore(KeyStoreInterface):
         return result
 
     async def update_last_used(self, key_id: str) -> None:
-        """Update last_used_at for a key."""
+        """
+        Update last_used_at for a key.
+        """
+
         raw = self._redis.get(self._key(key_id))
         if not raw:
             return
@@ -212,5 +229,8 @@ class RedisKeyStore(KeyStoreInterface):
         self._redis.set(self._key(key_id), json.dumps(record))
 
     def update_last_used_sync(self, key_id: str) -> None:
-        """Sync version of :meth:`update_last_used`."""
+        """
+        Sync version of :meth:`update_last_used`.
+        """
+
         return self._run_async(self.update_last_used(key_id))

@@ -62,7 +62,10 @@ _AUTH_MESSAGES: dict[str, str] = {
 
 
 def auth_error_message(reason: str) -> str:
-    """Return a human-readable message for an auth failure reason."""
+    """
+    Return a human-readable message for an auth failure reason.
+    """
+
     return _AUTH_MESSAGES.get(reason, f"Authentication failed: {reason}")
 
 
@@ -87,7 +90,10 @@ def auth_error_response(reason: str, status_code: int) -> dict[str, Any]:
 
 
 def auth_429_response(retry_after: int) -> dict[str, Any]:
-    """Build a 429 Too Many Requests response."""
+    """
+    Build a 429 Too Many Requests response.
+    """
+
     return {
         "error": {
             "message": "Rate limit exceeded.",

@@ -1,4 +1,5 @@
-"""Shared helpers for API key record construction across all KeyStore backends.
+"""
+Shared helpers for API key record construction across all KeyStore backends.
 
 All KeyStore implementations (Memory, Redis, Vault) use the same
 key-prefix algorithm and default field values — this module centralizes them.
@@ -10,12 +11,18 @@ import uuid
 
 
 def gen_key_prefix(key_plain: str) -> str:
-    """Return the first 7 characters of *key_plain*, or the whole string if shorter."""
+    """
+    Return the first 7 characters of *key_plain*, or the whole string if shorter.
+    """
+
     return key_plain[:7] if len(key_plain) > 6 else key_plain
 
 
 def gen_default_key_id() -> str:
-    """Generate a default key ID with ``key-`` prefix."""
+    """
+    Generate a default key ID with ``key-`` prefix.
+    """
+
     return f"key-{uuid.uuid4().hex[:8]}"
 
 
@@ -29,7 +36,8 @@ DEFAULT_RECORD_FIELDS = {
 
 
 def build_key_record(raw: dict) -> dict:
-    """Normalize a raw key record into the standard ApiKeyRecord shape.
+    """
+    Normalize a raw key record into the standard ApiKeyRecord shape.
 
     Fills defaults from :data:`DEFAULT_RECORD_FIELDS` where keys are missing,
     and ensures required interface fields are present. Plaintext is *never*

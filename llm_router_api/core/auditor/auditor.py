@@ -22,7 +22,8 @@ DEFAULT_AUDITOR_STORAGE_CLASS = GPGAuditorLogStorage
 
 
 class AnyRequestAuditor:
-    """Auditor for arbitrary request logs.
+    """
+    Auditor for arbitrary request logs.
 
     Parameters
     ----------

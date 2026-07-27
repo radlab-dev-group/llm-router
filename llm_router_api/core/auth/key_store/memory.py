@@ -39,7 +39,9 @@ from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix
 
 
 class MemoryKeyStore(KeyStoreInterface):
-    """In-memory store for development / testing."""
+    """
+    In-memory store for development / testing.
+    """
 
     def __init__(self, seed_file: str | None = None) -> None:
         self._keys: dict[str, dict] = {}
@@ -51,7 +53,10 @@ class MemoryKeyStore(KeyStoreInterface):
     # -- seed loading ------------------------------
     @staticmethod
     def _load_seeds(seed_file: str) -> list[dict]:
-        """Load key seed records from a JSON file."""
+        """
+        Load key seed records from a JSON file.
+        """
+
         path = Path(seed_file).expanduser()
         if not path.exists():
             return []
@@ -68,7 +73,10 @@ class MemoryKeyStore(KeyStoreInterface):
         return records
 
     def _seed_keys(self, seed_file: str) -> None:
-        """Load seed records into the key store."""
+        """
+        Load seed records into the key store.
+        """
+
         for rec in self._load_seeds(seed_file):
             rec = dict(rec)  # prevent mutating the loaded JSON dict
             key_plain: str = rec.pop("key_plain")
@@ -95,7 +103,8 @@ class MemoryKeyStore(KeyStoreInterface):
             self._by_hash[key_hash] = key_id
 
     def _persist_seeds(self, seed_file: str) -> None:
-        """Write all current keys back to the seed file.
+        """
+        Write all current keys back to the seed file.
 
         All records are persisted with their current ``is_active`` state —
         deleted keys (popped from ``_keys``) are dropped; disabled keys
@@ -137,7 +146,10 @@ class MemoryKeyStore(KeyStoreInterface):
         return record
 
     async def get_key_by_plain(self, key_plain: str) -> dict | None:
-        """Look up a key record by its **plaintext** key."""
+        """
+        Look up a key record by its **plaintext** key.
+        """
+
         logger = _logging.getLogger(__name__)
         prefix = key_plain[:7] if len(key_plain) > 6 else key_plain
         for rec_id, record in self._keys.items():
@@ -164,7 +176,10 @@ class MemoryKeyStore(KeyStoreInterface):
         return None
 
     def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
-        """Synchronous version of :meth:`get_key_by_plain`."""
+        """
+        Synchronous version of :meth:`get_key_by_plain`.
+        """
+
         prefix = key_plain[:7] if len(key_plain) > 6 else key_plain
         logger = _logging.getLogger(__name__)
         logger.debug(
@@ -242,7 +257,10 @@ class MemoryKeyStore(KeyStoreInterface):
             del self._by_hash[record["key_hash"]]
 
     async def disable_key(self, key_id: str) -> None:
-        """Deactivate a key by setting is_active=False."""
+        """
+        Deactivate a key by setting is_active=False.
+        """
+
         record = self._keys.get(key_id)
         if not record:
             raise ValueError(f"Key {key_id} not found")
@@ -255,7 +273,10 @@ class MemoryKeyStore(KeyStoreInterface):
             self._persist_seeds(self._seed_file)
 
     async def enable_key(self, key_id: str) -> None:
-        """Re-activate a previously deactivated key."""
+        """
+        Re-activate a previously deactivated key.
+        """
+
         record = self._keys.get(key_id)
         if not record:
             raise ValueError(f"Key {key_id} not found")
@@ -282,7 +303,10 @@ class MemoryKeyStore(KeyStoreInterface):
         ]
 
     async def update_last_used(self, key_id: str) -> None:
-        """Update last_used_at for a key."""
+        """
+        Update last_used_at for a key.
+        """
+
         record = self._keys.get(key_id)
         if record:
             record["last_used_at"] = time.time()
@@ -291,5 +315,8 @@ class MemoryKeyStore(KeyStoreInterface):
                 self._persist_seeds(self._seed_file)
 
     def update_last_used_sync(self, key_id: str) -> None:
-        """Sync version of :meth:`update_last_used`."""
+        """
+        Sync version of :meth:`update_last_used`.
+        """
+
         return self._run_async(self.update_last_used(key_id))

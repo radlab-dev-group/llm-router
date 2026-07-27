@@ -67,7 +67,10 @@ class RedisProviderMonitor:
 
     @property
     def check_interval(self):
-        """Return the current health‑check interval in seconds."""
+        """
+        Return the current health‑check interval in seconds.
+        """
+
         return self._check_interval
 
     def stop(self) -> None:
@@ -156,16 +159,25 @@ class RedisProviderMonitor:
 
     @staticmethod
     def _monitor_key():
-        """Base Redis key used for storing provider sets."""
+        """
+        Base Redis key used for storing provider sets.
+        """
+
         return "monitor:providers"
 
     def _monitor_model_key(self, model_name: str):
-        """Redis key for the set of providers belonging to *model_name*."""
+        """
+        Redis key for the set of providers belonging to *model_name*.
+        """
+
         return f"{self._monitor_key()}:{model_name}"
 
     @staticmethod
     def _availability_key():
-        """Base Redis key used for availability hashes."""
+        """
+        Base Redis key used for availability hashes.
+        """
+
         return "availability"
 
     def _run(self) -> None:
