@@ -99,7 +99,7 @@ export LLM_ROUTER_MASKING_WITH_AUDIT=1
 
 ### Semantic BiEncoder Routing
 
-The `semantic_biencoder_routing` plugin uses a neural embedding model (**radlab/semantic-euro-bert-encoder-v1**) to
+The `semantic_biencoder_routing` plugin uses a neural embedding model (**google/embeddinggemma-300m**) to
 compute semantic embeddings for a set of pre‑configured routing targets. Each target has a `name`, a `model_name` (the
 model to route to), a `description`, and a list of `examples`. At query time the user message is embedded and matched
 against all stored target embeddings using FAISS (`IndexFlatIP` on L2‑normalised vectors = cosine similarity). The
@@ -112,7 +112,7 @@ best‑matching target determines the selected model.
 - For each routing target, its `description` and `examples` are combined into text.
 - The text is split into overlapping **token chunks** using a sliding window (`chunk_size` tokens, `chunk_overlap`
   tokens overlap).
-- Each chunk is embedded via the BiEncoder model (e.g. `radlab/semantic-euro-bert-encoder-v1`).
+- Each chunk is embedded via the BiEncoder model (e.g. `google/embeddinggemma-300m`).
 - All embedding vectors are **L2‑normalised** to unit length.
 - Vectors are inserted into a `faiss.IndexFlatIP` index (inner product).
 - A docstore maps each FAISS document ID to its target name (for reverse lookup).
