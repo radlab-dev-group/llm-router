@@ -49,9 +49,8 @@ Example: `auth:ratelimit:dev-a1b2c3d3:192.168.1.100`
 
 ### Environment Variables
 
-| Variable                             | Default | Description                              |
-|--------------------------------------|---------|------------------------------------------|
-| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` | `60`    | Default rate limit (requests per minute) |
+All rate-limiting environment variables are documented in **[ENV_DEFINITIONS.md](./ENV_DEFINITIONS.md) → Authentication
+section (Rate limiting subsection)**.
 
 ### Enabling Rate Limiting
 

@@ -328,125 +328,20 @@ Helm charts for Kubernetes deployment are available in the `helm_charts/` direct
 
 ---
 
-## 🛠️ Configuration (via environment)
+## Configuration
 
-A full list of environment variables is available at: [API README](llm_router_api/README.md#environment-variables)
+All environment variables are documented in **[ENV_DEFINITIONS.md](llm_router_api/ENV_DEFINITIONS.md)**.
 
-### Core variables
+| Category                                                                          | Description                                                |
+|-----------------------------------------------------------------------------------|------------------------------------------------------------|
+| [Core, Redis](llm_router_api/README.md#core-variables)                            | Prompts, models config, timeouts, logging, server settings |
+| [Masking & Guardrail](llm_router_api/README.md#masking--guardrail)                | Payload masking and content guardrails                     |
+| [Semantic BiEncoder Routing](llm_router_api/README.md#semantic-biencoder-routing) | Semantic routing configuration                             |
+| [LangChainRAG](llm_router_api/README.md#langchainrag)                             | RAG plugin settings                                        |
+| [Utils Plugins](llm_router_api/README.md#utils-plugins-variables)                 | Pipeline plugins configuration                             |
+| [Authentication](llm_router_api/README.md#authentication)                         | Auth, key management, rate limiting                        |
 
-| Variable                           | Default                                          | Description                                                                                                                            |
-|------------------------------------|--------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_PROMPTS_DIR`           | `resources/prompts`                              | Directory containing predefined system prompts.                                                                                        |
-| `LLM_ROUTER_MODELS_CONFIG`         | `resources/configs/models-config.json`           | Path to the models configuration JSON file.                                                                                            |
-| `LLM_ROUTER_DEFAULT_EP_LANGUAGE`   | `pl`                                             | Default language for endpoint prompts.                                                                                                 |
-| `LLM_ROUTER_TIMEOUT`               | `0`                                              | Timeout (seconds) for llm-router API calls.                                                                                            |
-| `LLM_ROUTER_EXTERNAL_TIMEOUT`      | `300`                                            | Timeout (seconds) for external model API calls.                                                                                        |
-| `LLM_ROUTER_MAX_REQUEST_BODY_SIZE` | `10485760` (10 MB)                               | Maximum allowed request body size in bytes. Larger payloads are rejected with HTTP 413 to prevent memory exhaustion.                   |
-| `LLM_ROUTER_LOG_FILENAME`          | `llm-router.log`                                 | Name of the log file.                                                                                                                  |
-| `LLM_ROUTER_LOG_LEVEL`             | `INFO`                                           | Logging level (e.g., INFO, DEBUG).                                                                                                     |
-| `LLM_ROUTER_LOG_TO_FILE`           | `false`                                          | Also write logs to the log file (in addition to console).                                                                              |
-| `LLM_ROUTER_EP_PREFIX`             | `/api`                                           | Prefix for all API endpoints.                                                                                                          |
-| `LLM_ROUTER_MINIMUM`               | `1`                                              | Run service in proxy‑only mode.                                                                                                        |
-| `LLM_ROUTER_IN_DEBUG`              | `1`                                              | Run server in debug mode.                                                                                                              |
-| `LLM_ROUTER_BALANCE_STRATEGY`      | `first_available`                                | Load‑balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`.                       |
-| `LLM_ROUTER_SERVER_TYPE`           | `flask`                                          | Server implementation: `flask`, `gunicorn`, `waitress`.                                                                                |
-| `LLM_ROUTER_SERVER_PORT`           | `8080`                                           | Port on which the server listens.                                                                                                      |
-| `LLM_ROUTER_SERVER_HOST`           | `0.0.0.0`                                        | Host address for the server.                                                                                                           |
-| `LLM_ROUTER_SERVER_WORKERS_COUNT`  | `4`                                              | Number of workers.                                                                                                                     |
-| `LLM_ROUTER_SERVER_THREADS_COUNT`  | `16`                                             | Number of worker threads.                                                                                                              |
-| `LLM_ROUTER_SERVER_WORKER_CLASS`   | `None`                                           | Worker class for servers that support it.                                                                                              |
-| `LLM_ROUTER_USE_PROMETHEUS`        | `1`                                              | Enable Prometheus metrics (`/metrics` endpoint).                                                                                       |
-| `PROMETHEUS_MULTIPROC_DIR`         | `$HOME/.llm-router/metrics/prometheus/multiproc` | Directory where prometheus multiprocess worker data files are stored. Overrides are allowed but the default works in most deployments. |
-
-### Masking & guardrail variables
-
-| Variable                                | Default           | Description                                                     |
-|-----------------------------------------|-------------------|-----------------------------------------------------------------|
-| `LLM_ROUTER_FORCE_MASKING`              | `False`           | Enable force‑masking of every endpoint's payload.               |
-| `LLM_ROUTER_MASKING_STRATEGY_PIPELINE`  | `["fast_masker"]` | Ordered list of masker plugins (e.g. `fast_masker,pii_masker`). |
-| `LLM_ROUTER_MASKING_WITH_AUDIT`         | `False`           | Record each masking operation in the audit log.                 |
-| `LLM_ROUTER_FORCE_GUARDRAIL_REQUEST`    | `False`           | Force guardrail evaluation on every request.                    |
-| `LLM_ROUTER_MASKER_PII_HOST`            | —                 | Host URL for the PII masker service.                            |
-| `LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST` | —                 | Host URL for the Sojka guardrail service.                       |
-
-### Redis variables
-
-| Variable                    | Default     | Description                                                 |
-|-----------------------------|-------------|-------------------------------------------------------------|
-| `LLM_ROUTER_REDIS_HOST`     | *(empty)*   | Redis host for load‑balancing across multi‑provider models. |
-| `LLM_ROUTER_REDIS_PORT`     | `6379`      | Redis port.                                                 |
-| `LLM_ROUTER_REDIS_PASSWORD` | *(not set)* | Redis password.                                             |
-| `LLM_ROUTER_REDIS_DB`       | `0`         | Redis database number.                                      |
-
-> **Note:** When `LLM_ROUTER_REDIS_HOST` is set, the router uses Redis for load‑balancing state and provider
-> availability tracking.
-
-### Semantic BiEncoder Routing variables
-
-| Variable                                              | Default   | Description                                                                                                                                                                                                                                         |
-|-------------------------------------------------------|-----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG`        | *(empty)* | **Config source of truth** — either a raw JSON string (starts with `{`) or a file path. When unset, falls back to the bundled `semantic_biencoder.json`. Individual env vars below override values from the loaded config only when explicitly set. |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL`         | *(empty)* | Override the embedding model name or local path.                                                                                                                                                                                                    |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS`       | *(empty)* | Pipe‑separated list of target names (overrides all targets).                                                                                                                                                                                        |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE`    | *(empty)* | Token chunk size for embedding.                                                                                                                                                                                                                     |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP` | *(empty)* | Token overlap between consecutive chunks.                                                                                                                                                                                                           |
-| `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR`   | *(empty)* | Directory for FAISS index + docstore persistence (`index.faiss`, `docstore.pkl`).                                                                                                                                                                   |
-
-### LangChainRAG variables
-
-| Variable                                 | Default   | Description                                                                                       |
-|------------------------------------------|-----------|---------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_LANGCHAIN_RAG_COLLECTION`    | *(empty)* | Vector store collection name.                                                                     |
-| `LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER`      | *(empty)* | Path to the embedding model (e.g. `/mnt/data2/llms/models/community/google/embeddinggemma-300m`). |
-| `LLM_ROUTER_LANGCHAIN_RAG_DEVICE`        | `cpu`     | Compute device for the embedding model (`cpu`, `cuda:0`, …).                                      |
-| `LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE`    | `1024`    | Chunk size for document splitting.                                                                |
-| `LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP` | `100`     | Overlap between consecutive chunks.                                                               |
-| `LLM_ROUTER_LANGCHAIN_RAG_PERSIST_DIR`   | *(empty)* | Directory for LangChainRAG index persistence.                                                     |
-
-> **Note:** LangChainRAG requires the `llm-router-plugins` package. When `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` includes
-`langchain_rag`, these variables configure the RAG plugin behavior.
-
-### Plugin Pipeline variables
-
-| Variable                            | Default                      | Description                                                                                      |
-|-------------------------------------|------------------------------|--------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` | `semantic_biencoder_routing` | Comma‑separated list of utility plugins to apply (e.g. `simple_semantic_routing,langchain_rag`). |
-
-> **Note:** Utility plugins run per‑request in the pipeline between endpoint processing and model provider dispatch.
-> Available plugins: `simple_semantic_routing`, `semantic_biencoder_routing`, `langchain_rag`. Each plugin has
-> additional
-> configuration documented above.
-
-### Authentication variables
-
-| Variable                                     | Default                             | Description                                                                            |
-|----------------------------------------------|-------------------------------------|----------------------------------------------------------------------------------------|
-| `LLM_ROUTER_AUTH_ENABLED`                    | `false`                             | **Master switch** — `"true"` enables all authentication. Default is `false` (no auth). |
-| `LLM_ROUTER_AUTH_KEY_STORE`                  | `memory`                            | Key store backend: `vault`, `redis`, or `memory`.                                      |
-| `LLM_ROUTER_AUTH_VAULT_ADDR`                 | *(empty)*                           | HashiCorp Vault server URL (e.g. `https://vault.example.com`).                         |
-| `LLM_ROUTER_AUTH_VAULT_PATH`                 | `secret/data/llm-router/api-keys`   | KV v2 mount path for key storage.                                                      |
-| `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD`          | `kubernetes`                        | Auth method: `kubernetes`, `approle`, or `token`.                                      |
-| `LLM_ROUTER_AUTH_VAULT_ROLE_ID`              | *(empty)*                           | AppRole role ID (or K8s SA token for K8s auth).                                        |
-| `LLM_ROUTER_AUTH_VAULT_SECRET_ID`            | *(empty)*                           | AppRole secret ID.                                                                     |
-| `LLM_ROUTER_AUTH_VAULT_TOKEN`                | *(empty)*                           | Vault token (for token auth).                                                          |
-| `LLM_ROUTER_AUTH_KEY_CACHE_TTL`              | `300`                               | Key cache TTL in seconds.                                                              |
-| `LLM_ROUTER_AUTH_KEY_CACHE_JITTER`           | `60`                                | Random jitter to prevent cache stampede.                                               |
-| **Auth Redis (separate from general REDIS)** |                                     |                                                                                        |
-| `LLM_ROUTER_AUTH_REDIS_HOST`                 | *(empty)*                           | Auth Redis host for key store and rate limiting.                                       |
-| `LLM_ROUTER_AUTH_REDIS_PORT`                 | `6379`                              | Auth Redis port.                                                                       |
-| `LLM_ROUTER_AUTH_REDIS_DB`                   | `0`                                 | Auth Redis database number.                                                            |
-| `LLM_ROUTER_AUTH_REDIS_PASSWORD`             | *(not set)*                         | Auth Redis password.                                                                   |
-| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT`         | `60`                                | Default rate limit (requests per minute).                                              |
-| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`           | `/ping,/version,/models,/,/metrics` | Comma-separated paths that bypass authentication.                                      |
-| `LLM_ROUTER_AUTH_KEY_PREFIX`                 | `sk-litm`                           | Key prefix (like LiteLLM/OpenAI format).                                               |
-| `LLM_ROUTER_AUTH_KEY_LENGTH`                 | `48`                                | Entropy bytes for key generation (produces 64-char key).                               |
-| `LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD`      | `3600`                              | Old keys remain valid for this many seconds after rotation.                            |
-| `LLM_ROUTER_AUTH_AUDIT`                      | *(empty)*                           | Record auth events in the audit log.                                                   |
-
-> **Note:** Rate limiting is always applied when authentication is enabled — there is no separate toggle for it.
-> Auth Redis (`LLM_ROUTER_AUTH_REDIS_*`) is independent from general Redis (`LLM_ROUTER_REDIS_*`).
-
-> See full authentication docs: **[llm_router_api/AUTHENTICATION.md](llm_router_api/AUTHENTICATION.md)**
+> See full authentication docs: **[AUTHENTICATION.md](llm_router_api/AUTHENTICATION.md)**
 
 ---
 
