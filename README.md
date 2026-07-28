@@ -187,6 +187,19 @@ When `LLM_ROUTER_USE_PROMETHEUS` is enabled, the router automatically registers 
 prefix, e.g. `/api/metrics`). This endpoint exposes Prometheus‑compatible metrics such as request counts, latencies, and
 any custom counters defined by the application.
 
+#### 📊 Grafana dashboard example
+
+A pre-built Grafana dashboard is available in
+[
+`resources/configs/prometheus/grafana-llm-router-dashboard-v1.json`](resources/configs/prometheus/grafana-llm-router-dashboard-v1.json).
+
+Import steps:
+
+1. Open your Grafana instance → **Dashboards** → **New** → **Import**.
+2. Upload the `grafana-llm-router-dashboard-v1.json` file (or paste its contents).
+3. Select the Prometheus data source that points to your LLM Router `/metrics` endpoint.
+4. Click **Import** — the dashboard will display request counts, latencies, error rates, and provider usage at a glance.
+
 ### 2️⃣ Run the REST API
 
 ```shell

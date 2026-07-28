@@ -12,8 +12,9 @@ by :data:`~llm_router_api.base.constants.DEFAULT_API_PREFIX`.
 
 Typical usage
 -------------
->>> engine = FlaskEngine(prompts_dir='resources/prompts',
-...                     models_config_path='resources/configs/models-config.json')
+>>> engine = FlaskEngine(
+    prompts_dir='resources/prompts',
+    models_config_path='resources/configs/models-config.json')
 >>> app = engine.prepare_flask_app()
 >>> app.run()
 """
@@ -134,6 +135,7 @@ class FlaskEngine:
 
         self._auth_enabled = False
         self._auth_metrics: AuthMetrics | None = None
+        self._router_metrics: Optional["RouterMetrics"] = None
 
     # def __del__(self):
     #     if self._services_monitor:
@@ -177,6 +179,7 @@ class FlaskEngine:
         # -- METRICS (after endpoints) --------------------------------------
         if USE_PROMETHEUS:
             self.__register_auth_metrics_if_needed()
+            self.__register_router_metrics_if_needed()
 
         return flask_app
 
@@ -373,6 +376,28 @@ class FlaskEngine:
         )
 
         self._auth_metrics = _AuthMetrics()
+
+    def __register_router_metrics_if_needed(self) -> None:
+        """
+        Register router Prometheus metrics alongside the existing HTTP and auth metrics.
+
+        This is called from ``prepare_flask_app()`` after the app is fully
+        initialized.  It silently returns when Prometheus is disabled or
+        when router metrics have already been registered.
+        """
+        if not USE_PROMETHEUS or self._router_metrics is not None:
+            return
+
+        from llm_router_api.core.router_metrics import (  # pylint: disable=reimported
+            RouterMetrics as _RouterMetrics,
+        )
+
+        self._router_metrics = _RouterMetrics()
+        self.flask_app.extensions["router_metrics"] = self._router_metrics
+
+        # Inject into provider chooser for LB strategy recording
+        if hasattr(self, "_provider_chooser"):
+            self._provider_chooser.set_router_metrics(self._router_metrics)
 
     def __auto_load_endpoints(self, base_class: Type[EndpointI]):
         """

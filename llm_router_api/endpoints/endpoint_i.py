@@ -73,6 +73,14 @@ from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 
 if USE_PROMETHEUS:
     from llm_router_api.core.metrics_handler import MetricsHandler
+    from flask import current_app
+
+    try:
+        from llm_router_api.core.router_metrics import (
+            RouterMetrics as _RouterMetrics,
+        )
+    except ImportError:
+        _RouterMetrics = None  # type: ignore
 
 
 class SecureEndpointI(abc.ABC):
@@ -1160,6 +1168,44 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         self._timeout = timeout
         self._http_executor = HttpRequestExecutor(self)
 
+    # ------------------------------------------------------------------
+    # Router metrics helpers (no-op safe — silently skipped when disabled)
+    # ------------------------------------------------------------------
+    def _get_router_metrics(self):
+        """
+        Return the ``RouterMetrics`` instance from Flask extensions.
+
+        Uses lazy caching so that repeated calls during a single request do not
+        repeatedly hit Flask's application context.  Returns ``None`` gracefully
+        when outside a request context or Prometheus is disabled.
+        """
+        if getattr(self, "__rm_cache", None) is None:
+            self._rm_caching = True
+            try:
+                from flask import current_app as _app
+
+                ext = getattr(_app, "extensions", {})
+                if isinstance(ext, dict):
+                    val = ext.get("router_metrics")
+                    if val is not None:
+                        self._rm_caching = val
+                        return val
+            except RuntimeError:
+                pass  # outside request context
+            self._rm_cache = None
+        return self._rm_cache
+
+    def _record_provider_latency(self, start_ns: float) -> Optional[float]:
+        """
+        Measure and record provider latency; returns elapsed seconds or ``None``.
+        """
+        rm = self._get_router_metrics()
+        if rm is None:
+            return None
+        elapsed = time.time() - start_ns
+        self.logger.debug("[metrics] provider_latency=%.4f s", elapsed)
+        return elapsed
+
     @property
     def timeout(self):
         """
@@ -1304,6 +1350,18 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             if api_model_provider is None:
                 raise ValueError(f"API model not found in params {params}")
 
+            # ---- Prometheus: record provider & pipeline stage --------------------
+            rm = self._get_router_metrics()
+            if rm is not None and api_model_provider is not None:
+                try:
+                    rm.record_pipeline_stage("provider_resolved", "success")
+                    rm.record_provider_call(
+                        provider_type=api_model_provider.api_type,
+                        model_name=api_model_provider.name,
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass  # metrics must never break the request
+
             # Modify params specified for the chosen provider
             params = self._prepare_params_for_provider(
                 params=params, model_provider=api_model_provider
@@ -1364,6 +1422,18 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                         "Streaming is available only for single message"
                     )
 
+                # ---- Prometheus: response format (streamed) -------------------
+                rm_fmt = self._get_router_metrics()
+                if rm_fmt is not None and api_model_provider is not None:
+                    try:
+                        rm_fmt.record_response_format(
+                            fmt="streamed",
+                            model_name=api_model_provider.name,
+                            provider_type=api_model_provider.api_type,
+                        )
+                    except Exception:  # pylint: disable=broad-exception-caught
+                        pass
+
                 stream_type = self._http_executor.stream_handler.resolve_stream_type(
                     endpoint_ep_types=self._ep_types_str,
                     api_model_provider=api_model_provider,
@@ -1376,6 +1446,18 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     stream_type=stream_type,
                     api_model_provider=api_model_provider,
                 )
+
+            # ---- Prometheus: response format (non_streamed) ----------------
+            rm_ns = self._get_router_metrics()
+            if rm_ns is not None and api_model_provider is not None:
+                try:
+                    rm_ns.record_response_format(
+                        fmt="non_streamed",
+                        model_name=api_model_provider.name,
+                        provider_type=api_model_provider.api_type,
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
 
             return self._return_response_or_rerun(
                 api_model_provider=api_model_provider,
@@ -1589,6 +1671,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         response = None
         error_exc = None
+        provider_latency_start = time.time()  # ---- Prometheus: latency timer -----------
 
         try:
             response = self._http_executor.call_http_request(
@@ -1601,6 +1684,34 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         except Exception as e:
             self.logger.error(e)
             error_exc = e
+
+        # ---- Prometheus: record provider latency & error on exception ---------------
+        rm_err = self._get_router_metrics()
+        if rm_err is not None and api_model_provider is not None:
+            try:
+                elapsed = time.time() - provider_latency_start
+                rm_err.record_provider_latency(
+                    provider_type=api_model_provider.api_type,
+                    model_name=api_model_provider.name,
+                    seconds=elapsed,
+                )
+                if error_exc is not None:
+                    # Classify the error code for connection-level failures
+                    err_msg = str(error_exc).lower()
+                    if "timeout" in err_msg:
+                        rm_err.record_provider_error(
+                            provider_type=api_model_provider.api_type,
+                            model_name=api_model_provider.name,
+                            error_code="timeout",
+                        )
+                    else:
+                        rm_err.record_provider_error(
+                            provider_type=api_model_provider.api_type,
+                            model_name=api_model_provider.name,
+                            error_code="connection_error",
+                        )
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass  # metrics must never break the request
 
         self.unset_model(
             api_model_provider=api_model_provider, params=params, options=options
@@ -1629,6 +1740,27 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 f"{self.RetryResponse.MAX_RECONNECTIONS}."
             )
 
+            # ---- Prometheus: retry metrics ----------------------------
+            if status_code != 200 and rm_err is not None and api_model_provider is not None:
+                try:
+                    rm_err.record_provider_latency(
+                        provider_type=api_model_provider.api_type,
+                        model_name=api_model_provider.name,
+                        seconds=time.time() - provider_latency_start,
+                    )
+                    rm_err.record_provider_error(
+                        provider_type=api_model_provider.api_type,
+                        model_name=api_model_provider.name,
+                        error_code=str(status_code),
+                    )
+                    if reconnect_number < self.RetryResponse.MAX_RECONNECTIONS:
+                        rm_err.record_retry(
+                            model_name=api_model_provider.name,
+                            error_code=str(status_code),
+                        )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
+
             if reconnect_number < self.RetryResponse.MAX_RECONNECTIONS:
                 time.sleep(self.RetryResponse.TIME_TO_WAIT_SEC)
                 if not options:
@@ -1640,7 +1772,51 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     reconnect_number=reconnect_number + 1,
                     options=options,
                 )
-            self.logger.error(f"Max reconnections exceeded: {reconnect_number}!")
+            # ---- Prometheus: retry exhausted (all retries failed) --------
+            if rm_err is not None and api_model_provider is not None:
+                try:
+                    rm_err.record_retry_exhausted(
+                        model_name=api_model_provider.name,
+                        last_error_code=str(status_code),
+                    )
+                    rm_err.record_provider_latency(
+                        provider_type=api_model_provider.api_type,
+                        model_name=api_model_provider.name,
+                        seconds=time.time() - provider_latency_start,
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
+            return response
+
+        # ---- Prometheus: successful provider call ------------------------
+        if rm_err is not None and api_model_provider is not None:
+            try:
+                rm_err.record_provider_latency(
+                    provider_type=api_model_provider.api_type,
+                    model_name=api_model_provider.name,
+                    seconds=time.time() - provider_latency_start,
+                )
+                # Try to extract token usage from response body (OpenAI / Ollama format)
+                if isinstance(response, dict):
+                    usage = response.get("usage", {})
+                    prompt_tokens = usage.get("prompt_tokens")
+                    completion_tokens = usage.get("completion_tokens")
+                    if prompt_tokens:
+                        rm_err.record_tokens(
+                            model_name=api_model_provider.name,
+                            direction="input",
+                            count=prompt_tokens,
+                            provider_type=api_model_provider.api_type,
+                        )
+                    if completion_tokens:
+                        rm_err.record_tokens(
+                            model_name=api_model_provider.name,
+                            direction="output",
+                            count=completion_tokens,
+                            provider_type=api_model_provider.api_type,
+                        )
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass  # metrics must never break the request
 
         return response
 

@@ -181,9 +181,29 @@ class ProviderStrategyFacade:
         """
         if not providers:
             raise RuntimeError(f"{model_name} does not have any providers!")
-        return self.strategy.get_provider(
+        result = self.strategy.get_provider(
             model_name=model_name, providers=providers, options=options
         )
+
+        # ---- Prometheus: record LB strategy selection (no-op safe) --------
+        rm = getattr(self, "_router_metrics", None)
+        if rm is not None and hasattr(rm, "record_lb_strategy"):
+            try:
+                rm.record_lb_strategy(
+                    strategy=self.strategy_name or self.strategy.__class__.__name__,
+                    model_name=model_name,
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+
+        return result
+
+    def set_router_metrics(self, router_metrics) -> None:
+        """
+        Inject the RouterMetrics instance (called from engine.py after init).
+        This avoids circular import issues at module load time.
+        """
+        self._router_metrics = router_metrics
 
     def put_provider(
         self, model_name: str, provider: Dict, options: Optional[Dict] = None

@@ -1,0 +1,404 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_ds}"
+      },
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false }, "content": "# LLM Router — Dashboard\n\n> **Source:** `http://192.168.100.65:8080/metrics`\n>\n> W panelu *Data Source* wybierz Prometheus pointing na ten adres i zaimportuj ten plik przez *Dashboards → Import*.  ",
+      "style": { "font-size": 14 },
+      "title": "",
+      "type": "text"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 },
+      "id": 99,
+      "panels": [],
+      "title": "Podsumowanie",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "yellow", "value": 100 }, { "color": "red", "value": 500 } ] } },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 5 },
+      "id": 2,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(increase(http_requests_total{status_class=\"2xx\"}[${rate}]))", "legendFormat": "OK", "refId": "A" } ],
+      "title": "Sukces (2xx)",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 5 },
+      "id": 3,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(increase(http_requests_total{status_class=\"5xx\"}[${rate}]))", "legendFormat": "Bleedy serwera", "refId": "A" } ],
+      "title": "Bleedy serwera (5xx)",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "reqps" } },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 5 },
+      "id": 4,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(http_requests_total[${rate}]))", "legendFormat": "req/s", "refId": "A" } ],
+      "title": "Ruch (req/s)",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "orange", "value": 5 }, { "color": "red", "value": 20 } ] } },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 5 },
+      "id": 5,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(increase(llm_router_retry_exhausted_total[${rate}]))", "legendFormat": "Exhausted", "refId": "A" } ],
+      "title": "Wyczerpane retry",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "decbytes" } },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 5 },
+      "id": 6,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(increase(llm_router_tokens_total{direction=\"input\"}[${rate}]))", "legendFormat": "Input tokens", "refId": "A" } ],
+      "title": "Input tokens",
+      "type": "stat"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "decbytes" } },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 5 },
+      "id": 7,
+      "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "textMode": "auto" },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(increase(llm_router_tokens_total{direction=\"output\"}[${rate}]))", "legendFormat": "Output tokens", "refId": "A" } ],
+      "title": "Output tokens",
+      "type": "stat"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 100,
+      "panels": [],
+      "title": "Czas odpowiedzi",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 15, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 4, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }, "unit": "s" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "id": 8,
+      "options": { "legend": { "calcs": [ "mean", "max" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{endpoint=~\"/v1/chat/completions|/v1/messages\"}[${rate}])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{endpoint=~\"/v1/chat/completions|/v1/messages\"}[${rate}])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{endpoint=~\"/v1/chat/completions|/v1/messages\"}[${rate}])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "title": "Latencja route'u — p50 / p95 / p99",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 15, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 4, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }, "unit": "s" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "id": 9,
+      "options": { "legend": { "calcs": [ "mean", "max" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "histogram_quantile(0.50, sum(rate(llm_router_provider_latency_seconds_bucket[$interval])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "histogram_quantile(0.95, sum(rate(llm_router_provider_latency_seconds_bucket[$interval])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "histogram_quantile(0.99, sum(rate(llm_router_provider_latency_seconds_bucket[$interval])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "title": "Latencja provider'ow — p50 / p95 / p99",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 18 },
+      "id": 101,
+      "panels": [],
+      "title": "Routing i dostawcy",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "req" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 19 },
+      "id": 10,
+      "options": { "legend": { "calcs": [ "sum" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_provider_calls_total[$interval])) by (provider_type)", "legendFormat": "{{provider_type}}", "refId": "A" }
+      ],
+      "title": "Wywolania na dostawce",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "req" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 19 },
+      "id": 11,
+      "options": { "legend": { "calcs": [ "sum" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_provider_error_total[$interval])) by (provider_type, error_code)", "legendFormat": "{{provider_type}} — {{error_code}}", "refId": "A" }
+      ],
+      "title": "Bleedy dostawcow",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "piechart", "fillOpacity": 100, "gradientMode": "none", "hideInLegend": true, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }, "unit": "short" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 27 },
+      "id": 12,
+      "options": { "displayLabels": [ "name", "value" ], "legend": { "displayMode": "table", "placement": "bottom", "values": [ "value", "percent" ] }, "pieType": "donut", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "tooltip": { "mode": "single", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_provider_calls_total[$interval])) by (provider_type)", "legendFormat": "{{provider_type}}", "refId": "A" }
+      ],
+      "title": "Dystrybucja providerow",
+      "type": "piechart"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "req/s" } },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 27 },
+      "id": 13,
+      "options": { "legend": { "calcs": [ "mean", "max" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_lb_strategy_selected_total[$interval])) by (strategy)", "legendFormat": "{{strategy}}", "refId": "A" }
+      ],
+      "title": "Strategie load-balancingu",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "req/s" } },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 27 },
+      "id": 14,
+      "options": { "legend": { "calcs": [ "mean", "max" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_provider_calls_total[$interval])) by (model_name)", "legendFormat": "{{model_name}}", "refId": "A" }
+      ],
+      "title": "Ruch na model",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+      "id": 102,
+      "panels": [],
+      "title": "Retry i pipeline",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "bars", "fillOpacity": 80, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "stepAfter", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "req" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 36 },
+      "id": 15,
+      "options": { "legend": { "calcs": [ "sum" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_retry_total[$interval])) by (model_name, error_code)", "legendFormat": "{{model_name}} — {{error_code}}", "refId": "A" }
+      ],
+      "title": "Retry na model / kod bledu",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "req/s" } },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 36 },
+      "id": 16,
+      "options": { "legend": { "calcs": [ "mean", "max" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_pipeline_stage_total[$interval])) by (stage, result)", "legendFormat": "{{stage}} — {{result}}", "refId": "A" }
+      ],
+      "title": "Pipeline stage flow",
+      "type": "timeseries"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "id": 103,
+      "panels": [],
+      "title": "Tokeny i format odpowiedzi",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 15, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "short" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 45 },
+      "id": 17,
+      "options": { "legend": { "calcs": [ "sum" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_tokens_total[$interval])) by (direction, model_name)", "legendFormat": "{{model_name}} — {{direction}}", "refId": "A" }
+      ],
+      "title": "Tokeny na model (input/output)",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "piechart", "fillOpacity": 100, "gradientMode": "none", "hideInLegend": true, "insertNulls": false, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }, "unit": "short" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 45 },
+      "id": 18,
+      "options": { "displayLabels": [ "name", "value" ], "legend": { "displayMode": "table", "placement": "bottom", "values": [ "value", "percent" ] }, "pieType": "donut", "reduceOptions": { "calcs": [ "lastNotNull" ], "fields": "", "values": false }, "tooltip": { "mode": "single", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(llm_router_response_format_total[$interval])) by (format)", "legendFormat": "{{format}}", "refId": "A" }
+      ],
+      "title": "Format odpowiedzi (streamed / non_streamed)",
+      "type": "piechart"
+    },
+
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 53 },
+      "id": 104,
+      "panels": [],
+      "title": "HTTP i bezpieczenstwo",
+      "type": "row"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "req/s" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 54 },
+      "id": 19,
+      "options": { "legend": { "calcs": [ "mean", "max" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "sum(rate(http_requests_total[${interval}])) by (http_status)", "legendFormat": "{{http_status}}", "refId": "A" }
+      ],
+      "title": "Status HTTP",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "req/s" } },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 54 },
+      "id": 20,
+      "options": { "legend": { "calcs": [ "sum" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "rate(http_request_exceptions_total[${interval}])", "legendFormat": "{{endpoint}}", "refId": "A" }
+      ],
+      "title": "Wydki (5xx) na endpoint",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "Bps" } },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 54 },
+      "id": 21,
+      "options": { "legend": { "calcs": [ "sum" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "rate(http_response_size_bytes[${interval}])", "legendFormat": "{{endpoint}}", "refId": "A" }
+      ],
+      "title": "Rozmiar odpowiedzi (B/s)",
+      "type": "timeseries"
+    },
+
+    {
+      "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "drawStyle": "line", "fillOpacity": 10, "gradientMode": "none", "hideInLegend": false, "insertNulls": false, "lineInterpolation": "smooth", "lineWidth": 2, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "never", "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ], "unit": "ops" } },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 62 },
+      "id": 22,
+      "options": { "legend": { "calcs": [ "sum" ], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "rate(guardrail_incidents_total[${interval}])", "legendFormat": "Guardrail", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "${prometheus_ds}" }, "expr": "rate(masker_incidents_total[${interval}])", "legendFormat": "Masker", "refId": "B" }
+      ],
+      "title": "Bezpieczenstwo: guardrail / masker",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [ "llm-router", "prometheus" ],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "Prometheus", "value": "prometheus" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Data Source",
+        "multi": false,
+        "name": "prometheus_ds",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": { "selected": false, "text": "5m", "value": "5m" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Interval (histogram_quantile)",
+        "multi": false,
+        "name": "interval",
+        "options": [
+          { "text": "1m", "value": "1m" },
+          { "text": "5m", "value": "5m" },
+          { "text": "15m", "value": "15m" },
+          { "text": "1h", "value": "1h" }
+        ],
+        "query": "1m,5m,15m,1h",
+        "type": "interval"
+      },
+      {
+        "current": { "selected": false, "text": "1m", "value": "1m" },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Rate window",
+        "multi": false,
+        "name": "rate",
+        "options": [
+          { "text": "1m", "value": "1m" },
+          { "text": "5m", "value": "5m" },
+          { "text": "15m", "value": "15m" }
+        ],
+        "query": "1m,5m,15m",
+        "type": "interval"
+      }
+    ]
+  },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "LLM Router",
+  "uid": "llm-router",
+  "version": 1
+}
