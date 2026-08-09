@@ -128,6 +128,28 @@ configuration documented above.
 | `LLM_ROUTER_AUTH_ENABLED`   | `false`  | Master switch — "true" enables all authentication. |
 | `LLM_ROUTER_AUTH_KEY_STORE` | `memory` | Key store backend: vault, redis, or memory.        |
 
+---
+
+### Config source (models config storage backend)
+
+Config can be loaded from a local file (**default**) or from **etcd** (enables hot-reload).
+
+| Variable                      | Default                     | Description                                                                                                   |
+|-------------------------------|-----------------------------|---------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_CONFIG_SOURCE`    | `"file"`                    | Backend for models config: `"file"` (default, read from `LLM_ROUTER_MODELS_CONFIG`) or `"etcd"` (hot-reload). |
+| `LLM_ROUTER_ETCD_HOST`        | *(empty)*                   | etcd server hostname or IP. Use `<release-name>-etcd-headless` when deployed via Helm chart.                  |
+| `LLM_ROUTER_ETCD_PORT`        | `2379`                      | etcd TCP port.                                                                                                |
+| `LLM_ROUTER_ETCD_CONFIG_KEY`  | `/llm-router/models-config` | The etcd key that holds the models-config JSON value.                                                         |
+| `LLM_ROUTER_ETCD_TLS_ENABLED` | `false`                     | Enable TLS/mTLS for the etcd connection.                                                                      |
+| `LLM_ROUTER_ETCD_CA_CERT`     | *(empty)*                   | Path to CA certificate file (used when TLS is enabled).                                                       |
+| `LLM_ROUTER_ETCD_CLIENT_CERT` | *(empty)*                   | Client certificate path for mTLS authentication.                                                              |
+| `LLM_ROUTER_ETCD_CLIENT_KEY`  | *(empty)*                   | Client private key path for mTLS authentication.                                                              |
+
+When `CONFIG_SOURCE=etcd`, the router starts a background watcher thread that detects config changes in real-time and
+reloads all model/provider definitions on-the-fly without restarting containers. See [ETCD.md](ETCD.md) for details.
+
+---
+
 ### Memory store
 
 Seed file path (hardcoded): `${HOME}/.llm-router/configs/auth/memory-keys.json`

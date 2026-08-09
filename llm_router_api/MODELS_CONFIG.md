@@ -87,19 +87,45 @@ Having a single source of truth for model definitions makes it easy to:
 
 ---  
 
+## 📦 Config source (file vs. etcd)
+
+The models config can be stored in two backends:
+
+| Backend            | How it works                                                                                                                     | Hot-reload                                                                                         | Write-back                                              |
+|--------------------|----------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------|---------------------------------------------------------|
+| **File** (default) | Reads `models-config.json` on every `get_config_state()` call. Set via `LLM_ROUTER_MODELS_CONFIG`.                               | No — config is only re-read when a method is called. Kubernetes ConfigMap still requires redeploy. | No (`NotImplementedError`)                              |
+| **Etcd** ⭐        | Watches an etcd key via long-poll; loads and swaps config instantly when the value changes. Set `LLM_ROUTER_CONFIG_SOURCE=etcd`. | Yes — all routers reload within ~100 ms of any write.                                              | Yes — providers can be added/removed at runtime via API |
+
+See [ETCD.md](ETCD.md) for full etcd setup, env vars, Helm instructions, and migration guide.
+
+---
+
 ## 🧩 How `ModelHandler` uses the config
 
 1. **Construction**
 
 ```python
+# With file-based config (default):
+from llm_router_api.core.config_store import create_config_source
+
+source = create_config_source("file", path=MODELS_CONFIG_FILE)
 handler = ModelHandler(
-    models_config_path="/path/to/models-config.json",
+    config_source=source,
+    provider_chooser=my_provider_strategy
+)
+
+# With etcd-backed config:
+export
+LLM_ROUTER_CONFIG_SOURCE = etcd
+source = create_config_source("etcd", host="...", port=2379, key="/llm-router/models-config")
+handler = ModelHandler(
+    config_source=source,
     provider_chooser=my_provider_strategy
 )
 ```
 
-* `ApiModelConfig` reads the file, extracts `active_models`, and builds `models_configs` – a dict that maps each active
-  model name to its full configuration (including the `providers` list).
+* `ApiModelConfig` receives a `ConfigSourceI` (either file or etcd), extracts `active_models`, and builds
+  `models_configs` – a dict that maps each active model name to its full configuration (including the `providers` list).
 
 2. **Fetching a provider**
 
@@ -249,8 +275,8 @@ Copy it to your own configuration directory and adjust the values to match your 
 ```
 
 > **Tip:**  
-> *Keep the file name configurable through the environment variable `LLM_ROUTER_MODELS_CONFIG` (the default
-is `resources/configs/models-config.json`).*
+> *Keep the file name configurable through the environment variable `LLM_ROUTER_MODELS_CONFIG` (the default is
+`resources/configs/models-config.json`).*
 
 ---  
 
@@ -262,5 +288,10 @@ is `resources/configs/models-config.json`).*
   you a ready‑to‑use `ApiModel` instance.
 * The sample configuration below can be copied and tweaked to fit your own deployment.
 
-Feel free to edit this file whenever you add new providers or change load‑balancing weights – the router picks up the
-changes on the next start (or after re‑loading the handler in a running process). Happy modeling!
+Feel free to edit this file whenever you add new providers or change load‑balancing weights:
+
+* **File-based config** — changes are picked up when the router next reads the file (restart required for
+  ConfigMap-mounted configs).
+* **Etcd-backed config** — changes propagate to all routers within ~100 ms via hot-reload; no restart needed.
+
+Happy modeling!

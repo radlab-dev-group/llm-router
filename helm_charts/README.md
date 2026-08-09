@@ -19,23 +19,26 @@ Quick summary – This Helm chart deploys the LLM‑Router application with its 
 ``` 
 helm_charts/
 └─ llm-router/
-   ├─ Chart.yaml          # Chart metadata
+   ├─ Chart.yaml          # Chart metadata (includes etcd subchart dependency)
    ├─ values.yaml         # Default values
    ├─ values-dev.yaml     # Development‑specific overrides
    ├─ templates/
    │   ├─ _helpers.tpl    # Helper functions (name, labels, etc.)
-   │   ├─ deployment.yaml # Deployment definition
+   │   ├─ deployment.yaml # Deployment definition (conditional ConfigMap mounts + etcd env vars)
    │   ├─ service.yaml    # Service definition
    │   ├─ ingress.yaml    # Ingress definition (optional)
    │   ├─ configmap.yaml  # ConfigMap for runtime env vars
-   │   └─ configmap-models.yaml # ConfigMap for `models-config.json`
+   │   └─ configmap-models.yaml # Conditional ConfigMap — created only when `LLM_ROUTER_CONFIG_SOURCE=file`
    └─ charts/
-       └─ redis-23.2.12.tgz   # Bitnami Redis sub‑chart (dependency)
+       ├─ redis-23.2.12.tgz   # Bitnami Redis sub‑chart (dependency)
+       └─ etcd-*.tgz           # Bitnami etcd sub‑chart (conditional, for hot-reload)
 ```
 
  
 ## Dependencies
-The chart depends on Redis. The dependency is declared in Chart.yaml and pulled automatically when you run helm dependency update.
+
+The chart depends on **Redis** and optionally on **etcd** (for config storage with hot-reload). Both are declared in Chart.yaml:
+
 ``` yaml
 # Chart.yaml
 dependencies:
@@ -43,6 +46,20 @@ dependencies:
     version: "23.2.12"
     repository: "oci://registry-1.docker.io/bitnamicharts"
     condition: redis.enabled
+  - name: etcd
+    version: "10.0.0"
+    repository: "oci://registry-1.docker.io/bitnamicharts"
+    condition: etcd.enabled
+```
+
+Disabling a subchart:
+
+``` bash
+# Disable Redis (not recommended for production LB)
+helm upgrade --install llm-router ./helm_charts/llm-router --set redis.enabled=false
+
+# Disable etcd (default — the chart works with file-based config)
+# etcd is disabled by default; no flag needed to keep it off.
 ```
 
 Adding / updating dependencies
@@ -130,3 +147,49 @@ helm upgrade --install llm-router ./helm_charts/llm-router \
 | `ingress.enabled=true` | Turns on the Ingress resource (otherwise it’s omitted). |
 | `llm-1.cluster.local`  | Sets the host name used both in the Ingress rule and the application’s configuration (`LLM_ROUTER_WEB_HOST`). |
 | `image.tag=latest`     | Pulls the `latest` image tag instead of the default chart‑version tag. |
+
+---
+
+## Config storage (file vs. etcd)
+
+By default, the chart creates a **ConfigMap** (`configmap-models.yaml`) that is mounted into every pod as `/srv/llm-router/resources/configs/models-config.json`.  
+When `LLM_ROUTER_CONFIG_SOURCE=etcd`, the ConfigMap is **not created** and instead etcd env vars are injected.
+
+### Enable etcd-backed config (with hot-reload)
+
+```bash
+helm upgrade --install llm-router ./helm_charts/llm-router \
+  --set etcd.enabled=true \
+  --set config.LLM_ROUTER_CONFIG_SOURCE=etcd \
+  --set config.LLM_ROUTER_ETCD_HOST="$(Release.Name)-etcd-headless" \
+  --set config.LLM_ROUTER_ETCD_PORT=2379
+```
+
+**Important notes:**
+
+* **No `configmap-models.yaml`** is created when using etcd — the volumeMount/volume in `deployment.yaml` is also omitted.
+* Etcd env vars are injected automatically into every pod when `CONFIG_SOURCE=etcd`.
+* You must seed the initial config manually before deploying (see [ETCD.md](../llm_router_api/ETCD.md)).
+
+### Example: full production values
+
+```yaml
+# my-values.yaml
+etcd:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false   # set true + configure tls for production etcd clusters
+
+config:
+  LLM_ROUTER_CONFIG_SOURCE: "etcd"
+  LLM_ROUTER_ETCD_HOST: "{{ .Release.Name }}-etcd-headless"
+  LLM_ROUTER_ETCD_PORT: "2379"
+  LLM_ROUTER_ETCD_CONFIG_KEY: "/llm-router/models-config"
+
+image:
+  tag: "0.6.8"
+
+ingress:
+  enabled: true
+```

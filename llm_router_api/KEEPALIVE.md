@@ -64,6 +64,12 @@ Supported duration units:
 
 If the `keep_alive` field is omitted or falsy, the provider will **not** be scheduled for periodic pings.
 
+### Hot‑Reload for Keep‑Alive
+
+When using etcd-backed config (`LLM_ROUTER_CONFIG_SOURCE=etcd`), changes to the `keep_alive` field of any provider take
+effect immediately — the keep‑alive monitor picks up the new values on-the-fly without restarting containers. With
+file-based config, a container restart is required.
+
 ## Example Usage
 
 ```python

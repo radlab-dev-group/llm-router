@@ -1,7 +1,7 @@
 # llm‑router‑api
 
-**llm‑router‑api** is a lightweight Python library that provides a flexible, extensible proxy for Large Language Model (
-LLM) back‑ends. It abstracts the details of multiple model providers (OpenAI‑compatible, Ollama, vLLM, LM Studio, etc.)
+**llm‑router‑api** is a lightweight Python library that provides a flexible, extensible proxy for Large Language Model
+(LLM) back‑ends. It abstracts the details of multiple model providers (OpenAI‑compatible, Ollama, vLLM, LM Studio, etc.)
 and offers a unified REST interface with built‑in load‑balancing, health‑checking, and monitoring.
 
 > **Repository:** <https://github.com/radlab-dev-group/llm-router>
@@ -102,6 +102,10 @@ and optionally `model_path`.
 
 **Configuration Details** – see the full schema and a ready‑made example in [MODELS_CONFIG.md](MODELS_CONFIG.md).
 
+**Config storage backends** — by default the router reads `models-config.json` from the file system. It can also use
+**etcd** as the config store, which enables **hot-reload**: change providers or models on-the-fly without restarting
+containers. See [ETCD.md](ETCD.md) for setup and migration instructions.
+
 ---
 
 ## Running the Server
@@ -130,9 +134,8 @@ The server starts on the host/port defined by `LLM_ROUTER_SERVER_HOST` and `LLM_
 
 ## REST API Overview
 
-All routes are prefixed by `LLM_ROUTER_EP_PREFIX` (default `/api`).
-The list of endpoints—categorized into built‑in, provider‑dependent, and extended endpoints—and
-a description of the streaming mechanisms can be found at the link:
+All routes are prefixed by `LLM_ROUTER_EP_PREFIX` (default `/api`). The list of endpoints—categorized into built‑in,
+provider‑dependent, and extended endpoints—and a description of the streaming mechanisms can be found at the link:
 [load endpoints overview](endpoints/README.md#endpoints-overview)
 
 ---
@@ -142,8 +145,7 @@ a description of the streaming mechanisms can be found at the link:
 The router selects a provider for a given model request using the **ProviderChooser**. The strategy can be chosen via
 the `LLM_ROUTER_BALANCE_STRATEGY` variable.
 
-The current list of available strategies, the interface description,
-and an example extension can be found at the link
+The current list of available strategies, the interface description, and an example extension can be found at the link
 [load balancing strategies](LB_STRATEGIES.md#load-balancing-strategies)
 
 ---
