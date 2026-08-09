@@ -15,7 +15,7 @@ available provider.
 
 Typical usage::
 
-    strategy = FirstAvailableStrategy(models_config_path='dir/models-config.json')
+    strategy = FirstAvailableStrategy(config_source=config_source)
     provider = strategy.get_provider('model-name', providers_list)
     # ... use the provider ...
     strategy.put_provider('model-name', provider)
@@ -25,7 +25,10 @@ Typical usage::
 import time
 import logging
 
-from typing import List, Dict, Optional, Any
+from typing import TYPE_CHECKING, List, Dict, Optional, Any
+
+if TYPE_CHECKING:
+    from llm_router_api.core.config_store.interface import ConfigSourceI
 
 from llm_router_api.base.constants import (
     REDIS_PORT,
@@ -53,7 +56,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
 
     def __init__(
         self,
-        models_config_path: str,
+        config_source: "ConfigSourceI",
         redis_host: str = REDIS_HOST,
         redis_password: str = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
@@ -69,8 +72,8 @@ class FirstAvailableStrategy(RedisBasedStrategy):
 
         Parameters
         ----------
-        models_config_path : str
-            Path to the models configuration file.
+        config_source : ConfigSourceI
+            The configuration source providing model configurations.
         redis_host : str, optional
             Redis server host. Default is ``"192.168.100.67"``.
         redis_port : int, optional
@@ -87,7 +90,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
             Whether to clear all buffers when starting. Default is ``True``.
         """
         super().__init__(
-            models_config_path=models_config_path,
+            config_source=config_source,
             redis_host=redis_host,
             redis_password=redis_password,
             redis_port=redis_port,

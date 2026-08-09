@@ -1,4 +1,7 @@
-from typing import List, Dict
+from typing import TYPE_CHECKING, List, Dict
+
+if TYPE_CHECKING:
+    from llm_router_api.core.config_store.interface import ConfigSourceI
 
 from llm_router_api.core.lb.strategies.weighted import DynamicWeightedStrategy
 
@@ -14,7 +17,7 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
 
     def __init__(
         self,
-        models_config_path: str,
+        config_source: "ConfigSourceI",
         initial_providers: List[Dict] | None = None,
         history_size: int = 10_000,
         learning_rate: float = 0.1,
@@ -29,9 +32,9 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
         enable_decision_logging: bool = False,
     ) -> None:
         super().__init__(
+            config_source=config_source,
             initial_providers=initial_providers,
             history_size=history_size,
-            models_config_path=models_config_path,
         )
         # Parametry uczenia i mapowania
         self._lr = learning_rate

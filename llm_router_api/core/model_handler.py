@@ -109,15 +109,15 @@ class ApiModel:
 
 class ModelHandler:
     """
-    Lightweight model manager backed by a JSON configuration file.
+    Lightweight model manager backed by a ConfigSource.
 
     On construction, it initializes an ApiModelConfig loader and provides
     helpers to fetch individual model definitions.
 
     Parameters
     ----------
-    models_config_path : str
-        Filesystem path to the JSON configuration file.
+    config_source : ConfigSourceI
+        The configuration source providing model configurations.
 
     Attributes
     ----------
@@ -128,18 +128,21 @@ class ModelHandler:
     LIST_MODEL_FIELDS_REMOVE = ["model_path", "api_token"]
 
     def __init__(
-        self, models_config_path: str, provider_chooser: ProviderStrategyFacade
+        self, config_source: "ConfigSourceI", provider_chooser: ProviderStrategyFacade
     ):
         """
-        Initialize the handler with the provided configuration path.
+        Initialize the handler with the provided config source.
 
         Parameters
         ----------
-        models_config_path : str
-            Path to the JSON configuration file containing model definitions.
+        config_source : ConfigSourceI
+            The configuration source containing model definitions.
         """
+        from llm_router_api.core.config_store.interface import ConfigSourceI as _CS
+
+        typed_source: _CS = config_source  # type: ignore[assignment]
         self.provider_chooser = provider_chooser
-        self.api_model_config: ApiModelConfig = ApiModelConfig(models_config_path)
+        self.api_model_config: ApiModelConfig = ApiModelConfig(source=typed_source)
 
     def get_model_provider(
         self,

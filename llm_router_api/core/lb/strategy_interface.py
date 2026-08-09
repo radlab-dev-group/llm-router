@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
 from llm_router_api.core.model_config import ApiModelConfig
+from llm_router_api.core.config_store.interface import ConfigSourceI
 
 
 class ChooseProviderStrategyI(ABC):
@@ -18,11 +19,9 @@ class ChooseProviderStrategyI(ABC):
     """
 
     def __init__(
-        self, models_config_path: str, logger: Optional[logging.Logger]
+        self, config_source: ConfigSourceI, logger: Optional[logging.Logger]
     ) -> None:
-        self._api_model_config = ApiModelConfig(
-            models_config_path=models_config_path
-        )
+        self._api_model_config = ApiModelConfig(source=config_source)
         self.logger = logger
 
     def __str__(self):

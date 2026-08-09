@@ -1,129 +1,175 @@
 """
-Module providing ApiModelConfig for loading model configurations from a JSON file.
+Module providing ApiModelConfig for loading model configurations from any ConfigSource.
 """
 
-import json
+from __future__ import annotations
 
-from typing import Dict, List
+import json
+import logging
+import threading
+from typing import Any, Dict, List, Optional
+
+from llm_router_api.core.config_store.interface import ConfigSourceI, ConfigState
+
+
+logger = logging.getLogger(__name__)
 
 
 class ApiModelConfig:
     """
-    Configuration loader for API models defined in a JSON file.
+    Configuration loader for API models from a ConfigSource.
 
-    Attributes
-        ----------
-        models_config_path : str
-            The provided path, stored for later use.
-        active_models : Dict[str, List[str]]
-            Mapping of model type to a list of active model names extracted
-            from the ``active_models`` key of the JSON file.
-        models_configs : Dict[str, Dict]
-            Full configuration dictionaries for each active model, built by
-            :meth:`_active_models_configuration`.
+    Unlike the original version that loaded from a file once at init, this
+    variant registers as a listener on the source's change notifications so
+    that all instances observe updates atomically.
+
+    Parameters
+    ----------
+    source : ConfigSourceI
+        The configuration source providing the config data.
+    logger : Optional[logging.Logger], optional
+        Optional explicit logger; defaults to module-level logger.
     """
 
-    def __init__(self, models_config_path: str):
+    def __init__(
+        self,
+        source: ConfigSourceI,
+        logger: Optional[logging.Logger] = None,
+    ) -> None:
+        self._logger = logger or logging.getLogger(__name__)
+        self._source = source
+        self._state: ConfigState | None = None
+        self._lock = threading.RLock()
+
+        # Register callback for hot-reload
+        def _on_config_change(state: ConfigState) -> None:
+            """Called by ConfigSource when config changes (from its watcher thread)."""
+            with self._lock:
+                old_state = self._state
+                self._state = state
+                if old_state is None:
+                    self._logger.info(
+                        "ApiModelConfig[%s] loaded initial config: %d models across %d types",
+                        source.name,
+                        len(state.models_configs),
+                        len(state.active_models),
+                    )
+                else:
+                    # Log actual changes in active_models (not just any diff)
+                    old_active = old_state.active_models
+                    new_active = state.active_models
+                    added_types = set(new_active.keys()) - set(old_active.keys())
+                    removed_types = set(old_active.keys()) - set(new_active.keys())
+                    if added_types or removed_types:
+                        self._logger.info(
+                            "ApiModelConfig[%s] config change detected: types added=%s removed=%s",
+                            source.name, list(added_types) if added_types else [],
+                            list(removed_types) if removed_types else [],
+                        )
+
+        self._source.on_config_change(_on_config_change)
+
+    @property
+    def active_models(self) -> Dict[str, List[str]]:
+        """Mapping of model type to list of active model names (live from current state)."""
+        with self._lock:
+            if self._state is None:
+                raise RuntimeError("Config not yet loaded")
+            return self._state.active_models
+
+    @property
+    def models_configs(self) -> Dict[str, Dict]:
+        """Full configuration dictionaries for each active model (live from current state)."""
+        with self._lock:
+            if self._state is None:
+                raise RuntimeError("Config not yet loaded")
+            return self._state.models_configs
+
+    @property
+    def source(self) -> ConfigSourceI:
+        """The underlying config source."""
+        return self._source
+
+    @property
+    def state(self) -> ConfigState | None:
+        """Access the raw ConfigState for external consumers (read-only)."""
+        with self._lock:
+            return self._state
+
+    # ------------------------------------------------------------------ #
+    # Write support -- delegates to source if writable
+    # ------------------------------------------------------------------ #
+
+    def put_model_provider(
+        self, model_type: str, model_name: str, provider: Dict[str, Any]
+    ) -> bool:
         """
-        Initialise an :class:`ApiModelConfig` instance.
+        Add a provider to an existing or new model configuration.
 
-        Parameters
-        ----------
-        models_config_path : str
-            Filesystem path to a JSON configuration file that defines
-            ``active_models`` and model‑type specific configurations.
-
-        Raises
-        ------
-        FileNotFoundError
-            If ``models_config_path`` does not exist.
-        json.JSONDecodeError
-            If the file content is not valid JSON.
-        KeyError
-            If the expected ``active_models`` key is missing.
+        Writes the entire config back through the source's put_config method.
+        Thread-safe because ApiModelConfig._lock is held during read-modify-write.
         """
-        self.models_config_path = models_config_path
+        with self._lock:
+            if self._state is None:
+                raise RuntimeError("Config not yet loaded")
+            # Build a mutable copy of the full config
+            full_config: Dict[str, Any] = {}
+            for m_type, names in self._state.active_models.items():
+                full_config[m_type] = {n: self._state.models_configs[n] for n in names}
 
-        self.active_models = self._read_active_models()
-        self.models_configs = self._active_models_configuration()
+        if not self._source.can_write:
+            raise NotImplementedError(
+                f"Config source '{self._source.name}' does not support writing."
+            )
 
-        self._validate_unique_identifiers()
+        # Add/update provider (threading outside lock to avoid holding it during I/O)
+        with self._lock:
+            if model_type not in full_config:
+                full_config[model_type] = {}
+            if model_name not in full_config[model_type]:
+                full_config[model_type][model_name] = {"providers": []}
+            existing_providers = full_config[model_type][model_name].get("providers", [])
+            # Avoid duplicate providers by id
+            new_id = provider.get("id")
+            for p in existing_providers:
+                if p.get("id") == new_id:
+                    return False  # Already exists
+            existing_providers.append(provider)
 
-    def _try_to_load_config(self) -> Dict:
-        """
-        Load and parse the models config JSON file.
+        success = self._source.put_config(full_config)
+        if success:
+            self._logger.info(
+                "[ApiModelConfig] Provider %s added to model %s via etcd", provider, model_name
+            )
+        return success
 
-        Raises
-        ------
-        RuntimeError
-            If the file cannot be parsed as valid JSON.
-        """
-        try:
-            with open(self.models_config_path, "rt", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("Invalid JSON format in models config file") from exc
+    def remove_model_provider(
+        self, model_type: str, model_name: str, provider_id: str
+    ) -> bool:
+        """Remove a specific provider by ID from a model. Thread-safe."""
+        with self._lock:
+            if self._state is None:
+                raise RuntimeError("Config not yet loaded")
+            full_config: Dict[str, Any] = {}
+            for m_type, names in self._state.active_models.items():
+                full_config[m_type] = {n: self._state.models_configs[n] for n in names}
 
-    def _read_active_models(self) -> Dict[str, str]:
-        """
-        Read the JSON configuration and return a dictionary of active models.
+        if model_type not in full_config or model_name not in full_config.get(model_type, {}):
+            return False
 
-        Returns:
-            Dict[str, List[str]]: Mapping of model types to lists of active
-            model names. Returns an empty dict if no models are defined.
-        """
-        models_config = self._try_to_load_config()
-        if models_config:
-            exists_model = False
-            for _mtype, model_list in models_config.items():
-                if model_list:
-                    exists_model = True
-                    break
-            if not exists_model:
-                return {}
-        return models_config["active_models"]
+        providers = full_config[model_type][model_name].get("providers", [])
+        before = len(providers)
+        full_config[model_type][model_name]["providers"] = [
+            p for p in providers if p.get("id") != provider_id
+        ]
+        after = len(full_config[model_type][model_name]["providers"])
 
-    def _active_models_configuration(self) -> Dict:
-        """
-        Build a dictionary containing the configuration for each active model.
-        Now each model maps to a **list** of provider configurations.
-        Returns:
-            Dict[str, List[Dict]]: Mapping of model name to a list of provider dicts.
-        """
-        models_configuration: Dict[str, List[Dict]] = {}
-        models_json = self._try_to_load_config()
+        if after == before:
+            return False  # Nothing removed
 
-        for m_type, models_list in self.active_models.items():
-            for m_name in models_list:
-                model_config = models_json[m_type][m_name]
-                if "providers" not in model_config:
-                    raise KeyError(f"{m_type}:{m_name} has no providers!")
-                models_configuration[m_name] = model_config
-        return models_configuration
-
-    def _validate_unique_identifiers(self) -> None:
-        """
-        Ensure that every provider ``id`` across all active models is unique.
-        Checks both ``providers`` and ``providers_sleep`` sections.
-
-        Raises
-        ------
-        ValueError
-            If any provider ``id`` is duplicated.
-        """
-        seen_ids = set()
-        duplicates = set()
-
-        for model_cfg in self.models_configs.values():
-            # Check the main providers list
-            for provider in model_cfg.get("providers", []):
-                pid = provider.get("id")
-                if pid:
-                    if pid in seen_ids:
-                        duplicates.add(pid)
-                    else:
-                        seen_ids.add(pid)
-
-        if duplicates:
-            dup_str = ", ".join(sorted(duplicates))
-            raise ValueError(f"Duplicate provider identifiers found: {dup_str}")
+        success = self._source.put_config(full_config)
+        if success:
+            self._logger.info(
+                "[ApiModelConfig] Provider %s removed from model %s via etcd", provider_id, model_name
+            )
+        return success

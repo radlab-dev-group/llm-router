@@ -30,6 +30,7 @@ from collections import deque
 from collections import defaultdict
 from typing import List, Dict, Optional, Any
 
+from llm_router_api.core.config_store.interface import ConfigSourceI
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
 
 
@@ -58,7 +59,7 @@ class WeightedStrategy(ChooseProviderStrategyI):
     """
 
     def __init__(
-        self, models_config_path: str, logger: Optional[logging.Logger]
+        self, config_source: ConfigSourceI, logger: Optional[logging.Logger]
     ) -> None:
         """
         Initialize a new :class:`WeightedStrategy` instance.
@@ -67,7 +68,7 @@ class WeightedStrategy(ChooseProviderStrategyI):
         populated lazily as models are routed.  No external state is
         required.
         """
-        super().__init__(models_config_path=models_config_path, logger=logger)
+        super().__init__(config_source=config_source, logger=logger)
 
         self._usage_counters: Dict[str, Dict[str, int]] = defaultdict(
             lambda: defaultdict(int)
@@ -225,7 +226,7 @@ class DynamicWeightedStrategy(WeightedStrategy):
 
     def __init__(
         self,
-        models_config_path: str,
+        config_source: ConfigSourceI,
         initial_providers: List[Dict] | None = None,
         history_size: int = 10_000,
         logger: Optional[logging.Logger] = None,
@@ -235,6 +236,8 @@ class DynamicWeightedStrategy(WeightedStrategy):
 
         Parameters
         ----------
+        config_source : ConfigSourceI
+            The configuration source providing model configurations.
         initial_providers : List[Dict] | None, optional
             An optional list of provider configurations that should be
             pre‑loaded with their static weights.  For each provider the
@@ -245,7 +248,7 @@ class DynamicWeightedStrategy(WeightedStrategy):
             provider.  The underlying ``deque`` discards the oldest entry
             when the limit is exceeded.  Defaults to ``10_000``.
         """
-        super().__init__(models_config_path=models_config_path, logger=logger)
+        super().__init__(config_source=config_source, logger=logger)
 
         # Mapping: provider key -> dynamic weight in [0, 1].
         self._dynamic_weights: Dict[str, float] = {}

@@ -13,8 +13,7 @@ by :data:`~llm_router_api.base.constants.DEFAULT_API_PREFIX`.
 Typical usage
 -------------
 >>> engine = FlaskEngine(
-    prompts_dir='resources/prompts',
-    models_config_path='resources/configs/models-config.json')
+    prompts_dir='resources/prompts')
 >>> app = engine.prepare_flask_app()
 >>> app.run()
 """
@@ -61,9 +60,6 @@ class FlaskEngine:
     ----------
     prompts_dir : str
         Path to the directory containing prompt files used by endpoints.
-    models_config_path : str
-        Path to the model configuration file (JSON/YAML) that describes
-        the available LLM models.
     logger_file_name : Optional[str], optional
         File name for the engine's logger output. If ``None`` the logger
         uses the default configuration.
@@ -86,7 +82,8 @@ class FlaskEngine:
     def __init__(
         self,
         prompts_dir: str,
-        models_config_path: str,
+        models_config_path: Optional[str] = None,
+        config_source: Optional["ConfigSourceI"] = None,
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
     ) -> None:
@@ -98,7 +95,10 @@ class FlaskEngine:
         prompts_dir : str
             Directory containing prompt files.
         models_config_path : str
-            Path to the model configuration file.
+            Path to the model configuration file (retained for backward compat).
+        config_source : Optional[ConfigSourceI], optional
+            The configuration source (file-based, etcd, etc.). If omitted,
+            a default is created from ``LLM_ROUTER_CONFIG_SOURCE`` env var.
         logger_file_name : Optional[str], optional
             Name of the log file; if omitted,
             the default logging configuration is used.
@@ -114,11 +114,19 @@ class FlaskEngine:
         self.prompts_dir = prompts_dir
         self.models_config_path = models_config_path
 
+        # Create or use provided config_source
+        if config_source is not None:
+            self._config_source: "ConfigSourceI" = config_source  # type: ignore[assignment]
+        else:
+            from llm_router_api.base.constants import _create_default_config_source as _make_src
+
+            self._config_source = _make_src()
+
         self.logger_level = logger_level
         self.logger_file_name = logger_file_name
 
         self._provider_chooser = ProviderStrategyFacade(
-            models_config_path=models_config_path,
+            config_source=self._config_source,
             strategy_name=SERVER_BALANCE_STRATEGY,
             logger_level=logger_level,
             logger_file_name=logger_file_name,
@@ -417,7 +425,7 @@ class FlaskEngine:
         _auto_loader = EndpointAutoLoader(
             base_class=base_class,
             prompts_dir=self.prompts_dir,
-            models_config_path=self.models_config_path,
+            config_source=self._config_source,
             provider_chooser=self._provider_chooser,
             logger_file_name=self.logger_file_name,
             logger_level=self.logger_level,

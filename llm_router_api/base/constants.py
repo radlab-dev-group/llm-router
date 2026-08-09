@@ -369,6 +369,68 @@ PROVIDER_MONITOR_INTERVAL_SECONDS = int(
 
 
 # =============================================================================
+# CONFIG SOURCE (models config storage backend)
+# =============================================================================
+LLM_ROUTER_CONFIG_SOURCE = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}CONFIG_SOURCE", "file"
+).strip().lower()
+
+# Etcd-specific config source settings
+LLM_ROUTER_ETCD_HOST = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}ETCD_HOST", ""
+).strip()
+LLM_ROUTER_ETCD_PORT = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}ETCD_PORT", "2379")
+)
+LLM_ROUTER_ETCD_CONFIG_KEY = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}ETCD_CONFIG_KEY", "/llm-router/models-config"
+).strip()
+LLM_ROUTER_ETCD_TLS_ENABLED = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}ETCD_TLS_ENABLED"
+)
+LLM_ROUTER_ETCD_CA_CERT = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}ETCD_CA_CERT", ""
+).strip() or None
+LLM_ROUTER_ETCD_CLIENT_CERT = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}ETCD_CLIENT_CERT", ""
+).strip() or None
+LLM_ROUTER_ETCD_CLIENT_KEY = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}ETCD_CLIENT_KEY", ""
+).strip() or None
+
+
+# =============================================================================
+# HELPER: create_config_source (avoid circular imports by resolving late)
+# =============================================================================
+
+def _create_default_config_source():
+    """
+    Build the ConfigSource based on LLM_ROUTER_CONFIG_SOURCE env var.
+
+    Returns a ConfigSourceI instance ready to use.
+    """
+    if LLM_ROUTER_CONFIG_SOURCE == "etcd":
+        from llm_router_api.core.config_store import create_config_source as _create
+
+        etcd_kwargs = {
+            "host": LLM_ROUTER_ETCD_HOST or "127.0.0.1",
+            "port": LLM_ROUTER_ETCD_PORT,
+            "key": LLM_ROUTER_ETCD_CONFIG_KEY,
+        }
+        if LLM_ROUTER_ETCD_TLS_ENABLED:
+            etcd_kwargs["ca_cert"] = LLM_ROUTER_ETCD_CA_CERT  # type: ignore[arg-type]
+            etcd_kwargs["cert"] = LLM_ROUTER_ETCD_CLIENT_CERT  # type: ignore[arg-type]
+            etcd_kwargs["key_priv"] = LLM_ROUTER_ETCD_CLIENT_KEY  # type: ignore[arg-type]
+
+        return _create("etcd", **etcd_kwargs)
+
+    # Default: file-based (original behavior)
+    from llm_router_api.core.config_store import create_config_source as _create
+
+    return _create("file", path=MODELS_CONFIG_FILE)
+
+
+# =============================================================================
 # STARTUP VALIDATION
 # =============================================================================
 

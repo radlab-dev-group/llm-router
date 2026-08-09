@@ -7,7 +7,10 @@ hosts when possible, reducing latency and improving cache utilization.
 
 import logging
 
-from typing import List, Dict, Optional, Any, Callable
+from typing import TYPE_CHECKING, List, Dict, Optional, Any, Callable
+
+if TYPE_CHECKING:
+    from llm_router_api.core.config_store.interface import ConfigSourceI
 
 from llm_router_api.core.monitor.keep_alive import KeepAlive
 from llm_router_api.core.utils import StrategyHelpers
@@ -33,7 +36,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
     def __init__(
         self,
-        models_config_path: str,
+        config_source: "ConfigSourceI",
         redis_host: str = REDIS_HOST,
         redis_port: int = REDIS_PORT,
         redis_db: int = 0,
@@ -48,8 +51,8 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         Parameters
         ----------
-        models_config_path: str
-            Path to the models configuration file.
+        config_source : ConfigSourceI
+            The configuration source providing model configurations.
         redis_host: str, optional
             Hostname of the Redis server (default from :data:`REDIS_HOST`).
         redis_port: int, optional
@@ -68,7 +71,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             Interval (seconds) for the internal keep‑alive monitor thread.
         """
         super().__init__(
-            models_config_path=models_config_path,
+            config_source=config_source,
             redis_host=redis_host,
             redis_port=redis_port,
             redis_db=redis_db,

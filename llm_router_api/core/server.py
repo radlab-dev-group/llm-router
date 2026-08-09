@@ -21,7 +21,6 @@ from typing import Optional
 from llm_router_api.core.engine import FlaskEngine
 from llm_router_api.base.constants import (
     PROMPTS_DIR,
-    MODELS_CONFIG_FILE,
     REST_API_LOG_FILE_NAME,
     REST_API_LOG_LEVEL,
 )
@@ -65,7 +64,6 @@ def run_flask_server(host: str, port: int, debug: bool = False):
 
     flask_app = FlaskEngine(
         prompts_dir=PROMPTS_DIR,
-        models_config_path=MODELS_CONFIG_FILE,
         logger_file_name=REST_API_LOG_FILE_NAME,
         logger_level=logger_level,
     ).prepare_flask_app()
@@ -126,7 +124,6 @@ def run_gunicorn_server(
 
     app = FlaskEngine(
         prompts_dir=PROMPTS_DIR,
-        models_config_path=MODELS_CONFIG_FILE,
         logger_file_name=REST_API_LOG_FILE_NAME,
         logger_level=logger_level_app,
     ).prepare_flask_app()
@@ -176,7 +173,6 @@ def run_waitress_server(host: str, port: int, threads: int = 4):
 
     app = FlaskEngine(
         prompts_dir=PROMPTS_DIR,
-        models_config_path=MODELS_CONFIG_FILE,
         logger_file_name=REST_API_LOG_FILE_NAME,
         logger_level=REST_API_LOG_LEVEL,
     ).prepare_flask_app()

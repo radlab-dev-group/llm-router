@@ -70,7 +70,7 @@ class ProviderStrategyFacade:
 
     def __init__(
         self,
-        models_config_path: str,
+        config_source: "ConfigSourceI",
         strategy: Optional[ChooseProviderStrategyI] = None,
         strategy_name: Optional[str] = None,
         logger_file_name: Optional[str] = None,
@@ -88,11 +88,10 @@ class ProviderStrategyFacade:
         3. If neither is supplied, the default :class:`LoadBalancedStrategy`
            is instantiated.
 
-        Raises
-        ------
-        RuntimeError
-            If a ``strategy_name`` is given but does not correspond to any
-            known strategy.
+        Parameters
+        ----------
+        config_source : ConfigSourceI
+            The configuration source providing model configs.
         """
         self._logger = prepare_logger(
             logger_name=__name__,
@@ -103,13 +102,13 @@ class ProviderStrategyFacade:
 
         self.strategy_name: Optional[str] = strategy_name
         self.strategy: ChooseProviderStrategyI = strategy or LoadBalancedStrategy(
-            models_config_path=models_config_path, logger=self._logger
+            config_source=config_source, logger=self._logger
         )
 
         if not strategy and self.strategy_name:
             _s = self.__strategy_from_name(
                 strategy_name=self.strategy_name,
-                models_config_path=models_config_path,
+                config_source=config_source,
             )
             if _s:
                 self.strategy = _s
@@ -120,7 +119,7 @@ class ProviderStrategyFacade:
         self._logger.info("[Load balancing] Strategy %s", str(self.strategy))
 
     def __strategy_from_name(
-        self, strategy_name: str, models_config_path: str
+        self, strategy_name: str, config_source: "ConfigSourceI"
     ) -> Optional[ChooseProviderStrategyI]:
         """
         Resolve a strategy name to an instantiated strategy object.
@@ -134,6 +133,8 @@ class ProviderStrategyFacade:
         ----------
         strategy_name : str
             The key identifying the desired strategy.
+        config_source : ConfigSourceI
+            The configuration source to pass to the strategy.
 
         Returns
         -------
@@ -148,7 +149,7 @@ class ProviderStrategyFacade:
         if not _cls:
             raise RuntimeError(f"Strategy {strategy_name} not found!")
 
-        return _cls(models_config_path=models_config_path, logger=self._logger)
+        return _cls(config_source=config_source, logger=self._logger)  # type: ignore[arg-type]
 
     def get_provider(
         self, model_name: str, providers: List[Dict], options: Optional[Dict] = None

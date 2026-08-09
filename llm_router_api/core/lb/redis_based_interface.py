@@ -62,7 +62,7 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
 
     def __init__(
         self,
-        models_config_path: str,
+        config_source: "ConfigSourceI",
         redis_host: str = REDIS_HOST,
         redis_password: str = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
@@ -77,8 +77,8 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
 
         Parameters
         ----------
-        models_config_path : str
-            Path to the models configuration file.
+        config_source : ConfigSourceI
+            The configuration source providing model configurations.
         redis_host : str, optional
             Redis server host. Default is ``"192.168.100.67"``.
         redis_port : int, optional
@@ -93,7 +93,7 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
             Whether to clear all buffers when starting. Default is ``True``.
         """
         ChooseProviderStrategyI.__init__(
-            self=self, models_config_path=models_config_path, logger=logger
+            self=self, config_source=config_source, logger=logger
         )
 
         self.redis_client = redis.Redis(

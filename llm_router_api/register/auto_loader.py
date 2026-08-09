@@ -11,6 +11,7 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 from llm_router_api.core.model_handler import ModelHandler
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
+from llm_router_api.core.config_store.interface import ConfigSourceI
 
 from llm_router_api.endpoints.passthrough import PassthroughI
 from llm_router_api.endpoints.builtin.openai import OpenAIResponseHandler
@@ -31,7 +32,7 @@ class EndpointAutoLoader:
         self,
         base_class: Type[EndpointI],
         prompts_dir: str,
-        models_config_path: str,
+        config_source: ConfigSourceI,
         provider_chooser: ProviderStrategyFacade,
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
@@ -43,6 +44,8 @@ class EndpointAutoLoader:
             The common base class used to discover and type-check endpoints.
         prompts_dir : str
             The directory to look for prompts.
+        config_source : ConfigSourceI
+            The configuration source providing model configurations.
         logger_file_name: str, optional
             Logger file name, if not given, then will be used default from ml-utils.
         logger_level: str, optional (default=REST_API_LOG_LEVEL)
@@ -53,7 +56,7 @@ class EndpointAutoLoader:
 
         self._prompt_handler = PromptHandler(base_dir=prompts_dir)
         self._model_handler = ModelHandler(
-            models_config_path=models_config_path, provider_chooser=provider_chooser
+            config_source=config_source, provider_chooser=provider_chooser
         )
 
         self._logger_level = logger_level
