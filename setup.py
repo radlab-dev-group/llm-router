@@ -20,6 +20,7 @@ requirements_api = (BASE_DIR / "requirements.txt").read_text().splitlines()
 extras = {
     "api": requirements_api,
     "metrics": ["prometheus-client"],
+    "etcd": ["etcd3>=0.12"],
 }
 
 # ----------------------------------------------------------------------
