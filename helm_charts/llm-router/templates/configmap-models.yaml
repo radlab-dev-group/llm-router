@@ -1,3 +1,4 @@
+{{- if eq .Values.config.LLM_ROUTER_CONFIG_SOURCE "file" }}
 # templates/configmap-models.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -8,3 +9,4 @@ metadata:
 data:
   models-config.json: |
     {{- .Files.Get "files/models-config.json" | nindent 4 }}
+{{- end }}

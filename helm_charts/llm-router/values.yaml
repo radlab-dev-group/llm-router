@@ -19,6 +19,15 @@ redis:
     #password: ""
     #existingSecret: ""
 
+# Etcd dependencies (for config storage with hot-reload)
+etcd:
+  enabled: false
+  architecture: standalone
+  auth:
+    enabled: false
+  # tls:
+  #   enabled: false
+
 # -------------------------------------------------
 # ConfigMap
 # -------------------------------------------------
@@ -54,6 +63,14 @@ config:
   #LLM_ROUTER_TIMEOUT: "30"
   LLM_ROUTER_MASKING_WITH_AUDIT: "0"
 
+  # --- Config source (NEW) ---
+  # Set to "etcd" for etcd-backed config with hot-reload, or "file" for file-based (default).
+  LLM_ROUTER_CONFIG_SOURCE: "file"
+
+  # Etcd-specific settings (only needed when LLM_ROUTER_CONFIG_SOURCE=etcd)
+  #LLM_ROUTER_ETCD_HOST: "{{ .Release.Name }}-etcd-headless"
+  #LLM_ROUTER_ETCD_PORT: "2379"
+  #LLM_ROUTER_ETCD_CONFIG_KEY: "/llm-router/models-config"
 
 # -------------------------------------------------
 # Service

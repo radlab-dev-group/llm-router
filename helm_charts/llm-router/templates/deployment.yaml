@@ -14,7 +14,9 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "llm-router.fullname" . }}
       annotations:
+        {{- if eq .Values.config.LLM_ROUTER_CONFIG_SOURCE "file" }}
         checksum/config-models: {{ .Files.Get "files/config-models.json" | sha256sum }}
+        {{- end }}
     spec:
       containers:
         - name: llm-router
@@ -45,12 +47,22 @@ spec:
                   name: {{ .Release.Name }}-redis
                   key: redis-password
             {{- end }}
+            {{- if eq .Values.config.LLM_ROUTER_CONFIG_SOURCE "etcd" }}
+            - name: LLM_ROUTER_ETCD_HOST
+              value: "{{ .Release.Name }}-etcd-headless"
+            - name: LLM_ROUTER_ETCD_PORT
+              value: "2379"
+            - name: LLM_ROUTER_ETCD_CONFIG_KEY
+              value: "/llm-router/models-config"
+            {{- end }}
+          {{- if eq .Values.config.LLM_ROUTER_CONFIG_SOURCE "file" }}
           volumeMounts:
             - name: {{ include "llm-router.fullname" . }}-vol-config-models
               mountPath: /srv/llm-router/resources/configs/models-config.json
               subPath: models-config.json
-      volumes:
-        - name: {{ include "llm-router.fullname" . }}-vol-config-models
-          configMap:
-            name: {{ include "llm-router.fullname" . }}-config-models
-            defaultMode: 420
+          volumes:
+            - name: {{ include "llm-router.fullname" . }}-vol-config-models
+              configMap:
+                name: {{ include "llm-router.fullname" . }}-config-models
+                defaultMode: 420
+          {{- end }}
