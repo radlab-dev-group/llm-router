@@ -69,6 +69,7 @@ class LLMRouterClient:
         timeout: int | None = None,
         retries: int | None = None,
         logger: logging.Logger | None = None,
+        default_model: str | None = None
     ) -> None:
         """
         Initialise the client with connection settings.
@@ -87,9 +88,14 @@ class LLMRouterClient:
             ``HttpRequester``'s retry policy.
         logger : logging.Logger | None
             Custom logger; if ``None`` a module‑level logger is created.
+        default_model: str | None
+            Default model name. Will be used in case when
+            model_name in any service is not given
         """
         self.base_url = api.rstrip("/")
         self.token = token
+
+        self.default_model = default_model
 
         # Resolve lazy defaults from the centralised constants module.
         effective_timeout = (
@@ -104,6 +110,7 @@ class LLMRouterClient:
             timeout=effective_timeout,
             retries=effective_retries,
         )
+
         self.logger = logger or logging.getLogger(__name__)
 
     def close(self) -> None:
@@ -260,7 +267,7 @@ class LLMRouterClient:
         payload = self._build_payload(
             model_cls=TranslateTextService.model_cls,
             payload_arg=payload,
-            model_name=model,
+            model_name=model or self.default_model,
             texts=texts,
         )
         return TranslateTextService(self.http, self.logger).call_post(payload)
@@ -280,7 +287,7 @@ class LLMRouterClient:
         payload = self._build_payload(
             model_cls=GenerativeAnswerService.model_cls,
             payload_arg=payload,
-            model_name=model,
+            model_name=model or self.default_model,
             texts=texts,
             question_str=question_str,
         )
@@ -300,7 +307,7 @@ class LLMRouterClient:
         payload = self._build_payload(
             model_cls=GenerateNewsFromTextService.model_cls,
             payload_arg=payload,
-            model_name=model,
+            model_name=model or self.default_model,
             text=text,
         )
         return GenerateNewsFromTextService(self.http, self.logger).call_post(payload)
