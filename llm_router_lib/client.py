@@ -293,7 +293,7 @@ class LLMRouterClient:
         )
         return GenerativeAnswerService(self.http, self.logger).call_post(payload)
 
-    def generate_article(
+    def generate_news_from_text(
         self,
         payload: Optional[
             Union[
