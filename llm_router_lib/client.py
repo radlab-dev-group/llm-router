@@ -339,12 +339,6 @@ class LLMRouterClient:
 
         # Neither a model nor a dict — build from named parameters.
         if model_cls is not None and extra:
-            # Validate required keys are present.
-            for key in ("model_name", "texts"):
-                if extra.get(key) is None:
-                    raise NoArgsAndNoPayloadError(
-                        "No payload and no arguments were passed!"
-                    )
             return model_cls(**extra).model_dump()
 
         raise NoArgsAndNoPayloadError("No payload and no arguments were passed!")
