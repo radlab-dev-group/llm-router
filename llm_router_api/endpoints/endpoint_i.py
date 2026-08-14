@@ -644,6 +644,22 @@ class EndpointI(SecureEndpointI, abc.ABC):
         return not self._dont_add_api_prefix
 
     @property
+    def prepare_response_function(self):
+        """
+        Getter method for retrieving the function responsible for preparing responses.
+
+        It provides access to the internal functionality that processes and returns
+        structured response data.
+
+        Returns
+        -------
+        Callable
+            A function that encapsulates the logic for preparing and formatting
+            response outputs.
+        """
+        return self._prepare_response_function
+
+    @property
     def model_handler(self):
         """
         Return the :class:`ModelHandler` instance associated with this endpoint.
