@@ -25,7 +25,9 @@ class TestRouterMetricsNoOp:
 
     @pytest.fixture(autouse=True)
     def _mock_prometheus_unavailable(self):
-        with mock.patch("llm_router_api.core.router_metrics.IS_PROMETHEUS_AVAILABLE", False):
+        with mock.patch(
+            "llm_router_api.core.router_metrics.IS_PROMETHEUS_AVAILABLE", False
+        ):
             yield
 
     def test_init_noop_creates_none_registry(self):

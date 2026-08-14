@@ -1687,7 +1687,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         response = None
         error_exc = None
-        provider_latency_start = time.time()  # ---- Prometheus: latency timer -----------
+        provider_latency_start = (
+            time.time()
+        )  # ---- Prometheus: latency timer -----------
 
         try:
             response = self._http_executor.call_http_request(
@@ -1757,7 +1759,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
 
             # ---- Prometheus: retry metrics ----------------------------
-            if status_code != 200 and rm_err is not None and api_model_provider is not None:
+            if (
+                status_code != 200
+                and rm_err is not None
+                and api_model_provider is not None
+            ):
                 try:
                     rm_err.record_provider_latency(
                         provider_type=api_model_provider.api_type,

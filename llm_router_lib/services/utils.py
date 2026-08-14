@@ -11,7 +11,9 @@ class.
 from llm_router_lib.data_models.builtin_utils import (
     TranslateTextModel,
     AnswerBasedOnTheContextModel,
+    GenerateArticleFromTextModel,
 )
+
 from llm_router_lib.services.service_interface import (
     BaseConversationServiceInterface,
 )
@@ -42,3 +44,8 @@ class TranslateTextService(BaseConversationServiceInterface):
 class GenerativeAnswerService(BaseConversationServiceInterface):
     endpoint = "/api/generative_answer"
     model_cls = AnswerBasedOnTheContextModel
+
+
+class GenerateNewsFromTextService(BaseConversationServiceInterface):
+    endpoint = "/api/generate_article_from_text"
+    model_cls = GenerateArticleFromTextModel

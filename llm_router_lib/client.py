@@ -23,6 +23,7 @@ from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
     TranslateTextService,
     GenerativeAnswerService,
+    GenerateNewsFromTextService,
 )
 from llm_router_lib.services.conversation import (
     ConversationService,
@@ -186,7 +187,6 @@ class LLMRouterClient:
 
         return ConversationService(self.http, self.logger).call_post(payload)
 
-    # ------------------------------------------------------------------ #
     def extended_conversation_with_model(
         self,
         payload: _ExtConvPayload,
@@ -265,7 +265,6 @@ class LLMRouterClient:
         )
         return TranslateTextService(self.http, self.logger).call_post(payload)
 
-    # ------------------------------------------------------------------ #
     def generative_answer(
         self,
         payload: Optional[
@@ -286,6 +285,25 @@ class LLMRouterClient:
             question_str=question_str,
         )
         return GenerativeAnswerService(self.http, self.logger).call_post(payload)
+
+    def generate_article(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateNewsFromTextService.model_cls,
+            ]
+        ] = None,
+        text: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload = self._build_payload(
+            model_cls=GenerateNewsFromTextService.model_cls,
+            payload_arg=payload,
+            model_name=model,
+            text=text,
+        )
+        return GenerateNewsFromTextService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     @staticmethod

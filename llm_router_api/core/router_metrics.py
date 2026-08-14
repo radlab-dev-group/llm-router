@@ -167,7 +167,9 @@ class RouterMetrics:
             provider_type=provider_type, model_name=model_name
         ).inc()
 
-    def record_provider_latency(self, provider_type: str, model_name: str, seconds: float) -> None:
+    def record_provider_latency(
+        self, provider_type: str, model_name: str, seconds: float
+    ) -> None:
         """Record the latency of an outbound provider call."""
         if self._registry is None:
             return
@@ -175,7 +177,9 @@ class RouterMetrics:
             provider_type=provider_type, model_name=model_name
         ).observe(seconds)
 
-    def record_provider_error(self, provider_type: str, model_name: str, error_code: str) -> None:
+    def record_provider_error(
+        self, provider_type: str, model_name: str, error_code: str
+    ) -> None:
         """Record a provider error."""
         if self._registry is None:
             return
@@ -219,7 +223,13 @@ class RouterMetrics:
     # C. Token usage helpers
     # ------------------------------------------------------------------
 
-    def record_tokens(self, model_name: str, direction: str, count: int, provider_type: str = "unknown") -> None:
+    def record_tokens(
+        self,
+        model_name: str,
+        direction: str,
+        count: int,
+        provider_type: str = "unknown",
+    ) -> None:
         """Record token usage (input or output)."""
         if self._registry is None:
             return
@@ -231,7 +241,9 @@ class RouterMetrics:
     # D. Streaming & format helpers
     # ------------------------------------------------------------------
 
-    def record_response_format(self, fmt: str, model_name: str, provider_type: str) -> None:
+    def record_response_format(
+        self, fmt: str, model_name: str, provider_type: str
+    ) -> None:
         """Record response format (streamed / non_streamed)."""
         if self._registry is None:
             return
@@ -243,6 +255,4 @@ class RouterMetrics:
         """Record a payload type conversion (e.g. openai->ollama)."""
         if self._registry is None:
             return
-        self.PAYLOAD_CONVERSION.labels(
-            from_type=from_type, to_type=to_type
-        ).inc()
+        self.PAYLOAD_CONVERSION.labels(from_type=from_type, to_type=to_type).inc()
