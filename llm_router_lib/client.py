@@ -69,7 +69,7 @@ class LLMRouterClient:
         timeout: int | None = None,
         retries: int | None = None,
         logger: logging.Logger | None = None,
-        default_model: str | None = None
+        default_model: str | None = None,
     ) -> None:
         """
         Initialise the client with connection settings.
@@ -227,6 +227,8 @@ class LLMRouterClient:
         ] = None,
         texts: Optional[List[str]] = None,
         model: Optional[str] = None,
+        temperature: Optional[float] = 0.75,
+        max_new_tokens: Optional[int] = 512,
     ) -> Dict[str, Any]:
         """
         Translate a list of texts using the ``/api/translate`` endpoint.
@@ -253,7 +255,10 @@ class LLMRouterClient:
         model : Optional[str]
             Model identifier to be used for translation (required if ``payload``
             is not supplied).
-
+        temperature: Optional[float]
+            Temperature
+        max_new_tokens: Optional[int]
+            Max new tokens
         Returns
         -------
         dict
@@ -269,6 +274,8 @@ class LLMRouterClient:
             payload_arg=payload,
             model_name=model or self.default_model,
             texts=texts,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
         )
         return TranslateTextService(self.http, self.logger).call_post(payload)
 
@@ -320,7 +327,8 @@ class LLMRouterClient:
         payload_arg: Any,
         **extra: Any,
     ) -> Dict[str, Any]:
-        """Normalise a payload to a ``dict``.
+        """
+        Normalize a payload to a ``dict``.
 
         Handles three input shapes and builds from keyword arguments when the
         caller passed individual parameters instead of a pre‑constructed payload:
