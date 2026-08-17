@@ -24,6 +24,9 @@ from llm_router_lib.data_models.builtin_utils import (
     TRANSLATE_TEXT_REQ,
     TRANSLATE_TEXT_OPT,
     TranslateTextModel,
+    POLARITY_3C_REQ,
+    POLARITY_3C_OPT,
+    Polarity3cModel,
     SIMPLIFY_TEXT_REQ,
     SIMPLIFY_TEXT_OPT,
     SimplifyTextModel,
@@ -301,6 +304,129 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
             response_body = {"text": txt, "questions": questions}
             response.append(response_body)
         return response
+
+
+class Polarity3c(EndpointWithHttpRequestI):
+    """
+    Built‑in utility: detect polarity (ambivalent, positive, negative) for input texts.
+
+    Registered at ``/api/polarity_3c`` (with default prefix).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    """
+
+    REQUIRED_ARGS = POLARITY_3C_REQ
+    OPTIONAL_ARGS = POLARITY_3C_OPT
+    SYSTEM_PROMPT_NAME = {
+        "pl": "builtin/system/pl/polarity-3c",
+        "en": "builtin/system/en/polarity-3c",
+    }
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "polarity_3c",
+    ):
+        """
+        Initialize the polarity 3-class classification endpoint.
+
+        Parameters follow the same pattern as other builtin endpoints.
+        """
+        super().__init__(
+            ep_name=ep_name,
+            api_types=["builtin"],
+            method="POST",
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            direct_return=False,
+            call_for_each_user_msg=True,
+        )
+
+        self._prepare_response_function = self.__prepare_response_function
+
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Build a payload that asks the model to classify polarity of each input text.
+
+        The request contains a ``model`` field, optional ``stream`` flag, and a
+        list of ``user`` messages – one per source text.
+
+        Returns
+        -------
+        dict
+            Normalised payload for the downstream service.
+        """
+        options = Polarity3cModel(**params)
+        _payload = options.model_dump()
+        _payload["stream"] = _payload.get("stream", False)
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {
+                "role": "user",
+                "content": _t,
+            }
+            for _t in _payload["texts"]
+        ]
+        _payload.pop("texts")
+
+        return _payload
+
+    @staticmethod
+    def _extract_polarity(raw_output: str) -> str:
+        """
+        Extract and normalise the polarity class from raw model output.
+        """
+        cleaned = raw_output.strip().lower()
+        if cleaned in {"positive", "negative", "ambivalent"}:
+            return cleaned
+        match = re.search(r"\b(positive|negative|ambivalent)\b", cleaned)
+        if match:
+            return match.group(1)
+        return cleaned
+
+    def __prepare_response_function(self, responses, contents):
+        """
+        Pair each original text with its detected polarity and report elapsed time.
+
+        Parameters
+        ----------
+        responses : list[requests.Response]
+            Responses from the model service.
+        contents : list[str]
+            Original source texts.
+
+        Returns
+        -------
+        dict
+            ``{"response": <list_of_dicts>, "generation_time": <seconds>}``.
+        """
+        assert len(responses) == len(contents)
+
+        results = []
+        for response, orig_text in zip(responses, contents):
+            _, _, polarity_raw = self._get_choices_from_response(
+                response=response
+            )
+            results.append(
+                {
+                    "original": orig_text,
+                    "polarity": self._extract_polarity(polarity_raw),
+                }
+            )
+
+        return {
+            "response": results,
+            "generation_time": time.time() - self._start_time,
+        }
 
 
 class TranslateTexts(EndpointWithHttpRequestI):
