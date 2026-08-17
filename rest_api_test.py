@@ -320,6 +320,19 @@ class Builtin:
         Builtin.parse_response(resp)
 
     @staticmethod
+    def test_builtin_polarity_3c(model_name: str, debug: bool = False) -> None:
+        """Chat completion endpoint ``/api/polarity_3c`` (POST)."""
+        payload = generate_questions_payload.copy()
+        payload["language"] = "pl"
+        payload["model_name"] = model_name
+        payload.pop("number_of_questions")
+
+        resp = _post("/api/polarity_3c", payload)
+        if debug:
+            print("Builtin polarity_3c:", print_json(resp))
+        Builtin.parse_response(resp)
+
+    @staticmethod
     def test_builtin_translate(model_name: str, debug: bool = False) -> None:
         """Chat completion endpoint ``/api/translate`` (POST)."""
         payload = generate_questions_payload.copy()
@@ -369,6 +382,7 @@ def run_all_tests() -> None:
         [Builtin.test_builtin_ext_conv_no_stream, "vllm_model", False or DEBUG_ALL],
         [Builtin.test_builtin_news_from_text, "vllm_model", False or DEBUG_ALL],
         [Builtin.test_builtin_generate_questions, "vllm_model", False or DEBUG_ALL],
+        [Builtin.test_builtin_polarity_3c, "vllm_model", False or DEBUG_ALL],
         [Builtin.test_builtin_translate, "vllm_model", False or DEBUG_ALL],
         [Builtin.test_builtin_simplification, "vllm_model", False or DEBUG_ALL],
         [Builtin.test_builtin_full_article, "vllm_model", False or DEBUG_ALL],
