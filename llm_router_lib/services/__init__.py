@@ -14,8 +14,10 @@ from llm_router_lib.services.conversation import (
 )
 from llm_router_lib.services.health import PingService, VersionService
 from llm_router_lib.services.utils import (
+    Polarity3cService,
     TranslateTextService,
     GenerativeAnswerService,
+    GenerateNewsFromTextService,
 )
 
 __all__ = [
@@ -24,6 +26,8 @@ __all__ = [
     "ExtendedConversationService",
     "PingService",
     "VersionService",
+    "Polarity3cService",
     "TranslateTextService",
     "GenerativeAnswerService",
+    "GenerateNewsFromTextService",
 ]

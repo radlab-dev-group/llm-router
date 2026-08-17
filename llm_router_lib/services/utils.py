@@ -9,6 +9,7 @@ class.
 """
 
 from llm_router_lib.data_models.builtin_utils import (
+    Polarity3cModel,
     TranslateTextModel,
     AnswerBasedOnTheContextModel,
     GenerateArticleFromTextModel,
@@ -17,6 +18,28 @@ from llm_router_lib.data_models.builtin_utils import (
 from llm_router_lib.services.service_interface import (
     BaseConversationServiceInterface,
 )
+
+
+class Polarity3cService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/polarity_3c`` endpoint.
+
+    The service posts a payload validated by :class:`Polarity3cModel` to the
+    polarity classification endpoint and returns the parsed JSON response.
+    All request handling (including error conversion to :class:`LLMRouterError`)
+    is inherited from :class:`BaseConversationServiceInterface`.
+
+    Attributes
+    ----------
+    endpoint : str
+        Relative URL of the polarity endpoint (``"/api/polarity_3c"``).
+    model_cls : type
+        The Pydantic model class used to validate request data
+        (:class:`Polarity3cModel`).
+    """
+
+    endpoint = "/api/polarity_3c"
+    model_cls = Polarity3cModel
 
 
 class TranslateTextService(BaseConversationServiceInterface):
