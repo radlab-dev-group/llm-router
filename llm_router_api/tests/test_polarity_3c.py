@@ -5,6 +5,10 @@ Tests for polarity_3c endpoint and client library components.
 from __future__ import annotations
 
 import os
+
+os.environ.setdefault("LLM_ROUTER_MINIMUM", "1")
+os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
+
 from unittest import mock
 import pytest
 from pydantic import ValidationError
