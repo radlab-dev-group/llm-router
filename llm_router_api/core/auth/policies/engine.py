@@ -60,6 +60,7 @@ _ENDPOINT_PERMISSION_MAP: dict[str, str] = {
     "post:/api/conversation_with_model": "builtin",
     "post:/api/extended_conversation_with_model": "builtin",
     "post:/api/generate_questions": "builtin",
+    "post:/api/polarity_3c": "builtin",
     "post:/api/translate": "builtin",
     "post:/api/simplify_text": "builtin",
     "post:/api/generate_article_from_text": "builtin",

@@ -79,6 +79,7 @@ API keys are checked in order of priority:
 #### Utility Endpoints (Built‑in, requires `builtin` permission)
 
 - **POST** `/api/generate_questions` — Generate questions from input texts.
+- **POST** `/api/polarity_3c` — Detect 3-class polarity (`ambivalent`, `positive`, `negative`) for input texts.
 - **POST** `/api/translate` — Translate a list of texts.
 - **POST** `/api/simplify_text` — Simplify input texts.
 - **POST** `/api/generate_article_from_text` — Generate a short article from a single text.
