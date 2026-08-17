@@ -23,6 +23,7 @@ from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
     TranslateTextService,
     GenerativeAnswerService,
+    GenerateNewsFromTextService,
 )
 from llm_router_lib.services.conversation import (
     ConversationService,
@@ -68,6 +69,7 @@ class LLMRouterClient:
         timeout: int | None = None,
         retries: int | None = None,
         logger: logging.Logger | None = None,
+        default_model: str | None = None,
     ) -> None:
         """
         Initialise the client with connection settings.
@@ -86,9 +88,14 @@ class LLMRouterClient:
             ``HttpRequester``'s retry policy.
         logger : logging.Logger | None
             Custom logger; if ``None`` a module‑level logger is created.
+        default_model: str | None
+            Default model name. Will be used in case when
+            model_name in any service is not given
         """
         self.base_url = api.rstrip("/")
         self.token = token
+
+        self.default_model = default_model
 
         # Resolve lazy defaults from the centralised constants module.
         effective_timeout = (
@@ -103,6 +110,7 @@ class LLMRouterClient:
             timeout=effective_timeout,
             retries=effective_retries,
         )
+
         self.logger = logger or logging.getLogger(__name__)
 
     def close(self) -> None:
@@ -186,7 +194,6 @@ class LLMRouterClient:
 
         return ConversationService(self.http, self.logger).call_post(payload)
 
-    # ------------------------------------------------------------------ #
     def extended_conversation_with_model(
         self,
         payload: _ExtConvPayload,
@@ -220,6 +227,8 @@ class LLMRouterClient:
         ] = None,
         texts: Optional[List[str]] = None,
         model: Optional[str] = None,
+        temperature: Optional[float] = 0.75,
+        max_new_tokens: Optional[int] = 512,
     ) -> Dict[str, Any]:
         """
         Translate a list of texts using the ``/api/translate`` endpoint.
@@ -246,7 +255,10 @@ class LLMRouterClient:
         model : Optional[str]
             Model identifier to be used for translation (required if ``payload``
             is not supplied).
-
+        temperature: Optional[float]
+            Temperature
+        max_new_tokens: Optional[int]
+            Max new tokens
         Returns
         -------
         dict
@@ -260,12 +272,13 @@ class LLMRouterClient:
         payload = self._build_payload(
             model_cls=TranslateTextService.model_cls,
             payload_arg=payload,
-            model_name=model,
+            model_name=model or self.default_model,
             texts=texts,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
         )
         return TranslateTextService(self.http, self.logger).call_post(payload)
 
-    # ------------------------------------------------------------------ #
     def generative_answer(
         self,
         payload: Optional[
@@ -281,11 +294,30 @@ class LLMRouterClient:
         payload = self._build_payload(
             model_cls=GenerativeAnswerService.model_cls,
             payload_arg=payload,
-            model_name=model,
+            model_name=model or self.default_model,
             texts=texts,
             question_str=question_str,
         )
         return GenerativeAnswerService(self.http, self.logger).call_post(payload)
+
+    def generate_news_from_text(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateNewsFromTextService.model_cls,
+            ]
+        ] = None,
+        text: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        payload = self._build_payload(
+            model_cls=GenerateNewsFromTextService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            text=text,
+        )
+        return GenerateNewsFromTextService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     @staticmethod
@@ -295,7 +327,8 @@ class LLMRouterClient:
         payload_arg: Any,
         **extra: Any,
     ) -> Dict[str, Any]:
-        """Normalise a payload to a ``dict``.
+        """
+        Normalize a payload to a ``dict``.
 
         Handles three input shapes and builds from keyword arguments when the
         caller passed individual parameters instead of a pre‑constructed payload:
@@ -314,12 +347,6 @@ class LLMRouterClient:
 
         # Neither a model nor a dict — build from named parameters.
         if model_cls is not None and extra:
-            # Validate required keys are present.
-            for key in ("model_name", "texts"):
-                if extra.get(key) is None:
-                    raise NoArgsAndNoPayloadError(
-                        "No payload and no arguments were passed!"
-                    )
             return model_cls(**extra).model_dump()
 
         raise NoArgsAndNoPayloadError("No payload and no arguments were passed!")

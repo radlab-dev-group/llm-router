@@ -135,8 +135,8 @@ class CreateArticleFromNewsListModel(GenerativeOptionsModel):
     """
 
     user_query: str
-    texts: List[str] = None
-    article_type: str | None = None
+    texts: Optional[List[str]] = None
+    article_type: Optional[str] = None
 
 
 # Required fields for ``CreateArticleFromNewsListModel``.

@@ -644,6 +644,22 @@ class EndpointI(SecureEndpointI, abc.ABC):
         return not self._dont_add_api_prefix
 
     @property
+    def prepare_response_function(self):
+        """
+        Getter method for retrieving the function responsible for preparing responses.
+
+        It provides access to the internal functionality that processes and returns
+        structured response data.
+
+        Returns
+        -------
+        Callable
+            A function that encapsulates the logic for preparing and formatting
+            response outputs.
+        """
+        return self._prepare_response_function
+
+    @property
     def model_handler(self):
         """
         Return the :class:`ModelHandler` instance associated with this endpoint.
@@ -1671,7 +1687,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         response = None
         error_exc = None
-        provider_latency_start = time.time()  # ---- Prometheus: latency timer -----------
+        provider_latency_start = (
+            time.time()
+        )  # ---- Prometheus: latency timer -----------
 
         try:
             response = self._http_executor.call_http_request(
@@ -1741,7 +1759,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
 
             # ---- Prometheus: retry metrics ----------------------------
-            if status_code != 200 and rm_err is not None and api_model_provider is not None:
+            if (
+                status_code != 200
+                and rm_err is not None
+                and api_model_provider is not None
+            ):
                 try:
                     rm_err.record_provider_latency(
                         provider_type=api_model_provider.api_type,
