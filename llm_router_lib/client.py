@@ -21,6 +21,7 @@ from llm_router_lib.services.health import PingService, VersionService
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
+    Polarity3cService,
     TranslateTextService,
     GenerativeAnswerService,
     GenerateNewsFromTextService,
@@ -217,6 +218,69 @@ class LLMRouterClient:
         return ExtendedConversationService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
+    def polarity_3c(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                Polarity3cService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = 0.2,
+        max_new_tokens: Optional[int] = 256,
+    ) -> Dict[str, Any]:
+        """
+        Detect 3-class polarity (ambivalent, positive, negative) for a list of texts
+        using the ``/api/polarity_3c`` endpoint.
+
+        The method can be used in three ways:
+
+        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
+           conforms to :class:`Polarity3cModel`.
+        2. **Pass a Pydantic model instance** – ``payload`` is a
+           ``Polarity3cModel`` and will be serialized automatically.
+        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
+           ``Polarity3cModel`` instance on‑the‑fly.
+
+        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : Optional[Union[Dict[str, Any], Polarity3cModel]]
+            Optional pre‑constructed request body.
+        texts : Optional[List[str]]
+            List of source strings to classify (required if ``payload`` is not
+            supplied).
+        model : Optional[str]
+            Model identifier to be used for classification (required if ``payload``
+            is not supplied).
+        temperature: Optional[float]
+            Temperature
+        max_new_tokens: Optional[int]
+            Max new tokens
+        Returns
+        -------
+        dict
+            Parsed JSON response from the polarity classification service.
+
+        Raises
+        ------
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+        """
+        payload = self._build_payload(
+            model_cls=Polarity3cService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        return Polarity3cService(self.http, self.logger).call_post(payload)
+
     def translate(
         self,
         payload: Optional[

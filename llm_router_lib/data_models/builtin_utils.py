@@ -71,6 +71,29 @@ GENERATE_ART_OPT = GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
+# Polarity 3c model
+# -------------------------------------------------------------------
+class Polarity3cModel(GenerativeOptionsModel):
+    """
+    Payload for the "polarity_3c" endpoint.
+
+    Attributes
+    ----------
+    texts : List[str]
+        Texts for which polarity (ambivalent, positive, negative) should be detected.
+    """
+
+    texts: List[str]
+
+
+# Required arguments for ``Polarity3cModel``.
+POLARITY_3C_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+
+# Optional generation parameters for polarity detection.
+POLARITY_3C_OPT = GENAI_OPT_ARGS_BASE
+
+
+# -------------------------------------------------------------------
 # Translate text model
 # -------------------------------------------------------------------
 class TranslateTextModel(GenerativeOptionsModel):

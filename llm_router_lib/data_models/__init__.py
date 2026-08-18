@@ -22,6 +22,9 @@ from llm_router_lib.data_models.builtin_chat import (
     EXT_GENAI_CONV_OPT_ARGS,
 )
 from llm_router_lib.data_models.builtin_utils import (
+    Polarity3cModel,
+    POLARITY_3C_REQ,
+    POLARITY_3C_OPT,
     TranslateTextModel,
     SimplifyTextModel,
     GenerateQuestionFromTextsModel,
@@ -45,6 +48,9 @@ __all__ = [
     "EXT_GENAI_CONV_REQ_ARGS",
     "EXT_GENAI_CONV_OPT_ARGS",
     # Utility models
+    "Polarity3cModel",
+    "POLARITY_3C_REQ",
+    "POLARITY_3C_OPT",
     "TranslateTextModel",
     "SimplifyTextModel",
     "GenerateQuestionFromTextsModel",
