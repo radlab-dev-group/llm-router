@@ -202,7 +202,9 @@ class TestPolarity3cServiceAndClient:
             assert call_arg["temperature"] == 0.1
 
     def test_client_polarity_3c_with_default_model(self):
-        client = LLMRouterClient(api="http://localhost:8080", default_model="def-model")
+        client = LLMRouterClient(
+            api="http://localhost:8080", default_model="def-model"
+        )
         with mock.patch.object(Polarity3cService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.polarity_3c(texts=["Tekst"])

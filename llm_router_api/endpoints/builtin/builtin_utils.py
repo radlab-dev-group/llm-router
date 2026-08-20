@@ -413,9 +413,7 @@ class Polarity3c(EndpointWithHttpRequestI):
 
         results = []
         for response, orig_text in zip(responses, contents):
-            _, _, polarity_raw = self._get_choices_from_response(
-                response=response
-            )
+            _, _, polarity_raw = self._get_choices_from_response(response=response)
             results.append(
                 {
                     "original": orig_text,
