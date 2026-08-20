@@ -810,6 +810,37 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
         return _payload
 
 
+class GenerateArticleFromTexts(FullArticleFromTexts):
+    """
+    Built‑in utility: generate a concise A4‑length article summarising the
+    provided texts/news from a single day. Registered at
+    ``/api/generate_article_from_texts``.
+    """
+
+    REQUIRED_ARGS = FULL_ARTICLE_REQ
+    OPTIONAL_ARGS = FULL_ARTICLE_OPT
+    SYSTEM_PROMPT_NAME = {
+        "pl": "builtin/system/pl/article-from-texts",
+        "en": "builtin/system/en/article-from-texts",
+    }
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "generate_article_from_texts",
+    ):
+        super().__init__(
+            logger_file_name=logger_file_name,
+            logger_level=logger_level,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            ep_name=ep_name,
+        )
+
+
 class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
     """
     Built‑in utility: answer a question using provided context.

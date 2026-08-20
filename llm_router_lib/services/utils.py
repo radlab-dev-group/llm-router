@@ -13,6 +13,7 @@ from llm_router_lib.data_models.builtin_utils import (
     TranslateTextModel,
     AnswerBasedOnTheContextModel,
     GenerateArticleFromTextModel,
+    CreateArticleFromNewsListModel,
 )
 
 from llm_router_lib.services.service_interface import (
@@ -72,3 +73,15 @@ class GenerativeAnswerService(BaseConversationServiceInterface):
 class GenerateNewsFromTextService(BaseConversationServiceInterface):
     endpoint = "/api/generate_article_from_text"
     model_cls = GenerateArticleFromTextModel
+
+
+class CreateFullArticleFromTextsService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/create_full_article_from_texts`` endpoint.
+
+    Posts a payload validated by :class:`CreateArticleFromNewsListModel` and
+    returns the parsed JSON response.
+    """
+
+    endpoint = "/api/create_full_article_from_texts"
+    model_cls = CreateArticleFromNewsListModel

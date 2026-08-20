@@ -25,6 +25,7 @@ from llm_router_lib.services.utils import (
     TranslateTextService,
     GenerativeAnswerService,
     GenerateNewsFromTextService,
+    CreateFullArticleFromTextsService,
 )
 from llm_router_lib.services.conversation import (
     ConversationService,
@@ -382,6 +383,38 @@ class LLMRouterClient:
             text=text,
         )
         return GenerateNewsFromTextService(self.http, self.logger).call_post(payload)
+
+    def generate_article_from_texts(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                CreateFullArticleFromTextsService.model_cls,
+            ]
+        ] = None,
+        user_query: Optional[str] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate a full article from multiple input texts using the
+        ``/api/create_full_article_from_texts`` builtin endpoint.
+
+        Accepts a prebuilt payload dict or model instance, or keyword
+        arguments ``user_query`` and ``texts`` to build the payload.
+
+        Returns parsed JSON response from the router.
+        """
+        payload = self._build_payload(
+            model_cls=CreateFullArticleFromTextsService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            user_query=user_query,
+            texts=texts,
+        )
+        return CreateFullArticleFromTextsService(self.http, self.logger).call_post(
+            payload
+        )
 
     # ------------------------------------------------------------------ #
     @staticmethod
