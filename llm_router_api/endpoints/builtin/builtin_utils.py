@@ -36,6 +36,9 @@ from llm_router_lib.data_models.builtin_utils import (
     CONTEXT_ANSWER_REQ,
     CONTEXT_ANSWER_OPT,
     AnswerBasedOnTheContextModel,
+    GenerateArticleFromTextsModel,
+    GENERATE_ARTICLES_REQ,
+    GENERATE_ARTICLES_OPT,
 )
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
@@ -817,8 +820,8 @@ class GenerateArticleFromTexts(FullArticleFromTexts):
     ``/api/generate_article_from_texts``.
     """
 
-    REQUIRED_ARGS = FULL_ARTICLE_REQ
-    OPTIONAL_ARGS = FULL_ARTICLE_OPT
+    REQUIRED_ARGS = GENERATE_ARTICLES_REQ
+    OPTIONAL_ARGS = GENERATE_ARTICLES_OPT
     SYSTEM_PROMPT_NAME = {
         "pl": "builtin/system/pl/article-from-texts",
         "en": "builtin/system/en/article-from-texts",
@@ -839,6 +842,33 @@ class GenerateArticleFromTexts(FullArticleFromTexts):
             model_handler=model_handler,
             ep_name=ep_name,
         )
+
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Build a payload that concatenates multiple source texts into a single
+        user message. The model should return a short (~A4) article in Polish.
+        """
+        options = GenerateArticleFromTextsModel(**params)
+        _payload = options.model_dump()
+
+        user_texts_str = "\n\n".join(
+            t.strip() for t in _payload["texts"] if len(t.strip())
+        )
+
+        _payload["stream"] = _payload.get("stream", False)
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {
+                "role": "user",
+                "content": user_texts_str,
+            }
+        ]
+        _payload.pop("texts")
+
+        return _payload
 
 
 class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):

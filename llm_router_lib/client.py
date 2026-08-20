@@ -26,6 +26,7 @@ from llm_router_lib.services.utils import (
     GenerativeAnswerService,
     GenerateNewsFromTextService,
     CreateFullArticleFromTextsService,
+    GenerateArticleFromTextsService,
 )
 from llm_router_lib.services.conversation import (
     ConversationService,
@@ -389,21 +390,48 @@ class LLMRouterClient:
         payload: Optional[
             Union[
                 Dict[str, Any],
+                GenerateArticleFromTextsService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate a short (~A4) article from multiple input texts using the
+        ``/api/generate_article_from_texts`` builtin endpoint.
+
+        Accepts a prebuilt payload dict or model instance, or a ``texts`` list.
+        The client builds a payload when ``payload`` is not provided.
+        """
+        payload = self._build_payload(
+            model_cls=GenerateArticleFromTextsService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+        )
+        return GenerateArticleFromTextsService(self.http, self.logger).call_post(
+            payload
+        )
+
+    def create_full_article_from_texts(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
                 CreateFullArticleFromTextsService.model_cls,
             ]
         ] = None,
         user_query: Optional[str] = None,
         texts: Optional[List[str]] = None,
+        article_type: Optional[str] = None,
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Generate a full article from multiple input texts using the
+        Create a full article from multiple input texts using the
         ``/api/create_full_article_from_texts`` builtin endpoint.
 
         Accepts a prebuilt payload dict or model instance, or keyword
-        arguments ``user_query`` and ``texts`` to build the payload.
-
-        Returns parsed JSON response from the router.
+        arguments ``user_query`` and ``texts`` and optional ``article_type``.
         """
         payload = self._build_payload(
             model_cls=CreateFullArticleFromTextsService.model_cls,
@@ -411,6 +439,7 @@ class LLMRouterClient:
             model_name=model or self.default_model,
             user_query=user_query,
             texts=texts,
+            article_type=article_type,
         )
         return CreateFullArticleFromTextsService(self.http, self.logger).call_post(
             payload

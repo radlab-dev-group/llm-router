@@ -19,6 +19,7 @@ from llm_router_lib.services.utils import (
     GenerativeAnswerService,
     GenerateNewsFromTextService,
     CreateFullArticleFromTextsService,
+    GenerateArticleFromTextsService,
 )
 
 __all__ = [

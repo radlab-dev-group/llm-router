@@ -170,6 +170,27 @@ FULL_ARTICLE_OPT = ["article_type"] + GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
+# Generate A4‑length article from texts (texts-only endpoint)
+# -------------------------------------------------------------------
+class GenerateArticleFromTextsModel(GenerativeOptionsModel):
+    """
+    Payload for the "generate_article_from_texts" endpoint.
+
+    Attributes
+    ----------
+    texts : List[str]
+        Source texts from which the model should produce a short (~A4) article.
+    """
+
+    texts: List[str]
+
+
+# Required/optional args for the texts‑only article generator
+GENERATE_ARTICLES_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+GENERATE_ARTICLES_OPT = GENAI_OPT_ARGS_BASE
+
+
+# -------------------------------------------------------------------
 # Answer based on the context (RAG based)
 # -------------------------------------------------------------------
 class AnswerBasedOnTheContextModel(GenerativeOptionsModel):
