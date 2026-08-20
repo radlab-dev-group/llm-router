@@ -64,6 +64,7 @@ _ENDPOINT_PERMISSION_MAP: dict[str, str] = {
     "post:/api/translate": "builtin",
     "post:/api/simplify_text": "builtin",
     "post:/api/generate_article_from_text": "builtin",
+    "post:/api/generate_article_from_texts": "builtin",
     "post:/api/create_full_article_from_texts": "builtin",
     "post:/api/generative_answer": "builtin",
     "post:/api/fast_text_mask": "builtin",
