@@ -33,4 +33,5 @@ __all__ = [
     "GenerativeAnswerService",
     "GenerateNewsFromTextService",
     "CreateFullArticleFromTextsService",
+    "GenerateArticleFromTextsService",
 ]

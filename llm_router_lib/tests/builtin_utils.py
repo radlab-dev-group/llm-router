@@ -13,7 +13,8 @@ class Polarity3cModelTest(BaseEndpointTest):
         "texts": [
             "To jest niesamowity, wspaniały produkt! Bardzo polecam!",
             "Totalna katastrofa, nie polecam nikomu, produkt zepsuty.",
-            "Produkt spełnia podstawowe wymagania, ale niczym szczególnym się nie wyróżnia.",
+            "Produkt spełnia podstawowe wymagania, "
+            "ale niczym szczególnym się nie wyróżnia.",
         ],
         "temperature": 0.0,
     }

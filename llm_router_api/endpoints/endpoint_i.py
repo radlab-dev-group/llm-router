@@ -1198,9 +1198,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if getattr(self, "__rm_cache", None) is None:
             self._rm_caching = True
             try:
-                from flask import current_app as _app
-
-                ext = getattr(_app, "extensions", {})
+                ext = getattr(current_app, "extensions", {})
                 if isinstance(ext, dict):
                     val = ext.get("router_metrics")
                     if val is not None:
