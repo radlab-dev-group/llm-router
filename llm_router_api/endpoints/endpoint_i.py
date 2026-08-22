@@ -864,7 +864,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
     def unset_model(
         self,
-        api_model_provider: ApiModel,
+        api_model_provider: Optional[ApiModel],
         params: Dict[str, Any],
         options: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -892,6 +892,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
         model_name = self._model_name_from_params_or_model(
             params=params, api_model_provider=api_model_provider
         )
+
+        if not model_name or not self._model_handler:
+            return
+
         self._model_handler.put_model_provider(
             model_name=model_name,
             provider=api_model_provider.as_dict(),
@@ -903,7 +907,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
     # ------------------------------------------------------------------
     def _prepare_utils_pipeline(self, plugins: List[str]):
         """
-        Prepare the utils pipeline if it has not been initialized.
+        Prepare the util pipeline if it has not been initialized.
 
         The method verifies whether the internal utils pipeline has already
         been created. If it exists, the function returns immediately. Otherwise,
@@ -926,7 +930,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
         self.logger.debug(f"llm-router utils pipeline: {plugins}")
 
-    def _run_utils_plugins(self, payload: Dict):
+    def _run_utils_plugins(self, payload: Optional[Dict]):
         """
         Run the optional *utils* pipeline on the request payload.
 
@@ -945,8 +949,8 @@ class EndpointI(SecureEndpointI, abc.ABC):
         Returns
         -------
         Dict
-            The payload after all utils plugins have been applied, or the
-            original payload when no utils pipeline is configured.
+            The payload after all util plugins have been applied, or the
+            original payload when no util pipeline is configured.
         """
         if not self._utils_pipeline:
             return payload
@@ -1048,7 +1052,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
         if prompt_str_force and len(prompt_str_force):
             prompt_str = prompt_str_force
-        elif prompt_name:
+        elif prompt_name and self._prompt_handler:
             prompt_str = self._prompt_handler.get_prompt(prompt_name)
 
         if prompt_str and map_prompt:
@@ -1063,7 +1067,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         return prompt_name, prompt_str
 
     @staticmethod
-    def __get_language(params: Dict[str, Any]) -> str:
+    def __get_language(params: Dict[str, Any]) -> Optional[str]:
         """
         Extract the language code from a request payload.
 
@@ -1295,7 +1299,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # ------------ BEGIN SECTION
             # 0.0 There user is able to prepare a payload to process
             params = self.prepare_payload(params)
-            # 0.1 Run utils plugins which may modify the user context
+            # 0.1 Run util plugins which may modify the user context
             params = self._run_utils_plugins(payload=params)
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
@@ -1367,7 +1371,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 params=params, options=options
             )
             if api_model_provider is None:
-                raise ValueError(f"API model not found in params {params}")
+                raise ValueError(f"API model isn't found in params {params}")
 
             # ---- Prometheus: record provider & pipeline stage --------------------
             rm = self._get_router_metrics()
@@ -1587,7 +1591,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         return payload
 
     @staticmethod
-    def _ensure_alternating_roles(params: Dict[str, Any]) -> Dict[str, Any]:
+    def _ensure_alternating_roles(
+        params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
         """
         Normalize a ``messages`` payload for compatibility with any
         service that expects an alternating ``user``/``assistant`` (or
