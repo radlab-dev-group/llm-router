@@ -373,6 +373,7 @@ class SecureEndpointI(abc.ABC):
         if (
             self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
             or not self._guardrails_pipeline_request
+            or not self._guardrail_auditor_request
         ):
             return True
 
@@ -447,13 +448,14 @@ class SecureEndpointI(abc.ABC):
 
         payload = masked_payload
 
-        self._end_audit_log_if_needed(
-            payload=payload,
-            mappings=mappings,
-            audit_log=audit_log,
-            auditor=self._mask_auditor,
-            force_end=False,
-        )
+        if self._mask_auditor:
+            self._end_audit_log_if_needed(
+                payload=payload,
+                mappings=mappings,
+                audit_log=audit_log,
+                auditor=self._mask_auditor,
+                force_end=False,
+            )
 
         return payload, mappings
 
@@ -848,7 +850,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
         #     return
         model_name = self._model_name_from_params_or_model(params=params)
         if model_name is None:
-            raise ValueError(f"Cannot find model {model_name}")
+            raise ValueError(f"model_name cannot be None!")
+
+        if self._model_handler is None:
+            raise RuntimeError("Model handler must be initialized!")
 
         api_model = self._model_handler.get_model_provider(
             model_name=model_name, options=options, fake=fake
