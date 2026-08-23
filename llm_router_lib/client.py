@@ -23,6 +23,7 @@ from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
     Polarity3cService,
     TranslateTextService,
+    SimplifyTextService,
     GenerativeAnswerService,
     GenerateNewsFromTextService,
     CreateFullArticleFromTextsService,
@@ -345,6 +346,68 @@ class LLMRouterClient:
             max_new_tokens=max_new_tokens,
         )
         return TranslateTextService(self.http, self.logger).call_post(payload)
+
+    def simplify_texts(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                SimplifyTextService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = 0.2,
+        max_new_tokens: Optional[int] = 256,
+    ) -> Dict[str, Any]:
+        """
+        Simplify a list of texts using the ``/api/simplify_text`` endpoint.
+
+        The method can be used in three ways:
+
+        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
+           conforms to :class:`SimplifyTextModel`.
+        2. **Pass a Pydantic model instance** – ``payload`` is a
+           ``SimplifyTextModel`` and will be serialized automatically.
+        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
+           ``SimplifyTextModel`` instance on‑the‑fly.
+
+        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : Optional[Union[Dict[str, Any], SimplifyTextModel]]
+            Optional pre‑constructed request body.
+        texts : Optional[List[str]]
+            List of source strings to simplify (required if ``payload`` is not
+            supplied).
+        model : Optional[str]
+            Model identifier to be used for simplification (required if ``payload``
+            is not supplied).
+        temperature: Optional[float]
+            Temperature
+        max_new_tokens: Optional[int]
+            Max new tokens
+        Returns
+        -------
+        dict
+            Parsed JSON response from the text‑simplification service.
+
+        Raises
+        ------
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+        """
+        payload = self._build_payload(
+            model_cls=SimplifyTextService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        return SimplifyTextService(self.http, self.logger).call_post(payload)
 
     def generative_answer(
         self,
