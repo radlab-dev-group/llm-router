@@ -489,6 +489,7 @@ class LLMRouterClient:
         texts: Optional[List[str]] = None,
         article_type: Optional[str] = None,
         model: Optional[str] = None,
+        max_new_tokens: Optional[int] = 1024,
     ) -> Dict[str, Any]:
         """
         Create a full article from multiple input texts using the
@@ -504,6 +505,7 @@ class LLMRouterClient:
             user_query=user_query,
             texts=texts,
             article_type=article_type,
+            max_new_tokens=max_new_tokens,
         )
         return CreateFullArticleFromTextsService(self.http, self.logger).call_post(
             payload
