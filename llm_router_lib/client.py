@@ -27,6 +27,7 @@ from llm_router_lib.services.utils import (
     GenerateNewsFromTextService,
     CreateFullArticleFromTextsService,
     GenerateArticleFromTextsService,
+    GenerateQuestionsFromTextsService,
 )
 from llm_router_lib.services.conversation import (
     ConversationService,
@@ -443,6 +444,89 @@ class LLMRouterClient:
         )
         return CreateFullArticleFromTextsService(self.http, self.logger).call_post(
             payload
+        )
+
+    def generate_questions_from_texts(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateQuestionsFromTextsService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        number_of_questions: Optional[int] = 1,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate questions from multiple input texts using the
+        ``/api/generate_questions`` builtin endpoint.
+
+        The method can be used in three ways:
+
+        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
+           conforms to :class:`GenerateQuestionFromTextsModel`.
+        2. **Pass a Pydantic model instance** – ``payload`` is a
+           ``GenerateQuestionFromTextsModel`` and will be serialized automatically.
+        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
+           ``GenerateQuestionFromTextsModel`` instance on‑the‑fly.
+
+        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : Optional[Union[Dict[str, Any], GenerateQuestionFromTextsModel]]
+            Optional pre‑constructed request body.
+        texts : Optional[List[str]]
+            List of source strings from which to generate questions (required if
+            ``payload`` is not supplied).
+        number_of_questions : Optional[int], default ``1``
+            Desired number of questions to generate per input text.
+        model : Optional[str]
+            Model identifier to be used (required if ``payload`` is not supplied).
+
+        Returns
+        -------
+        dict
+            Parsed JSON response from the question generation service.
+
+        Raises
+        ------
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+        """
+        payload = self._build_payload(
+            model_cls=GenerateQuestionsFromTextsService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+            number_of_questions=number_of_questions,
+        )
+        return GenerateQuestionsFromTextsService(self.http, self.logger).call_post(
+            payload
+        )
+
+    def generate_questions(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateQuestionsFromTextsService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        number_of_questions: Optional[int] = 1,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Alias for :meth:`generate_questions_from_texts`.
+        """
+        return self.generate_questions_from_texts(
+            payload=payload,
+            texts=texts,
+            number_of_questions=number_of_questions,
+            model=model,
         )
 
     # ------------------------------------------------------------------ #
