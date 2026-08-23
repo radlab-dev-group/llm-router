@@ -1590,19 +1590,30 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         payload["stream"] = payload.get("stream", False)
         return payload
 
-    @staticmethod
+    @classmethod
     def _ensure_alternating_roles(
-        params: Optional[Dict[str, Any]]
+        cls, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
         Normalize a ``messages`` payload for compatibility with any
-        service that expects an alternating ``user``/``assistant`` (or
-        ``system`` → ``user``) sequence.
+        service that expects a ``system`` → ``user`` → ``assistant``
+        alternating sequence.
 
-        The function inserts empty placeholder messages whenever the
-        expected alternation is broken, e.g. two consecutive ``user``
-        messages become ``user`` → ``assistant`` (empty) → ``user``.
-        This guarantees a valid dialogue structure.
+        Consecutive messages of the same role are merged into a single
+        message (their contents are joined), e.g.::
+
+            [system, system, user, user, user]
+                -> [system, user]
+
+        Additional fixes applied:
+
+        * every ``system`` message is moved to the front and folded into
+          a single ``system`` message;
+        * if the first dialogue message is an ``assistant`` one, an empty
+          ``user`` placeholder is prepended;
+        * if the last message is an ``assistant`` one, an empty ``user``
+          placeholder is appended (a chat completion request must end
+          with a ``user`` turn).
 
         Parameters
         ----------
@@ -1619,36 +1630,88 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             return params
 
         messages = params["messages"]
-        if len(messages) <= 1:
+        if not isinstance(messages, list) or len(messages) <= 1:
             return params
 
-        # Build a new list, inserting empty placeholders whenever the
-        # expected alternating pattern is broken.
+        def is_msg(obj: Any) -> bool:
+            return isinstance(obj, dict) and obj.get("role") is not None
+
+        # Split the payload into system messages and the dialogue,
+        # keeping the original order inside each group.
+        system_msgs: List[Dict[str, Any]] = [
+            m for m in messages if is_msg(m) and m["role"] == "system"
+        ]
+        dialogue = [m for m in messages if not (is_msg(m) and m["role"] == "system")]
+
         new_messages: List[Dict[str, Any]] = []
-        for idx, msg in enumerate(messages):
-            role = msg.get("role")
-            new_messages.append(msg)
 
-            # Determine which role we expect next.
-            expected_next: str | None = None
-            if role == "system":
-                expected_next = "user"
-            elif role == "user":
-                expected_next = "assistant"
-            elif role == "assistant":
-                expected_next = "user"
+        # Fold all system messages into a single one at the front.
+        if system_msgs:
+            merged: Dict[str, Any] = dict(system_msgs[0])
+            for extra in system_msgs[1:]:
+                merged["content"] = cls._merge_message_contents(
+                    merged.get("content"), extra.get("content")
+                )
+            new_messages.append(merged)
 
-            if not expected_next:
-                continue  # unknown role – skip checks
+        # Merge consecutive dialogue messages of the same role.
+        for msg in dialogue:
+            if (
+                new_messages
+                and is_msg(msg)
+                and is_msg(new_messages[-1])
+                and new_messages[-1]["role"] == msg["role"]
+            ):
+                new_messages[-1]["content"] = cls._merge_message_contents(
+                    new_messages[-1].get("content"), msg.get("content")
+                )
+                continue
+            new_messages.append(dict(msg) if is_msg(msg) else msg)
 
-            # Look ahead to the next original message, if any.
-            if idx + 1 < len(messages):
-                next_role = messages[idx + 1].get("role")
-                if next_role != expected_next:
-                    # Insert an empty placeholder to restore the pattern.
-                    new_messages.append({"role": expected_next, "content": ""})
+        # The dialogue must start with a user message.
+        first = new_messages[0] if new_messages else None
+        if is_msg(first) and first["role"] not in ("system", "user"):
+            new_messages.insert(0, {"role": "user", "content": ""})
+
+        # The dialogue must end with a user message.
+        last = new_messages[-1] if new_messages else None
+        if is_msg(last) and last["role"] == "assistant":
+            new_messages.append({"role": "user", "content": ""})
+
         params["messages"] = new_messages
         return params
+
+    @staticmethod
+    def _merge_message_contents(content_a: Any, content_b: Any) -> Any:
+        """
+        Join the contents of two messages into a single content value.
+
+        String contents are joined with a blank line.  List contents
+        (multimodal payloads) are concatenated into one list.
+        """
+        if content_a is None:
+            return content_b
+        if content_b is None:
+            return content_a
+        if isinstance(content_a, list) or isinstance(content_b, list):
+            parts_a = (
+                content_a
+                if isinstance(content_a, list)
+                else [{"type": "text", "text": content_a}]
+            )
+            parts_b = (
+                content_b
+                if isinstance(content_b, list)
+                else [{"type": "text", "text": content_b}]
+            )
+            return parts_a + parts_b
+        text_a = str(content_a)
+        text_b = str(content_b)
+        if not text_a:
+            return text_b
+        if not text_b:
+            return text_a
+        return f"{text_a}\n\n{text_b}"
 
     def _return_response_or_rerun(
         self,
