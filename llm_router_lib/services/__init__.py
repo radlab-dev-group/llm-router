@@ -20,6 +20,8 @@ from llm_router_lib.services.utils import (
     GenerateNewsFromTextService,
     CreateFullArticleFromTextsService,
     GenerateArticleFromTextsService,
+    GenerateQuestionsFromTextsService,
+    GenerateQuestionFromTextsService,
 )
 
 __all__ = [
@@ -34,4 +36,6 @@ __all__ = [
     "GenerateNewsFromTextService",
     "CreateFullArticleFromTextsService",
     "GenerateArticleFromTextsService",
+    "GenerateQuestionsFromTextsService",
+    "GenerateQuestionFromTextsService",
 ]

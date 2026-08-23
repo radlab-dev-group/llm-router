@@ -9,6 +9,7 @@ class.
 """
 
 from llm_router_lib.data_models.builtin_utils import (
+    GenerateQuestionFromTextsModel,
     Polarity3cModel,
     TranslateTextModel,
     AnswerBasedOnTheContextModel,
@@ -98,3 +99,18 @@ class GenerateArticleFromTextsService(BaseConversationServiceInterface):
 
     endpoint = "/api/generate_article_from_texts"
     model_cls = GenerateArticleFromTextsModel
+
+
+class GenerateQuestionsFromTextsService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/generate_questions`` endpoint.
+
+    Posts a payload validated by :class:`GenerateQuestionFromTextsModel` and
+    returns the parsed JSON response.
+    """
+
+    endpoint = "/api/generate_questions"
+    model_cls = GenerateQuestionFromTextsModel
+
+
+GenerateQuestionFromTextsService = GenerateQuestionsFromTextsService
