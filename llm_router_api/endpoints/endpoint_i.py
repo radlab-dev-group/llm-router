@@ -1615,6 +1615,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
           placeholder is appended (a chat completion request must end
           with a ``user`` turn).
 
+        Well‑formed payloads are detected in a single pass and returned
+        untouched (no copying), so the common case costs almost nothing.
+
         Parameters
         ----------
         params:
@@ -1633,53 +1636,154 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if not isinstance(messages, list) or len(messages) <= 1:
             return params
 
-        def is_msg(obj: Any) -> bool:
-            return isinstance(obj, dict) and obj.get("role") is not None
+        if cls._messages_need_fix(messages):
+            params["messages"] = cls._build_alternating_messages(messages)
+        return params
 
-        # Split the payload into system messages and the dialogue,
-        # keeping the original order inside each group.
-        system_msgs: List[Dict[str, Any]] = [
-            m for m in messages if is_msg(m) and m["role"] == "system"
-        ]
-        dialogue = [m for m in messages if not (is_msg(m) and m["role"] == "system")]
+    @staticmethod
+    def _messages_need_fix(messages: List[Any]) -> bool:
+        """
+        Check whether the *messages* list requires normalisation.
 
-        new_messages: List[Dict[str, Any]] = []
+        The check scans the list in a single pass (with early exit) and
+        detects any condition that :meth:`_build_alternating_messages` would
+        change:
 
-        # Fold all system messages into a single one at the front.
-        if system_msgs:
-            merged: Dict[str, Any] = dict(system_msgs[0])
-            for extra in system_msgs[1:]:
-                merged["content"] = cls._merge_message_contents(
-                    merged.get("content"), extra.get("content")
-                )
-            new_messages.append(merged)
+        * more than one ``system`` message (they are folded into one);
+        * a ``system`` message which is not the very first entry
+          (it is moved to the front);
+        * two consecutive dialogue messages with the same role (they are
+          merged);
+        * a dialogue that does not start with a ``user`` turn (an empty
+          ``user`` placeholder is prepended);
+        * a dialogue that ends with an ``assistant`` turn (an empty
+          ``user`` placeholder is appended).
 
-        # Merge consecutive dialogue messages of the same role.
-        for msg in dialogue:
-            if (
-                new_messages
-                and is_msg(msg)
-                and is_msg(new_messages[-1])
-                and new_messages[-1]["role"] == msg["role"]
-            ):
-                new_messages[-1]["content"] = cls._merge_message_contents(
-                    new_messages[-1].get("content"), msg.get("content")
-                )
+        Non‑message entries (non‑dicts or dicts without a ``role``) act as
+        separators in the dialogue sequence, exactly as during the rebuild.
+
+        Parameters
+        ----------
+        messages:
+            The raw ``messages`` list extracted from the request payload.
+
+        Returns
+        -------
+        bool
+            ``True`` when the list has to be rebuilt, ``False`` when it
+            already follows the expected ``system`` → alternating dialogue
+            pattern and can be returned untouched.
+        """
+        first = messages[0]
+        last = messages[-1]
+
+        system_count = 0
+        prev_role: Optional[str] = None
+        for msg in messages:
+            role = msg.get("role") if isinstance(msg, dict) else None
+            if role == "system":
+                system_count += 1
+                if system_count > 1:
+                    return True
                 continue
-            new_messages.append(dict(msg) if is_msg(msg) else msg)
+            if role is None:
+                # Non‑message entries break the dialogue sequence.
+                prev_role = None
+                continue
+            if role == prev_role:
+                return True
+            prev_role = role
+
+        # A single system message is allowed, but only as the first entry.
+        if system_count == 1 and not (
+            isinstance(first, dict) and first.get("role") == "system"
+        ):
+            return True
+
+        # Without a leading system, the dialogue must start with a user turn.
+        if (
+            system_count == 0
+            and isinstance(first, dict)
+            and first.get("role") not in (None, "user")
+        ):
+            return True
+
+        # The dialogue must not end with an assistant turn.
+        if isinstance(last, dict) and last.get("role") == "assistant":
+            return True
+
+        return False
+
+    @classmethod
+    def _build_alternating_messages(cls, messages: List[Any]) -> List[Dict]:
+        """
+        Rebuild the *messages* list so that it starts with a single folded
+        ``system`` message followed by a strictly alternating dialogue.
+
+        The rebuild is performed in a single pass: ``system`` messages are
+        folded into one at the front, consecutive dialogue messages of the
+        same role are merged, and empty ``user`` placeholders are inserted
+        so that the dialogue starts and ends with a ``user`` turn.
+
+        Every message dict that may later be mutated is shallow‑copied
+        first, so the caller's original dicts are never touched.  This
+        matters because the retry path re‑runs this normalisation on the
+        same payload and in‑place mutations would merge contents twice.
+
+        Parameters
+        ----------
+        messages:
+            The raw ``messages`` list extracted from the request payload.
+
+        Returns
+        -------
+        List[Dict]
+            A new, correctly ordered list of messages.
+        """
+        new_messages: List[Dict[str, Any]] = []
+        system_msg: Optional[Dict[str, Any]] = None
+        last: Any = None  # last appended dialogue entry (always a fresh copy)
+
+        for msg in messages:
+            role = msg.get("role") if isinstance(msg, dict) else None
+            if role == "system":
+                if system_msg is None:
+                    system_msg = dict(msg)
+                else:
+                    system_msg["content"] = cls._merge_message_contents(
+                        system_msg.get("content"), msg.get("content")
+                    )
+            elif (
+                role is not None
+                and last is not None
+                and isinstance(last, dict)
+                and last.get("role") == role
+            ):
+                last["content"] = cls._merge_message_contents(
+                    last.get("content"), msg.get("content")
+                )
+            else:
+                new_messages.append(dict(msg) if isinstance(msg, dict) else msg)
+                last = new_messages[-1]
+
+        if system_msg is not None:
+            new_messages.insert(0, system_msg)
 
         # The dialogue must start with a user message.
-        first = new_messages[0] if new_messages else None
-        if is_msg(first) and first["role"] not in ("system", "user"):
+        first = new_messages[0]
+        if isinstance(first, dict) and first.get("role") not in (
+            None,
+            "system",
+            "user",
+        ):
             new_messages.insert(0, {"role": "user", "content": ""})
 
         # The dialogue must end with a user message.
-        last = new_messages[-1] if new_messages else None
-        if is_msg(last) and last["role"] == "assistant":
+        last_entry = new_messages[-1]
+        if isinstance(last_entry, dict) and last_entry.get("role") == "assistant":
             new_messages.append({"role": "user", "content": ""})
 
-        params["messages"] = new_messages
-        return params
+        return new_messages
 
     @staticmethod
     def _merge_message_contents(content_a: Any, content_b: Any) -> Any:
