@@ -16,6 +16,7 @@ from llm_router_lib.data_models.builtin_utils import (
     GenerateArticleFromTextModel,
     CreateArticleFromNewsListModel,
     GenerateArticleFromTextsModel,
+    SimplifyTextModel,
 )
 
 from llm_router_lib.services.service_interface import (
@@ -65,6 +66,28 @@ class TranslateTextService(BaseConversationServiceInterface):
 
     endpoint = "/api/translate"
     model_cls = TranslateTextModel
+
+
+class SimplifyTextService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/simplify_text`` endpoint.
+
+    The service posts a payload validated by :class:`SimplifyTextModel` to the
+    text‑simplification endpoint and returns the parsed JSON response.  All
+    request handling (including error conversion to :class:`LLMRouterError`) is
+    inherited from :class:`BaseConversationServiceInterface`.
+
+    Attributes
+    ----------
+    endpoint : str
+        Relative URL of the simplification endpoint (``"/api/simplify_text"``).
+    model_cls : type
+        The Pydantic model class used to validate request data
+        (:class:`SimplifyTextModel`).
+    """
+
+    endpoint = "/api/simplify_text"
+    model_cls = SimplifyTextModel
 
 
 class GenerativeAnswerService(BaseConversationServiceInterface):
