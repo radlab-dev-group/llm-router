@@ -479,7 +479,7 @@ class SecureEndpointI(abc.ABC):
         Dict[Any, Any]
             The masked representation of *payload*.
         """
-        self._prepare_masker_pipeline(plugins=algorithms)
+        self._prepare_masker_pipeline(plugins=algorithms or [])
         _p, _m = self._masker_pipeline.apply(payload=payload)
         return _p, _m
 
