@@ -1,6 +1,7 @@
 from llm_router_lib.data_models.builtin_utils import (
     Polarity3cModel,
     TranslateTextModel,
+    GenerateQuestionFromTextsModel,
 )
 
 from llm_router_lib.tests.base import BaseEndpointTest
@@ -39,3 +40,21 @@ class TranslateTextModelTest(BaseEndpointTest):
 
     def client_method(self):
         return self._client.translate
+
+
+class GenerateQuestionFromTextsModelTest(BaseEndpointTest):
+    payload = {
+        "model_name": "google/gemma-3-12b-it",
+        "language": "pl",
+        "texts": [
+            "Jesień przeplatała się kolorami pomarańczowymi z czerwienią!",
+            "Białe buty zawsze szybko się brudzą!",
+            "Tęcza ma wszelakie kolory! A białego nie ma?!",
+        ],
+        "number_of_questions": 2,
+        "temperature": 0.2,
+    }
+    payload_model = GenerateQuestionFromTextsModel
+
+    def client_method(self):
+        return self._client.generate_questions_from_texts
