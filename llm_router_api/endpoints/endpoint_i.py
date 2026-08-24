@@ -69,6 +69,7 @@ from llm_router_api.core.api_types.openai import OPENAI_ACCEPTABLE_PARAMS
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYPES
 
 from llm_router_api.endpoints.httprequest import HttpRequestExecutor
+from llm_router_api.endpoints import http_dispatch, message_normalizer
 
 
 if USE_PROMETHEUS:
@@ -1103,32 +1104,15 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
       :mod:`requests` library.
     """
 
-    class RetryResponse:
+    class RetryResponse(http_dispatch.RetryPolicy):
         """
         Configuration for automatic retry handling when an outbound HTTP
         request fails with a transient error.
 
-        Attributes
-        ----------
-        RETRY_WHEN_STATUS : List[int]
-            HTTP status codes that trigger a retry.  Includes client and
-            server error codes that are typically recoverable (e.g. 429,
-            503, 504, 500).
-        TIME_TO_WAIT_SEC : float
-            Number of seconds to wait between successive retry attempts.
-        MAX_RECONNECTIONS : int
-            Upper bound on how many retry attempts will be made before giving
-            up.
+        Backward‑compatible alias of
+        :class:`llm_router_api.endpoints.http_dispatch.RetryPolicy`, which is
+        the canonical home of the retry constants.
         """
-
-        # Code - definition
-        #  * 429 - Too Many Requests (rate limited)
-        #  * 503 - Service Unavailable
-        #  * 504 - Gateway Timeout
-        #  * > 500 - General error
-        RETRY_WHEN_STATUS = [429, 503, 504, 500]
-        TIME_TO_WAIT_SEC = 0.1
-        MAX_RECONNECTIONS = 10
 
     # ------------------------------------------------------------------
     # Construction
@@ -1192,6 +1176,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         self._timeout = timeout
         self._http_executor = HttpRequestExecutor(self)
+
+        # Outbound HTTP dispatch + retry orchestration (see http_dispatch.py)
+        self._http_dispatch = http_dispatch.HttpDispatch(self)
 
     # ------------------------------------------------------------------
     # Router metrics helpers (no-op safe — silently skipped when disabled)
@@ -1289,110 +1276,40 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         clear_chosen_provider_finally = False
         use_streaming = bool((params or {}).get("stream", False))
 
-        # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
         self.logger.debug(
             f"[{self._ep_method}] {self._ep_name} => {self._ep_types_str}"
         )
 
         self._start_time = time.time()
         try:
-            # ------------ BEGIN SECTION
-            # 0.0 There user is able to prepare a payload to process
-            params = self.prepare_payload(params)
-            # 0.1 Run util plugins which may modify the user context
-            params = self._run_utils_plugins(payload=params)
-            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
+            # 1. Prepare the payload (endpoint logic, then utils plugins)
+            params = self._prepare_incoming_payload(params)
 
-            # ------------ BEGIN SECURE SECTION ------------
-            # 1. Check payload using guardrails
+            # 2. Secure section: guardrails, masking, cleanup
             if not self._is_request_guardrail_safe(payload=params):
-                if use_streaming:
-                    api_model_provider = self.get_model_provider(
-                        params=params, options=options, fake=True
-                    )
-
-                    stream_type = (
-                        self._http_executor.stream_handler.resolve_stream_type(
-                            endpoint_ep_types=self._ep_types_str,
-                            api_model_provider=api_model_provider,
-                        )
-                    )
-
-                    return self._http_executor.stream_response(
-                        ep_url="",
-                        params=params,
-                        options=options,
-                        stream_type=stream_type,
-                        api_model_provider=api_model_provider,
-                        force_text="Content blocked by guardrail. "
-                        "Reason: Not safe content!",
-                    )
-
-                return self.return_response_not_ok(
-                    body={"reason": "guardrail", "error": "Not safe content!"}
+                return self._guardrail_blocked_response(
+                    payload=params, options=options, use_streaming=use_streaming
                 )
+            params = self._secure_payload(params)
 
-            # 2. Mask the whole payload if needed
-            params, mappings = self._do_masking_if_needed(payload=params)
-
-            # ...and show existing mappings
-            self.logger.debug(
-                "Masking mappings: %s",
-                json.dumps(mappings, indent=2, ensure_ascii=False),
+            # 3. Extract internal prompt overrides
+            map_prompt, prompt_str_force, prompt_str_postfix = (
+                self._extract_prompt_overrides(params)
             )
-
-            # 3. Clear payload to accept only required params
-            params = self._clear_payload(payload=params)
-            # ------------ END SECURE SECTION ------------
-
-            # 4. Endpoint processing
-            map_prompt = None
-            prompt_str_force = None
-            prompt_str_postfix = None
-            if isinstance(params, dict):
-                map_prompt = params.pop("map_prompt", {})
-                prompt_str_force = params.pop("prompt_str_force", "")
-                prompt_str_postfix = params.pop("prompt_str_postfix", "")
-
-            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
             if self.direct_return:
                 return params
 
-            # In case when the endpoint type is the same as a model endpoint type,
-            # Then llms is used as a simple proxy with forwarding params
-            # and response from external api
-            simple_proxy = False
-
-            # When the endpoint does not declare required arguments, we treat
-            # it as a proxy that forwards the request to the model's own
-            # endpoint.
-            api_model_provider = self.get_model_provider(
+            # 4. Resolve the provider and prepare the payload for it
+            api_model_provider = self._resolve_provider(
                 params=params, options=options
             )
-            if api_model_provider is None:
-                raise ValueError(f"API model isn't found in params {params}")
+            clear_chosen_provider_finally = True
 
-            # ---- Prometheus: record provider & pipeline stage --------------------
-            rm = self._get_router_metrics()
-            if rm is not None and api_model_provider is not None:
-                try:
-                    rm.record_pipeline_stage("provider_resolved", "success")
-                    rm.record_provider_call(
-                        provider_type=api_model_provider.api_type,
-                        model_name=api_model_provider.name,
-                    )
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass  # metrics must never break the request
-
-            # Modify params specified for the chosen provider
             params = self._prepare_params_for_provider(
                 params=params, model_provider=api_model_provider
             )
             params = self._ensure_alternating_roles(params=params)
-            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
-
-            clear_chosen_provider_finally = True
 
             self.logger.debug(
                 f"Request model {api_model_provider.name} "
@@ -1400,9 +1317,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 f"[{api_model_provider.api_type}: {api_model_provider.api_host}]"
             )
 
-            if not self.REQUIRED_ARGS:
-                if api_model_provider.api_type.lower() in self._ep_types_str:
-                    simple_proxy = True
+            # When the endpoint does not declare required arguments, we treat
+            # it as a proxy that forwards the request to the model's own
+            # endpoint.
+            simple_proxy = (
+                not self.REQUIRED_ARGS
+                and api_model_provider.api_type.lower() in self._ep_types_str
+            )
 
             prompt_name, prompt_str = self._resolve_prompt_name(
                 params=params,
@@ -1416,6 +1337,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 api_type=api_model_provider.api_type, endpoint_url=self.name
             )
 
+            # 5. Dispatch
             if simple_proxy and not use_streaming:
                 return self._return_response_or_rerun(
                     api_model_provider=api_model_provider,
@@ -1436,53 +1358,22 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     api_type=api_model_provider.api_type, params=params
                 )
 
-            # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
-
             if use_streaming:
+                # Streaming does not release the provider in ``finally``
+                # (legacy behavior — kept unchanged)
                 clear_chosen_provider_finally = False
                 if self._call_for_each_user_msg:
                     raise ValueError(
                         "Streaming is available only for single message"
                     )
-
-                # ---- Prometheus: response format (streamed) -------------------
-                rm_fmt = self._get_router_metrics()
-                if rm_fmt is not None and api_model_provider is not None:
-                    try:
-                        rm_fmt.record_response_format(
-                            fmt="streamed",
-                            model_name=api_model_provider.name,
-                            provider_type=api_model_provider.api_type,
-                        )
-                    except Exception:  # pylint: disable=broad-exception-caught
-                        pass
-
-                stream_type = self._http_executor.stream_handler.resolve_stream_type(
-                    endpoint_ep_types=self._ep_types_str,
+                return self._dispatch_streaming(
                     api_model_provider=api_model_provider,
-                )
-
-                return self._http_executor.stream_response(
                     ep_url=ep_url,
                     params=params,
                     options=options,
-                    stream_type=stream_type,
-                    api_model_provider=api_model_provider,
                 )
 
-            # ---- Prometheus: response format (non_streamed) ----------------
-            rm_ns = self._get_router_metrics()
-            if rm_ns is not None and api_model_provider is not None:
-                try:
-                    rm_ns.record_response_format(
-                        fmt="non_streamed",
-                        model_name=api_model_provider.name,
-                        provider_type=api_model_provider.api_type,
-                    )
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass
-
-            return self._return_response_or_rerun(
+            return self._dispatch_non_streaming(
                 api_model_provider=api_model_provider,
                 ep_url=ep_url,
                 prompt_str=prompt_str or "",
@@ -1502,6 +1393,171 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     params=params,
                     options=options,
                 )
+
+    # ------------------------------------------------------------------
+    # run_ep sequence helpers (extracted for readability — no behavior change)
+    # ------------------------------------------------------------------
+    def _prepare_incoming_payload(self, params: Optional[Dict[str, Any]]):
+        """
+        Run the endpoint's own ``prepare_payload`` and then the utils plugins.
+        """
+        params = self.prepare_payload(params)
+        params = self._run_utils_plugins(payload=params)
+        return params
+
+    def _guardrail_blocked_response(
+        self,
+        payload: Dict,
+        options: Optional[Dict],
+        use_streaming: bool,
+    ):
+        """
+        Build the response returned when the request is blocked by guardrails.
+        """
+        if use_streaming:
+            api_model_provider = self.get_model_provider(
+                params=payload, options=options, fake=True
+            )
+            stream_type = self._http_executor.stream_handler.resolve_stream_type(
+                endpoint_ep_types=self._ep_types_str,
+                api_model_provider=api_model_provider,
+            )
+            return self._http_executor.stream_response(
+                ep_url="",
+                params=payload,
+                options=options,
+                stream_type=stream_type,
+                api_model_provider=api_model_provider,
+                force_text="Content blocked by guardrail. "
+                "Reason: Not safe content!",
+            )
+        return self.return_response_not_ok(
+            body={"reason": "guardrail", "error": "Not safe content!"}
+        )
+
+    def _secure_payload(self, params: Dict) -> Dict:
+        """
+        Mask the whole payload (if needed) and strip internal‑only parameters.
+        """
+        params, mappings = self._do_masking_if_needed(payload=params)
+
+        # ...and show existing mappings
+        self.logger.debug(
+            "Masking mappings: %s",
+            json.dumps(mappings, indent=2, ensure_ascii=False),
+        )
+
+        params = self._clear_payload(payload=params)
+        return params
+
+    def _extract_prompt_overrides(self, params: Optional[Dict]):
+        """
+        Pop the internal prompt‑override keys (``map_prompt``,
+        ``prompt_str_force``, ``prompt_str_postfix``) from *params* and return
+        them as a 3‑tuple.
+        """
+        map_prompt = None
+        prompt_str_force = None
+        prompt_str_postfix = None
+        if isinstance(params, dict):
+            map_prompt = params.pop("map_prompt", {})
+            prompt_str_force = params.pop("prompt_str_force", "")
+            prompt_str_postfix = params.pop("prompt_str_postfix", "")
+        return map_prompt, prompt_str_force, prompt_str_postfix
+
+    def _resolve_provider(self, params: Dict, options: Optional[Dict]):
+        """
+        Resolve the model provider for *params* and record the
+        ``provider_resolved`` pipeline stage in Prometheus.
+        """
+        api_model_provider = self.get_model_provider(params=params, options=options)
+        if api_model_provider is None:
+            raise ValueError(f"API model isn't found in params {params}")
+
+        # ---- Prometheus: record provider & pipeline stage --------------------
+        rm = self._get_router_metrics()
+        if rm is not None and api_model_provider is not None:
+            try:
+                rm.record_pipeline_stage("provider_resolved", "success")
+                rm.record_provider_call(
+                    provider_type=api_model_provider.api_type,
+                    model_name=api_model_provider.name,
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass  # metrics must never break the request
+        return api_model_provider
+
+    def _record_response_format(self, fmt: str, api_model_provider) -> None:
+        """
+        Record the response format (``"streamed"``/``"non_streamed"``) in
+        Prometheus.  Silently skipped when metrics are unavailable.
+        """
+        rm = self._get_router_metrics()
+        if rm is not None and api_model_provider is not None:
+            try:
+                rm.record_response_format(
+                    fmt=fmt,
+                    model_name=api_model_provider.name,
+                    provider_type=api_model_provider.api_type,
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                pass
+
+    def _dispatch_streaming(
+        self,
+        api_model_provider,
+        ep_url: str,
+        params: Dict,
+        options: Optional[Dict],
+    ):
+        """
+        Dispatch a streaming response (format metrics + executor).
+        """
+        # ---- Prometheus: response format (streamed) -------------------
+        self._record_response_format(
+            fmt="streamed", api_model_provider=api_model_provider
+        )
+
+        stream_type = self._http_executor.stream_handler.resolve_stream_type(
+            endpoint_ep_types=self._ep_types_str,
+            api_model_provider=api_model_provider,
+        )
+
+        return self._http_executor.stream_response(
+            ep_url=ep_url,
+            params=params,
+            options=options,
+            stream_type=stream_type,
+            api_model_provider=api_model_provider,
+        )
+
+    def _dispatch_non_streaming(
+        self,
+        api_model_provider,
+        ep_url: str,
+        prompt_str: str,
+        orig_params: Dict,
+        params: Dict,
+        options: Dict,
+        reconnect_number: int,
+    ):
+        """
+        Dispatch a non‑streaming request, possibly with retries.
+        """
+        # ---- Prometheus: response format (non_streamed) ----------------
+        self._record_response_format(
+            fmt="non_streamed", api_model_provider=api_model_provider
+        )
+
+        return self._return_response_or_rerun(
+            api_model_provider=api_model_provider,
+            ep_url=ep_url,
+            prompt_str=prompt_str,
+            orig_params=orig_params,
+            params=params,
+            options=options,
+            reconnect_number=reconnect_number,
+        )
 
     def return_http_response(
         self, response, api_model_provider: Optional[ApiModel] = None
@@ -1595,227 +1651,35 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         cls, params: Optional[Dict[str, Any]]
     ) -> Optional[Dict[str, Any]]:
         """
-        Normalize a ``messages`` payload for compatibility with any
-        service that expects a ``system`` → ``user`` → ``assistant``
-        alternating sequence.
+        Normalise the ``messages`` payload into an alternating
+        ``system`` → ``user`` → ``assistant`` sequence.
 
-        Consecutive messages of the same role are merged into a single
-        message (their contents are joined), e.g.::
-
-            [system, system, user, user, user]
-                -> [system, user]
-
-        Additional fixes applied:
-
-        * every ``system`` message is moved to the front and folded into
-          a single ``system`` message;
-        * if the first dialogue message is an ``assistant`` one, an empty
-          ``user`` placeholder is prepended;
-        * if the last message is an ``assistant`` one, an empty ``user``
-          placeholder is appended (a chat completion request must end
-          with a ``user`` turn).
-
-        Well‑formed payloads are detected in a single pass and returned
-        untouched (no copying), so the common case costs almost nothing.
-
-        Parameters
-        ----------
-        params:
-            Request payload possibly containing a ``messages`` list.
-
-        Returns
-        -------
-        dict
-            The possibly‑modified payload with a correctly ordered
-            ``messages`` list.
+        The implementation lives in
+        :mod:`llm_router_api.endpoints.message_normalizer`; this method is a
+        thin delegate kept for backward compatibility.
         """
-        if not params or "messages" not in params:
-            return params
-
-        messages = params["messages"]
-        if not isinstance(messages, list) or len(messages) <= 1:
-            return params
-
-        if cls._messages_need_fix(messages):
-            params["messages"] = cls._build_alternating_messages(messages)
-        return params
+        return message_normalizer.ensure_alternating_roles(params)
 
     @staticmethod
     def _messages_need_fix(messages: List[Any]) -> bool:
         """
-        Check whether the *messages* list requires normalisation.
-
-        The check scans the list in a single pass (with early exit) and
-        detects any condition that :meth:`_build_alternating_messages` would
-        change:
-
-        * more than one ``system`` message (they are folded into one);
-        * a ``system`` message which is not the very first entry
-          (it is moved to the front);
-        * two consecutive dialogue messages with the same role (they are
-          merged);
-        * a dialogue that does not start with a ``user`` turn (an empty
-          ``user`` placeholder is prepended);
-        * a dialogue that ends with an ``assistant`` turn (an empty
-          ``user`` placeholder is appended).
-
-        Non‑message entries (non‑dicts or dicts without a ``role``) act as
-        separators in the dialogue sequence, exactly as during the rebuild.
-
-        Parameters
-        ----------
-        messages:
-            The raw ``messages`` list extracted from the request payload.
-
-        Returns
-        -------
-        bool
-            ``True`` when the list has to be rebuilt, ``False`` when it
-            already follows the expected ``system`` → alternating dialogue
-            pattern and can be returned untouched.
+        Return ``True`` when *messages* need to be rebuilt.
         """
-        first = messages[0]
-        last = messages[-1]
-
-        system_count = 0
-        prev_role: Optional[str] = None
-        for msg in messages:
-            role = msg.get("role") if isinstance(msg, dict) else None
-            if role == "system":
-                system_count += 1
-                if system_count > 1:
-                    return True
-                continue
-            if role is None:
-                # Non‑message entries break the dialogue sequence.
-                prev_role = None
-                continue
-            if role == prev_role:
-                return True
-            prev_role = role
-
-        # A single system message is allowed, but only as the first entry.
-        if system_count == 1 and not (
-            isinstance(first, dict) and first.get("role") == "system"
-        ):
-            return True
-
-        # Without a leading system, the dialogue must start with a user turn.
-        if (
-            system_count == 0
-            and isinstance(first, dict)
-            and first.get("role") not in (None, "user")
-        ):
-            return True
-
-        # The dialogue must not end with an assistant turn.
-        if isinstance(last, dict) and last.get("role") == "assistant":
-            return True
-
-        return False
+        return message_normalizer.messages_need_fix(messages)
 
     @classmethod
     def _build_alternating_messages(cls, messages: List[Any]) -> List[Dict]:
         """
-        Rebuild the *messages* list so that it starts with a single folded
-        ``system`` message followed by a strictly alternating dialogue.
-
-        The rebuild is performed in a single pass: ``system`` messages are
-        folded into one at the front, consecutive dialogue messages of the
-        same role are merged, and empty ``user`` placeholders are inserted
-        so that the dialogue starts and ends with a ``user`` turn.
-
-        Every message dict that may later be mutated is shallow‑copied
-        first, so the caller's original dicts are never touched.  This
-        matters because the retry path re‑runs this normalisation on the
-        same payload and in‑place mutations would merge contents twice.
-
-        Parameters
-        ----------
-        messages:
-            The raw ``messages`` list extracted from the request payload.
-
-        Returns
-        -------
-        List[Dict]
-            A new, correctly ordered list of messages.
+        Rebuild *messages* into a correctly ordered alternating list.
         """
-        new_messages: List[Dict[str, Any]] = []
-        system_msg: Optional[Dict[str, Any]] = None
-        last: Any = None  # last appended dialogue entry (always a fresh copy)
-
-        for msg in messages:
-            role = msg.get("role") if isinstance(msg, dict) else None
-            if role == "system":
-                if system_msg is None:
-                    system_msg = dict(msg)
-                else:
-                    system_msg["content"] = cls._merge_message_contents(
-                        system_msg.get("content"), msg.get("content")
-                    )
-            elif (
-                role is not None
-                and last is not None
-                and isinstance(last, dict)
-                and last.get("role") == role
-            ):
-                last["content"] = cls._merge_message_contents(
-                    last.get("content"), msg.get("content")
-                )
-            else:
-                new_messages.append(dict(msg) if isinstance(msg, dict) else msg)
-                last = new_messages[-1]
-
-        if system_msg is not None:
-            new_messages.insert(0, system_msg)
-
-        # The dialogue must start with a user message.
-        first = new_messages[0]
-        if isinstance(first, dict) and first.get("role") not in (
-            None,
-            "system",
-            "user",
-        ):
-            new_messages.insert(0, {"role": "user", "content": ""})
-
-        # The dialogue must end with a user message.
-        last_entry = new_messages[-1]
-        if isinstance(last_entry, dict) and last_entry.get("role") == "assistant":
-            new_messages.append({"role": "user", "content": ""})
-
-        return new_messages
+        return message_normalizer.build_alternating_messages(messages)
 
     @staticmethod
     def _merge_message_contents(content_a: Any, content_b: Any) -> Any:
         """
         Join the contents of two messages into a single content value.
-
-        String contents are joined with a blank line.  List contents
-        (multimodal payloads) are concatenated into one list.
         """
-        if content_a is None:
-            return content_b
-        if content_b is None:
-            return content_a
-        if isinstance(content_a, list) or isinstance(content_b, list):
-            parts_a = (
-                content_a
-                if isinstance(content_a, list)
-                else [{"type": "text", "text": content_a}]
-            )
-            parts_b = (
-                content_b
-                if isinstance(content_b, list)
-                else [{"type": "text", "text": content_b}]
-            )
-            return parts_a + parts_b
-        text_a = str(content_a)
-        text_b = str(content_b)
-        if not text_a:
-            return text_b
-        if not text_b:
-            return text_a
-        return f"{text_a}\n\n{text_b}"
+        return message_normalizer.merge_message_contents(content_a, content_b)
 
     def _return_response_or_rerun(
         self,
@@ -1831,192 +1695,20 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Send the prepared request to the external service and optionally retry
         on transient failures.
 
-        The method delegates the actual HTTP call to
-        :meth:`_http_executor.call_http_request`.  If the response status code
-        matches one of the values defined in :class:`RetryResponse`, the call
-        is retried up to ``MAX_RECONNECTIONS`` times with a short pause
-        between attempts.
-
-        Parameters
-        ----------
-        api_model_provider :
-            The :class:`ApiModel` instance describing the target external
-            service.
-        ep_url : str
-            Fully resolved endpoint URL to which the request will be sent.
-        prompt_str : str
-            Prompt text that may be injected into the request body.
-        orig_params : dict
-            The original request parameters (kept for possible retry).
-        params : dict
-            The processed parameters that will be sent to the external service.
-        options : dict
-            Additional options that may influence request handling.
-        reconnect_number : int
-            Current retry attempt counter.
-
-        Returns
-        -------
-        dict | requests.Response | None
-            The response from the external service, possibly after retries,
-            or ``None`` if all attempts fail.
+        Thin delegate — the implementation lives in
+        :mod:`llm_router_api.endpoints.http_dispatch`
+        (:meth:`http_dispatch.HttpDispatch.return_response_or_rerun`) and is
+        kept here for backward compatibility.
         """
-        response = None
-        error_exc = None
-        provider_latency_start = (
-            time.time()
-        )  # ---- Prometheus: latency timer -----------
-
-        try:
-            response = self._http_executor.call_http_request(
-                ep_url=ep_url,
-                params=params,
-                prompt_str=prompt_str,
-                api_model_provider=api_model_provider,
-                call_for_each_user_msg=self._call_for_each_user_msg,
-            )
-        except Exception as e:
-            self.logger.error(e)
-            error_exc = e
-
-        # ---- Prometheus: record provider latency & error on exception ---------------
-        rm_err = self._get_router_metrics()
-        if rm_err is not None and api_model_provider is not None:
-            try:
-                elapsed = time.time() - provider_latency_start
-                rm_err.record_provider_latency(
-                    provider_type=api_model_provider.api_type,
-                    model_name=api_model_provider.name,
-                    seconds=elapsed,
-                )
-                if error_exc is not None:
-                    # Classify the error code for connection-level failures
-                    err_msg = str(error_exc).lower()
-                    if "timeout" in err_msg:
-                        rm_err.record_provider_error(
-                            provider_type=api_model_provider.api_type,
-                            model_name=api_model_provider.name,
-                            error_code="timeout",
-                        )
-                    else:
-                        rm_err.record_provider_error(
-                            provider_type=api_model_provider.api_type,
-                            model_name=api_model_provider.name,
-                            error_code="connection_error",
-                        )
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass  # metrics must never break the request
-
-        self.unset_model(
-            api_model_provider=api_model_provider, params=params, options=options
+        return self._http_dispatch.return_response_or_rerun(
+            api_model_provider=api_model_provider,
+            ep_url=ep_url,
+            prompt_str=prompt_str,
+            orig_params=orig_params,
+            params=params,
+            options=options,
+            reconnect_number=reconnect_number,
         )
-
-        # If the HTTP call failed completely, report the error instead of silently
-        # returning ``None`` (which Flask would convert to ``{}`` with HTTP 200).
-        if error_exc is not None:
-            return self.return_response_not_ok(error_exc)
-
-        status_code = None
-        if response and type(response) not in [dict]:
-            status_code = response.status_code
-        elif not response:
-            status_code = 500
-        #
-        # print("====" * 20)
-        # print(response)
-        # print("status_code=", status_code)
-        # print("====" * 20)
-
-        if status_code and status_code in self.RetryResponse.RETRY_WHEN_STATUS:
-            self.logger.warning(
-                f" Provider {api_model_provider.id} responded with "
-                f"{status_code}. Retrying {reconnect_number}/"
-                f"{self.RetryResponse.MAX_RECONNECTIONS}."
-            )
-
-            # ---- Prometheus: retry metrics ----------------------------
-            if (
-                status_code != 200
-                and rm_err is not None
-                and api_model_provider is not None
-            ):
-                try:
-                    rm_err.record_provider_latency(
-                        provider_type=api_model_provider.api_type,
-                        model_name=api_model_provider.name,
-                        seconds=time.time() - provider_latency_start,
-                    )
-                    rm_err.record_provider_error(
-                        provider_type=api_model_provider.api_type,
-                        model_name=api_model_provider.name,
-                        error_code=str(status_code),
-                    )
-                    if reconnect_number < self.RetryResponse.MAX_RECONNECTIONS:
-                        rm_err.record_retry(
-                            model_name=api_model_provider.name,
-                            error_code=str(status_code),
-                        )
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass
-
-            if reconnect_number < self.RetryResponse.MAX_RECONNECTIONS:
-                time.sleep(self.RetryResponse.TIME_TO_WAIT_SEC)
-                if not options:
-                    options = {}
-                options["random_choice"] = True
-
-                return self.run_ep(
-                    params=orig_params,
-                    reconnect_number=reconnect_number + 1,
-                    options=options,
-                )
-            # ---- Prometheus: retry exhausted (all retries failed) --------
-            if rm_err is not None and api_model_provider is not None:
-                try:
-                    rm_err.record_retry_exhausted(
-                        model_name=api_model_provider.name,
-                        last_error_code=str(status_code),
-                    )
-                    rm_err.record_provider_latency(
-                        provider_type=api_model_provider.api_type,
-                        model_name=api_model_provider.name,
-                        seconds=time.time() - provider_latency_start,
-                    )
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass
-            return response
-
-        # ---- Prometheus: successful provider call ------------------------
-        if rm_err is not None and api_model_provider is not None:
-            try:
-                rm_err.record_provider_latency(
-                    provider_type=api_model_provider.api_type,
-                    model_name=api_model_provider.name,
-                    seconds=time.time() - provider_latency_start,
-                )
-                # Try to extract token usage from response body (OpenAI / Ollama format)
-                if isinstance(response, dict):
-                    usage = response.get("usage", {})
-                    prompt_tokens = usage.get("prompt_tokens")
-                    completion_tokens = usage.get("completion_tokens")
-                    if prompt_tokens:
-                        rm_err.record_tokens(
-                            model_name=api_model_provider.name,
-                            direction="input",
-                            count=prompt_tokens,
-                            provider_type=api_model_provider.api_type,
-                        )
-                    if completion_tokens:
-                        rm_err.record_tokens(
-                            model_name=api_model_provider.name,
-                            direction="output",
-                            count=completion_tokens,
-                            provider_type=api_model_provider.api_type,
-                        )
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass  # metrics must never break the request
-
-        return response
 
     @staticmethod
     def _filter_params_to_acceptable(
