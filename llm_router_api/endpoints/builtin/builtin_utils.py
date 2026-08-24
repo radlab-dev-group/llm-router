@@ -39,6 +39,9 @@ from llm_router_lib.data_models.builtin_utils import (
     GenerateArticleFromTextsModel,
     GENERATE_ARTICLES_REQ,
     GENERATE_ARTICLES_OPT,
+    GenerateLabelModel,
+    GENERATE_LABEL_REQ,
+    GENERATE_LABEL_OPT,
 )
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
@@ -986,5 +989,172 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
 
         return {
             "response": choices[0].get("message", {}).get("content"),
+            "generation_time": time.time() - self._start_time,
+        }
+
+
+class GenerateLabel(EndpointWithHttpRequestI):
+    """
+    Built‑in utility: generate a category name (label) from input texts.
+
+    The endpoint receives a list of related texts and asks the model to
+    propose a single, concise category name that best captures their common
+    essence.  All texts are combined into one user message and a single label
+    is returned.
+
+    Registered at ``/api/generate_label`` (with default prefix).
+    Auth: **optional** — required only when
+    ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
+    """
+
+    REQUIRED_ARGS = GENERATE_LABEL_REQ
+    OPTIONAL_ARGS = GENERATE_LABEL_OPT
+    SYSTEM_PROMPT_NAME = {
+        "pl": "builtin/system/pl/generate-label",
+        "en": "builtin/system/en/generate-label",
+    }
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "generate_label",
+    ):
+        """
+        Initialize the category‑label generation endpoint.
+
+        Parameters
+        ----------
+        logger_file_name : Optional[str]
+            Path to a log file; falls back to the library default when ``None``.
+        logger_level : Optional[str]
+            Logging verbosity (e.g. ``"INFO"``, ``"DEBUG"``).  Defaults to
+            :data:`REST_API_LOG_LEVEL`.
+        prompt_handler : Optional[PromptHandler]
+            Handler used to fetch the system‑prompt template.
+        model_handler : Optional[ModelHandler]
+            Handler that resolves model identifiers.
+        ep_name : str
+            URL fragment used when registering the Flask route
+            (default ``"generate_label"``).
+        """
+        super().__init__(
+            ep_name=ep_name,
+            api_types=["builtin"],
+            method="POST",
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            direct_return=False,
+            call_for_each_user_msg=False,
+        )
+
+        self._prepare_response_function = self.__prepare_response_function
+
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Validate input and build a payload that asks the model to name the
+        category of the supplied texts.
+
+        All source texts are concatenated into a single ``user`` message so
+        that the model returns one label describing the shared essence.
+
+        Returns
+        -------
+        dict
+            Normalised payload ready for the downstream model.
+        """
+        options = GenerateLabelModel(**params)
+        _payload = options.model_dump()
+
+        user_texts_str = "\n\n".join(
+            t.strip() for t in _payload["texts"] if len(t.strip())
+        )
+
+        _payload["stream"] = _payload.get("stream", False)
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {
+                "role": "user",
+                "content": user_texts_str,
+            }
+        ]
+        _payload.pop("texts")
+
+        return _payload
+
+    @staticmethod
+    def _clean_label(raw_output: Optional[str]) -> str:
+        """
+        Normalise the raw model output into a clean category label.
+
+        Strips surrounding whitespace, removes wrapping quotation marks, and
+        drops trailing punctuation that the model may add even though the
+        prompt forbids it, leaving only the category name itself.
+        """
+        if not raw_output:
+            return ""
+
+        label = raw_output.strip()
+
+        # Quotation-mark pairs (opening, closing) that may wrap the label.
+        quote_pairs = (
+            (chr(34), chr(34)),  # straight double quotes
+            (chr(39), chr(39)),  # straight single quotes
+            (chr(0x201C), chr(0x201D)),  # English double curly quotes
+            (chr(0x2018), chr(0x2019)),  # English single curly quotes
+            (chr(0x201E), chr(0x201C)),  # Polish/German double quotes
+            (chr(0x201A), chr(0x2018)),  # Polish/German single quotes
+        )
+
+        changed = True
+        while changed:
+            changed = False
+            # Remove one layer of surrounding quotation marks.
+            for open_q, close_q in quote_pairs:
+                if (
+                    len(label) >= len(open_q) + len(close_q)
+                    and label.startswith(open_q)
+                    and label.endswith(close_q)
+                ):
+                    label = label[len(open_q) : -len(close_q)].strip()
+                    changed = True
+                    break
+            # Drop one trailing period/full stop that may be tacked on.
+            if label.endswith("."):
+                label = label[:-1].rstrip()
+                changed = True
+
+        return label.strip()
+
+    def __prepare_response_function(self, response):
+        """
+        Extract the generated category label and report processing time.
+
+        Parameters
+        ----------
+        response : requests.Response
+            Raw response from the model service.
+
+        Returns
+        -------
+        dict
+            ``{"response": <label_text>, "generation_time": <seconds>}``.
+        """
+        _, choices, _assistant_response = self._get_choices_from_response(
+            response=response
+        )
+
+        return {
+            "response": self._clean_label(
+                choices[0].get("message", {}).get("content")
+            ),
             "generation_time": time.time() - self._start_time,
         }

@@ -17,6 +17,7 @@ from llm_router_lib.data_models.builtin_utils import (
     CreateArticleFromNewsListModel,
     GenerateArticleFromTextsModel,
     SimplifyTextModel,
+    GenerateLabelModel,
 )
 
 from llm_router_lib.services.service_interface import (
@@ -137,3 +138,16 @@ class GenerateQuestionsFromTextsService(BaseConversationServiceInterface):
 
 
 GenerateQuestionFromTextsService = GenerateQuestionsFromTextsService
+
+
+class GenerateLabelService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/generate_label`` endpoint.
+
+    Posts a payload validated by :class:`GenerateLabelModel` and returns the
+    parsed JSON response containing a single category name (label) for the
+    supplied texts.
+    """
+
+    endpoint = "/api/generate_label"
+    model_cls = GenerateLabelModel
