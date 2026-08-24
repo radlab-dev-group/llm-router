@@ -1,6 +1,9 @@
 from llm_router_lib.data_models.builtin_utils import (
     Polarity3cModel,
     TranslateTextModel,
+    SimplifyTextModel,
+    GenerateQuestionFromTextsModel,
+    GenerateLabelModel,
 )
 
 from llm_router_lib.tests.base import BaseEndpointTest
@@ -13,7 +16,8 @@ class Polarity3cModelTest(BaseEndpointTest):
         "texts": [
             "To jest niesamowity, wspaniały produkt! Bardzo polecam!",
             "Totalna katastrofa, nie polecam nikomu, produkt zepsuty.",
-            "Produkt spełnia podstawowe wymagania, ale niczym szczególnym się nie wyróżnia.",
+            "Produkt spełnia podstawowe wymagania, "
+            "ale niczym szczególnym się nie wyróżnia.",
         ],
         "temperature": 0.0,
     }
@@ -38,3 +42,57 @@ class TranslateTextModelTest(BaseEndpointTest):
 
     def client_method(self):
         return self._client.translate
+
+
+class SimplifyTextModelTest(BaseEndpointTest):
+    payload = {
+        "model_name": "google/gemma-3-12b-it",
+        "language": "pl",
+        "texts": [
+            "Zgodnie z postanowieniami rozporządzenia ministerialnego, "
+            "podmioty gospodarcze zobowiązane są do terminowego "
+            "przekazywania stosownych raportów.",
+            "Konsekwencje nieprawomocnego orzeczenia sądu niższej instancji "
+            "należą przeanalizować pod kątem dalszych kroków procesowych.",
+        ],
+        "temperature": 0.2,
+    }
+    payload_model = SimplifyTextModel
+
+    def client_method(self):
+        return self._client.simplify_texts
+
+
+class GenerateQuestionFromTextsModelTest(BaseEndpointTest):
+    payload = {
+        "model_name": "google/gemma-3-12b-it",
+        "language": "pl",
+        "texts": [
+            "Jesień przeplatała się kolorami pomarańczowymi z czerwienią!",
+            "Białe buty zawsze szybko się brudzą!",
+            "Tęcza ma wszelakie kolory! A białego nie ma?!",
+        ],
+        "number_of_questions": 2,
+        "temperature": 0.2,
+    }
+    payload_model = GenerateQuestionFromTextsModel
+
+    def client_method(self):
+        return self._client.generate_questions_from_texts
+
+
+class GenerateLabelModelTest(BaseEndpointTest):
+    payload = {
+        "model_name": "google/gemma-3-12b-it",
+        "language": "pl",
+        "texts": [
+            "Nowe smartfony z większą baterią i szybszym ładowaniem trafiają na rynek.",
+            "Firma ogłosiła premierę kolejnej generacji swoich aparatów fotograficznych.",
+            "Technologiczny gigant zaprezentował nową linię laptopów o niższej cenie.",
+        ],
+        "temperature": 0.2,
+    }
+    payload_model = GenerateLabelModel
+
+    def client_method(self):
+        return self._client.generate_label

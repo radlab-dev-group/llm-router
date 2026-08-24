@@ -170,6 +170,27 @@ FULL_ARTICLE_OPT = ["article_type"] + GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
+# Generate A4‑length article from texts (texts-only endpoint)
+# -------------------------------------------------------------------
+class GenerateArticleFromTextsModel(GenerativeOptionsModel):
+    """
+    Payload for the "generate_article_from_texts" endpoint.
+
+    Attributes
+    ----------
+    texts : List[str]
+        Source texts from which the model should produce a short (~A4) article.
+    """
+
+    texts: List[str]
+
+
+# Required/optional args for the texts‑only article generator
+GENERATE_ARTICLES_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+GENERATE_ARTICLES_OPT = GENAI_OPT_ARGS_BASE
+
+
+# -------------------------------------------------------------------
 # Answer based on the context (RAG based)
 # -------------------------------------------------------------------
 class AnswerBasedOnTheContextModel(GenerativeOptionsModel):
@@ -208,3 +229,31 @@ CONTEXT_ANSWER_REQ = ["question_str", "texts"] + GENAI_REQ_ARGS_BASE
 
 # Optional generation parameters for context‑aware answering.
 CONTEXT_ANSWER_OPT = ["question_prompt", "system_prompt"] + GENAI_OPT_ARGS_BASE
+
+
+# -------------------------------------------------------------------
+# Generate a category label/name from a list of texts
+# -------------------------------------------------------------------
+class GenerateLabelModel(GenerativeOptionsModel):
+    """
+    Payload for the "generate‑label" endpoint.
+
+    The endpoint receives a list of related texts and asks the model to
+    propose a single, concise category name (label) that best captures
+    their common essence.
+
+    Attributes
+    ----------
+    texts : List[str]
+        Source texts whose shared essence the model should distil into a
+        single category name.
+    """
+
+    texts: List[str]
+
+
+# Required arguments for ``GenerateLabelModel``.
+GENERATE_LABEL_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+
+# Optional generation parameters for label generation.
+GENERATE_LABEL_OPT = GENAI_OPT_ARGS_BASE

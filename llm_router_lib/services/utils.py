@@ -9,10 +9,15 @@ class.
 """
 
 from llm_router_lib.data_models.builtin_utils import (
+    GenerateQuestionFromTextsModel,
     Polarity3cModel,
     TranslateTextModel,
     AnswerBasedOnTheContextModel,
     GenerateArticleFromTextModel,
+    CreateArticleFromNewsListModel,
+    GenerateArticleFromTextsModel,
+    SimplifyTextModel,
+    GenerateLabelModel,
 )
 
 from llm_router_lib.services.service_interface import (
@@ -64,6 +69,28 @@ class TranslateTextService(BaseConversationServiceInterface):
     model_cls = TranslateTextModel
 
 
+class SimplifyTextService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/simplify_text`` endpoint.
+
+    The service posts a payload validated by :class:`SimplifyTextModel` to the
+    text‑simplification endpoint and returns the parsed JSON response.  All
+    request handling (including error conversion to :class:`LLMRouterError`) is
+    inherited from :class:`BaseConversationServiceInterface`.
+
+    Attributes
+    ----------
+    endpoint : str
+        Relative URL of the simplification endpoint (``"/api/simplify_text"``).
+    model_cls : type
+        The Pydantic model class used to validate request data
+        (:class:`SimplifyTextModel`).
+    """
+
+    endpoint = "/api/simplify_text"
+    model_cls = SimplifyTextModel
+
+
 class GenerativeAnswerService(BaseConversationServiceInterface):
     endpoint = "/api/generative_answer"
     model_cls = AnswerBasedOnTheContextModel
@@ -72,3 +99,55 @@ class GenerativeAnswerService(BaseConversationServiceInterface):
 class GenerateNewsFromTextService(BaseConversationServiceInterface):
     endpoint = "/api/generate_article_from_text"
     model_cls = GenerateArticleFromTextModel
+
+
+class CreateFullArticleFromTextsService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/create_full_article_from_texts`` endpoint.
+
+    Posts a payload validated by :class:`CreateArticleFromNewsListModel` and
+    returns the parsed JSON response.
+    """
+
+    endpoint = "/api/create_full_article_from_texts"
+    model_cls = CreateArticleFromNewsListModel
+
+
+class GenerateArticleFromTextsService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/generate_article_from_texts`` endpoint.
+
+    Posts a payload validated by :class:`GenerateArticleFromTextsModel` and
+    returns the parsed JSON response.
+    """
+
+    endpoint = "/api/generate_article_from_texts"
+    model_cls = GenerateArticleFromTextsModel
+
+
+class GenerateQuestionsFromTextsService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/generate_questions`` endpoint.
+
+    Posts a payload validated by :class:`GenerateQuestionFromTextsModel` and
+    returns the parsed JSON response.
+    """
+
+    endpoint = "/api/generate_questions"
+    model_cls = GenerateQuestionFromTextsModel
+
+
+GenerateQuestionFromTextsService = GenerateQuestionsFromTextsService
+
+
+class GenerateLabelService(BaseConversationServiceInterface):
+    """
+    Service for the ``/api/generate_label`` endpoint.
+
+    Posts a payload validated by :class:`GenerateLabelModel` and returns the
+    parsed JSON response containing a single category name (label) for the
+    supplied texts.
+    """
+
+    endpoint = "/api/generate_label"
+    model_cls = GenerateLabelModel

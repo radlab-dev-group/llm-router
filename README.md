@@ -35,6 +35,7 @@ The LLM‑Router project is split across five dedicated repositories:
 | **Request validation**              | Pydantic models guarantee correct payloads; errors are returned with clear messages.                                                                                                                                                        |
 | **Structured logging**              | Configurable log level, filename, and optional JSON formatting.                                                                                                                                                                             |
 | **Health & metadata endpoints**     | `/ping` (simple 200 OK) and `/tags` (available model tags/metadata).                                                                                                                                                                        |
+| **Built‑in article generation**     | Two builtin endpoints were added: `/api/generate_article_from_texts` — generate a short (~A4) Polish article summarising a list of texts; and `/api/create_full_article_from_texts` — create a fuller article framed by `user_query`.       |
 | **Embeddings support**              | Dedicated endpoints for generating text embeddings across all supported providers.                                                                                                                                                          |
 | **Simple deployment**               | One‑liner run script, Docker image, or Helm chart for Kubernetes.                                                                                                                                                                           |
 | **Extensible conversation formats** | Basic chat, conversation with system prompt, and extended conversation with richer options (temperature, top‑k, custom system prompt).                                                                                                      |
@@ -373,34 +374,41 @@ streaming mechanisms can be found at: [Endpoints Overview](llm_router_api/endpoi
 
 ### Highlights
 
-| Endpoint                                | Method | Auth (when `LLM_ROUTER_AUTH_ENABLED=true`) | Description                                     |
-|-----------------------------------------|--------|--------------------------------------------|-------------------------------------------------|
-| `/ping`                                 | GET    | ✅ Public                                  | Health‑check                                    |
-| `/version`                              | GET    | ✅ Public                                  | Return router version                           |
-| `/`                                     | GET    | ✅ Public                                  | Ollama health endpoint                          |
-| `/models`                               | GET    | ✅ Public                                  | List OpenAI‑compatible models                   |
-| `/v1/models`                            | GET    | ❌ Requires `chat` permission              | List OpenAI‑compatible models (v1)              |
-| `/tags`                                 | GET    | ✅ Public                                  | List Ollama model tags                          |
-| `/api/v0/models`                        | GET    | ❌ Requires `chat` permission              | List LM Studio models                           |
-| `/metrics`                              | GET    | ✅ Public                                  | Prometheus metrics (requires Redis)             |
-| `/chat/completions`                     | POST   | ❌ Requires `chat` permission              | OpenAI‑style chat completion                    |
-| `/api/chat/completions`                 | POST   | ❌ Requires `chat` permission              | OpenAI‑style chat completion (with prefix)      |
-| `/v1/chat/completions`                  | POST   | ❌ Requires `chat` permission              | vLLM‑like chat completion                       |
-| `/v1/messages`                          | POST   | ❌ Requires `anthropic` permission         | Anthropic‑compatible messages endpoint (Claude) |
-| `/responses`                            | POST   | ❌ Requires `chat` permission              | OpenAI‑like responses endpoint                  |
-| `/v1/responses`                         | POST   | ❌ Requires `chat` permission              | OpenAI‑like responses endpoint (v1)             |
-| `/embeddings`                           | POST   | ❌ Requires `embedding` permission         | Standard embeddings                             |
-| `/api/embeddings`                       | POST   | ❌ Requires `embedding` permission         | Standard embeddings (with prefix)               |
-| `/v1/embeddings`                        | POST   | ❌ Requires `embedding` permission         | OpenAI‑compatible embeddings endpoint           |
-| `/api/embed`                            | POST   | ❌ Requires `embedding` permission         | Ollama‑native embeddings endpoint               |
-| `/api/chat`                             | POST   | ❌ Requires `ollama` permission            | Ollama‑style chat completion                    |
-| `/api/conversation_with_model`          | POST   | ❌ Requires `builtin` permission           | Built‑in standard chat                          |
-| `/api/extended_conversation_with_model` | POST   | ❌ Requires `builtin` permission           | Built‑in chat with extended fields              |
-| `/api/generative_answer`                | POST   | ❌ Requires `builtin` permission           | Answer a question using provided context        |
-| `/api/polarity_3c`                      | POST   | ❌ Requires `builtin` permission           | Detect 3-class polarity for input texts         |
-| `/api/translate`                        | POST   | ❌ Requires `builtin` permission           | Translate texts                                 |
-| `/api/generate_questions`               | POST   | ❌ Requires `builtin` permission           | Generate questions from texts                   |
-| `/api/simplify_text`                    | POST   | ❌ Requires `builtin` permission           | Simplify input texts                            |
+| Endpoint                                | Method | Auth (when `LLM_ROUTER_AUTH_ENABLED=true`) | Description                                                       |
+|-----------------------------------------|--------|--------------------------------------------|-------------------------------------------------------------------|
+| `/ping`                                 | GET    | ✅ Public                                  | Health‑check                                                      |
+| `/version`                              | GET    | ✅ Public                                  | Return router version                                             |
+| `/`                                     | GET    | ✅ Public                                  | Ollama health endpoint                                            |
+| `/models`                               | GET    | ✅ Public                                  | List OpenAI‑compatible models                                     |
+| `/v1/models`                            | GET    | ❌ Requires `chat` permission              | List OpenAI‑compatible models (v1)                                |
+| `/tags`                                 | GET    | ✅ Public                                  | List Ollama model tags                                            |
+| `/api/v0/models`                        | GET    | ❌ Requires `chat` permission              | List LM Studio models                                             |
+| `/metrics`                              | GET    | ✅ Public                                  | Prometheus metrics (requires Redis)                               |
+| `/chat/completions`                     | POST   | ❌ Requires `chat` permission              | OpenAI‑style chat completion                                      |
+| `/api/chat/completions`                 | POST   | ❌ Requires `chat` permission              | OpenAI‑style chat completion (with prefix)                        |
+| `/v1/chat/completions`                  | POST   | ❌ Requires `chat` permission              | vLLM‑like chat completion                                         |
+| `/v1/messages`                          | POST   | ❌ Requires `anthropic` permission         | Anthropic‑compatible messages endpoint (Claude)                   |
+| `/responses`                            | POST   | ❌ Requires `chat` permission              | OpenAI‑like responses endpoint                                    |
+| `/v1/responses`                         | POST   | ❌ Requires `chat` permission              | OpenAI‑like responses endpoint (v1)                               |
+| `/embeddings`                           | POST   | ❌ Requires `embedding` permission         | Standard embeddings                                               |
+| `/api/embeddings`                       | POST   | ❌ Requires `embedding` permission         | Standard embeddings (with prefix)                                 |
+| `/v1/embeddings`                        | POST   | ❌ Requires `embedding` permission         | OpenAI‑compatible embeddings endpoint                             |
+| `/api/embed`                            | POST   | ❌ Requires `embedding` permission         | Ollama‑native embeddings endpoint                                 |
+| `/api/chat`                             | POST   | ❌ Requires `ollama` permission            | Ollama‑style chat completion                                      |
+| `/api/conversation_with_model`          | POST   | ❌ Requires `builtin` permission           | Built‑in standard chat                                            |
+| `/api/extended_conversation_with_model` | POST   | ❌ Requires `builtin` permission           | Built‑in chat with extended fields                                |
+| `/api/generative_answer`                | POST   | ❌ Requires `builtin` permission           | Answer a question using provided context                          |
+| `/api/polarity_3c`                      | POST   | ❌ Requires `builtin` permission           | Detect 3-class polarity for input texts                           |
+| `/api/translate`                        | POST   | ❌ Requires `builtin` permission           | Translate texts                                                   |
+| `/api/generate_questions`               | POST   | ❌ Requires `builtin` permission           | Generate questions from texts                                     |
+| `/api/simplify_text`                    | POST   | ❌ Requires `builtin` permission           | Simplify input texts                                              |
+| `/api/generate_label`                   | POST   | ❌ Requires `builtin` permission           | Generate a category name (label) from input texts                 |
+| `/api/generate_article_from_texts`      | POST   | ❌ Requires `builtin` permission           | Generate a short (~A4) Polish article summarising a list of texts |
+| `/api/create_full_article_from_texts`   | POST   | ❌ Requires `builtin` permission           | Create a fuller article framed by `user_query`                    |
+| `/api/polarity_3c`                      | POST   | ❌ Requires `builtin` permission           | Detect 3-class polarity for input texts                           |
+| `/api/translate`                        | POST   | ❌ Requires `builtin` permission           | Translate texts                                                   |
+| `/api/generate_questions`               | POST   | ❌ Requires `builtin` permission           | Generate questions from texts                                     |
+| `/api/simplify_text`                    | POST   | ❌ Requires `builtin` permission           | Simplify input texts                                              |
 
 > **Note:** By default `LLM_ROUTER_AUTH_ENABLED=false`, so all endpoints are accessible without authentication. Set it
 > to `"true"` to enforce auth. The `_public` list (default `/ping,/version,/models,/`) can be customized via

@@ -373,6 +373,7 @@ class SecureEndpointI(abc.ABC):
         if (
             self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
             or not self._guardrails_pipeline_request
+            or not self._guardrail_auditor_request
         ):
             return True
 
@@ -447,13 +448,14 @@ class SecureEndpointI(abc.ABC):
 
         payload = masked_payload
 
-        self._end_audit_log_if_needed(
-            payload=payload,
-            mappings=mappings,
-            audit_log=audit_log,
-            auditor=self._mask_auditor,
-            force_end=False,
-        )
+        if self._mask_auditor:
+            self._end_audit_log_if_needed(
+                payload=payload,
+                mappings=mappings,
+                audit_log=audit_log,
+                auditor=self._mask_auditor,
+                force_end=False,
+            )
 
         return payload, mappings
 
@@ -477,7 +479,7 @@ class SecureEndpointI(abc.ABC):
         Dict[Any, Any]
             The masked representation of *payload*.
         """
-        self._prepare_masker_pipeline(plugins=algorithms)
+        self._prepare_masker_pipeline(plugins=algorithms or [])
         _p, _m = self._masker_pipeline.apply(payload=payload)
         return _p, _m
 
@@ -848,7 +850,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
         #     return
         model_name = self._model_name_from_params_or_model(params=params)
         if model_name is None:
-            raise ValueError(f"Cannot find model {model_name}")
+            raise ValueError(f"model_name cannot be None!")
+
+        if self._model_handler is None:
+            raise RuntimeError("Model handler must be initialized!")
 
         api_model = self._model_handler.get_model_provider(
             model_name=model_name, options=options, fake=fake
@@ -859,7 +864,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
     def unset_model(
         self,
-        api_model_provider: ApiModel,
+        api_model_provider: Optional[ApiModel],
         params: Dict[str, Any],
         options: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -887,6 +892,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
         model_name = self._model_name_from_params_or_model(
             params=params, api_model_provider=api_model_provider
         )
+
+        if not model_name or not self._model_handler:
+            return
+
         self._model_handler.put_model_provider(
             model_name=model_name,
             provider=api_model_provider.as_dict(),
@@ -898,7 +907,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
     # ------------------------------------------------------------------
     def _prepare_utils_pipeline(self, plugins: List[str]):
         """
-        Prepare the utils pipeline if it has not been initialized.
+        Prepare the util pipeline if it has not been initialized.
 
         The method verifies whether the internal utils pipeline has already
         been created. If it exists, the function returns immediately. Otherwise,
@@ -921,7 +930,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
         self.logger.debug(f"llm-router utils pipeline: {plugins}")
 
-    def _run_utils_plugins(self, payload: Dict):
+    def _run_utils_plugins(self, payload: Optional[Dict]):
         """
         Run the optional *utils* pipeline on the request payload.
 
@@ -940,8 +949,8 @@ class EndpointI(SecureEndpointI, abc.ABC):
         Returns
         -------
         Dict
-            The payload after all utils plugins have been applied, or the
-            original payload when no utils pipeline is configured.
+            The payload after all util plugins have been applied, or the
+            original payload when no util pipeline is configured.
         """
         if not self._utils_pipeline:
             return payload
@@ -1043,7 +1052,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
         if prompt_str_force and len(prompt_str_force):
             prompt_str = prompt_str_force
-        elif prompt_name:
+        elif prompt_name and self._prompt_handler:
             prompt_str = self._prompt_handler.get_prompt(prompt_name)
 
         if prompt_str and map_prompt:
@@ -1058,7 +1067,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         return prompt_name, prompt_str
 
     @staticmethod
-    def __get_language(params: Dict[str, Any]) -> str:
+    def __get_language(params: Dict[str, Any]) -> Optional[str]:
         """
         Extract the language code from a request payload.
 
@@ -1198,9 +1207,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if getattr(self, "__rm_cache", None) is None:
             self._rm_caching = True
             try:
-                from flask import current_app as _app
-
-                ext = getattr(_app, "extensions", {})
+                ext = getattr(current_app, "extensions", {})
                 if isinstance(ext, dict):
                     val = ext.get("router_metrics")
                     if val is not None:
@@ -1292,7 +1299,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # ------------ BEGIN SECTION
             # 0.0 There user is able to prepare a payload to process
             params = self.prepare_payload(params)
-            # 0.1 Run utils plugins which may modify the user context
+            # 0.1 Run util plugins which may modify the user context
             params = self._run_utils_plugins(payload=params)
             # self.logger.debug(json.dumps(params or {}, indent=2, ensure_ascii=False))
 
@@ -1364,7 +1371,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 params=params, options=options
             )
             if api_model_provider is None:
-                raise ValueError(f"API model not found in params {params}")
+                raise ValueError(f"API model isn't found in params {params}")
 
             # ---- Prometheus: record provider & pipeline stage --------------------
             rm = self._get_router_metrics()
@@ -1583,17 +1590,33 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         payload["stream"] = payload.get("stream", False)
         return payload
 
-    @staticmethod
-    def _ensure_alternating_roles(params: Dict[str, Any]) -> Dict[str, Any]:
+    @classmethod
+    def _ensure_alternating_roles(
+        cls, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
         """
         Normalize a ``messages`` payload for compatibility with any
-        service that expects an alternating ``user``/``assistant`` (or
-        ``system`` → ``user``) sequence.
+        service that expects a ``system`` → ``user`` → ``assistant``
+        alternating sequence.
 
-        The function inserts empty placeholder messages whenever the
-        expected alternation is broken, e.g. two consecutive ``user``
-        messages become ``user`` → ``assistant`` (empty) → ``user``.
-        This guarantees a valid dialogue structure.
+        Consecutive messages of the same role are merged into a single
+        message (their contents are joined), e.g.::
+
+            [system, system, user, user, user]
+                -> [system, user]
+
+        Additional fixes applied:
+
+        * every ``system`` message is moved to the front and folded into
+          a single ``system`` message;
+        * if the first dialogue message is an ``assistant`` one, an empty
+          ``user`` placeholder is prepended;
+        * if the last message is an ``assistant`` one, an empty ``user``
+          placeholder is appended (a chat completion request must end
+          with a ``user`` turn).
+
+        Well‑formed payloads are detected in a single pass and returned
+        untouched (no copying), so the common case costs almost nothing.
 
         Parameters
         ----------
@@ -1610,36 +1633,189 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             return params
 
         messages = params["messages"]
-        if len(messages) <= 1:
+        if not isinstance(messages, list) or len(messages) <= 1:
             return params
 
-        # Build a new list, inserting empty placeholders whenever the
-        # expected alternating pattern is broken.
-        new_messages: List[Dict[str, Any]] = []
-        for idx, msg in enumerate(messages):
-            role = msg.get("role")
-            new_messages.append(msg)
-
-            # Determine which role we expect next.
-            expected_next: str | None = None
-            if role == "system":
-                expected_next = "user"
-            elif role == "user":
-                expected_next = "assistant"
-            elif role == "assistant":
-                expected_next = "user"
-
-            if not expected_next:
-                continue  # unknown role – skip checks
-
-            # Look ahead to the next original message, if any.
-            if idx + 1 < len(messages):
-                next_role = messages[idx + 1].get("role")
-                if next_role != expected_next:
-                    # Insert an empty placeholder to restore the pattern.
-                    new_messages.append({"role": expected_next, "content": ""})
-        params["messages"] = new_messages
+        if cls._messages_need_fix(messages):
+            params["messages"] = cls._build_alternating_messages(messages)
         return params
+
+    @staticmethod
+    def _messages_need_fix(messages: List[Any]) -> bool:
+        """
+        Check whether the *messages* list requires normalisation.
+
+        The check scans the list in a single pass (with early exit) and
+        detects any condition that :meth:`_build_alternating_messages` would
+        change:
+
+        * more than one ``system`` message (they are folded into one);
+        * a ``system`` message which is not the very first entry
+          (it is moved to the front);
+        * two consecutive dialogue messages with the same role (they are
+          merged);
+        * a dialogue that does not start with a ``user`` turn (an empty
+          ``user`` placeholder is prepended);
+        * a dialogue that ends with an ``assistant`` turn (an empty
+          ``user`` placeholder is appended).
+
+        Non‑message entries (non‑dicts or dicts without a ``role``) act as
+        separators in the dialogue sequence, exactly as during the rebuild.
+
+        Parameters
+        ----------
+        messages:
+            The raw ``messages`` list extracted from the request payload.
+
+        Returns
+        -------
+        bool
+            ``True`` when the list has to be rebuilt, ``False`` when it
+            already follows the expected ``system`` → alternating dialogue
+            pattern and can be returned untouched.
+        """
+        first = messages[0]
+        last = messages[-1]
+
+        system_count = 0
+        prev_role: Optional[str] = None
+        for msg in messages:
+            role = msg.get("role") if isinstance(msg, dict) else None
+            if role == "system":
+                system_count += 1
+                if system_count > 1:
+                    return True
+                continue
+            if role is None:
+                # Non‑message entries break the dialogue sequence.
+                prev_role = None
+                continue
+            if role == prev_role:
+                return True
+            prev_role = role
+
+        # A single system message is allowed, but only as the first entry.
+        if system_count == 1 and not (
+            isinstance(first, dict) and first.get("role") == "system"
+        ):
+            return True
+
+        # Without a leading system, the dialogue must start with a user turn.
+        if (
+            system_count == 0
+            and isinstance(first, dict)
+            and first.get("role") not in (None, "user")
+        ):
+            return True
+
+        # The dialogue must not end with an assistant turn.
+        if isinstance(last, dict) and last.get("role") == "assistant":
+            return True
+
+        return False
+
+    @classmethod
+    def _build_alternating_messages(cls, messages: List[Any]) -> List[Dict]:
+        """
+        Rebuild the *messages* list so that it starts with a single folded
+        ``system`` message followed by a strictly alternating dialogue.
+
+        The rebuild is performed in a single pass: ``system`` messages are
+        folded into one at the front, consecutive dialogue messages of the
+        same role are merged, and empty ``user`` placeholders are inserted
+        so that the dialogue starts and ends with a ``user`` turn.
+
+        Every message dict that may later be mutated is shallow‑copied
+        first, so the caller's original dicts are never touched.  This
+        matters because the retry path re‑runs this normalisation on the
+        same payload and in‑place mutations would merge contents twice.
+
+        Parameters
+        ----------
+        messages:
+            The raw ``messages`` list extracted from the request payload.
+
+        Returns
+        -------
+        List[Dict]
+            A new, correctly ordered list of messages.
+        """
+        new_messages: List[Dict[str, Any]] = []
+        system_msg: Optional[Dict[str, Any]] = None
+        last: Any = None  # last appended dialogue entry (always a fresh copy)
+
+        for msg in messages:
+            role = msg.get("role") if isinstance(msg, dict) else None
+            if role == "system":
+                if system_msg is None:
+                    system_msg = dict(msg)
+                else:
+                    system_msg["content"] = cls._merge_message_contents(
+                        system_msg.get("content"), msg.get("content")
+                    )
+            elif (
+                role is not None
+                and last is not None
+                and isinstance(last, dict)
+                and last.get("role") == role
+            ):
+                last["content"] = cls._merge_message_contents(
+                    last.get("content"), msg.get("content")
+                )
+            else:
+                new_messages.append(dict(msg) if isinstance(msg, dict) else msg)
+                last = new_messages[-1]
+
+        if system_msg is not None:
+            new_messages.insert(0, system_msg)
+
+        # The dialogue must start with a user message.
+        first = new_messages[0]
+        if isinstance(first, dict) and first.get("role") not in (
+            None,
+            "system",
+            "user",
+        ):
+            new_messages.insert(0, {"role": "user", "content": ""})
+
+        # The dialogue must end with a user message.
+        last_entry = new_messages[-1]
+        if isinstance(last_entry, dict) and last_entry.get("role") == "assistant":
+            new_messages.append({"role": "user", "content": ""})
+
+        return new_messages
+
+    @staticmethod
+    def _merge_message_contents(content_a: Any, content_b: Any) -> Any:
+        """
+        Join the contents of two messages into a single content value.
+
+        String contents are joined with a blank line.  List contents
+        (multimodal payloads) are concatenated into one list.
+        """
+        if content_a is None:
+            return content_b
+        if content_b is None:
+            return content_a
+        if isinstance(content_a, list) or isinstance(content_b, list):
+            parts_a = (
+                content_a
+                if isinstance(content_a, list)
+                else [{"type": "text", "text": content_a}]
+            )
+            parts_b = (
+                content_b
+                if isinstance(content_b, list)
+                else [{"type": "text", "text": content_b}]
+            )
+            return parts_a + parts_b
+        text_a = str(content_a)
+        text_b = str(content_b)
+        if not text_a:
+            return text_b
+        if not text_b:
+            return text_a
+        return f"{text_a}\n\n{text_b}"
 
     def _return_response_or_rerun(
         self,

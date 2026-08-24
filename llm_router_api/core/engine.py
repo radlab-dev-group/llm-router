@@ -26,7 +26,7 @@ from typing import List, Type, Optional
 
 from rdl_ml_utils.utils.logger import prepare_logger
 
-from llm_router_api.core.monitor.services_monitor import LLMRouterServicesMonitor
+from llm_router_api.core.router_metrics import RouterMetrics
 from llm_router_api.endpoints.endpoint_i import EndpointI
 from llm_router_api.register.auto_loader import EndpointAutoLoader
 from llm_router_api.register.register import FlaskEndpointRegistrar
@@ -39,6 +39,7 @@ from llm_router_api.base.constants import (
     USE_PROMETHEUS,
     LLM_ROUTER_AUTH_ENABLED,
 )
+from llm_router_api.core.monitor.services_monitor import LLMRouterServicesMonitor
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
 from llm_router_api.core.auth.metrics import (
     AuthMetrics,
@@ -135,7 +136,7 @@ class FlaskEngine:
 
         self._auth_enabled = False
         self._auth_metrics: AuthMetrics | None = None
-        self._router_metrics: Optional["RouterMetrics"] = None
+        self._router_metrics: Optional[RouterMetrics] = None
 
     # def __del__(self):
     #     if self._services_monitor:

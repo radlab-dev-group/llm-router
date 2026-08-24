@@ -23,8 +23,13 @@ from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
     Polarity3cService,
     TranslateTextService,
+    SimplifyTextService,
     GenerativeAnswerService,
     GenerateNewsFromTextService,
+    CreateFullArticleFromTextsService,
+    GenerateArticleFromTextsService,
+    GenerateQuestionsFromTextsService,
+    GenerateLabelService,
 )
 from llm_router_lib.services.conversation import (
     ConversationService,
@@ -343,6 +348,68 @@ class LLMRouterClient:
         )
         return TranslateTextService(self.http, self.logger).call_post(payload)
 
+    def simplify_texts(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                SimplifyTextService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = 0.2,
+        max_new_tokens: Optional[int] = 256,
+    ) -> Dict[str, Any]:
+        """
+        Simplify a list of texts using the ``/api/simplify_text`` endpoint.
+
+        The method can be used in three ways:
+
+        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
+           conforms to :class:`SimplifyTextModel`.
+        2. **Pass a Pydantic model instance** – ``payload`` is a
+           ``SimplifyTextModel`` and will be serialized automatically.
+        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
+           ``SimplifyTextModel`` instance on‑the‑fly.
+
+        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : Optional[Union[Dict[str, Any], SimplifyTextModel]]
+            Optional pre‑constructed request body.
+        texts : Optional[List[str]]
+            List of source strings to simplify (required if ``payload`` is not
+            supplied).
+        model : Optional[str]
+            Model identifier to be used for simplification (required if ``payload``
+            is not supplied).
+        temperature: Optional[float]
+            Temperature
+        max_new_tokens: Optional[int]
+            Max new tokens
+        Returns
+        -------
+        dict
+            Parsed JSON response from the text‑simplification service.
+
+        Raises
+        ------
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+        """
+        payload = self._build_payload(
+            model_cls=SimplifyTextService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        return SimplifyTextService(self.http, self.logger).call_post(payload)
+
     def generative_answer(
         self,
         payload: Optional[
@@ -382,6 +449,220 @@ class LLMRouterClient:
             text=text,
         )
         return GenerateNewsFromTextService(self.http, self.logger).call_post(payload)
+
+    def generate_article_from_texts(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateArticleFromTextsService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate a short (~A4) article from multiple input texts using the
+        ``/api/generate_article_from_texts`` builtin endpoint.
+
+        Accepts a prebuilt payload dict or model instance, or a ``texts`` list.
+        The client builds a payload when ``payload`` is not provided.
+        """
+        payload = self._build_payload(
+            model_cls=GenerateArticleFromTextsService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+        )
+        return GenerateArticleFromTextsService(self.http, self.logger).call_post(
+            payload
+        )
+
+    def create_full_article_from_texts(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                CreateFullArticleFromTextsService.model_cls,
+            ]
+        ] = None,
+        user_query: Optional[str] = None,
+        texts: Optional[List[str]] = None,
+        article_type: Optional[str] = None,
+        model: Optional[str] = None,
+        max_new_tokens: Optional[int] = 1024,
+    ) -> Dict[str, Any]:
+        """
+        Create a full article from multiple input texts using the
+        ``/api/create_full_article_from_texts`` builtin endpoint.
+
+        Accepts a prebuilt payload dict or model instance, or keyword
+        arguments ``user_query`` and ``texts`` and optional ``article_type``.
+        """
+        payload = self._build_payload(
+            model_cls=CreateFullArticleFromTextsService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            user_query=user_query,
+            texts=texts,
+            article_type=article_type,
+            max_new_tokens=max_new_tokens,
+        )
+        return CreateFullArticleFromTextsService(self.http, self.logger).call_post(
+            payload
+        )
+
+    def generate_questions_from_texts(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateQuestionsFromTextsService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        number_of_questions: Optional[int] = 1,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Generate questions from multiple input texts using the
+        ``/api/generate_questions`` builtin endpoint.
+
+        The method can be used in three ways:
+
+        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
+           conforms to :class:`GenerateQuestionFromTextsModel`.
+        2. **Pass a Pydantic model instance** – ``payload`` is a
+           ``GenerateQuestionFromTextsModel`` and will be serialized automatically.
+        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
+           ``GenerateQuestionFromTextsModel`` instance on‑the‑fly.
+
+        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : Optional[Union[Dict[str, Any], GenerateQuestionFromTextsModel]]
+            Optional pre‑constructed request body.
+        texts : Optional[List[str]]
+            List of source strings from which to generate questions (required if
+            ``payload`` is not supplied).
+        number_of_questions : Optional[int], default ``1``
+            Desired number of questions to generate per input text.
+        model : Optional[str]
+            Model identifier to be used (required if ``payload`` is not supplied).
+
+        Returns
+        -------
+        dict
+            Parsed JSON response from the question generation service.
+
+        Raises
+        ------
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+        """
+        payload = self._build_payload(
+            model_cls=GenerateQuestionsFromTextsService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+            number_of_questions=number_of_questions,
+        )
+        return GenerateQuestionsFromTextsService(self.http, self.logger).call_post(
+            payload
+        )
+
+    def generate_questions(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateQuestionsFromTextsService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        number_of_questions: Optional[int] = 1,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Alias for :meth:`generate_questions_from_texts`.
+        """
+        return self.generate_questions_from_texts(
+            payload=payload,
+            texts=texts,
+            number_of_questions=number_of_questions,
+            model=model,
+        )
+
+    def generate_label(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateLabelService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = 0.2,
+        max_new_tokens: Optional[int] = 64,
+    ) -> Dict[str, Any]:
+        """
+        Generate a category name (label) for a list of texts using the
+        ``/api/generate_label`` endpoint.
+
+        The endpoint receives a list of related texts and returns a single,
+        concise category name that best captures their common essence.
+
+        The method can be used in three ways:
+
+        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that
+           already conforms to :class:`GenerateLabelModel`.
+        2. **Pass a Pydantic model instance** – ``payload`` is a
+           ``GenerateLabelModel`` and will be serialized automatically.
+        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
+           ``GenerateLabelModel`` instance on‑the‑fly.
+
+        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : Optional[Union[Dict[str, Any], GenerateLabelModel]]
+            Optional pre‑constructed request body.
+        texts : Optional[List[str]]
+            List of related source strings whose shared essence should be
+            captured by a single category name (required if ``payload`` is not
+            supplied).
+        model : Optional[str]
+            Model identifier to be used (required if ``payload`` is not
+            supplied).
+        temperature : Optional[float], default ``0.2``
+            Sampling temperature; kept low for a deterministic label.
+        max_new_tokens : Optional[int], default ``64``
+            Maximum number of tokens for the generated label.
+
+        Returns
+        -------
+        dict
+            Parsed JSON response from the label‑generation service.
+
+        Raises
+        ------
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and either ``texts`` or ``model`` is
+            missing.
+        """
+        payload = self._build_payload(
+            model_cls=GenerateLabelService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        return GenerateLabelService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     @staticmethod
