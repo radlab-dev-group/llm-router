@@ -33,6 +33,9 @@ from llm_router_lib.data_models.builtin_utils import (
     AnswerBasedOnTheContextModel,
     CONTEXT_ANSWER_REQ,
     CONTEXT_ANSWER_OPT,
+    GenerateLabelModel,
+    GENERATE_LABEL_REQ,
+    GENERATE_LABEL_OPT,
 )
 from llm_router_lib.data_models.masker import BaseMaskerModel, FastMaskerModel
 from llm_router_lib.data_models.openai import OpenAIChatModel
@@ -59,6 +62,9 @@ __all__ = [
     "AnswerBasedOnTheContextModel",
     "CONTEXT_ANSWER_REQ",
     "CONTEXT_ANSWER_OPT",
+    "GenerateLabelModel",
+    "GENERATE_LABEL_REQ",
+    "GENERATE_LABEL_OPT",
     # Masker models
     "BaseMaskerModel",
     "FastMaskerModel",

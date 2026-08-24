@@ -229,3 +229,31 @@ CONTEXT_ANSWER_REQ = ["question_str", "texts"] + GENAI_REQ_ARGS_BASE
 
 # Optional generation parameters for context‑aware answering.
 CONTEXT_ANSWER_OPT = ["question_prompt", "system_prompt"] + GENAI_OPT_ARGS_BASE
+
+
+# -------------------------------------------------------------------
+# Generate a category label/name from a list of texts
+# -------------------------------------------------------------------
+class GenerateLabelModel(GenerativeOptionsModel):
+    """
+    Payload for the "generate‑label" endpoint.
+
+    The endpoint receives a list of related texts and asks the model to
+    propose a single, concise category name (label) that best captures
+    their common essence.
+
+    Attributes
+    ----------
+    texts : List[str]
+        Source texts whose shared essence the model should distil into a
+        single category name.
+    """
+
+    texts: List[str]
+
+
+# Required arguments for ``GenerateLabelModel``.
+GENERATE_LABEL_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+
+# Optional generation parameters for label generation.
+GENERATE_LABEL_OPT = GENAI_OPT_ARGS_BASE
