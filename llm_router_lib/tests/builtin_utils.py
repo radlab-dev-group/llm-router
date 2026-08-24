@@ -3,6 +3,7 @@ from llm_router_lib.data_models.builtin_utils import (
     TranslateTextModel,
     SimplifyTextModel,
     GenerateQuestionFromTextsModel,
+    GenerateLabelModel,
 )
 
 from llm_router_lib.tests.base import BaseEndpointTest
@@ -78,3 +79,20 @@ class GenerateQuestionFromTextsModelTest(BaseEndpointTest):
 
     def client_method(self):
         return self._client.generate_questions_from_texts
+
+
+class GenerateLabelModelTest(BaseEndpointTest):
+    payload = {
+        "model_name": "google/gemma-3-12b-it",
+        "language": "pl",
+        "texts": [
+            "Nowe smartfony z większą baterią i szybszym ładowaniem trafiają na rynek.",
+            "Firma ogłosiła premierę kolejnej generacji swoich aparatów fotograficznych.",
+            "Technologiczny gigant zaprezentował nową linię laptopów o niższej cenie.",
+        ],
+        "temperature": 0.2,
+    }
+    payload_model = GenerateLabelModel
+
+    def client_method(self):
+        return self._client.generate_label

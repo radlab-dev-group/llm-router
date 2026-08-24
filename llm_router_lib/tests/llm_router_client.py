@@ -12,6 +12,7 @@ from llm_router_lib.tests.builtin_utils import (
     TranslateTextModelTest,
     SimplifyTextModelTest,
     GenerateQuestionFromTextsModelTest,
+    GenerateLabelModelTest,
 )
 
 
@@ -29,6 +30,10 @@ def prepare_tests(client: LLMRouterClient):
         [SimplifyTextModelTest(client=client), Models.speakleash_bielik_2_3],
         [
             GenerateQuestionFromTextsModelTest(client=client),
+            Models.speakleash_bielik_2_3,
+        ],
+        [
+            GenerateLabelModelTest(client=client),
             Models.speakleash_bielik_2_3,
         ],
         [PingTest(client=client), None],
