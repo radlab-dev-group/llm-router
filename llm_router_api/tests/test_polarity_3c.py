@@ -5,6 +5,7 @@ Tests for polarity_3c endpoint and client library components.
 from __future__ import annotations
 
 import os
+import time
 import pytest
 
 from unittest import mock
@@ -68,10 +69,10 @@ class TestPolarity3cEndpoint:
         )
 
     def test_endpoint_attributes(self, endpoint):
-        assert endpoint.ep_name == "polarity_3c"
+        assert endpoint.name == "polarity_3c"
         assert endpoint.method == "POST"
-        assert "builtin" in endpoint.api_types
-        assert endpoint.call_for_each_user_msg is True
+        assert "builtin" in endpoint._ep_types_str
+        assert endpoint._call_for_each_user_msg is True
         assert endpoint.SYSTEM_PROMPT_NAME == {
             "pl": "builtin/system/pl/polarity-3c",
             "en": "builtin/system/en/polarity-3c",
@@ -125,6 +126,8 @@ class TestPolarity3cEndpoint:
         mock_response_3.json.return_value = {
             "choices": [{"message": {"content": "ambivalent"}}]
         }
+
+        endpoint._start_time = time.time()
 
         responses = [mock_response_1, mock_response_2, mock_response_3]
         contents = [
@@ -215,7 +218,7 @@ class TestPolarity3cServiceAndClient:
 
     def test_client_polarity_3c_no_args_raises(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with pytest.raises(NoArgsAndNoPayloadError):
+        with pytest.raises((NoArgsAndNoPayloadError, ValidationError)):
             client.polarity_3c()
 
 

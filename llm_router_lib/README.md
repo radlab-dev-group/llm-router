@@ -8,7 +8,7 @@ LLM‑Router service.
 - The **data models** live in `llm_router_lib/data_models` and describe every request payload the router accepts.
 - The **client** (`LLMRouterClient`) offers a high‑level, Pythonic API that hides HTTP details, retries, and error
   handling.
-- Low‑level **service classes** (`ConversationService`, `ExtendedConversationService`, `TranslateTextService`,
+- Low‑level **service classes** (`ConversationWithModelService`, `ExtendedConversationWithModelService`, `TranslateService`,
   `GenerativeAnswerService`, health services) perform the actual HTTP calls and can be used directly when finer‑grained
   control is required.
 - `HttpRequester` (in `utils/http.py`) is a small wrapper around `requests` that adds logging, configurable retries, and
@@ -73,9 +73,9 @@ print(response)  # → {'status': True, 'body': {...}}
 You can also pass a `pydantic` model instance directly:
 
 ```python
-from llm_router_lib.data_models.builtin_chat import GenerativeConversationModel
+from llm_router_lib.data_models.builtin_chat import ConversationWithModelRequest
 
-model = GenerativeConversationModel(
+model = ConversationWithModelRequest(
     model_name="google/gemma-3-12b-it",
     user_last_statement="Hello, how are you?",
     temperature=0.7,
@@ -101,20 +101,20 @@ class BaseModelOptions(BaseModel):
 
 | Model                                 | Required fields                     | Optional / extra fields                                   |
 |---------------------------------------|-------------------------------------|-----------------------------------------------------------|
-| `GenerativeConversationModel`         | `model_name`, `user_last_statement` | `temperature`, `max_new_tokens`, `historical_messages`, … |
-| `ExtendedGenerativeConversationModel` | All of the above + `system_prompt`  | –                                                         |
+| `ConversationWithModelRequest`         | `model_name`, `user_last_statement` | `temperature`, `max_new_tokens`, `historical_messages`, … |
+| `ExtendedConversationWithModelRequest` | All of the above + `system_prompt`  | –                                                         |
 
 ### Utility models (selected examples)
 
 | Model                                 | Required fields                        | Optional fields (generation parameters)                                   |
 |---------------------------------------|----------------------------------------|---------------------------------------------------------------------------|
-| `GenerateQuestionFromTextsModel`      | `texts` + `model_name`                 | `number_of_questions`, generation opts                                    |
+| `GenerateQuestionsModel`      | `texts` + `model_name`                 | `number_of_questions`, generation opts                                    |
 | `GenerateArticleFromTextModel`        | `text` + `model_name`                  | generation opts                                                           |
-| `TranslateTextModel`                  | `texts` + `model_name`                 | generation opts                                                           |
-| `AnswerBasedOnTheContextModel`        | `question_str`, `texts` + `model_name` | `doc_name_in_answer`, `question_prompt`, `system_prompt`, generation opts |
+| `TranslateModel`                  | `texts` + `model_name`                 | generation opts                                                           |
+| `GenerativeAnswerModel`        | `question_str`, `texts` + `model_name` | `doc_name_in_answer`, `question_prompt`, `system_prompt`, generation opts |
 | `OpenAIChatModel` (OpenAI‑compatible) | `model`, `messages`                    | `stream`, `keep_alive`, `language`, `options`                             |
 | `SimplifyTextModel`                   | `texts`, `model_name`                  | generation opts                                                           |
-| `CreateArticleFromNewsListModel`      | `user_query`, `texts`, `model_name`    | `article_type`, generation opts                                           |
+| `CreateFullArticleFromTextsModel`      | `user_query`, `texts`, `model_name`    | `article_type`, generation opts                                           |
 | `GenerateLabelModel`                  | `texts` + `model_name`                 | generation opts                                                           |
 
 *(All utility models inherit from `BaseModelOptions` and therefore share the `mask_payload` and `masker_pipeline`
@@ -126,12 +126,12 @@ If you need direct access to the HTTP layer, the library exposes a set of servic
 
 | Service class                       | Endpoint (relative to `api`)            | Payload model (if any)                |
 |-------------------------------------|-----------------------------------------|---------------------------------------|
-| `ConversationService`               | `/api/conversation_with_model`          | `GenerativeConversationModel`         |
-| `ExtendedConversationService`       | `/api/extended_conversation_with_model` | `ExtendedGenerativeConversationModel` |
-| `TranslateTextService`              | `/api/translate`                        | `TranslateTextModel`                  |
+| `ConversationWithModelService`               | `/api/conversation_with_model`          | `ConversationWithModelRequest`         |
+| `ExtendedConversationWithModelService`       | `/api/extended_conversation_with_model` | `ExtendedConversationWithModelRequest` |
+| `TranslateService`              | `/api/translate`                        | `TranslateModel`                  |
 | `SimplifyTextService`               | `/api/simplify_text`                    | `SimplifyTextModel`                   |
-| `GenerativeAnswerService`           | `/api/generative_answer`                | `AnswerBasedOnTheContextModel`        |
-| `GenerateQuestionsFromTextsService` | `/api/generate_questions`               | `GenerateQuestionFromTextsModel`      |
+| `GenerativeAnswerService`           | `/api/generative_answer`                | `GenerativeAnswerModel`        |
+| `GenerateQuestionsService` | `/api/generate_questions`               | `GenerateQuestionsModel`      |
 | `GenerateLabelService`              | `/api/generate_label`                   | `GenerateLabelModel`                  |
 | `PingService`                       | `/api/ping`                             | *none*                                |
 | `VersionService`                    | `/api/version`                          | *none*                                |
@@ -142,14 +142,14 @@ perform JSON parsing and raise the library‑specific exceptions on failure.
 ### Example: using a service directly
 
 ```python
-from llm_router_lib.services.conversation import ConversationService
+from llm_router_lib.services.conversation import ConversationWithModelService
 from llm_router_lib.utils.http import HttpRequester
 import logging
 
 http = HttpRequester(base_url="http://localhost:8080", token="...", timeout=10)
 logger = logging.getLogger("demo")
 
-service = ConversationService(http, logger)
+service = ConversationWithModelService(http, logger)
 payload = {
     "model_name": "google/gemma-3-12b-it",
     "user_last_statement": "Hi!",
@@ -164,13 +164,13 @@ print(response)
 
 | Method                                                                                                                   | Description                                                                                                                                                                                                                                                   |
 |--------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `conversation_with_model(payload)`                                                                                       | Calls `/api/conversation_with_model`. Accepts a dict **or** a `GenerativeConversationModel`.                                                                                                                                                                  |
-| `extended_conversation_with_model(payload)`                                                                              | Calls `/api/extended_conversation_with_model`. Accepts a dict **or** an `ExtendedGenerativeConversationModel`.                                                                                                                                                |
-| `translate(payload=None, texts=None, model=None)`                                                                        | Calls `/api/translate`. Three usage patterns: <br>1️⃣ Pass a ready‑made dict.<br>2️⃣ Pass a `TranslateTextModel` instance.<br>3️⃣ Provide `texts` + `model` and let the client build the model.                                                                     |
-| `simplify_texts(payload=None, texts=None, model=None)`                                                                   | Calls `/api/simplify_text`. Three usage patterns: <br>1️⃣ Pass a ready‑made dict.<br>2️⃣ Pass a `SimplifyTextModel` instance.<br>3️⃣ Provide `texts` + `model` and let the client build the model.                                                                  |
-| `generate_questions_from_texts(payload=None, texts=None, number_of_questions=1, model=None)`                             | Calls `/api/generate_questions`. Generates questions from input texts. Alias: `generate_questions`.                                                                                                                                                           |
+| `conversation_with_model(payload)`                                                                                       | Calls `/api/conversation_with_model`. Accepts a dict **or** a `ConversationWithModelRequest`.                                                                                                                                                                  |
+| `extended_conversation_with_model(payload)`                                                                              | Calls `/api/extended_conversation_with_model`. Accepts a dict **or** an `ExtendedConversationWithModelRequest`.                                                                                                                                                |
+| `translate(payload=None, texts=None, model=None)`                                                                        | Calls `/api/translate`. Three usage patterns: <br>1️⃣ Pass a ready‑made dict.<br>2️⃣ Pass a `TranslateModel` instance.<br>3️⃣ Provide `texts` + `model` and let the client build the model.                                                                     |
+| `simplify_text(payload=None, texts=None, model=None)`                                                                   | Calls `/api/simplify_text`. Three usage patterns: <br>1️⃣ Pass a ready‑made dict.<br>2️⃣ Pass a `SimplifyTextModel` instance.<br>3️⃣ Provide `texts` + `model` and let the client build the model.                                                                  |
+| `generate_questions(payload=None, texts=None, number_of_questions=1, model=None)`                             | Calls `/api/generate_questions`. Generates questions from input texts. Alias: `generate_questions`.                                                                                                                                                           |
 | `generate_label(payload=None, texts=None, model=None)`                                                                   | Calls `/api/generate_label`. Generates a single category name (label) from a list of texts. Three usage patterns: <br>1️⃣ Pass a ready‑made dict.<br>2️⃣ Pass a `GenerateLabelModel` instance.<br>3️⃣ Provide `texts` + `model` and let the client build the model. |
-| `generative_answer(payload=None, model=None, texts=None, question_str=None)`                                             | Calls `/api/generative_answer`. Works with a dict, a `AnswerBasedOnTheContextModel` instance, or explicit arguments.                                                                                                                                          |
+| `generative_answer(payload=None, model=None, texts=None, question_str=None)`                                             | Calls `/api/generative_answer`. Works with a dict, a `GenerativeAnswerModel` instance, or explicit arguments.                                                                                                                                          |
 | `ping()`                                                                                                                 | Calls `/api/ping` – health‑check endpoint.                                                                                                                                                                                                                    |
 | `version()`                                                                                                              | Calls `/api/version` – retrieves router version information.                                                                                                                                                                                                  |
 | `translate(...)` and `generative_answer(...)` also raise `NoArgsAndNoPayloadError` if called without required arguments. |
@@ -186,12 +186,12 @@ following exceptions (defined in `exceptions.py`):
 
 :::tip **Field naming across models**
 
-Models for the built‑in generative endpoints use ``model_name`` as the field key (e.g. ``GenerativeConversationModel``).
+Models for the built‑in generative endpoints use ``model_name`` as the field key (e.g. ``ConversationWithModelRequest``).
 The OpenAI‑compatible endpoint model uses ``model`` instead, to match the official OpenAI API schema:
 
 | Model class                     | Key for model identifier |
 |---------------------------------|--------------------------|
-| ``GenerativeConversationModel`` | ``model_name``           |
+| ``ConversationWithModelRequest`` | ``model_name``           |
 | ``OpenAIChatModel``             | ``model``                |
 
 :::

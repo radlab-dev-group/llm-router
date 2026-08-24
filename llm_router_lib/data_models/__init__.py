@@ -6,7 +6,7 @@ the router accepts (conversation, translation, article generation, etc.) as well
 as shared configuration constants.  All public classes and constants are exported
 via ``__all__`` so callers can import directly from the package root:
 
-    from llm_router_lib.data_models import GenerativeConversationModel
+    from llm_router_lib.data_models import ConversationWithModelRequest
 
 All model classes inherit from :class:`pydantic.BaseModel` and benefit from its
 automatic validation, serialisation (``model_dump()``), and JSON schema support.
@@ -14,8 +14,8 @@ automatic validation, serialisation (``model_dump()``), and JSON schema support.
 
 from llm_router_lib.data_models.base_model import BaseModelOptions
 from llm_router_lib.data_models.builtin_chat import (
-    GenerativeConversationModel,
-    ExtendedGenerativeConversationModel,
+    ConversationWithModelRequest,
+    ExtendedConversationWithModelRequest,
     GENAI_CONV_REQ_ARGS,
     GENAI_CONV_OPT_ARGS,
     EXT_GENAI_CONV_REQ_ARGS,
@@ -25,14 +25,14 @@ from llm_router_lib.data_models.builtin_utils import (
     Polarity3cModel,
     POLARITY_3C_REQ,
     POLARITY_3C_OPT,
-    TranslateTextModel,
+    TranslateModel,
     SimplifyTextModel,
-    GenerateQuestionFromTextsModel,
+    GenerateQuestionsModel,
     GenerateArticleFromTextModel,
-    CreateArticleFromNewsListModel,
-    AnswerBasedOnTheContextModel,
-    CONTEXT_ANSWER_REQ,
-    CONTEXT_ANSWER_OPT,
+    CreateFullArticleFromTextsModel,
+    GenerativeAnswerModel,
+    GENERATIVE_ANSWER_REQ,
+    GENERATIVE_ANSWER_OPT,
     GenerateLabelModel,
     GENERATE_LABEL_REQ,
     GENERATE_LABEL_OPT,
@@ -44,8 +44,8 @@ __all__ = [
     # Shared config
     "BaseModelOptions",
     # Conversation models
-    "GenerativeConversationModel",
-    "ExtendedGenerativeConversationModel",
+    "ConversationWithModelRequest",
+    "ExtendedConversationWithModelRequest",
     "GENAI_CONV_REQ_ARGS",
     "GENAI_CONV_OPT_ARGS",
     "EXT_GENAI_CONV_REQ_ARGS",
@@ -54,14 +54,14 @@ __all__ = [
     "Polarity3cModel",
     "POLARITY_3C_REQ",
     "POLARITY_3C_OPT",
-    "TranslateTextModel",
+    "TranslateModel",
     "SimplifyTextModel",
-    "GenerateQuestionFromTextsModel",
+    "GenerateQuestionsModel",
     "GenerateArticleFromTextModel",
-    "CreateArticleFromNewsListModel",
-    "AnswerBasedOnTheContextModel",
-    "CONTEXT_ANSWER_REQ",
-    "CONTEXT_ANSWER_OPT",
+    "CreateFullArticleFromTextsModel",
+    "GenerativeAnswerModel",
+    "GENERATIVE_ANSWER_REQ",
+    "GENERATIVE_ANSWER_OPT",
     "GenerateLabelModel",
     "GENERATE_LABEL_REQ",
     "GENERATE_LABEL_OPT",

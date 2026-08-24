@@ -22,25 +22,27 @@ from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
     Polarity3cService,
-    TranslateTextService,
+    TranslateService,
     SimplifyTextService,
     GenerativeAnswerService,
-    GenerateNewsFromTextService,
+    GenerateArticleFromTextService,
     CreateFullArticleFromTextsService,
     GenerateArticleFromTextsService,
-    GenerateQuestionsFromTextsService,
+    GenerateQuestionsService,
     GenerateLabelService,
 )
 from llm_router_lib.services.conversation import (
-    ConversationService,
-    ExtendedConversationService,
+    ConversationWithModelService,
+    ExtendedConversationWithModelService,
 )
 
 # ------------------------------------------------------------------ #
 # Type aliases for payload parameter union types (repeated across methods).
 # ------------------------------------------------------------------ #
-_ConvPayload = Union[Dict[str, Any], ConversationService.model_cls]
-_ExtConvPayload = Union[Dict[str, Any], ExtendedConversationService.model_cls]
+_ConvPayload = Union[Dict[str, Any], ConversationWithModelService.model_cls]
+_ExtConvPayload = Union[
+    Dict[str, Any], ExtendedConversationWithModelService.model_cls
+]
 
 
 class LLMRouterClient:
@@ -182,12 +184,12 @@ class LLMRouterClient:
         Call the standard conversation endpoint.
 
         The method accepts either a raw dictionary or a
-        :class:`GenerativeConversationModel` instance; in the latter case the
+        :class:`ConversationWithModelRequest` instance; in the latter case the
         model is serialised via ``model_dump()`` before the request is sent.
 
         Parameters
         ----------
-        payload : Union[Dict[str, Any], GenerativeConversationModel]
+        payload : Union[Dict[str, Any], ConversationWithModelRequest]
             The request body to be forwarded to ``/api/conversation_with_model``.
 
         Returns
@@ -195,10 +197,12 @@ class LLMRouterClient:
         dict
             Parsed JSON response from the router.
         """
-        if isinstance(payload, ConversationService.model_cls):
+        if isinstance(payload, ConversationWithModelService.model_cls):
             payload = payload.model_dump()
 
-        return ConversationService(self.http, self.logger).call_post(payload)
+        return ConversationWithModelService(self.http, self.logger).call_post(
+            payload
+        )
 
     def extended_conversation_with_model(
         self,
@@ -210,7 +214,7 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : Union[Dict[str, Any], ExtendedGenerativeConversationModel]
+        payload : Union[Dict[str, Any], ExtendedConversationWithModelRequest]
             The request body for ``/api/extended_conversation_with_model``.
 
         Returns
@@ -218,9 +222,11 @@ class LLMRouterClient:
         dict
             Parsed JSON response from the router.
         """
-        if isinstance(payload, ExtendedConversationService.model_cls):
+        if isinstance(payload, ExtendedConversationWithModelService.model_cls):
             payload = payload.model_dump()
-        return ExtendedConversationService(self.http, self.logger).call_post(payload)
+        return ExtendedConversationWithModelService(
+            self.http, self.logger
+        ).call_post(payload)
 
     # ------------------------------------------------------------------ #
     def polarity_3c(
@@ -291,7 +297,7 @@ class LLMRouterClient:
         payload: Optional[
             Union[
                 Dict[str, Any],
-                TranslateTextService.model_cls,
+                TranslateService.model_cls,
             ]
         ] = None,
         texts: Optional[List[str]] = None,
@@ -305,18 +311,18 @@ class LLMRouterClient:
         The method can be used in three ways:
 
         1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
-           conforms to :class:`TranslateTextModel`.
+           conforms to :class:`TranslateModel`.
         2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``TranslateTextModel`` and will be serialized automatically.
+           ``TranslateModel`` and will be serialized automatically.
         3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``TranslateTextModel`` instance on‑the‑fly.
+           ``TranslateModel`` instance on‑the‑fly.
 
         If neither a payload nor the ``texts``/``model`` pair is supplied, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], TranslateTextModel]]
+        payload : Optional[Union[Dict[str, Any], TranslateModel]]
             Optional pre‑constructed request body.
         texts : Optional[List[str]]
             List of source strings to translate (required if ``payload`` is not
@@ -339,16 +345,16 @@ class LLMRouterClient:
             If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
         """
         payload = self._build_payload(
-            model_cls=TranslateTextService.model_cls,
+            model_cls=TranslateService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             texts=texts,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
         )
-        return TranslateTextService(self.http, self.logger).call_post(payload)
+        return TranslateService(self.http, self.logger).call_post(payload)
 
-    def simplify_texts(
+    def simplify_text(
         self,
         payload: Optional[
             Union[
@@ -431,24 +437,26 @@ class LLMRouterClient:
         )
         return GenerativeAnswerService(self.http, self.logger).call_post(payload)
 
-    def generate_news_from_text(
+    def generate_article_from_text(
         self,
         payload: Optional[
             Union[
                 Dict[str, Any],
-                GenerateNewsFromTextService.model_cls,
+                GenerateArticleFromTextService.model_cls,
             ]
         ] = None,
         text: Optional[str] = None,
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
         payload = self._build_payload(
-            model_cls=GenerateNewsFromTextService.model_cls,
+            model_cls=GenerateArticleFromTextService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             text=text,
         )
-        return GenerateNewsFromTextService(self.http, self.logger).call_post(payload)
+        return GenerateArticleFromTextService(self.http, self.logger).call_post(
+            payload
+        )
 
     def generate_article_from_texts(
         self,
@@ -512,12 +520,12 @@ class LLMRouterClient:
             payload
         )
 
-    def generate_questions_from_texts(
+    def generate_questions(
         self,
         payload: Optional[
             Union[
                 Dict[str, Any],
-                GenerateQuestionsFromTextsService.model_cls,
+                GenerateQuestionsService.model_cls,
             ]
         ] = None,
         texts: Optional[List[str]] = None,
@@ -531,18 +539,18 @@ class LLMRouterClient:
         The method can be used in three ways:
 
         1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
-           conforms to :class:`GenerateQuestionFromTextsModel`.
+           conforms to :class:`GenerateQuestionsModel`.
         2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``GenerateQuestionFromTextsModel`` and will be serialized automatically.
+           ``GenerateQuestionsModel`` and will be serialized automatically.
         3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``GenerateQuestionFromTextsModel`` instance on‑the‑fly.
+           ``GenerateQuestionsModel`` instance on‑the‑fly.
 
         If neither a payload nor the ``texts``/``model`` pair is supplied, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], GenerateQuestionFromTextsModel]]
+        payload : Optional[Union[Dict[str, Any], GenerateQuestionsModel]]
             Optional pre‑constructed request body.
         texts : Optional[List[str]]
             List of source strings from which to generate questions (required if
@@ -563,37 +571,13 @@ class LLMRouterClient:
             If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
         """
         payload = self._build_payload(
-            model_cls=GenerateQuestionsFromTextsService.model_cls,
+            model_cls=GenerateQuestionsService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             texts=texts,
             number_of_questions=number_of_questions,
         )
-        return GenerateQuestionsFromTextsService(self.http, self.logger).call_post(
-            payload
-        )
-
-    def generate_questions(
-        self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                GenerateQuestionsFromTextsService.model_cls,
-            ]
-        ] = None,
-        texts: Optional[List[str]] = None,
-        number_of_questions: Optional[int] = 1,
-        model: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Alias for :meth:`generate_questions_from_texts`.
-        """
-        return self.generate_questions_from_texts(
-            payload=payload,
-            texts=texts,
-            number_of_questions=number_of_questions,
-            model=model,
-        )
+        return GenerateQuestionsService(self.http, self.logger).call_post(payload)
 
     def generate_label(
         self,

@@ -13,23 +13,22 @@ os.environ.setdefault("LLM_ROUTER_MINIMUM", "1")
 os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 
 from llm_router_lib.data_models.builtin_utils import (
-    GenerateQuestionFromTextsModel,
-    GENERATE_Q_REQ,
-    GENERATE_Q_OPT,
+    GenerateQuestionsModel,
+    GENERATE_QUESTIONS_REQ,
+    GENERATE_QUESTIONS_OPT,
 )
 from llm_router_lib.services.utils import (
-    GenerateQuestionsFromTextsService,
-    GenerateQuestionFromTextsService,
+    GenerateQuestionsService,
 )
 from llm_router_lib.client import LLMRouterClient
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 
 
 class TestGenerateQuestionsDataModel(unittest.TestCase):
-    """Tests for GenerateQuestionFromTextsModel pydantic validation."""
+    """Tests for GenerateQuestionsModel pydantic validation."""
 
     def test_valid_payload(self):
-        model = GenerateQuestionFromTextsModel(
+        model = GenerateQuestionsModel(
             model_name="test-model",
             texts=["Tekst 1", "Tekst 2"],
             number_of_questions=3,
@@ -42,7 +41,7 @@ class TestGenerateQuestionsDataModel(unittest.TestCase):
         self.assertEqual(model.temperature, 0.7)
 
     def test_default_number_of_questions(self):
-        model = GenerateQuestionFromTextsModel(
+        model = GenerateQuestionsModel(
             model_name="test-model",
             texts=["Tekst 1"],
         )
@@ -50,46 +49,41 @@ class TestGenerateQuestionsDataModel(unittest.TestCase):
 
     def test_missing_model_name_raises(self):
         with self.assertRaises(ValidationError):
-            GenerateQuestionFromTextsModel(texts=["Tekst"])
+            GenerateQuestionsModel(texts=["Tekst"])
 
     def test_missing_texts_raises(self):
         with self.assertRaises(ValidationError):
-            GenerateQuestionFromTextsModel(model_name="test-model")
+            GenerateQuestionsModel(model_name="test-model")
 
     def test_constants(self):
-        self.assertIn("texts", GENERATE_Q_REQ)
-        self.assertIn("model_name", GENERATE_Q_REQ)
-        self.assertIn("number_of_questions", GENERATE_Q_OPT)
+        self.assertIn("texts", GENERATE_QUESTIONS_REQ)
+        self.assertIn("model_name", GENERATE_QUESTIONS_REQ)
+        self.assertIn("number_of_questions", GENERATE_QUESTIONS_OPT)
 
 
 class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
-    """Tests for GenerateQuestionsFromTextsService and LLMRouterClient."""
+    """Tests for GenerateQuestionsService and LLMRouterClient."""
 
     def test_service_attributes(self):
         self.assertEqual(
-            GenerateQuestionsFromTextsService.endpoint,
+            GenerateQuestionsService.endpoint,
             "/api/generate_questions",
         )
         self.assertEqual(
-            GenerateQuestionsFromTextsService.model_cls,
-            GenerateQuestionFromTextsModel,
-        )
-        self.assertIs(
-            GenerateQuestionFromTextsService, GenerateQuestionsFromTextsService
+            GenerateQuestionsService.model_cls,
+            GenerateQuestionsModel,
         )
 
     def test_client_generate_questions_with_model_instance(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(
-            GenerateQuestionsFromTextsService, "call_post"
-        ) as mock_call:
+        with mock.patch.object(GenerateQuestionsService, "call_post") as mock_call:
             mock_call.return_value = {"status": True, "response": []}
-            payload = GenerateQuestionFromTextsModel(
+            payload = GenerateQuestionsModel(
                 model_name="test-model",
                 texts=["Przykładowy tekst"],
                 number_of_questions=2,
             )
-            resp = client.generate_questions_from_texts(payload=payload)
+            resp = client.generate_questions(payload=payload)
             self.assertEqual(resp, {"status": True, "response": []})
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
@@ -99,26 +93,22 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
 
     def test_client_generate_questions_with_dict_payload(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(
-            GenerateQuestionsFromTextsService, "call_post"
-        ) as mock_call:
+        with mock.patch.object(GenerateQuestionsService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             payload = {
                 "model_name": "test-model",
                 "texts": ["Tekst"],
                 "number_of_questions": 1,
             }
-            resp = client.generate_questions_from_texts(payload=payload)
+            resp = client.generate_questions(payload=payload)
             self.assertEqual(resp, {"status": True})
             mock_call.assert_called_once_with(payload)
 
     def test_client_generate_questions_with_args(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(
-            GenerateQuestionsFromTextsService, "call_post"
-        ) as mock_call:
+        with mock.patch.object(GenerateQuestionsService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
-            resp = client.generate_questions_from_texts(
+            resp = client.generate_questions(
                 texts=["Tekst A", "Tekst B"],
                 number_of_questions=3,
                 model="test-model",
@@ -132,9 +122,7 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
 
     def test_client_generate_questions_alias(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(
-            GenerateQuestionsFromTextsService, "call_post"
-        ) as mock_call:
+        with mock.patch.object(GenerateQuestionsService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.generate_questions(
                 texts=["Tekst A"],
@@ -151,11 +139,9 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
         client = LLMRouterClient(
             api="http://localhost:8080", default_model="def-model"
         )
-        with mock.patch.object(
-            GenerateQuestionsFromTextsService, "call_post"
-        ) as mock_call:
+        with mock.patch.object(GenerateQuestionsService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
-            resp = client.generate_questions_from_texts(texts=["Tekst"])
+            resp = client.generate_questions(texts=["Tekst"])
             self.assertEqual(resp, {"status": True})
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
@@ -164,7 +150,7 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
     def test_client_generate_questions_no_args_raises(self):
         client = LLMRouterClient(api="http://localhost:8080")
         with self.assertRaises((NoArgsAndNoPayloadError, ValidationError)):
-            client.generate_questions_from_texts()
+            client.generate_questions()
 
 
 if __name__ == "__main__":

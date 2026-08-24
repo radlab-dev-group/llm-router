@@ -9,12 +9,12 @@ class.
 """
 
 from llm_router_lib.data_models.builtin_utils import (
-    GenerateQuestionFromTextsModel,
+    GenerateQuestionsModel,
     Polarity3cModel,
-    TranslateTextModel,
-    AnswerBasedOnTheContextModel,
+    TranslateModel,
+    GenerativeAnswerModel,
     GenerateArticleFromTextModel,
-    CreateArticleFromNewsListModel,
+    CreateFullArticleFromTextsModel,
     GenerateArticleFromTextsModel,
     SimplifyTextModel,
     GenerateLabelModel,
@@ -47,11 +47,11 @@ class Polarity3cService(BaseConversationServiceInterface):
     model_cls = Polarity3cModel
 
 
-class TranslateTextService(BaseConversationServiceInterface):
+class TranslateService(BaseConversationServiceInterface):
     """
     Service for the ``/api/translate`` endpoint.
 
-    The service posts a payload validated by :class:`TranslateTextModel` to the
+    The service posts a payload validated by :class:`TranslateModel` to the
     translation endpoint and returns the parsed JSON response.  All request
     handling (including error conversion to :class:`LLMRouterError`) is
     inherited from :class:`BaseConversationServiceInterface`.
@@ -62,11 +62,11 @@ class TranslateTextService(BaseConversationServiceInterface):
         Relative URL of the translation endpoint (``"/api/translate"``).
     model_cls : type
         The Pydantic model class used to validate request data
-        (:class:`TranslateTextModel`).
+        (:class:`TranslateModel`).
     """
 
     endpoint = "/api/translate"
-    model_cls = TranslateTextModel
+    model_cls = TranslateModel
 
 
 class SimplifyTextService(BaseConversationServiceInterface):
@@ -93,10 +93,10 @@ class SimplifyTextService(BaseConversationServiceInterface):
 
 class GenerativeAnswerService(BaseConversationServiceInterface):
     endpoint = "/api/generative_answer"
-    model_cls = AnswerBasedOnTheContextModel
+    model_cls = GenerativeAnswerModel
 
 
-class GenerateNewsFromTextService(BaseConversationServiceInterface):
+class GenerateArticleFromTextService(BaseConversationServiceInterface):
     endpoint = "/api/generate_article_from_text"
     model_cls = GenerateArticleFromTextModel
 
@@ -105,12 +105,12 @@ class CreateFullArticleFromTextsService(BaseConversationServiceInterface):
     """
     Service for the ``/api/create_full_article_from_texts`` endpoint.
 
-    Posts a payload validated by :class:`CreateArticleFromNewsListModel` and
+    Posts a payload validated by :class:`CreateFullArticleFromTextsModel` and
     returns the parsed JSON response.
     """
 
     endpoint = "/api/create_full_article_from_texts"
-    model_cls = CreateArticleFromNewsListModel
+    model_cls = CreateFullArticleFromTextsModel
 
 
 class GenerateArticleFromTextsService(BaseConversationServiceInterface):
@@ -125,19 +125,16 @@ class GenerateArticleFromTextsService(BaseConversationServiceInterface):
     model_cls = GenerateArticleFromTextsModel
 
 
-class GenerateQuestionsFromTextsService(BaseConversationServiceInterface):
+class GenerateQuestionsService(BaseConversationServiceInterface):
     """
     Service for the ``/api/generate_questions`` endpoint.
 
-    Posts a payload validated by :class:`GenerateQuestionFromTextsModel` and
+    Posts a payload validated by :class:`GenerateQuestionsModel` and
     returns the parsed JSON response.
     """
 
     endpoint = "/api/generate_questions"
-    model_cls = GenerateQuestionFromTextsModel
-
-
-GenerateQuestionFromTextsService = GenerateQuestionsFromTextsService
+    model_cls = GenerateQuestionsModel
 
 
 class GenerateLabelService(BaseConversationServiceInterface):

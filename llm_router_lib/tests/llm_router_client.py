@@ -5,13 +5,13 @@ from llm_router_lib import LLMRouterClient
 from llm_router_lib.tests.builtin_conversation import (
     ConversationWithModelTest,
     ExtendedConversationWithModelTest,
-    AnswerBasedOnTheContextModelTest,
+    GenerativeAnswerModelTest,
 )
 from llm_router_lib.tests.builtin_health import PingTest, VersionTest
 from llm_router_lib.tests.builtin_utils import (
-    TranslateTextModelTest,
+    TranslateModelTest,
     SimplifyTextModelTest,
-    GenerateQuestionFromTextsModelTest,
+    GenerateQuestionsModelTest,
     GenerateLabelModelTest,
 )
 
@@ -25,11 +25,11 @@ def prepare_tests(client: LLMRouterClient):
     return [
         [ConversationWithModelTest(client=client), Models.google_gemma_vllm],
         [ExtendedConversationWithModelTest(client=client), Models.google_gemma_vllm],
-        [AnswerBasedOnTheContextModelTest(client=client), Models.google_gemma_vllm],
-        [TranslateTextModelTest(client=client), Models.speakleash_bielik_2_3],
+        [GenerativeAnswerModelTest(client=client), Models.google_gemma_vllm],
+        [TranslateModelTest(client=client), Models.speakleash_bielik_2_3],
         [SimplifyTextModelTest(client=client), Models.speakleash_bielik_2_3],
         [
-            GenerateQuestionFromTextsModelTest(client=client),
+            GenerateQuestionsModelTest(client=client),
             Models.speakleash_bielik_2_3,
         ],
         [

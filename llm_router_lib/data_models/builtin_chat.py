@@ -10,7 +10,7 @@ temperature, token limits, and language handling.
 
 from typing import List, Dict, Optional
 
-from llm_router_api.base.constants_base import DEFAULT_EP_LANGUAGE
+from llm_router_lib.core.constants import DEFAULT_EP_LANGUAGE
 from llm_router_lib.core.constants import (
     DEFAULT_TEMPERATURE,
     DEFAULT_MAX_NEW_TOKENS,
@@ -72,7 +72,7 @@ class GenerativeOptionsModel(GenerativeOptions):
     model_name: str
 
 
-class GenerativeConversationModel(GenerativeOptionsModel):
+class ConversationWithModelRequest(GenerativeOptionsModel):
     """
     Payload model for a simple conversation endpoint.
 
@@ -90,7 +90,7 @@ class GenerativeConversationModel(GenerativeOptionsModel):
     historical_messages: List[Dict[str, str]] = []
 
 
-class ExtendedGenerativeConversationModel(GenerativeConversationModel):
+class ExtendedConversationWithModelRequest(ConversationWithModelRequest):
     """
     Conversation payload that also accepts an explicit system prompt.
 

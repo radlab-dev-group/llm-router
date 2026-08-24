@@ -21,7 +21,7 @@ from llm_router_lib.data_models.builtin_chat import (
 # -------------------------------------------------------------------
 # Generate question from texts
 # -------------------------------------------------------------------
-class GenerateQuestionFromTextsModel(GenerativeOptionsModel):
+class GenerateQuestionsModel(GenerativeOptionsModel):
     """
     Payload for the "generate‑questions" endpoint.
 
@@ -38,12 +38,12 @@ class GenerateQuestionFromTextsModel(GenerativeOptionsModel):
 
 
 # Names of parameters that must be present in a request to
-# ``GenerateQuestionFromTextsModel``
-GENERATE_Q_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+# ``GenerateQuestionsModel``
+GENERATE_QUESTIONS_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
 
 # Optional parameters that may be supplied
 # to fine‑tune generation for question creation.
-GENERATE_Q_OPT = ["number_of_questions"] + GENAI_OPT_ARGS_BASE
+GENERATE_QUESTIONS_OPT = ["number_of_questions"] + GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
@@ -64,10 +64,10 @@ class GenerateArticleFromTextModel(GenerativeOptionsModel):
 
 
 # Required fields for ``GenerateArticleFromTextModel``.
-GENERATE_ART_REQ = ["text"] + GENAI_REQ_ARGS_BASE
+GENERATE_ARTICLE_FROM_TEXT_REQ = ["text"] + GENAI_REQ_ARGS_BASE
 
 # Optional generation parameters for article creation.
-GENERATE_ART_OPT = GENAI_OPT_ARGS_BASE
+GENERATE_ARTICLE_FROM_TEXT_OPT = GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
@@ -96,7 +96,7 @@ POLARITY_3C_OPT = GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 # Translate text model
 # -------------------------------------------------------------------
-class TranslateTextModel(GenerativeOptionsModel):
+class TranslateModel(GenerativeOptionsModel):
     """
     Payload for the "translate" endpoint.
 
@@ -109,7 +109,7 @@ class TranslateTextModel(GenerativeOptionsModel):
     texts: List[str]
 
 
-# Required arguments for ``TranslateTextModel``.
+# Required arguments for ``TranslateModel``.
 TRANSLATE_TEXT_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
 
 # Optional generation parameters for translation.
@@ -142,7 +142,7 @@ SIMPLIFY_TEXT_OPT = GENAI_OPT_ARGS_BASE
 # -------------------------------------------------------------------
 # Create article from a mews list (like plg creator)
 # -------------------------------------------------------------------
-class CreateArticleFromNewsListModel(GenerativeOptionsModel):
+class CreateFullArticleFromTextsModel(GenerativeOptionsModel):
     """
     Payload for the "full‑article" endpoint.
 
@@ -162,11 +162,11 @@ class CreateArticleFromNewsListModel(GenerativeOptionsModel):
     article_type: Optional[str] = None
 
 
-# Required fields for ``CreateArticleFromNewsListModel``.
-FULL_ARTICLE_REQ = ["user_query", "texts"] + GENAI_REQ_ARGS_BASE
+# Required fields for ``CreateFullArticleFromTextsModel``.
+CREATE_FULL_ARTICLE_FROM_TEXTS_REQ = ["user_query", "texts"] + GENAI_REQ_ARGS_BASE
 
 # Optional generation parameters for full‑article creation.
-FULL_ARTICLE_OPT = ["article_type"] + GENAI_OPT_ARGS_BASE
+CREATE_FULL_ARTICLE_FROM_TEXTS_OPT = ["article_type"] + GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
@@ -186,14 +186,14 @@ class GenerateArticleFromTextsModel(GenerativeOptionsModel):
 
 
 # Required/optional args for the texts‑only article generator
-GENERATE_ARTICLES_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
-GENERATE_ARTICLES_OPT = GENAI_OPT_ARGS_BASE
+GENERATE_ARTICLE_FROM_TEXTS_REQ = ["texts"] + GENAI_REQ_ARGS_BASE
+GENERATE_ARTICLE_FROM_TEXTS_OPT = GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
 # Answer based on the context (RAG based)
 # -------------------------------------------------------------------
-class AnswerBasedOnTheContextModel(GenerativeOptionsModel):
+class GenerativeAnswerModel(GenerativeOptionsModel):
     """
     Payload for the "generative‑answer" endpoint.
 
@@ -224,11 +224,11 @@ class AnswerBasedOnTheContextModel(GenerativeOptionsModel):
     system_prompt: Optional[str] = None
 
 
-# Required arguments for ``AnswerBasedOnTheContextModel``.
-CONTEXT_ANSWER_REQ = ["question_str", "texts"] + GENAI_REQ_ARGS_BASE
+# Required arguments for ``GenerativeAnswerModel``.
+GENERATIVE_ANSWER_REQ = ["question_str", "texts"] + GENAI_REQ_ARGS_BASE
 
 # Optional generation parameters for context‑aware answering.
-CONTEXT_ANSWER_OPT = ["question_prompt", "system_prompt"] + GENAI_OPT_ARGS_BASE
+GENERATIVE_ANSWER_OPT = ["question_prompt", "system_prompt"] + GENAI_OPT_ARGS_BASE
 
 
 # -------------------------------------------------------------------
