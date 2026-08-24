@@ -1309,7 +1309,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             params = self._prepare_params_for_provider(
                 params=params, model_provider=api_model_provider
             )
-            params = self._ensure_alternating_roles(params=params)
+            if not self._call_for_each_user_msg:
+                # ``call_for_each_user_msg`` endpoints deliberately build one
+                # consecutive ``user`` message per source text; the HTTP
+                # executor dispatches each of them as its own
+                # ``[system, user]`` call, so the role normalizer (which merges
+                # consecutive same‑role messages) must not run on them.
+                params = self._ensure_alternating_roles(params=params)
 
             self.logger.debug(
                 f"Request model {api_model_provider.name} "
