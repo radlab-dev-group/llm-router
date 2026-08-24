@@ -402,6 +402,7 @@ streaming mechanisms can be found at: [Endpoints Overview](llm_router_api/endpoi
 | `/api/translate`                        | POST   | ❌ Requires `builtin` permission           | Translate texts                                                   |
 | `/api/generate_questions`               | POST   | ❌ Requires `builtin` permission           | Generate questions from texts                                     |
 | `/api/simplify_text`                    | POST   | ❌ Requires `builtin` permission           | Simplify input texts                                              |
+| `/api/generate_label`                   | POST   | ❌ Requires `builtin` permission           | Generate a category name (label) from input texts                 |
 | `/api/generate_article_from_texts`      | POST   | ❌ Requires `builtin` permission           | Generate a short (~A4) Polish article summarising a list of texts |
 | `/api/create_full_article_from_texts`   | POST   | ❌ Requires `builtin` permission           | Create a fuller article framed by `user_query`                    |
 | `/api/polarity_3c`                      | POST   | ❌ Requires `builtin` permission           | Detect 3-class polarity for input texts                           |
