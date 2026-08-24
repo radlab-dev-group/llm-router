@@ -27,7 +27,9 @@ os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 import pytest  # noqa: E402
 
 from llm_router_api.endpoints import http_dispatch  # noqa: E402
-from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI  # noqa: E402
+from llm_router_api.endpoints.endpoint_i import (
+    EndpointWithHttpRequestI,
+)  # noqa: E402
 
 
 class _DummyEndpoint(EndpointWithHttpRequestI):
@@ -68,10 +70,11 @@ class TestHttpDispatchSuccess:
             "ok": 1,
             "usage": {"prompt_tokens": 3, "completion_tokens": 4},
         }
-        out = ep._return_response_or_rerun(
-            None, "u", "p", {"o": 1}, {"a": 2}, {}, 0
-        )
-        assert out == {"ok": 1, "usage": {"prompt_tokens": 3, "completion_tokens": 4}}
+        out = ep._return_response_or_rerun(None, "u", "p", {"o": 1}, {"a": 2}, {}, 0)
+        assert out == {
+            "ok": 1,
+            "usage": {"prompt_tokens": 3, "completion_tokens": 4},
+        }
         ep._http_executor.call_http_request.assert_called_once_with(
             ep_url="u",
             params={"a": 2},
@@ -87,7 +90,9 @@ class TestHttpDispatchSuccess:
         ep = _make_ep()
         ep._call_for_each_user_msg = True
         ep._http_executor.call_http_request.return_value = {"ok": 1}
-        ep._return_response_or_rerun(_provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0)
+        ep._return_response_or_rerun(
+            _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
+        )
         _, kwargs = ep._http_executor.call_http_request.call_args
         assert kwargs["call_for_each_user_msg"] is True
 
@@ -139,9 +144,7 @@ class TestHttpDispatchLateBinding:
         # Rebind *after* construction — must be visible to the dispatch.
         ep._http_executor = mock.Mock()
         ep._http_executor.call_http_request.return_value = sentinel
-        out = ep._return_response_or_rerun(
-            None, "u", "p", {"o": 1}, {"a": 2}, {}, 0
-        )
+        out = ep._return_response_or_rerun(None, "u", "p", {"o": 1}, {"a": 2}, {}, 0)
         assert out is sentinel
 
 

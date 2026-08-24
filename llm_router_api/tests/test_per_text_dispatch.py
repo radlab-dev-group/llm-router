@@ -36,7 +36,9 @@ from llm_router_api.endpoints.builtin.builtin_utils import (  # noqa: E402
     SimplifyText,
     Translate,
 )
-from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI  # noqa: E402
+from llm_router_api.endpoints.endpoint_i import (
+    EndpointWithHttpRequestI,
+)  # noqa: E402
 
 T1 = "Ile lat ma córka która widzi, że nie ma jeszcze 15 lat?"
 T2 = "Hehehehehe nie wiem o co Ci chodzi ale chodzi Ci dobrze"
@@ -136,14 +138,14 @@ class TestPerTextEndToEnd:
             assert out["response"] == ["positive", "negative"]
         else:
             source_texts = [
-                entry.get("original", entry.get("text"))
-                for entry in out["response"]
+                entry.get("original", entry.get("text")) for entry in out["response"]
             ]
             assert source_texts == [T1, T2]
 
     def test_polarity_result_shape(self):
         ep, sent = _make_ep(
-            Polarity3c, response_text_for=lambda c: "positive" if c == T1 else "negative"
+            Polarity3c,
+            response_text_for=lambda c: "positive" if c == T1 else "negative",
         )
         out = ep.run_ep({"model_name": "m", "texts": [T1, T2]})
         assert out["response"][0]["original"] == T1
@@ -181,7 +183,11 @@ class TestNonPerTextStillNormalized:
         sent = []
 
         def fake_post(
-            ep_url, params, return_raw_response=False, headers=None, api_model_provider=None
+            ep_url,
+            params,
+            return_raw_response=False,
+            headers=None,
+            api_model_provider=None,
         ):
             sent.append(params["messages"])
             resp = _FakeResponse("ok")
@@ -194,13 +200,16 @@ class TestNonPerTextStillNormalized:
         ep._http_executor._call_post_with_payload = fake_post
 
         out = ep.run_ep(
-            {"messages": [{"role": "user", "content": T1}, {"role": "user", "content": T2}]}
+            {
+                "messages": [
+                    {"role": "user", "content": T1},
+                    {"role": "user", "content": T2},
+                ]
+            }
         )
 
         # exactly one HTTP call, with the two user messages merged
         assert len(sent) == 1
-        assert sent[0] == [
-            {"role": "user", "content": f"{T1}\n\n{T2}"}
-        ]
+        assert sent[0] == [{"role": "user", "content": f"{T1}\n\n{T2}"}]
         # and the (single) response is returned as JSON body
         assert out == {"choices": [{"message": {"content": "ok"}}]}
