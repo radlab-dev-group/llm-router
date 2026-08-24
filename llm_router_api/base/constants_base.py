@@ -23,9 +23,15 @@ class _DontChangeMe:
 # Default language for endpoint‑specific prompts.  The value can be overridden
 # with the environment variable LLM_ROUTER_DEFAULT_EP_LANGUAGE.
 # If the variable is absent, Polish ("pl") is used as the fallback language.
-DEFAULT_EP_LANGUAGE = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}DEFAULT_EP_LANGUAGE", "pl"
-).strip()
+#
+# The canonical definition now lives in the dependency‑free library layer
+# (``llm_router_lib.core.constants``) so that ``llm_router_lib`` does not
+# import from ``llm_router_api``.  It is re‑exported here for backward
+# compatibility with existing ``from llm_router_api.base.constants_base import
+# DEFAULT_EP_LANGUAGE`` statements.
+from llm_router_lib.core.constants import (
+    DEFAULT_EP_LANGUAGE,  # noqa: F401  (re‑export for backward compatibility)
+)
 
 
 class BalanceStrategies:

@@ -6,6 +6,24 @@ retries) as well as default generation parameters live here so they can be
 changed in a single place without risk of accidental drift.
 """
 
+import os
+
+# ------------------------------------------------------------------ #
+# Shared environment prefix + default endpoint language
+# ------------------------------------------------------------------ #
+
+# Common prefix for all LLM_ROUTER_* environment variables.  Kept in the
+# dependency‑free library layer so the API package can re‑export it for
+# backward compatibility.
+ENV_PREFIX = "LLM_ROUTER_"
+
+# Default language for endpoint‑specific prompts.  The value can be overridden
+# with the environment variable LLM_ROUTER_DEFAULT_EP_LANGUAGE.
+# If the variable is absent, Polish ("pl") is used as the fallback language.
+DEFAULT_EP_LANGUAGE = os.environ.get(
+    f"{ENV_PREFIX}DEFAULT_EP_LANGUAGE", "pl"
+).strip()
+
 # ------------------------------------------------------------------ #
 # HTTP client defaults
 # ------------------------------------------------------------------ #
