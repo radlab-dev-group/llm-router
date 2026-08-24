@@ -29,6 +29,7 @@ from llm_router_lib.services.utils import (
     CreateFullArticleFromTextsService,
     GenerateArticleFromTextsService,
     GenerateQuestionsFromTextsService,
+    GenerateLabelService,
 )
 from llm_router_lib.services.conversation import (
     ConversationService,
@@ -593,6 +594,75 @@ class LLMRouterClient:
             number_of_questions=number_of_questions,
             model=model,
         )
+
+    def generate_label(
+        self,
+        payload: Optional[
+            Union[
+                Dict[str, Any],
+                GenerateLabelService.model_cls,
+            ]
+        ] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = 0.2,
+        max_new_tokens: Optional[int] = 64,
+    ) -> Dict[str, Any]:
+        """
+        Generate a category name (label) for a list of texts using the
+        ``/api/generate_label`` endpoint.
+
+        The endpoint receives a list of related texts and returns a single,
+        concise category name that best captures their common essence.
+
+        The method can be used in three ways:
+
+        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that
+           already conforms to :class:`GenerateLabelModel`.
+        2. **Pass a Pydantic model instance** – ``payload`` is a
+           ``GenerateLabelModel`` and will be serialized automatically.
+        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
+           ``GenerateLabelModel`` instance on‑the‑fly.
+
+        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : Optional[Union[Dict[str, Any], GenerateLabelModel]]
+            Optional pre‑constructed request body.
+        texts : Optional[List[str]]
+            List of related source strings whose shared essence should be
+            captured by a single category name (required if ``payload`` is not
+            supplied).
+        model : Optional[str]
+            Model identifier to be used (required if ``payload`` is not
+            supplied).
+        temperature : Optional[float], default ``0.2``
+            Sampling temperature; kept low for a deterministic label.
+        max_new_tokens : Optional[int], default ``64``
+            Maximum number of tokens for the generated label.
+
+        Returns
+        -------
+        dict
+            Parsed JSON response from the label‑generation service.
+
+        Raises
+        ------
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and either ``texts`` or ``model`` is
+            missing.
+        """
+        payload = self._build_payload(
+            model_cls=GenerateLabelService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            texts=texts,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        return GenerateLabelService(self.http, self.logger).call_post(payload)
 
     # ------------------------------------------------------------------ #
     @staticmethod
