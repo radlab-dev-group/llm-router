@@ -1456,7 +1456,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         params = self._clear_payload(payload=params)
         return params
 
-    def _extract_prompt_overrides(self, params: Optional[Dict]):
+    @staticmethod
+    def _extract_prompt_overrides(params: Optional[Dict]):
         """
         Pop the internal prompt‑override keys (``map_prompt``,
         ``prompt_str_force``, ``prompt_str_postfix``) from *params* and return
