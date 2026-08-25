@@ -851,7 +851,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         #     return
         model_name = self._model_name_from_params_or_model(params=params)
         if model_name is None:
-            raise ValueError(f"model_name cannot be None!")
+            raise ValueError("model_name cannot be None!")
 
         if self._model_handler is None:
             raise RuntimeError("Model handler must be initialized!")
