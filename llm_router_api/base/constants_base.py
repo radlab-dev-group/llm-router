@@ -6,8 +6,6 @@ logic – it only supplies immutable configuration values and enumerations that
 are shared across the code‑base.
 """
 
-import os
-
 
 class _DontChangeMe:
     """
@@ -18,20 +16,6 @@ class _DontChangeMe:
     """
 
     MAIN_ENV_PREFIX = "LLM_ROUTER_"
-
-
-# Default language for endpoint‑specific prompts.  The value can be overridden
-# with the environment variable LLM_ROUTER_DEFAULT_EP_LANGUAGE.
-# If the variable is absent, Polish ("pl") is used as the fallback language.
-#
-# The canonical definition now lives in the dependency‑free library layer
-# (``llm_router_lib.core.constants``) so that ``llm_router_lib`` does not
-# import from ``llm_router_api``.  It is re‑exported here for backward
-# compatibility with existing ``from llm_router_api.base.constants_base import
-# DEFAULT_EP_LANGUAGE`` statements.
-from llm_router_lib.core.constants import (
-    DEFAULT_EP_LANGUAGE,  # noqa: F401  (re‑export for backward compatibility)
-)
 
 
 class BalanceStrategies:
@@ -66,7 +50,7 @@ POSSIBLE_BALANCE_STRATEGIES = [
 # DEFAULT_ANONYMIZE_STRATEGY = "fast_masker"
 # POSSIBLE_ANONYMIZE_STRATEGIES = ["fast_masker", "genai"]
 
-# List of OpenAI compatible provides
+# List of the OpenAI compatible providers
 OPENAI_COMPATIBLE_PROVIDERS = [
     "openai",
     "lmstudio",

@@ -34,18 +34,19 @@ from llm_router_plugins.utils.pipeline import UtilsPipeline
 from llm_router_plugins.maskers.pipeline import MaskerPipeline
 from llm_router_plugins.guardrails.pipeline import GuardrailPipeline
 
+from llm_router_lib.core.constants import DEFAULT_EP_LANGUAGE
 from llm_router_lib.data_models.constants import (
     MODEL_NAME_PARAMS,
     LANGUAGE_PARAM,
     CLEAR_PREDEFINED_PARAMS,
 )
+
 from llm_router_api.base.constants_base import ALL_PROVIDERS
 
 from llm_router_api.core.errors import sanitize_error_message
 
 from llm_router_api.base.constants import (
     USE_PROMETHEUS,
-    DEFAULT_EP_LANGUAGE,
     REST_API_LOG_LEVEL,
     EXTERNAL_API_TIMEOUT,
     FORCE_MASKING,
