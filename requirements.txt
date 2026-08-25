@@ -1,9 +1,8 @@
 flask
 gunicorn
 redis
-prometheus_client
+prometheus-client
 python-dateutil
 gnupg
 tqdm
 requests
-types-setuptools
