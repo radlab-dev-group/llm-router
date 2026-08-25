@@ -7,7 +7,8 @@ Provides a reusable base class that handles:
 * JSON response parsing with error translation into :class:`LLMRouterError`,
 * configurable request retry via :class:`~llm_router_lib.utils.http.HttpRequester`.
 
-Concrete service classes (e.g. ``ConversationWithModelService``, ``PingService``) extend this
+Concrete service classes (e.g. ``ConversationWithModelService``,
+``PingService``) extend this
 base class and bind an ``endpoint`` URL and a ``model_cls`` (Pydantic model for
 payload validation).
 """
