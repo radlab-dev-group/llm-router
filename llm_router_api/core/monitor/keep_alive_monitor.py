@@ -2,8 +2,12 @@
 Keep‑alive monitor module.
 
 Runs a background thread that periodically triggers keep‑alive requests for
-registered ``(model, host)`` pairs.  The logic is unchanged – only the
-docstrings and comments have been translated to English.
+registered ``(model, host)`` pairs.
+
+This module owns the *scheduling* (Redis state + background thread) and
+delegates the actual HTTP send to :class:`keep_alive.KeepAlive`.  The split is
+intentional: ``KeepAlive`` is the stateless sender, ``KeepAliveMonitor`` is the
+stateful scheduler that calls it — two cohesive units, not duplicates.
 """
 
 import re
