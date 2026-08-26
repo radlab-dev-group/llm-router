@@ -329,7 +329,7 @@ LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT = int(
 # Public endpoints (always bypass auth)
 LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_PUBLIC_ENDPOINTS",
-    "/ping,/version,/models,/,/metrics",
+    "/metrics,/,/health",
 ).strip()
 
 # Key generation settings

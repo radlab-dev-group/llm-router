@@ -39,7 +39,7 @@ class AuthMiddleware:
     4. **Rate-limit** (sliding window check).
 
     Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
-    ``/ping,/version,/models,/,/metrics``) bypass all checks — they are
+    ``/,/metrics,/health``) bypass all checks — they are
     always accessible regardless of auth configuration. See
     :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
     for the full mapping of authenticated endpoints
@@ -201,7 +201,7 @@ class AuthMiddleware:
         """
 
         public_str = self._config.get(
-            "public_endpoints", "/ping,/version,/models,/,/metrics"
+            "public_endpoints", "/ping,/version,/models,/,/metrics,/health"
         )
         public_list = [p.strip() for p in public_str.split(",") if p.strip()]
 
@@ -320,7 +320,7 @@ def install_auth_middleware(
     when ``LLM_ROUTER_AUTH_ENABLED`` is ``"true"``.
 
     Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
-    ``/ping,/version,/models,/,/metrics``) bypass all auth checks. All other endpoints
+    ``/ping,/version,/models,/,/metrics,/health``) bypass all auth checks. All other endpoints
     are mapped to required permission types in
     :data:`~llm_router_api.core.auth.policies.engine._ENDPOINT_PERMISSION_MAP`.
 
