@@ -50,6 +50,10 @@ def main():
     for test, model_name in prepare_tests(client):
         print("--" * 50)
         test_result = test.run(model_name=model_name)
+        # Client methods now return typed response models; serialise to a
+        # plain dict before JSON-printing so both shapes work.
+        if hasattr(test_result, "model_dump"):
+            test_result = test_result.model_dump()
         print(" =========== response =========== ")
         print(json.dumps(test_result, indent=1, ensure_ascii=False))
 
