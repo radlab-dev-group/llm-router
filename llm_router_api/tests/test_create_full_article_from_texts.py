@@ -21,6 +21,7 @@ from llm_router_lib.data_models.builtin_utils import (
 )
 from llm_router_lib.services.utils import CreateFullArticleFromTextsService
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import CreateFullArticleFromTextsResponse
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_api.endpoints.builtin.builtin_utils import CreateFullArticleFromTexts
 from llm_router_api.core.auth.policies.engine import _ENDPOINT_PERMISSION_MAP
@@ -153,7 +154,8 @@ class TestCreateFullArticleFromTextsServiceAndClient:
                 texts=["Tekst 1", "Tekst 2"],
             )
             resp = client.create_full_article_from_texts(payload=payload)
-            assert resp == {"status": True, "response": {}}
+            assert isinstance(resp, CreateFullArticleFromTextsResponse)
+            assert resp.response.article_text is None
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -172,7 +174,8 @@ class TestCreateFullArticleFromTextsServiceAndClient:
                 "texts": ["Tekst"],
             }
             resp = client.create_full_article_from_texts(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, CreateFullArticleFromTextsResponse)
+            assert resp.response.article_text is None
             mock_call.assert_called_once_with(payload)
 
     def test_client_create_full_article_from_texts_with_args(self):
@@ -187,7 +190,8 @@ class TestCreateFullArticleFromTextsServiceAndClient:
                 article_type="review",
                 model="test-model",
             )
-            assert resp == {"status": True}
+            assert isinstance(resp, CreateFullArticleFromTextsResponse)
+            assert resp.response.article_text is None
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
             assert call_arg["user_query"] == "Podsumuj"
@@ -205,7 +209,8 @@ class TestCreateFullArticleFromTextsServiceAndClient:
             resp = client.create_full_article_from_texts(
                 user_query="Podsumuj", texts=["Tekst"]
             )
-            assert resp == {"status": True}
+            assert isinstance(resp, CreateFullArticleFromTextsResponse)
+            assert resp.response.article_text is None
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "def-model"
 

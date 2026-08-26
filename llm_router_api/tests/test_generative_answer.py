@@ -21,6 +21,7 @@ from llm_router_lib.data_models.builtin_utils import (
 )
 from llm_router_lib.services.utils import GenerativeAnswerService
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import GenerativeAnswerResponse
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_api.endpoints.builtin.builtin_utils import GenerativeAnswer
 from llm_router_api.core.auth.policies.engine import _ENDPOINT_PERMISSION_MAP
@@ -155,7 +156,8 @@ class TestGenerativeAnswerServiceAndClient:
                 texts=["Tekst"],
             )
             resp = client.generative_answer(payload=payload)
-            assert resp == {"status": True, "response": "Odpowiedź"}
+            assert isinstance(resp, GenerativeAnswerResponse)
+            assert resp.response == "Odpowiedź"
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -171,7 +173,8 @@ class TestGenerativeAnswerServiceAndClient:
                 "texts": ["Tekst"],
             }
             resp = client.generative_answer(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerativeAnswerResponse)
+            assert resp.response is None
             mock_call.assert_called_once_with(payload)
 
     def test_client_generative_answer_with_args(self):
@@ -183,7 +186,8 @@ class TestGenerativeAnswerServiceAndClient:
                 texts=["Tekst 1", "Tekst 2"],
                 model="test-model",
             )
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerativeAnswerResponse)
+            assert resp.response is None
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
             assert call_arg["question_str"] == "Co się wydarzyło?"
@@ -196,7 +200,8 @@ class TestGenerativeAnswerServiceAndClient:
         with mock.patch.object(GenerativeAnswerService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.generative_answer(question_str="Pytanie", texts=["Tekst"])
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerativeAnswerResponse)
+            assert resp.response is None
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "def-model"
 

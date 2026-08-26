@@ -21,6 +21,7 @@ from llm_router_lib.data_models.builtin_utils import (
 )
 from llm_router_lib.services.utils import TranslateService
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import TranslateResponse
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_api.endpoints.builtin.builtin_utils import Translate
 from llm_router_api.core.auth.policies.engine import _ENDPOINT_PERMISSION_MAP
@@ -127,7 +128,8 @@ class TestTranslateServiceAndClient:
             mock_call.return_value = {"status": True, "response": []}
             payload = TranslateModel(model_name="test-model", texts=["Hi"])
             resp = client.translate(payload=payload)
-            assert resp == {"status": True, "response": []}
+            assert isinstance(resp, TranslateResponse)
+            assert resp.response == []
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -139,7 +141,8 @@ class TestTranslateServiceAndClient:
             mock_call.return_value = {"status": True}
             payload = {"model_name": "test-model", "texts": ["Hi"]}
             resp = client.translate(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, TranslateResponse)
+            assert resp.response == []
             mock_call.assert_called_once_with(payload)
 
     def test_client_translate_with_args(self):
@@ -149,7 +152,8 @@ class TestTranslateServiceAndClient:
             resp = client.translate(
                 texts=["Hello", "World"], model="test-model", temperature=0.1
             )
-            assert resp == {"status": True}
+            assert isinstance(resp, TranslateResponse)
+            assert resp.response == []
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
             assert call_arg["texts"] == ["Hello", "World"]
@@ -162,7 +166,8 @@ class TestTranslateServiceAndClient:
         with mock.patch.object(TranslateService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.translate(texts=["Hello"])
-            assert resp == {"status": True}
+            assert isinstance(resp, TranslateResponse)
+            assert resp.response == []
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "def-model"
 

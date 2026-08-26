@@ -21,6 +21,7 @@ from llm_router_lib.data_models.builtin_utils import (
 )
 from llm_router_lib.services.utils import Polarity3cService
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import Polarity3cResponse
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_api.endpoints.builtin.builtin_utils import Polarity3c
 from llm_router_api.core.auth.policies.engine import _ENDPOINT_PERMISSION_MAP
@@ -170,7 +171,8 @@ class TestPolarity3cServiceAndClient:
                 texts=["Dobry tekst"],
             )
             resp = client.polarity_3c(payload=payload)
-            assert resp == {"status": True, "response": []}
+            assert isinstance(resp, Polarity3cResponse)
+            assert resp.response == []
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -185,7 +187,8 @@ class TestPolarity3cServiceAndClient:
                 "texts": ["Tekst"],
             }
             resp = client.polarity_3c(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, Polarity3cResponse)
+            assert resp.response == []
             mock_call.assert_called_once_with(payload)
 
     def test_client_polarity_3c_with_args(self):
@@ -197,7 +200,8 @@ class TestPolarity3cServiceAndClient:
                 model="test-model",
                 temperature=0.1,
             )
-            assert resp == {"status": True}
+            assert isinstance(resp, Polarity3cResponse)
+            assert resp.response == []
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -211,7 +215,8 @@ class TestPolarity3cServiceAndClient:
         with mock.patch.object(Polarity3cService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.polarity_3c(texts=["Tekst"])
-            assert resp == {"status": True}
+            assert isinstance(resp, Polarity3cResponse)
+            assert resp.response == []
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "def-model"

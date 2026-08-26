@@ -21,6 +21,7 @@ from llm_router_lib.services.utils import (
     GenerateQuestionsService,
 )
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import GenerateQuestionsResponse
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 
 
@@ -84,7 +85,8 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
                 number_of_questions=2,
             )
             resp = client.generate_questions(payload=payload)
-            self.assertEqual(resp, {"status": True, "response": []})
+            self.assertIsInstance(resp, GenerateQuestionsResponse)
+            self.assertEqual(resp.response, [])
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             self.assertEqual(call_arg["model_name"], "test-model")
@@ -101,7 +103,8 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
                 "number_of_questions": 1,
             }
             resp = client.generate_questions(payload=payload)
-            self.assertEqual(resp, {"status": True})
+            self.assertIsInstance(resp, GenerateQuestionsResponse)
+            self.assertEqual(resp.response, [])
             mock_call.assert_called_once_with(payload)
 
     def test_client_generate_questions_with_args(self):
@@ -113,7 +116,8 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
                 number_of_questions=3,
                 model="test-model",
             )
-            self.assertEqual(resp, {"status": True})
+            self.assertIsInstance(resp, GenerateQuestionsResponse)
+            self.assertEqual(resp.response, [])
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             self.assertEqual(call_arg["model_name"], "test-model")
@@ -128,7 +132,8 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
                 texts=["Tekst A"],
                 model="test-model",
             )
-            self.assertEqual(resp, {"status": True})
+            self.assertIsInstance(resp, GenerateQuestionsResponse)
+            self.assertEqual(resp.response, [])
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             self.assertEqual(call_arg["model_name"], "test-model")
@@ -142,7 +147,8 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
         with mock.patch.object(GenerateQuestionsService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.generate_questions(texts=["Tekst"])
-            self.assertEqual(resp, {"status": True})
+            self.assertIsInstance(resp, GenerateQuestionsResponse)
+            self.assertEqual(resp.response, [])
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             self.assertEqual(call_arg["model_name"], "def-model")

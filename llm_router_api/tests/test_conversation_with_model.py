@@ -28,6 +28,10 @@ from llm_router_lib.services.conversation import (
     ExtendedConversationWithModelService,
 )
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import (
+    ConversationResponse,
+    ExtendedConversationResponse,
+)
 from llm_router_api.endpoints.builtin.builtin_chat import (
     ConversationWithModel,
     ExtendedConversationWithModel,
@@ -237,7 +241,8 @@ class TestConversationServiceAndClient:
                 model_name="test-model", user_last_statement="Cześć"
             )
             resp = client.conversation_with_model(payload=payload)
-            assert resp == {"status": True, "response": "Odpowiedź"}
+            assert isinstance(resp, ConversationResponse)
+            assert resp.response == "Odpowiedź"
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -254,7 +259,8 @@ class TestConversationServiceAndClient:
                 "user_last_statement": "Cześć",
             }
             resp = client.conversation_with_model(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, ConversationResponse)
+            assert resp.response is None
             mock_call.assert_called_once_with(payload)
 
     def test_client_conversation_with_model_no_payload_raises(self):
@@ -274,7 +280,8 @@ class TestConversationServiceAndClient:
                 system_prompt="Jak Yoda",
             )
             resp = client.extended_conversation_with_model(payload=payload)
-            assert resp == {"status": True, "response": "Odpowiedź"}
+            assert isinstance(resp, ExtendedConversationResponse)
+            assert resp.response == "Odpowiedź"
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -292,7 +299,8 @@ class TestConversationServiceAndClient:
                 "system_prompt": "Jak Yoda",
             }
             resp = client.extended_conversation_with_model(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, ExtendedConversationResponse)
+            assert resp.response is None
             mock_call.assert_called_once_with(payload)
 
     def test_client_extended_conversation_with_model_no_payload_raises(self):

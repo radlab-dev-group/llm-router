@@ -21,6 +21,7 @@ from llm_router_lib.data_models.builtin_utils import (
 )
 from llm_router_lib.services.utils import GenerateArticleFromTextService
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import GenerateArticleFromTextResponse
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_api.endpoints.builtin.builtin_utils import GenerateArticleFromText
 from llm_router_api.core.auth.policies.engine import _ENDPOINT_PERMISSION_MAP
@@ -127,7 +128,8 @@ class TestGenerateArticleFromTextServiceAndClient:
                 model_name="test-model", text="Tekst źródłowy"
             )
             resp = client.generate_article_from_text(payload=payload)
-            assert resp == {"status": True, "response": {}}
+            assert isinstance(resp, GenerateArticleFromTextResponse)
+            assert resp.response.article_text is None
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -141,7 +143,8 @@ class TestGenerateArticleFromTextServiceAndClient:
             mock_call.return_value = {"status": True}
             payload = {"model_name": "test-model", "text": "Tekst źródłowy"}
             resp = client.generate_article_from_text(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerateArticleFromTextResponse)
+            assert resp.response.article_text is None
             mock_call.assert_called_once_with(payload)
 
     def test_client_generate_news_from_text_with_args(self):
@@ -153,7 +156,8 @@ class TestGenerateArticleFromTextServiceAndClient:
             resp = client.generate_article_from_text(
                 text="Tekst źródłowy", model="test-model"
             )
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerateArticleFromTextResponse)
+            assert resp.response.article_text is None
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
             assert call_arg["text"] == "Tekst źródłowy"
@@ -167,7 +171,8 @@ class TestGenerateArticleFromTextServiceAndClient:
         ) as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.generate_article_from_text(text="Tekst źródłowy")
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerateArticleFromTextResponse)
+            assert resp.response.article_text is None
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "def-model"
 

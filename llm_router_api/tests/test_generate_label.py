@@ -21,6 +21,7 @@ from llm_router_lib.data_models.builtin_utils import (
 )
 from llm_router_lib.services.utils import GenerateLabelService
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import GenerateLabelResponse
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_api.endpoints.builtin.builtin_utils import GenerateLabel
 from llm_router_api.core.auth.policies.engine import _ENDPOINT_PERMISSION_MAP
@@ -125,7 +126,8 @@ class TestGenerateLabelServiceAndClient:
                 model_name="test-model", texts=["Smartfony"]
             )
             resp = client.generate_label(payload=payload)
-            assert resp == {"status": True, "response": "Technologia"}
+            assert isinstance(resp, GenerateLabelResponse)
+            assert resp.response == "Technologia"
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -137,7 +139,8 @@ class TestGenerateLabelServiceAndClient:
             mock_call.return_value = {"status": True}
             payload = {"model_name": "test-model", "texts": ["Smartfony"]}
             resp = client.generate_label(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerateLabelResponse)
+            assert resp.response is None
             mock_call.assert_called_once_with(payload)
 
     def test_client_generate_label_with_args(self):
@@ -149,7 +152,8 @@ class TestGenerateLabelServiceAndClient:
                 model="test-model",
                 temperature=0.1,
             )
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerateLabelResponse)
+            assert resp.response is None
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
             assert call_arg["texts"] == ["Smartfony", "Aparaty"]
@@ -162,7 +166,8 @@ class TestGenerateLabelServiceAndClient:
         with mock.patch.object(GenerateLabelService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.generate_label(texts=["Smartfony"])
-            assert resp == {"status": True}
+            assert isinstance(resp, GenerateLabelResponse)
+            assert resp.response is None
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "def-model"
 
