@@ -38,6 +38,29 @@ from llm_router_lib.data_models.builtin_utils import (
     GENERATE_LABEL_OPT,
 )
 from llm_router_lib.data_models.masker import BaseMaskerModel, FastMaskerModel
+from llm_router_lib.data_models.response import (
+    BaseResponse,
+    GenerationResponse,
+    PingResponse,
+    VersionResponse,
+    ModelInfo,
+    ModelsListResponse,
+    ConversationResponse,
+    ExtendedConversationResponse,
+    Polarity3cItem,
+    Polarity3cResponse,
+    TranslateItem,
+    TranslateResponse,
+    SimplifyTextResponse,
+    TextQuestions,
+    GenerateQuestionsResponse,
+    GenerativeAnswerResponse,
+    GenerateLabelResponse,
+    ArticleText,
+    GenerateArticleFromTextResponse,
+    CreateFullArticleFromTextsResponse,
+    GenerateArticleFromTextsResponse,
+)
 from llm_router_lib.data_models.openai import OpenAIChatModel
 
 __all__ = [
@@ -70,4 +93,26 @@ __all__ = [
     "FastMaskerModel",
     # OpenAI-compatible
     "OpenAIChatModel",
+    # Response models
+    "BaseResponse",
+    "GenerationResponse",
+    "PingResponse",
+    "VersionResponse",
+    "ModelInfo",
+    "ModelsListResponse",
+    "ConversationResponse",
+    "ExtendedConversationResponse",
+    "Polarity3cItem",
+    "Polarity3cResponse",
+    "TranslateItem",
+    "TranslateResponse",
+    "SimplifyTextResponse",
+    "TextQuestions",
+    "GenerateQuestionsResponse",
+    "GenerativeAnswerResponse",
+    "GenerateLabelResponse",
+    "ArticleText",
+    "GenerateArticleFromTextResponse",
+    "CreateFullArticleFromTextsResponse",
+    "GenerateArticleFromTextsResponse",
 ]
