@@ -17,7 +17,7 @@ from llm_router_lib.core.constants import (
     DEFAULT_TIMEOUT_SECONDS,
     DEFAULT_RETRIES,
 )
-from llm_router_lib.services.health import PingService, VersionService
+from llm_router_lib.services.health import PingService, VersionService, ModelsService
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
@@ -174,6 +174,31 @@ class LLMRouterClient:
             Propagated if the request fails or the response is not valid JSON.
         """
         return VersionService(self.http, self.logger).call_get()
+
+    def models(self) -> List[str]:
+        """
+        List the models currently available on the router.
+
+        Calls the ``/v1/models`` endpoint via :class:`ModelsService` and
+        extracts the identifier (``id`` field) of each entry.  This is useful
+        for discovering which model names can be passed to the other client
+        methods (e.g. ``conversation_with_model``).
+
+        Returns
+        -------
+        List[str]
+            The available model identifiers, e.g.
+            ``["google/gemma-3-12b-it", "speakleash/Bielik-11B-v2.3-Instruct"]``.
+
+        Raises
+        ------
+        LLMRouterError
+            Propagated from the underlying service if the HTTP request fails
+            or the response cannot be decoded as JSON.
+        """
+        response = ModelsService(self.http, self.logger).call_get()
+        data = response.get("data", [])
+        return [model["id"] for model in data]
 
     # ------------------------------------------------------------------ #
     def conversation_with_model(
