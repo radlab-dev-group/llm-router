@@ -4,9 +4,17 @@ set -e
 
 # ==================================================================================
 # General logging setup
+# Debug mode (dont use on production, is really verbose)
 export LLM_ROUTER_IN_DEBUG=${LLM_ROUTER_IN_DEBUG:-1}
 export LLM_ROUTER_MINIMUM=${LLM_ROUTER_MINIMUM:-1}
+# Filename of logging (in case when log to file)
 export LLM_ROUTER_LOG_FILENAME=${LLM_ROUTER_LOG_FILENAME:-"llm-router.log"}
+# Also write logs to the log file (in addition to console)
+export LLM_ROUTER_LOG_TO_FILE=${LLM_ROUTER_LOG_TO_FILE:-1}
+# Log file rotation: rotate once the file reaches this size (bytes, default 50 MB)
+export LLM_ROUTER_LOG_MAX_BYTES=${LLM_ROUTER_LOG_MAX_BYTES:-52428800}
+# Maximum number of rotated log files to keep (llm-router.log.1 … llm-router.log.N)
+export LLM_ROUTER_LOG_BACKUP_COUNT=${LLM_ROUTER_LOG_BACKUP_COUNT:-5}
 
 # ==================================================================================
 # Metrics logging
