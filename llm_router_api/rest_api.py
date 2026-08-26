@@ -17,6 +17,8 @@ Typical usage
 import logging
 import argparse
 
+from logging.handlers import RotatingFileHandler
+
 from llm_router_api.core.server import (
     run_flask_server,
     run_gunicorn_server,
@@ -27,6 +29,8 @@ from llm_router_api.base.constants import (
     LLM_ROUTER_API_TIMEOUT,
     REST_API_LOG_FILE_NAME,
     REST_API_LOG_LEVEL,
+    REST_API_LOG_MAX_BYTES,
+    REST_API_LOG_BACKUP_COUNT,
     SERVER_HOST,
     SERVER_PORT,
     SERVER_THREADS_COUNT,
@@ -58,7 +62,11 @@ def _setup_dual_logging():
 
         # Conditionally add file handler.
         if LOG_TO_FILE:
-            fh = logging.FileHandler(REST_API_LOG_FILE_NAME)
+            fh = RotatingFileHandler(
+                REST_API_LOG_FILE_NAME,
+                maxBytes=REST_API_LOG_MAX_BYTES,
+                backupCount=REST_API_LOG_BACKUP_COUNT,
+            )
             fh.setFormatter(fmt)
             root.addHandler(fh)
 

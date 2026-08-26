@@ -1,8 +1,8 @@
 from llm_router_lib.data_models.builtin_utils import (
     Polarity3cModel,
-    TranslateTextModel,
+    TranslateModel,
     SimplifyTextModel,
-    GenerateQuestionFromTextsModel,
+    GenerateQuestionsModel,
     GenerateLabelModel,
 )
 
@@ -27,7 +27,7 @@ class Polarity3cModelTest(BaseEndpointTest):
         return self._client.polarity_3c
 
 
-class TranslateTextModelTest(BaseEndpointTest):
+class TranslateModelTest(BaseEndpointTest):
     payload = {
         "model_name": "google/gemma-3-12b-it",
         "language": "pl",
@@ -38,7 +38,7 @@ class TranslateTextModelTest(BaseEndpointTest):
         ],
         "temperature": 0.2,
     }
-    payload_model = TranslateTextModel
+    payload_model = TranslateModel
 
     def client_method(self):
         return self._client.translate
@@ -60,10 +60,10 @@ class SimplifyTextModelTest(BaseEndpointTest):
     payload_model = SimplifyTextModel
 
     def client_method(self):
-        return self._client.simplify_texts
+        return self._client.simplify_text
 
 
-class GenerateQuestionFromTextsModelTest(BaseEndpointTest):
+class GenerateQuestionsModelTest(BaseEndpointTest):
     payload = {
         "model_name": "google/gemma-3-12b-it",
         "language": "pl",
@@ -75,10 +75,10 @@ class GenerateQuestionFromTextsModelTest(BaseEndpointTest):
         "number_of_questions": 2,
         "temperature": 0.2,
     }
-    payload_model = GenerateQuestionFromTextsModel
+    payload_model = GenerateQuestionsModel
 
     def client_method(self):
-        return self._client.generate_questions_from_texts
+        return self._client.generate_questions
 
 
 class GenerateLabelModelTest(BaseEndpointTest):

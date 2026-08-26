@@ -9,7 +9,7 @@ generation options from :class:`BaseModelOptions`.
 
 from typing import List, Dict, Any
 
-from llm_router_api.base.constants_base import DEFAULT_EP_LANGUAGE
+from llm_router_lib.core.constants import DEFAULT_EP_LANGUAGE
 from llm_router_lib.core.constants import DEFAULT_KEEP_ALIVE, DEFAULT_OPTIONS
 from llm_router_lib.data_models.base_model import BaseModelOptions
 

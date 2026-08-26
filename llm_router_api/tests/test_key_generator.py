@@ -108,10 +108,13 @@ class TestNoModuloBias:
         # For base62 (61 degrees of freedom), alpha=0.05 critical value ≈ 80.9
         chi2 = sum((count - expected) ** 2 / expected for count in counter.values())
 
-        # Allow some variance but reject extreme bias
-        # Old implementation would produce chi2 > 50; new should be < 10
-        assert chi2 < 10, (
-            f"Character distribution is non-uniform (chi2={chi2:.1f}). "
+        # A fair generator yields chi2 ~ 61 (the mean of a chi-squared
+        # distribution with 61 dof); the legacy modulo-biased implementation
+        # produced chi2 hundreds+ higher. Compare against the alpha=0.05
+        # critical value (~80.9) to reject statistically significant bias.
+        assert chi2 < 80.9, (
+            f"Character distribution is non-uniform "
+            f"(chi2={chi2:.1f} > 80.9 critical, alpha=0.05). "
             f"This suggests modulo bias. Expected chars: {dict(counter)}"
         )
 

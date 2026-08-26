@@ -19,6 +19,8 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_LOG_FILENAME`          | `llm-router.log`                       | Name of the log file.                                                                                            |
 | `LLM_ROUTER_LOG_LEVEL`             | `INFO`                                 | Logging level (e.g. INFO, DEBUG).                                                                                |
 | `LLM_ROUTER_LOG_TO_FILE`           | `false`                                | Also write logs to the log file (in addition to console).                                                        |
+| `LLM_ROUTER_LOG_MAX_BYTES`         | `52428800` (50 MB)                     | Rotate the log file once it reaches this size in bytes (applied when `LLM_ROUTER_LOG_TO_FILE` is set).           |
+| `LLM_ROUTER_LOG_BACKUP_COUNT`      | `5`                                    | Maximum number of rotated log files to keep, `<name>.1` … `<name>.N`.                                            |
 | `LLM_ROUTER_EP_PREFIX`             | `/api`                                 | Prefix for all API endpoints.                                                                                    |
 | `LLM_ROUTER_MINIMUM`               | `False`                                | Run service in proxy-only mode.                                                                                  |
 | `LLM_ROUTER_IN_DEBUG`              | `False`                                | Run server in debug mode; also forces log level to DEBUG.                                                        |

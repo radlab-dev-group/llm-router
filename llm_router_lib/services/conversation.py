@@ -8,34 +8,34 @@ Pydantic model that validates the request payload.
 """
 
 from llm_router_lib.data_models.builtin_chat import (
-    GenerativeConversationModel,
-    ExtendedGenerativeConversationModel,
+    ConversationWithModelRequest,
+    ExtendedConversationWithModelRequest,
 )
 from llm_router_lib.services.service_interface import (
     BaseConversationServiceInterface,
 )
 
 
-class ConversationService(BaseConversationServiceInterface):
+class ConversationWithModelService(BaseConversationServiceInterface):
     """
     Concrete service for the standard conversation endpoint.
 
     Uses ``/api/conversation_with_model`` and validates payloads against
-    :class:`GenerativeConversationModel`.
+    :class:`ConversationWithModelRequest`.
     """
 
     endpoint = "/api/conversation_with_model"
-    model_cls = GenerativeConversationModel
+    model_cls = ConversationWithModelRequest
 
 
-class ExtendedConversationService(BaseConversationServiceInterface):
+class ExtendedConversationWithModelService(BaseConversationServiceInterface):
     """
     Concrete service for the extended conversation endpoint.
 
     Uses ``/api/extended_conversation_with_model`` and validates payloads
-    against :class:`ExtendedGenerativeConversationModel`, which supports an
+    against :class:`ExtendedConversationWithModelRequest`, which supports an
     explicit system prompt.
     """
 
     endpoint = "/api/extended_conversation_with_model"
-    model_cls = ExtendedGenerativeConversationModel
+    model_cls = ExtendedConversationWithModelRequest

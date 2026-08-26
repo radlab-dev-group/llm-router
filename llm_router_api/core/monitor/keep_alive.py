@@ -2,7 +2,14 @@
 Keep‑alive utility module.
 
 Provides a small wrapper around HTTP calls that periodically ping a model
-endpoint to keep the underlying service warm.  The implementation is
+endpoint to keep the underlying service warm.
+
+This module is deliberately split from :mod:`keep_alive_monitor`:
+``KeepAlive`` (here) is the stateless *sender* that resolves a provider and
+issues one HTTP request, while ``KeepAliveMonitor`` owns the Redis-backed
+scheduling state and the background thread that decides *when* to call
+:meth:`KeepAlive.send`.  They are complementary, not duplicates, so they are
+kept as two cohesive units.  The implementation is
 unchanged – only documentation strings and comments have been added or
 translated to English.
 """

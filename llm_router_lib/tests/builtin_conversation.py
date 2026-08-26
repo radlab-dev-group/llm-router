@@ -1,8 +1,8 @@
-from llm_router_lib.data_models.builtin_utils import AnswerBasedOnTheContextModel
+from llm_router_lib.data_models.builtin_utils import GenerativeAnswerModel
 
 from llm_router_lib.data_models.builtin_chat import (
-    GenerativeConversationModel,
-    ExtendedGenerativeConversationModel,
+    ConversationWithModelRequest,
+    ExtendedConversationWithModelRequest,
 )
 
 from llm_router_lib.tests.base import BaseEndpointTest
@@ -19,7 +19,7 @@ class ConversationWithModelTest(BaseEndpointTest):
         "temperature": 0.7,
         "max_new_tokens": 128,
     }
-    payload_model = GenerativeConversationModel
+    payload_model = ConversationWithModelRequest
 
     def client_method(self):
         return self._client.conversation_with_model
@@ -33,13 +33,13 @@ class ExtendedConversationWithModelTest(BaseEndpointTest):
         "temperature": 0.7,
         "max_new_tokens": 128,
     }
-    payload_model = ExtendedGenerativeConversationModel
+    payload_model = ExtendedConversationWithModelRequest
 
     def client_method(self):
         return self._client.extended_conversation_with_model
 
 
-class AnswerBasedOnTheContextModelTest(BaseEndpointTest):
+class GenerativeAnswerModelTest(BaseEndpointTest):
     payload = {
         "model_name": "google/gemma-3-12b-it",
         "question_str": "Jakie kolory występują w tekstach?",
@@ -53,7 +53,7 @@ class AnswerBasedOnTheContextModelTest(BaseEndpointTest):
         "temperature": 0.7,
         "max_new_tokens": 128,
     }
-    payload_model = AnswerBasedOnTheContextModel
+    payload_model = GenerativeAnswerModel
 
     def client_method(self):
         return self._client.generative_answer

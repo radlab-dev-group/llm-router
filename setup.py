@@ -46,8 +46,11 @@ setup(
     },
     python_requires=">=3.10",
     install_requires=[
+        "ml-utils @ " "git+https://github.com/radlab-dev-group/ml-utils.git",
         "llm-router-plugins @ "
         "git+https://github.com/radlab-dev-group/llm-router-plugins",
+        "pydantic>=2.0",
+        "urllib3",
     ],
     extras_require=extras,
     entry_points={

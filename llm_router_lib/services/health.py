@@ -42,3 +42,24 @@ class VersionService(BaseConversationServiceInterface):
 
     endpoint = "/api/version"
     model_cls = None
+
+
+class ModelsService(BaseConversationServiceInterface):
+    """
+    Service wrapper for the ``/v1/models`` endpoint.
+
+    Retrieves the list of models currently available on the router.  The
+    endpoint returns an OpenAI‑compatible payload::
+
+        {"object": "list", "data": [{"id", "object", "created", "owned_by"}, ...]}
+
+    Attributes
+    ----------
+    endpoint : str
+        The relative URL of the list of models endpoint (``"/v1/models"``).
+    model_cls : None
+        No request payload model is required for this endpoint.
+    """
+
+    endpoint = "/v1/models"
+    model_cls = None

@@ -5,6 +5,7 @@ Tests for polarity_3c endpoint and client library components.
 from __future__ import annotations
 
 import os
+import time
 import pytest
 
 from unittest import mock
@@ -20,6 +21,7 @@ from llm_router_lib.data_models.builtin_utils import (
 )
 from llm_router_lib.services.utils import Polarity3cService
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.data_models.response import Polarity3cResponse
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_api.endpoints.builtin.builtin_utils import Polarity3c
 from llm_router_api.core.auth.policies.engine import _ENDPOINT_PERMISSION_MAP
@@ -68,10 +70,10 @@ class TestPolarity3cEndpoint:
         )
 
     def test_endpoint_attributes(self, endpoint):
-        assert endpoint.ep_name == "polarity_3c"
+        assert endpoint.name == "polarity_3c"
         assert endpoint.method == "POST"
-        assert "builtin" in endpoint.api_types
-        assert endpoint.call_for_each_user_msg is True
+        assert "builtin" in endpoint._ep_types_str
+        assert endpoint._call_for_each_user_msg is True
         assert endpoint.SYSTEM_PROMPT_NAME == {
             "pl": "builtin/system/pl/polarity-3c",
             "en": "builtin/system/en/polarity-3c",
@@ -126,6 +128,8 @@ class TestPolarity3cEndpoint:
             "choices": [{"message": {"content": "ambivalent"}}]
         }
 
+        endpoint._start_time = time.time()
+
         responses = [mock_response_1, mock_response_2, mock_response_3]
         contents = [
             "Wspaniały produkt!",
@@ -167,7 +171,8 @@ class TestPolarity3cServiceAndClient:
                 texts=["Dobry tekst"],
             )
             resp = client.polarity_3c(payload=payload)
-            assert resp == {"status": True, "response": []}
+            assert isinstance(resp, Polarity3cResponse)
+            assert resp.response == []
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -182,7 +187,8 @@ class TestPolarity3cServiceAndClient:
                 "texts": ["Tekst"],
             }
             resp = client.polarity_3c(payload=payload)
-            assert resp == {"status": True}
+            assert isinstance(resp, Polarity3cResponse)
+            assert resp.response == []
             mock_call.assert_called_once_with(payload)
 
     def test_client_polarity_3c_with_args(self):
@@ -194,7 +200,8 @@ class TestPolarity3cServiceAndClient:
                 model="test-model",
                 temperature=0.1,
             )
-            assert resp == {"status": True}
+            assert isinstance(resp, Polarity3cResponse)
+            assert resp.response == []
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "test-model"
@@ -208,14 +215,15 @@ class TestPolarity3cServiceAndClient:
         with mock.patch.object(Polarity3cService, "call_post") as mock_call:
             mock_call.return_value = {"status": True}
             resp = client.polarity_3c(texts=["Tekst"])
-            assert resp == {"status": True}
+            assert isinstance(resp, Polarity3cResponse)
+            assert resp.response == []
             mock_call.assert_called_once()
             call_arg = mock_call.call_args[0][0]
             assert call_arg["model_name"] == "def-model"
 
     def test_client_polarity_3c_no_args_raises(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with pytest.raises(NoArgsAndNoPayloadError):
+        with pytest.raises((NoArgsAndNoPayloadError, ValidationError)):
             client.polarity_3c()
 
 

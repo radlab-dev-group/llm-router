@@ -16,7 +16,6 @@ from rdl_ml_utils.utils.env import bool_env_value
 from llm_router_api.base.const_global import IS_CLI_COMMAND
 from llm_router_api.base.constants_base import (
     _DontChangeMe,
-    DEFAULT_EP_LANGUAGE as _DEFAULT_EP_LANGUAGE,
     POSSIBLE_BALANCE_STRATEGIES,
     BalanceStrategies,
 )
@@ -31,9 +30,6 @@ MODELS_CONFIG_FILE = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}MODELS_CONFIG",
     "resources/configs/models-config.json",
 ).strip()
-
-# # Default ep language - e.g. for getting proper prompt
-DEFAULT_EP_LANGUAGE = _DEFAULT_EP_LANGUAGE
 
 # Timeout to external models api
 EXTERNAL_API_TIMEOUT = int(
@@ -57,6 +53,17 @@ REST_API_LOG_LEVEL = os.environ.get(
 
 # Write logs to a file (in addition to console) when true.
 LOG_TO_FILE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_TO_FILE")
+
+# Log-file rotation: rotate the log file once it reaches
+# ``REST_API_LOG_MAX_BYTES`` and keep at most ``REST_API_LOG_BACKUP_COUNT``
+# rotated files (``<name>.1`` … ``<name>.N``).  Defaults to 50 MB x 5 so a
+# busy deployment cannot grow an unbounded log file on disk.
+REST_API_LOG_MAX_BYTES = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_MAX_BYTES", 50 * 1024 * 1024)
+)
+REST_API_LOG_BACKUP_COUNT = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}LOG_BACKUP_COUNT", 5)
+)
 
 # Default prefix for each endpoint
 DEFAULT_API_PREFIX = os.environ.get(
@@ -322,7 +329,7 @@ LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT = int(
 # Public endpoints (always bypass auth)
 LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_PUBLIC_ENDPOINTS",
-    "/ping,/version,/models,/,/metrics",
+    "/metrics,/,/health",
 ).strip()
 
 # Key generation settings

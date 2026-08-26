@@ -18,12 +18,16 @@ import logging
 
 from typing import Optional
 
+from logging.handlers import RotatingFileHandler
+
 from llm_router_api.core.engine import FlaskEngine
 from llm_router_api.base.constants import (
     PROMPTS_DIR,
     MODELS_CONFIG_FILE,
     REST_API_LOG_FILE_NAME,
     REST_API_LOG_LEVEL,
+    REST_API_LOG_MAX_BYTES,
+    REST_API_LOG_BACKUP_COUNT,
 )
 
 # ------------------------------------------------------------------ #
@@ -40,7 +44,11 @@ def _ensure_flask_logger_handlers(app) -> None:
     has_file = any(isinstance(h, logging.FileHandler) for h in flask_logger.handlers)
     if not has_file:
         fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-        fh = logging.FileHandler(REST_API_LOG_FILE_NAME)
+        fh = RotatingFileHandler(
+            REST_API_LOG_FILE_NAME,
+            maxBytes=REST_API_LOG_MAX_BYTES,
+            backupCount=REST_API_LOG_BACKUP_COUNT,
+        )
         fh.setFormatter(fmt)
         flask_logger.addHandler(fh)
 

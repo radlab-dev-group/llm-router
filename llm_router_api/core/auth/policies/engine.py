@@ -35,14 +35,15 @@ def _endpoint_key(method: str, path: str) -> str:
 _ENDPOINT_PERMISSION_MAP: dict[str, str] = {
     # ── Public endpoints — always accessible, no auth required
     #    (even when LLM_ROUTER_AUTH_ENABLED=true) ──
-    "get:/ping": "_public",  # Health‑check
-    "get:/version": "_public",  # Router version info
     "get:/": "_public",  # Ollama health endpoint
-    "get:/api/tags": "_public",  # Ollama model tags (prefix path)
     "get:/metrics": "_public",  # Prometheus metrics (requires Redis + prometheus flag)
-    "get:/models": "_public",  # OpenAI‑compatible models list
+    "get:/health": "_public",  # Router health check (no token)
     # ── Auth endpoints — require valid API key with the
     #    matching permission (only when LLM_ROUTER_AUTH_ENABLED=true) ──
+    "get:/ping": "chat",  # Health‑check
+    "get:/version": "chat",  # Router version info
+    "get:/api/tags": "chat",  # Ollama model tags (prefix path)
+    "get:/models": "chat",  # OpenAI‑compatible models list
     "get:/v1/models": "chat",  # OpenAI models v1 (not in default public path)
     "get:/api/v0/models": "chat",  # LM Studio models
     "post:/api/chat/completions": "chat",  # OpenAI‑style chat completion (with prefix)

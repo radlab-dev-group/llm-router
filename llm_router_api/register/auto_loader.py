@@ -14,6 +14,9 @@ from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFaca
 
 from llm_router_api.endpoints.passthrough import PassthroughI
 from llm_router_api.endpoints.builtin.openai import OpenAIResponseHandler
+from llm_router_api.endpoints.builtin.builtin_utils import (
+    TextListUtilityEndpoint,
+)
 from llm_router_api.endpoints.endpoint_i import EndpointI, EndpointWithHttpRequestI
 
 
@@ -132,6 +135,7 @@ class EndpointAutoLoader:
             if cls in [
                 PassthroughI,
                 EndpointWithHttpRequestI,
+                TextListUtilityEndpoint,
                 OpenAIResponseHandler,
             ]:
                 continue

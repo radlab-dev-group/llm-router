@@ -15,30 +15,30 @@ from typing import Optional, Dict, Any, List
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from llm_router_lib.data_models.builtin_utils import (
-    GenerateQuestionFromTextsModel,
-    GENERATE_Q_REQ,
-    GENERATE_Q_OPT,
+    GenerateQuestionsModel,
+    GENERATE_QUESTIONS_REQ,
+    GENERATE_QUESTIONS_OPT,
     GenerateArticleFromTextModel,
-    GENERATE_ART_REQ,
-    GENERATE_ART_OPT,
+    GENERATE_ARTICLE_FROM_TEXT_REQ,
+    GENERATE_ARTICLE_FROM_TEXT_OPT,
     TRANSLATE_TEXT_REQ,
     TRANSLATE_TEXT_OPT,
-    TranslateTextModel,
+    TranslateModel,
     POLARITY_3C_REQ,
     POLARITY_3C_OPT,
     Polarity3cModel,
     SIMPLIFY_TEXT_REQ,
     SIMPLIFY_TEXT_OPT,
     SimplifyTextModel,
-    CreateArticleFromNewsListModel,
-    FULL_ARTICLE_REQ,
-    FULL_ARTICLE_OPT,
-    CONTEXT_ANSWER_REQ,
-    CONTEXT_ANSWER_OPT,
-    AnswerBasedOnTheContextModel,
+    CreateFullArticleFromTextsModel,
+    CREATE_FULL_ARTICLE_FROM_TEXTS_REQ,
+    CREATE_FULL_ARTICLE_FROM_TEXTS_OPT,
+    GENERATIVE_ANSWER_REQ,
+    GENERATIVE_ANSWER_OPT,
+    GenerativeAnswerModel,
     GenerateArticleFromTextsModel,
-    GENERATE_ARTICLES_REQ,
-    GENERATE_ARTICLES_OPT,
+    GENERATE_ARTICLE_FROM_TEXTS_REQ,
+    GENERATE_ARTICLE_FROM_TEXTS_OPT,
     GenerateLabelModel,
     GENERATE_LABEL_REQ,
     GENERATE_LABEL_OPT,
@@ -141,7 +141,154 @@ class ApiVersion(EndpointWithHttpRequestI):
         return {"version": self.version}
 
 
-class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
+class TextListUtilityEndpoint(EndpointWithHttpRequestI):
+    """
+    Shared base class for the builtin ``texts`` utility endpoints.
+
+    Every endpoint built on this class follows the same contract:
+
+    * it accepts a list of ``texts`` together with generation options;
+    * it runs with ``call_for_each_user_msg=True`` (one ``user`` message per
+      source text);
+    * it returns ``{"response": [...], "generation_time": <seconds>}``.
+
+    Subclasses only need to supply the endpoint‑specific pieces:
+
+    * ``ep_name`` (the URL fragment),
+    * ``REQUIRED_ARGS`` / ``OPTIONAL_ARGS`` / ``SYSTEM_PROMPT_NAME``,
+    * :attr:`MODEL_CLS` – the pydantic request model, and
+    * the :meth:`_build_results` hook that turns the per‑text raw model outputs
+      into the final ``response`` list.
+
+    Endpoints that must inject a ``map_prompt`` (e.g. ``GenerateQuestions``)
+    override :meth:`build_map_prompt`.
+    """
+
+    #: Subclasses must point this at their pydantic request model.
+    MODEL_CLS = None
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "",
+    ):
+        """
+        Initialize a text‑list utility endpoint.
+
+        All wiring shared by the ``texts`` endpoints (``builtin`` api type,
+        ``POST`` method, ``call_for_each_user_msg=True``) is configured here;
+        subclasses only pass their own default ``ep_name``.
+        """
+        if not self.MODEL_CLS:
+            raise TypeError(
+                f"{type(self).__name__} must define a MODEL_CLS attribute"
+            )
+        super().__init__(
+            ep_name=ep_name,
+            api_types=["builtin"],
+            method="POST",
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+            dont_add_api_prefix=False,
+            direct_return=False,
+            call_for_each_user_msg=True,
+        )
+        self._prepare_response_function = self._prepare_response
+
+    # ------------------------------------------------------------------ #
+    # Payload
+    # ------------------------------------------------------------------ #
+    def build_map_prompt(self, payload: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """
+        Hook for injecting a ``map_prompt`` mapping into the payload.
+
+        The default returns ``None`` (no ``map_prompt`` is added).  Subclasses
+        that need to template system‑prompt placeholders override this and
+        return the mapping to store under ``payload["map_prompt"]``.
+        """
+        return None
+
+    @EP.require_params
+    def prepare_payload(
+        self, params: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Validate the input against :attr:`MODEL_CLS` and build the request payload.
+
+        The payload contains a ``model`` field, an optional ``stream`` flag and a
+        list of ``user`` messages – one per source text.  The raw ``texts`` list
+        is removed from the payload.
+
+        Returns
+        -------
+        dict
+            Normalised payload for the downstream service.
+        """
+        options = self.MODEL_CLS(**params)
+        _payload = options.model_dump()
+        _payload["stream"] = _payload.get("stream", False)
+        _payload["model"] = _payload["model_name"]
+        _payload["messages"] = [
+            {"role": "user", "content": _t} for _t in _payload["texts"]
+        ]
+        _payload.pop("texts")
+
+        map_prompt = self.build_map_prompt(_payload)
+        if map_prompt is not None:
+            _payload["map_prompt"] = map_prompt
+
+        return _payload
+
+    # ------------------------------------------------------------------ #
+    # Response
+    # ------------------------------------------------------------------ #
+    def _build_results(self, raw_texts: List[str], contents: List[str]) -> List[Any]:
+        """
+        Build the final ``response`` list from the per‑text model outputs.
+
+        Parameters
+        ----------
+        raw_texts : list[str]
+            Raw assistant output for each source text (in input order).
+        contents : list[str]
+            The original source texts (in input order).
+        """
+        raise NotImplementedError
+
+    def _prepare_response(self, responses: List[Any], contents: List[str]):
+        """
+        Collate the per‑text model outputs and report the elapsed time.
+
+        Parameters
+        ----------
+        responses : list[requests.Response]
+            Responses from the model service.
+        contents : list[str]
+            Original source texts.
+
+        Returns
+        -------
+        dict
+            ``{"response": <list>, "generation_time": <seconds>}``.
+        """
+        assert len(responses) == len(contents)
+        raw_texts = [
+            self._get_choices_from_response(response=response)[2]
+            for response in responses
+        ]
+        results = self._build_results(raw_texts, contents)
+        return {
+            "response": results,
+            "generation_time": time.time() - self._start_time,
+        }
+
+
+class GenerateQuestions(TextListUtilityEndpoint):
     """
     Built‑in utility: generate questions from input texts.
 
@@ -150,8 +297,9 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
     ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
     """
 
-    REQUIRED_ARGS = GENERATE_Q_REQ
-    OPTIONAL_ARGS = GENERATE_Q_OPT
+    MODEL_CLS = GenerateQuestionsModel
+    REQUIRED_ARGS = GENERATE_QUESTIONS_REQ
+    OPTIONAL_ARGS = GENERATE_QUESTIONS_OPT
     SYSTEM_PROMPT_NAME = {
         "pl": "builtin/system/pl/generate-questions",
         "en": "builtin/system/en/generate-questions",
@@ -167,101 +315,39 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
     ):
         """
         Initialize the “generate questions” endpoint.
-
-        Parameters are analogous to other builtin endpoints.
         """
         super().__init__(
-            ep_name=ep_name,
-            api_types=["builtin"],
-            method="POST",
-            logger_level=logger_level,
             logger_file_name=logger_file_name,
+            logger_level=logger_level,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
-            dont_add_api_prefix=False,
-            direct_return=False,
-            call_for_each_user_msg=True,
+            ep_name=ep_name,
         )
 
-        self._prepare_response_function = self.__prepare_response_function
-
-    @EP.require_params
-    def prepare_payload(
-        self, params: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Validate input and build the request payload for question generation.
-
-        The method extracts the model name, optional streaming flag, and
-        converts each source text into a separate ``user`` message.
-
-        Returns
-        -------
-        dict
-            Normalised payload ready for the downstream model.
-        """
-        options = GenerateQuestionFromTextsModel(**params)
-        _payload = options.model_dump()
-
-        map_prompt = {
-            "##QUESTION_NUM_STR##": f"{_payload['number_of_questions']} question(s)",
+    def build_map_prompt(self, payload: Dict[str, Any]) -> Dict[str, str]:
+        """Inject the question‑count placeholder used by the system prompt."""
+        return {
+            "##QUESTION_NUM_STR##": f"{payload['number_of_questions']} question(s)",
         }
 
-        _payload["map_prompt"] = map_prompt
-        _payload["model"] = _payload["model_name"]
-        _payload["stream"] = _payload.get("stream", False)
-        _payload["messages"] = [
-            {
-                "role": "user",
-                "content": _t,
-            }
-            for _t in _payload["texts"]
-        ]
-        _payload.pop("texts")
-
-        return _payload
-
-    def __prepare_response_function(self, responses, contents):
-        """
-        Collate the generated questions and compute total processing time.
-
-        Parameters
-        ----------
-        responses : list[requests.Response]
-            Raw HTTP responses from the model service.
-        contents : list[str]
-            Original source texts that were sent to the model.
-
-        Returns
-        -------
-        dict
-            ``{"response": <list_of_questions>, "generation_time": <seconds>}``.
-        """
-        assert len(responses) == len(contents)
-
-        questions = []
-        for response, _content in zip(responses, contents):
-            _, _, dialog_question = self._get_choices_from_response(
-                response=response
-            )
-
-            dialog_question = dialog_question.strip().split("\n\n")[-1]
-            dialog_question = [q.strip() for q in dialog_question.split("\n")]
-            questions.append(dialog_question)
+    def _build_results(self, raw_texts: List[str], contents: List[str]):
+        """Post‑process the raw per‑text outputs into the final question lists."""
+        questions: List[List[str]] = []
+        for raw in raw_texts:
+            dialog_question = raw.strip().split("\n\n")[-1]
+            questions.append([q.strip() for q in dialog_question.split("\n")])
 
         proper_texts_questions = self._prepare_proper_question_str(questions)
-        gen_questions = self._prepare_response_for_generated_questions(
+        return self._prepare_response_for_generated_questions(
             texts=contents, proper_texts_questions=proper_texts_questions
         )
-
-        return {
-            "response": gen_questions,
-            "generation_time": time.time() - self._start_time,
-        }
 
     def _prepare_proper_question_str(
         self, questions: List[List[str]], split_with_question_mark: bool = False
     ) -> List[List[str]]:
+        """
+        Clean up the generated questions (strip enumeration, optional split).
+        """
         proper_texts_questions = []
         for text_questions in questions:
             new_text_questions = []
@@ -288,6 +374,7 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
 
     @staticmethod
     def _remove_enumeration_from_question(question_str: str):
+        """Drop a leading ``1.``‑style enumeration prefix from a question."""
         question_str = question_str.strip()
         dot_pos = question_str.find(".")
         if dot_pos == -1:
@@ -305,6 +392,7 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
     def _prepare_response_for_generated_questions(
         texts: List[str], proper_texts_questions: List[List[str]]
     ) -> List[Dict[str, List[List[str]]]]:
+        """Pair each source text with its cleaned question list."""
         response = []
         for txt, questions in zip(texts, proper_texts_questions):
             response_body = {"text": txt, "questions": questions}
@@ -312,7 +400,7 @@ class GenerateQuestionsFromTexts(EndpointWithHttpRequestI):
         return response
 
 
-class Polarity3c(EndpointWithHttpRequestI):
+class Polarity3c(TextListUtilityEndpoint):
     """
     Built‑in utility: detect polarity (ambivalent, positive, negative) for input texts.
 
@@ -321,6 +409,7 @@ class Polarity3c(EndpointWithHttpRequestI):
     ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
     """
 
+    MODEL_CLS = Polarity3cModel
     REQUIRED_ARGS = POLARITY_3C_REQ
     OPTIONAL_ARGS = POLARITY_3C_OPT
     SYSTEM_PROMPT_NAME = {
@@ -337,54 +426,15 @@ class Polarity3c(EndpointWithHttpRequestI):
         ep_name: str = "polarity_3c",
     ):
         """
-        Initialize the polarity 3-class classification endpoint.
-
-        Parameters follow the same pattern as other builtin endpoints.
+        Initialize the polarity 3‑class classification endpoint.
         """
         super().__init__(
-            ep_name=ep_name,
-            api_types=["builtin"],
-            method="POST",
-            logger_level=logger_level,
             logger_file_name=logger_file_name,
+            logger_level=logger_level,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
-            dont_add_api_prefix=False,
-            direct_return=False,
-            call_for_each_user_msg=True,
+            ep_name=ep_name,
         )
-
-        self._prepare_response_function = self.__prepare_response_function
-
-    @EP.require_params
-    def prepare_payload(
-        self, params: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Build a payload that asks the model to classify polarity of each input text.
-
-        The request contains a ``model`` field, optional ``stream`` flag, and a
-        list of ``user`` messages – one per source text.
-
-        Returns
-        -------
-        dict
-            Normalised payload for the downstream service.
-        """
-        options = Polarity3cModel(**params)
-        _payload = options.model_dump()
-        _payload["stream"] = _payload.get("stream", False)
-        _payload["model"] = _payload["model_name"]
-        _payload["messages"] = [
-            {
-                "role": "user",
-                "content": _t,
-            }
-            for _t in _payload["texts"]
-        ]
-        _payload.pop("texts")
-
-        return _payload
 
     @staticmethod
     def _extract_polarity(raw_output: str) -> str:
@@ -399,41 +449,15 @@ class Polarity3c(EndpointWithHttpRequestI):
             return match.group(1)
         return cleaned
 
-    def __prepare_response_function(self, responses, contents):
-        """
-        Pair each original text with its detected polarity and report elapsed time.
-
-        Parameters
-        ----------
-        responses : list[requests.Response]
-            Responses from the model service.
-        contents : list[str]
-            Original source texts.
-
-        Returns
-        -------
-        dict
-            ``{"response": <list_of_dicts>, "generation_time": <seconds>}``.
-        """
-        assert len(responses) == len(contents)
-
-        results = []
-        for response, orig_text in zip(responses, contents):
-            _, _, polarity_raw = self._get_choices_from_response(response=response)
-            results.append(
-                {
-                    "original": orig_text,
-                    "polarity": self._extract_polarity(polarity_raw),
-                }
-            )
-
-        return {
-            "response": results,
-            "generation_time": time.time() - self._start_time,
-        }
+    def _build_results(self, raw_texts: List[str], contents: List[str]):
+        """Pair each original text with its detected polarity."""
+        return [
+            {"original": orig_text, "polarity": self._extract_polarity(raw)}
+            for raw, orig_text in zip(raw_texts, contents)
+        ]
 
 
-class TranslateTexts(EndpointWithHttpRequestI):
+class Translate(TextListUtilityEndpoint):
     """
     Built‑in utility: translate a list of texts.
 
@@ -442,6 +466,7 @@ class TranslateTexts(EndpointWithHttpRequestI):
     ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
     """
 
+    MODEL_CLS = TranslateModel
     REQUIRED_ARGS = TRANSLATE_TEXT_REQ
     OPTIONAL_ARGS = TRANSLATE_TEXT_OPT
     SYSTEM_PROMPT_NAME = {
@@ -459,92 +484,24 @@ class TranslateTexts(EndpointWithHttpRequestI):
     ):
         """
         Initialize the translation endpoint.
-
-        Parameters follow the same pattern as other builtin endpoints.
         """
         super().__init__(
-            ep_name=ep_name,
-            api_types=["builtin"],
-            method="POST",
-            logger_level=logger_level,
             logger_file_name=logger_file_name,
+            logger_level=logger_level,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
-            dont_add_api_prefix=False,
-            direct_return=False,
-            call_for_each_user_msg=True,
+            ep_name=ep_name,
         )
 
-        self._prepare_response_function = self.__prepare_response_function
-
-    @EP.require_params
-    def prepare_payload(
-        self, params: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Build a payload that asks the model to translate each input text.
-
-        The request contains a ``model`` field, optional ``stream`` flag, and a
-        list of ``user`` messages – one per source text.
-
-        Returns
-        -------
-        dict
-            Normalised payload for the downstream service.
-        """
-        options = TranslateTextModel(**params)
-        _payload = options.model_dump()
-        _payload["stream"] = _payload.get("stream", False)
-        _payload["model"] = _payload["model_name"]
-        _payload["messages"] = [
-            {
-                "role": "user",
-                "content": _t,
-            }
-            for _t in _payload["texts"]
+    def _build_results(self, raw_texts: List[str], contents: List[str]):
+        """Pair each original text with its translation."""
+        return [
+            {"original": orig_text, "translated": raw}
+            for raw, orig_text in zip(raw_texts, contents)
         ]
-        _payload.pop("texts")
-
-        return _payload
-
-    def __prepare_response_function(self, responses, contents):
-        """
-        Pair each original text with its translation and report elapsed time.
-
-        Parameters
-        ----------
-        responses : list[requests.Response]
-            Responses from the translation model.
-        contents : list[str]
-            Original source texts.
-
-        Returns
-        -------
-        dict
-            ``{"response": <list_of_dicts>, "generation_time": <seconds>}``.
-        """
-
-        assert len(responses) == len(contents)
-
-        translations = []
-        for response, orig_text in zip(responses, contents):
-            _, _, translated_to_pl = self._get_choices_from_response(
-                response=response
-            )
-            translations.append(
-                {
-                    "original": orig_text,
-                    "translated": translated_to_pl,
-                }
-            )
-
-        return {
-            "response": translations,
-            "generation_time": time.time() - self._start_time,
-        }
 
 
-class SimplifyTexts(EndpointWithHttpRequestI):
+class SimplifyText(TextListUtilityEndpoint):
     """
     Built‑in utility: simplify input texts.
 
@@ -553,6 +510,7 @@ class SimplifyTexts(EndpointWithHttpRequestI):
     ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
     """
 
+    MODEL_CLS = SimplifyTextModel
     REQUIRED_ARGS = SIMPLIFY_TEXT_REQ
     OPTIONAL_ARGS = SIMPLIFY_TEXT_OPT
     SYSTEM_PROMPT_NAME = {
@@ -572,77 +530,19 @@ class SimplifyTexts(EndpointWithHttpRequestI):
         Initialize the text‑simplification endpoint.
         """
         super().__init__(
-            ep_name=ep_name,
-            api_types=["builtin"],
-            method="POST",
-            logger_level=logger_level,
             logger_file_name=logger_file_name,
+            logger_level=logger_level,
             prompt_handler=prompt_handler,
             model_handler=model_handler,
-            dont_add_api_prefix=False,
-            direct_return=False,
-            call_for_each_user_msg=True,
+            ep_name=ep_name,
         )
 
-        self._prepare_response_function = self.__prepare_response_function
-
-    @EP.require_params
-    def prepare_payload(
-        self, params: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Validate input and construct a payload that asks the model to simplify text.
-
-        Returns
-        -------
-        dict
-            Normalised request payload.
-        """
-        options = SimplifyTextModel(**params)
-        _payload = options.model_dump()
-        _payload["model"] = _payload["model_name"]
-        _payload["stream"] = _payload.get("stream", False)
-        _payload["messages"] = [
-            {
-                "role": "user",
-                "content": _t,
-            }
-            for _t in _payload["texts"]
-        ]
-        _payload.pop("texts")
-
-        return _payload
-
-    def __prepare_response_function(self, responses, contents):
-        """
-        Return the simplified versions of the original texts.
-
-        Parameters
-        ----------
-        responses : list[requests.Response]
-            Model responses containing the simplified text.
-        contents : list[str]
-            Original texts (unused beyond timing).
-
-        Returns
-        -------
-        dict
-            ``{"response": <list_of_simplified_texts>, "generation_time": <seconds>}``.
-        """
-        assert len(responses) == len(contents)
-
-        simplifications = []
-        for response, _orig_text in zip(responses, contents):
-            _, _, simpl_text = self._get_choices_from_response(response=response)
-            simplifications.append(simpl_text)
-
-        return {
-            "response": simplifications,
-            "generation_time": time.time() - self._start_time,
-        }
+    def _build_results(self, raw_texts: List[str], contents: List[str]):
+        """Return the simplified versions of the original texts."""
+        return list(raw_texts)
 
 
-class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
+class GenerateArticleFromText(EndpointWithHttpRequestI):
     """
     Built‑in utility: generate a short article from a single text.
 
@@ -651,8 +551,8 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
     ``LLM_ROUTER_AUTH_ENABLED=true`` (``builtin`` permission).
     """
 
-    REQUIRED_ARGS = GENERATE_ART_REQ
-    OPTIONAL_ARGS = GENERATE_ART_OPT
+    REQUIRED_ARGS = GENERATE_ARTICLE_FROM_TEXT_REQ
+    OPTIONAL_ARGS = GENERATE_ARTICLE_FROM_TEXT_OPT
     SYSTEM_PROMPT_NAME = {
         "pl": "builtin/system/pl/news-on-sm",
         "en": "builtin/system/en/news-on-sm",
@@ -735,18 +635,18 @@ class GenerateNewsFromTextHandler(EndpointWithHttpRequestI):
         }
 
 
-class FullArticleFromTexts(GenerateNewsFromTextHandler):
+class CreateFullArticleFromTexts(GenerateArticleFromText):
     """
     Built‑in utility: generate a full article from multiple texts.
 
     Registered at ``/api/create_full_article_from_texts`` (with default prefix).
     Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
     (``builtin`` permission) — inherits policy from
-    :class:`GenerateNewsFromTextHandler`.
+    :class:`GenerateArticleFromText`.
     """
 
-    REQUIRED_ARGS = FULL_ARTICLE_REQ
-    OPTIONAL_ARGS = FULL_ARTICLE_OPT
+    REQUIRED_ARGS = CREATE_FULL_ARTICLE_FROM_TEXTS_REQ
+    OPTIONAL_ARGS = CREATE_FULL_ARTICLE_FROM_TEXTS_OPT
     SYSTEM_PROMPT_NAME = {
         "pl": "builtin/system/pl/full-article",
         "en": "builtin/system/en/full-article",
@@ -786,7 +686,7 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
         dict
             Normalised request payload.
         """
-        options = CreateArticleFromNewsListModel(**params)
+        options = CreateFullArticleFromTextsModel(**params)
         _payload = options.model_dump()
 
         map_prompt = {
@@ -816,15 +716,15 @@ class FullArticleFromTexts(GenerateNewsFromTextHandler):
         return _payload
 
 
-class GenerateArticleFromTexts(FullArticleFromTexts):
+class GenerateArticleFromTexts(CreateFullArticleFromTexts):
     """
     Built‑in utility: generate a concise A4‑length article summarising the
     provided texts/news from a single day. Registered at
     ``/api/generate_article_from_texts``.
     """
 
-    REQUIRED_ARGS = GENERATE_ARTICLES_REQ
-    OPTIONAL_ARGS = GENERATE_ARTICLES_OPT
+    REQUIRED_ARGS = GENERATE_ARTICLE_FROM_TEXTS_REQ
+    OPTIONAL_ARGS = GENERATE_ARTICLE_FROM_TEXTS_OPT
     SYSTEM_PROMPT_NAME = {
         "pl": "builtin/system/pl/article-from-texts",
         "en": "builtin/system/en/article-from-texts",
@@ -874,18 +774,18 @@ class GenerateArticleFromTexts(FullArticleFromTexts):
         return _payload
 
 
-class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
+class GenerativeAnswer(GenerateArticleFromText):
     """
     Built‑in utility: answer a question using provided context.
 
     Registered at ``/api/generative_answer`` (with default prefix).
     Auth: **optional** — required only when ``LLM_ROUTER_AUTH_ENABLED=true``
     (``builtin`` permission) — inherits policy from
-    :class:`GenerateNewsFromTextHandler`.
+    :class:`GenerateArticleFromText`.
     """
 
-    REQUIRED_ARGS = CONTEXT_ANSWER_REQ
-    OPTIONAL_ARGS = CONTEXT_ANSWER_OPT
+    REQUIRED_ARGS = GENERATIVE_ANSWER_REQ
+    OPTIONAL_ARGS = GENERATIVE_ANSWER_OPT
     SYSTEM_PROMPT_NAME = {
         "pl": "builtin/system/pl/answer-from-context-simple",
         "en": "builtin/system/en/answer-from-context-simple",
@@ -928,7 +828,7 @@ class AnswerBasedOnTheContext(GenerateNewsFromTextHandler):
         dict
             Normalised request payload for the downstream model.
         """
-        options = AnswerBasedOnTheContextModel(**params)
+        options = GenerativeAnswerModel(**params)
         _payload = options.model_dump()
         _payload["stream"] = _payload.get("stream", False)
         _payload["model"] = _payload["model_name"]

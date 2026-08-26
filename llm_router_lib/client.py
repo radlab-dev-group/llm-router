@@ -6,6 +6,9 @@ the service‑layer classes (conversation, extended conversation, translation)
 to provide a convenient, type‑safe Python interface.  Callers can pass either
 a dictionary or a Pydantic model instance; the client takes care of converting
 the model to a plain ``dict`` before invoking the appropriate service.
+Each public method validates the raw JSON response against the matching
+Pydantic model (see :mod:`llm_router_lib.data_models.response`) and returns
+that typed model rather than a free‑form ``dict``.
 """
 
 import logging
@@ -17,30 +20,48 @@ from llm_router_lib.core.constants import (
     DEFAULT_TIMEOUT_SECONDS,
     DEFAULT_RETRIES,
 )
-from llm_router_lib.services.health import PingService, VersionService
+from llm_router_lib.services.health import PingService, VersionService, ModelsService
 from llm_router_lib.utils.http import HttpRequester
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
     Polarity3cService,
-    TranslateTextService,
+    TranslateService,
     SimplifyTextService,
     GenerativeAnswerService,
-    GenerateNewsFromTextService,
+    GenerateArticleFromTextService,
     CreateFullArticleFromTextsService,
     GenerateArticleFromTextsService,
-    GenerateQuestionsFromTextsService,
+    GenerateQuestionsService,
     GenerateLabelService,
 )
 from llm_router_lib.services.conversation import (
-    ConversationService,
-    ExtendedConversationService,
+    ConversationWithModelService,
+    ExtendedConversationWithModelService,
+)
+from llm_router_lib.data_models.response import (
+    PingResponse,
+    VersionResponse,
+    ModelsListResponse,
+    ConversationResponse,
+    ExtendedConversationResponse,
+    Polarity3cResponse,
+    TranslateResponse,
+    SimplifyTextResponse,
+    GenerativeAnswerResponse,
+    GenerateArticleFromTextResponse,
+    GenerateArticleFromTextsResponse,
+    CreateFullArticleFromTextsResponse,
+    GenerateQuestionsResponse,
+    GenerateLabelResponse,
 )
 
 # ------------------------------------------------------------------ #
 # Type aliases for payload parameter union types (repeated across methods).
 # ------------------------------------------------------------------ #
-_ConvPayload = Union[Dict[str, Any], ConversationService.model_cls]
-_ExtConvPayload = Union[Dict[str, Any], ExtendedConversationService.model_cls]
+_ConvPayload = Union[Dict[str, Any], ConversationWithModelService.model_cls]
+_ExtConvPayload = Union[
+    Dict[str, Any], ExtendedConversationWithModelService.model_cls
+]
 
 
 class LLMRouterClient:
@@ -130,7 +151,7 @@ class LLMRouterClient:
         self.close()
 
     # ------------------------------------------------------------------ #
-    def ping(self) -> Dict[str, Any]:
+    def ping(self) -> PingResponse:
         """
         Perform a health‑check request against the router.
 
@@ -141,9 +162,9 @@ class LLMRouterClient:
 
         Returns
         -------
-        dict
-            The JSON payload returned by the router, typically containing a
-            ``status`` field (e.g. ``{"status": "ok"}``).
+        PingResponse
+            Validated :class:`PingResponse` (``status`` and ``body`` fields),
+            typically ``{"status": true, "body": "pong"}``.
 
         Raises
         ------
@@ -151,9 +172,11 @@ class LLMRouterClient:
             Propagated from the underlying service if the HTTP request fails
             or the response cannot be decoded as JSON.
         """
-        return PingService(self.http, self.logger).call_get()
+        return PingResponse.model_validate(
+            PingService(self.http, self.logger).call_get()
+        )
 
-    def version(self) -> Dict[str, Any]:
+    def version(self) -> VersionResponse:
         """
         Retrieve version information for the running router instance.
 
@@ -163,64 +186,98 @@ class LLMRouterClient:
 
         Returns
         -------
-        dict
-            Parsed JSON containing version‑related data.
+        VersionResponse
+            Validated :class:`VersionResponse` exposing the router ``version``.
 
         Raises
         ------
         LLMRouterError
             Propagated if the request fails or the response is not valid JSON.
         """
-        return VersionService(self.http, self.logger).call_get()
+        return VersionResponse.model_validate(
+            VersionService(self.http, self.logger).call_get()
+        )
+
+    def models(self) -> ModelsListResponse:
+        """
+        List the models currently available on the router.
+
+        Calls the ``/v1/models`` endpoint via :class:`ModelsService` and
+        extracts the identifier (``id`` field) of each entry.  This is useful
+        for discovering which model names can be passed to the other client
+        methods (e.g. ``conversation_with_model``).
+
+        Returns
+        -------
+        ModelsListResponse
+            Validated :class:`ModelsListResponse`; read the ``data`` field for the
+            full entries or the ``ids`` property for just the model names, e.g.
+            ``["google/gemma-3-12b-it", "speakleash/Bielik-11B-v2.3-Instruct"]``.
+
+        Raises
+        ------
+        LLMRouterError
+            Propagated from the underlying service if the HTTP request fails
+            or the response cannot be decoded as JSON.
+        """
+        response = ModelsService(self.http, self.logger).call_get()
+        return ModelsListResponse.model_validate(response)
 
     # ------------------------------------------------------------------ #
     def conversation_with_model(
         self,
         payload: _ConvPayload,
-    ) -> Dict[str, Any]:
+    ) -> ConversationResponse:
         """
         Call the standard conversation endpoint.
 
         The method accepts either a raw dictionary or a
-        :class:`GenerativeConversationModel` instance; in the latter case the
+        :class:`ConversationWithModelRequest` instance; in the latter case the
         model is serialised via ``model_dump()`` before the request is sent.
 
         Parameters
         ----------
-        payload : Union[Dict[str, Any], GenerativeConversationModel]
+        payload : Union[Dict[str, Any], ConversationWithModelRequest]
             The request body to be forwarded to ``/api/conversation_with_model``.
 
         Returns
         -------
-        dict
-            Parsed JSON response from the router.
+        ConversationResponse
+            Validated :class:`ConversationResponse`; ``response`` holds the reply text.
         """
-        if isinstance(payload, ConversationService.model_cls):
+        if isinstance(payload, ConversationWithModelService.model_cls):
             payload = payload.model_dump()
 
-        return ConversationService(self.http, self.logger).call_post(payload)
+        return ConversationResponse.model_validate(
+            ConversationWithModelService(self.http, self.logger).call_post(payload)
+        )
 
     def extended_conversation_with_model(
         self,
         payload: _ExtConvPayload,
-    ) -> Dict[str, Any]:
+    ) -> ExtendedConversationResponse:
         """
         Call the extended conversation endpoint
         that supports an explicit system prompt.
 
         Parameters
         ----------
-        payload : Union[Dict[str, Any], ExtendedGenerativeConversationModel]
+        payload : Union[Dict[str, Any], ExtendedConversationWithModelRequest]
             The request body for ``/api/extended_conversation_with_model``.
 
         Returns
         -------
-        dict
-            Parsed JSON response from the router.
+        ExtendedConversationResponse
+            Validated :class:`ExtendedConversationResponse`; ``response`` holds the
+            reply text.
         """
-        if isinstance(payload, ExtendedConversationService.model_cls):
+        if isinstance(payload, ExtendedConversationWithModelService.model_cls):
             payload = payload.model_dump()
-        return ExtendedConversationService(self.http, self.logger).call_post(payload)
+        return ExtendedConversationResponse.model_validate(
+            ExtendedConversationWithModelService(self.http, self.logger).call_post(
+                payload
+            )
+        )
 
     # ------------------------------------------------------------------ #
     def polarity_3c(
@@ -235,7 +292,7 @@ class LLMRouterClient:
         model: Optional[str] = None,
         temperature: Optional[float] = 0.2,
         max_new_tokens: Optional[int] = 256,
-    ) -> Dict[str, Any]:
+    ) -> Polarity3cResponse:
         """
         Detect 3-class polarity (ambivalent, positive, negative) for a list of texts
         using the ``/api/polarity_3c`` endpoint.
@@ -268,8 +325,9 @@ class LLMRouterClient:
             Max new tokens
         Returns
         -------
-        dict
-            Parsed JSON response from the polarity classification service.
+        Polarity3cResponse
+            Validated :class:`Polarity3cResponse`; ``response`` is a list of
+            ``{original, polarity}`` items, one per input text.
 
         Raises
         ------
@@ -284,39 +342,41 @@ class LLMRouterClient:
             temperature=temperature,
             max_new_tokens=max_new_tokens,
         )
-        return Polarity3cService(self.http, self.logger).call_post(payload)
+        return Polarity3cResponse.model_validate(
+            Polarity3cService(self.http, self.logger).call_post(payload)
+        )
 
     def translate(
         self,
         payload: Optional[
             Union[
                 Dict[str, Any],
-                TranslateTextService.model_cls,
+                TranslateService.model_cls,
             ]
         ] = None,
         texts: Optional[List[str]] = None,
         model: Optional[str] = None,
         temperature: Optional[float] = 0.75,
         max_new_tokens: Optional[int] = 512,
-    ) -> Dict[str, Any]:
+    ) -> TranslateResponse:
         """
         Translate a list of texts using the ``/api/translate`` endpoint.
 
         The method can be used in three ways:
 
         1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
-           conforms to :class:`TranslateTextModel`.
+           conforms to :class:`TranslateModel`.
         2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``TranslateTextModel`` and will be serialized automatically.
+           ``TranslateModel`` and will be serialized automatically.
         3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``TranslateTextModel`` instance on‑the‑fly.
+           ``TranslateModel`` instance on‑the‑fly.
 
         If neither a payload nor the ``texts``/``model`` pair is supplied, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], TranslateTextModel]]
+        payload : Optional[Union[Dict[str, Any], TranslateModel]]
             Optional pre‑constructed request body.
         texts : Optional[List[str]]
             List of source strings to translate (required if ``payload`` is not
@@ -330,8 +390,9 @@ class LLMRouterClient:
             Max new tokens
         Returns
         -------
-        dict
-            Parsed JSON response from the translation service.
+        TranslateResponse
+            Validated :class:`TranslateResponse`; ``response`` is a list of
+            ``{original, translated}`` items, one per input text.
 
         Raises
         ------
@@ -339,16 +400,18 @@ class LLMRouterClient:
             If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
         """
         payload = self._build_payload(
-            model_cls=TranslateTextService.model_cls,
+            model_cls=TranslateService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             texts=texts,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
         )
-        return TranslateTextService(self.http, self.logger).call_post(payload)
+        return TranslateResponse.model_validate(
+            TranslateService(self.http, self.logger).call_post(payload)
+        )
 
-    def simplify_texts(
+    def simplify_text(
         self,
         payload: Optional[
             Union[
@@ -360,7 +423,7 @@ class LLMRouterClient:
         model: Optional[str] = None,
         temperature: Optional[float] = 0.2,
         max_new_tokens: Optional[int] = 256,
-    ) -> Dict[str, Any]:
+    ) -> SimplifyTextResponse:
         """
         Simplify a list of texts using the ``/api/simplify_text`` endpoint.
 
@@ -392,8 +455,9 @@ class LLMRouterClient:
             Max new tokens
         Returns
         -------
-        dict
-            Parsed JSON response from the text‑simplification service.
+        SimplifyTextResponse
+            Validated :class:`SimplifyTextResponse`; ``response`` is a list of the
+            simplified texts.
 
         Raises
         ------
@@ -408,7 +472,9 @@ class LLMRouterClient:
             temperature=temperature,
             max_new_tokens=max_new_tokens,
         )
-        return SimplifyTextService(self.http, self.logger).call_post(payload)
+        return SimplifyTextResponse.model_validate(
+            SimplifyTextService(self.http, self.logger).call_post(payload)
+        )
 
     def generative_answer(
         self,
@@ -421,7 +487,7 @@ class LLMRouterClient:
         model: Optional[str] = None,
         texts: Optional[Dict[str, List[str]] | List[str]] = None,
         question_str: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> GenerativeAnswerResponse:
         payload = self._build_payload(
             model_cls=GenerativeAnswerService.model_cls,
             payload_arg=payload,
@@ -429,26 +495,30 @@ class LLMRouterClient:
             texts=texts,
             question_str=question_str,
         )
-        return GenerativeAnswerService(self.http, self.logger).call_post(payload)
+        return GenerativeAnswerResponse.model_validate(
+            GenerativeAnswerService(self.http, self.logger).call_post(payload)
+        )
 
-    def generate_news_from_text(
+    def generate_article_from_text(
         self,
         payload: Optional[
             Union[
                 Dict[str, Any],
-                GenerateNewsFromTextService.model_cls,
+                GenerateArticleFromTextService.model_cls,
             ]
         ] = None,
         text: Optional[str] = None,
         model: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> GenerateArticleFromTextResponse:
         payload = self._build_payload(
-            model_cls=GenerateNewsFromTextService.model_cls,
+            model_cls=GenerateArticleFromTextService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             text=text,
         )
-        return GenerateNewsFromTextService(self.http, self.logger).call_post(payload)
+        return GenerateArticleFromTextResponse.model_validate(
+            GenerateArticleFromTextService(self.http, self.logger).call_post(payload)
+        )
 
     def generate_article_from_texts(
         self,
@@ -460,7 +530,7 @@ class LLMRouterClient:
         ] = None,
         texts: Optional[List[str]] = None,
         model: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> GenerateArticleFromTextsResponse:
         """
         Generate a short (~A4) article from multiple input texts using the
         ``/api/generate_article_from_texts`` builtin endpoint.
@@ -474,8 +544,10 @@ class LLMRouterClient:
             model_name=model or self.default_model,
             texts=texts,
         )
-        return GenerateArticleFromTextsService(self.http, self.logger).call_post(
-            payload
+        return GenerateArticleFromTextsResponse.model_validate(
+            GenerateArticleFromTextsService(self.http, self.logger).call_post(
+                payload
+            )
         )
 
     def create_full_article_from_texts(
@@ -491,7 +563,7 @@ class LLMRouterClient:
         article_type: Optional[str] = None,
         model: Optional[str] = None,
         max_new_tokens: Optional[int] = 1024,
-    ) -> Dict[str, Any]:
+    ) -> CreateFullArticleFromTextsResponse:
         """
         Create a full article from multiple input texts using the
         ``/api/create_full_article_from_texts`` builtin endpoint.
@@ -508,22 +580,24 @@ class LLMRouterClient:
             article_type=article_type,
             max_new_tokens=max_new_tokens,
         )
-        return CreateFullArticleFromTextsService(self.http, self.logger).call_post(
-            payload
+        return CreateFullArticleFromTextsResponse.model_validate(
+            CreateFullArticleFromTextsService(self.http, self.logger).call_post(
+                payload
+            )
         )
 
-    def generate_questions_from_texts(
+    def generate_questions(
         self,
         payload: Optional[
             Union[
                 Dict[str, Any],
-                GenerateQuestionsFromTextsService.model_cls,
+                GenerateQuestionsService.model_cls,
             ]
         ] = None,
         texts: Optional[List[str]] = None,
         number_of_questions: Optional[int] = 1,
         model: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> GenerateQuestionsResponse:
         """
         Generate questions from multiple input texts using the
         ``/api/generate_questions`` builtin endpoint.
@@ -531,18 +605,18 @@ class LLMRouterClient:
         The method can be used in three ways:
 
         1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
-           conforms to :class:`GenerateQuestionFromTextsModel`.
+           conforms to :class:`GenerateQuestionsModel`.
         2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``GenerateQuestionFromTextsModel`` and will be serialized automatically.
+           ``GenerateQuestionsModel`` and will be serialized automatically.
         3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``GenerateQuestionFromTextsModel`` instance on‑the‑fly.
+           ``GenerateQuestionsModel`` instance on‑the‑fly.
 
         If neither a payload nor the ``texts``/``model`` pair is supplied, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], GenerateQuestionFromTextsModel]]
+        payload : Optional[Union[Dict[str, Any], GenerateQuestionsModel]]
             Optional pre‑constructed request body.
         texts : Optional[List[str]]
             List of source strings from which to generate questions (required if
@@ -554,8 +628,9 @@ class LLMRouterClient:
 
         Returns
         -------
-        dict
-            Parsed JSON response from the question generation service.
+        GenerateQuestionsResponse
+            Validated :class:`GenerateQuestionsResponse`; ``response`` is a list of
+            ``{text, questions}`` items, one per input text.
 
         Raises
         ------
@@ -563,36 +638,14 @@ class LLMRouterClient:
             If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
         """
         payload = self._build_payload(
-            model_cls=GenerateQuestionsFromTextsService.model_cls,
+            model_cls=GenerateQuestionsService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             texts=texts,
             number_of_questions=number_of_questions,
         )
-        return GenerateQuestionsFromTextsService(self.http, self.logger).call_post(
-            payload
-        )
-
-    def generate_questions(
-        self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                GenerateQuestionsFromTextsService.model_cls,
-            ]
-        ] = None,
-        texts: Optional[List[str]] = None,
-        number_of_questions: Optional[int] = 1,
-        model: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Alias for :meth:`generate_questions_from_texts`.
-        """
-        return self.generate_questions_from_texts(
-            payload=payload,
-            texts=texts,
-            number_of_questions=number_of_questions,
-            model=model,
+        return GenerateQuestionsResponse.model_validate(
+            GenerateQuestionsService(self.http, self.logger).call_post(payload)
         )
 
     def generate_label(
@@ -607,7 +660,7 @@ class LLMRouterClient:
         model: Optional[str] = None,
         temperature: Optional[float] = 0.2,
         max_new_tokens: Optional[int] = 64,
-    ) -> Dict[str, Any]:
+    ) -> GenerateLabelResponse:
         """
         Generate a category name (label) for a list of texts using the
         ``/api/generate_label`` endpoint.
@@ -645,8 +698,9 @@ class LLMRouterClient:
 
         Returns
         -------
-        dict
-            Parsed JSON response from the label‑generation service.
+        GenerateLabelResponse
+            Validated :class:`GenerateLabelResponse`; ``response`` is the generated
+            category label.
 
         Raises
         ------
@@ -662,7 +716,9 @@ class LLMRouterClient:
             temperature=temperature,
             max_new_tokens=max_new_tokens,
         )
-        return GenerateLabelService(self.http, self.logger).call_post(payload)
+        return GenerateLabelResponse.model_validate(
+            GenerateLabelService(self.http, self.logger).call_post(payload)
+        )
 
     # ------------------------------------------------------------------ #
     @staticmethod

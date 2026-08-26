@@ -6,8 +6,6 @@ logic – it only supplies immutable configuration values and enumerations that
 are shared across the code‑base.
 """
 
-import os
-
 
 class _DontChangeMe:
     """
@@ -18,14 +16,6 @@ class _DontChangeMe:
     """
 
     MAIN_ENV_PREFIX = "LLM_ROUTER_"
-
-
-# Default language for endpoint‑specific prompts.  The value can be overridden
-# with the environment variable LLM_ROUTER_DEFAULT_EP_LANGUAGE.
-# If the variable is absent, Polish ("pl") is used as the fallback language.
-DEFAULT_EP_LANGUAGE = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}DEFAULT_EP_LANGUAGE", "pl"
-).strip()
 
 
 class BalanceStrategies:
@@ -60,7 +50,7 @@ POSSIBLE_BALANCE_STRATEGIES = [
 # DEFAULT_ANONYMIZE_STRATEGY = "fast_masker"
 # POSSIBLE_ANONYMIZE_STRATEGIES = ["fast_masker", "genai"]
 
-# List of OpenAI compatible provides
+# List of the OpenAI compatible providers
 OPENAI_COMPATIBLE_PROVIDERS = [
     "openai",
     "lmstudio",

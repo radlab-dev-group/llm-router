@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint & type-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install runtime + lint deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[api]
+          pip install -r requirements-auth.txt
+          pip install faiss-cpu sentence-transformers
+          pip install black==24.4.2 flake8==7.1.1 pylint==3.2.7 mypy==1.10.1 "bandit[toml]==1.7.9"
+      - name: black (check)
+        run: black --check .
+      - name: flake8
+        run: flake8 . --exclude="*/tests/*"
+      - name: pylint
+        run: |
+          pylint ./llm_router_api --ignore=tests
+          pylint ./llm_router_cli
+          pylint ./llm_router_lib
+      - name: mypy
+        run: |
+          mypy ./llm_router_api
+          mypy ./llm_router_cli
+          mypy ./llm_router_lib
+      - name: bandit
+        run: bandit -r .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - name: Install runtime + test deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[api]
+          pip install -r requirements-auth.txt
+          pip install pytest==8.2.2 "openai>=1.0" "nest_asyncio>=1.6"
+      - name: Run tests
+        run: pytest llm_router_api/tests llm_router_lib/tests -v -p no:cacheprovider

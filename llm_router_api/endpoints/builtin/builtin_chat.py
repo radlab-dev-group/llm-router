@@ -17,8 +17,8 @@ from llm_router_lib.data_models.builtin_chat import (
     GENAI_CONV_OPT_ARGS,
     EXT_GENAI_CONV_REQ_ARGS,
     EXT_GENAI_CONV_OPT_ARGS,
-    GenerativeConversationModel,
-    ExtendedGenerativeConversationModel,
+    ConversationWithModelRequest,
+    ExtendedConversationWithModelRequest,
 )
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
@@ -97,7 +97,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
         Convert the incoming request into the payload expected by the model.
 
         The method validates required fields via the pydantic model
-        :class:`GenerativeConversationModel`, renames ``model_name`` to ``model``,
+        :class:`ConversationWithModelRequest`, renames ``model_name`` to ``model``,
         and builds the ``messages`` list required by the downstream service.
         Historical conversation turns are prepended when present.
 
@@ -111,7 +111,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
         dict
             Normalised payload ready for HTTP forwarding.
         """
-        options = GenerativeConversationModel(**params)
+        options = ConversationWithModelRequest(**params)
         _payload = options.model_dump()
         _payload["model"] = _payload["model_name"]
         _payload["messages"] = [
@@ -225,7 +225,7 @@ class ExtendedConversationWithModel(ConversationWithModel):
         Build a payload that includes an explicit system prompt.
 
         The method validates the request using the pydantic model
-        :class:`ExtendedGenerativeConversationModel`, inserts the system prompt,
+        :class:`ExtendedConversationWithModelRequest`, inserts the system prompt,
         and appends the user’s last statement together with any historical
         messages supplied by the client.
 
@@ -239,7 +239,7 @@ class ExtendedConversationWithModel(ConversationWithModel):
         dict
             Normalised payload ready for the downstream model.
         """
-        options = ExtendedGenerativeConversationModel(**params)
+        options = ExtendedConversationWithModelRequest(**params)
         _payload = options.model_dump()
         _payload["model"] = _payload["model_name"]
         _payload["messages"] = [

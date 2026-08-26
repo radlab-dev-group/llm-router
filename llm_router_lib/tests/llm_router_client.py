@@ -5,13 +5,13 @@ from llm_router_lib import LLMRouterClient
 from llm_router_lib.tests.builtin_conversation import (
     ConversationWithModelTest,
     ExtendedConversationWithModelTest,
-    AnswerBasedOnTheContextModelTest,
+    GenerativeAnswerModelTest,
 )
 from llm_router_lib.tests.builtin_health import PingTest, VersionTest
 from llm_router_lib.tests.builtin_utils import (
-    TranslateTextModelTest,
+    TranslateModelTest,
     SimplifyTextModelTest,
-    GenerateQuestionFromTextsModelTest,
+    GenerateQuestionsModelTest,
     GenerateLabelModelTest,
 )
 
@@ -25,11 +25,11 @@ def prepare_tests(client: LLMRouterClient):
     return [
         [ConversationWithModelTest(client=client), Models.google_gemma_vllm],
         [ExtendedConversationWithModelTest(client=client), Models.google_gemma_vllm],
-        [AnswerBasedOnTheContextModelTest(client=client), Models.google_gemma_vllm],
-        [TranslateTextModelTest(client=client), Models.speakleash_bielik_2_3],
+        [GenerativeAnswerModelTest(client=client), Models.google_gemma_vllm],
+        [TranslateModelTest(client=client), Models.speakleash_bielik_2_3],
         [SimplifyTextModelTest(client=client), Models.speakleash_bielik_2_3],
         [
-            GenerateQuestionFromTextsModelTest(client=client),
+            GenerateQuestionsModelTest(client=client),
             Models.speakleash_bielik_2_3,
         ],
         [
@@ -50,6 +50,10 @@ def main():
     for test, model_name in prepare_tests(client):
         print("--" * 50)
         test_result = test.run(model_name=model_name)
+        # Client methods now return typed response models; serialise to a
+        # plain dict before JSON-printing so both shapes work.
+        if hasattr(test_result, "model_dump"):
+            test_result = test_result.model_dump()
         print(" =========== response =========== ")
         print(json.dumps(test_result, indent=1, ensure_ascii=False))
 

@@ -9,35 +9,34 @@ from llm_router_lib.services.service_interface import (
     BaseConversationServiceInterface,
 )
 from llm_router_lib.services.conversation import (
-    ConversationService,
-    ExtendedConversationService,
+    ConversationWithModelService,
+    ExtendedConversationWithModelService,
 )
-from llm_router_lib.services.health import PingService, VersionService
+from llm_router_lib.services.health import PingService, VersionService, ModelsService
 from llm_router_lib.services.utils import (
     Polarity3cService,
-    TranslateTextService,
+    TranslateService,
     SimplifyTextService,
     GenerativeAnswerService,
-    GenerateNewsFromTextService,
+    GenerateArticleFromTextService,
     CreateFullArticleFromTextsService,
     GenerateArticleFromTextsService,
-    GenerateQuestionsFromTextsService,
-    GenerateQuestionFromTextsService,
+    GenerateQuestionsService,
 )
 
 __all__ = [
     "BaseConversationServiceInterface",
-    "ConversationService",
-    "ExtendedConversationService",
+    "ConversationWithModelService",
+    "ExtendedConversationWithModelService",
     "PingService",
     "VersionService",
+    "ModelsService",
     "Polarity3cService",
-    "TranslateTextService",
+    "TranslateService",
     "SimplifyTextService",
     "GenerativeAnswerService",
-    "GenerateNewsFromTextService",
+    "GenerateArticleFromTextService",
     "CreateFullArticleFromTextsService",
     "GenerateArticleFromTextsService",
-    "GenerateQuestionsFromTextsService",
-    "GenerateQuestionFromTextsService",
+    "GenerateQuestionsService",
 ]
