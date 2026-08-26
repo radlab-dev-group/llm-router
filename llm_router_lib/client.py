@@ -249,9 +249,7 @@ class LLMRouterClient:
             payload = payload.model_dump()
 
         return ConversationResponse.model_validate(
-            ConversationWithModelService(self.http, self.logger).call_post(
-                payload
-            )
+            ConversationWithModelService(self.http, self.logger).call_post(payload)
         )
 
     def extended_conversation_with_model(
@@ -276,9 +274,9 @@ class LLMRouterClient:
         if isinstance(payload, ExtendedConversationWithModelService.model_cls):
             payload = payload.model_dump()
         return ExtendedConversationResponse.model_validate(
-            ExtendedConversationWithModelService(
-                self.http, self.logger
-            ).call_post(payload)
+            ExtendedConversationWithModelService(self.http, self.logger).call_post(
+                payload
+            )
         )
 
     # ------------------------------------------------------------------ #
@@ -519,9 +517,7 @@ class LLMRouterClient:
             text=text,
         )
         return GenerateArticleFromTextResponse.model_validate(
-            GenerateArticleFromTextService(self.http, self.logger).call_post(
-                payload
-            )
+            GenerateArticleFromTextService(self.http, self.logger).call_post(payload)
         )
 
     def generate_article_from_texts(
