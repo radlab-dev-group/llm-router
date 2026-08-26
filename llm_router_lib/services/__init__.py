@@ -12,7 +12,7 @@ from llm_router_lib.services.conversation import (
     ConversationWithModelService,
     ExtendedConversationWithModelService,
 )
-from llm_router_lib.services.health import PingService, VersionService
+from llm_router_lib.services.health import PingService, VersionService, ModelsService
 from llm_router_lib.services.utils import (
     Polarity3cService,
     TranslateService,
@@ -30,6 +30,7 @@ __all__ = [
     "ExtendedConversationWithModelService",
     "PingService",
     "VersionService",
+    "ModelsService",
     "Polarity3cService",
     "TranslateService",
     "SimplifyTextService",
