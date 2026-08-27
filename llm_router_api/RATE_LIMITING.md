@@ -24,7 +24,7 @@ Time → ───────────────────────�
 ```
 
 - **Precision:** per-request, no fixed-boundary artifacts
-- **Memory:** O(requests per key+IP) — old entries are automatically purged
+- **Memory:** O (requests per key+IP) — old entries are automatically purged
 - **Durability:** Redis persistence (RDB/AOF) protects against server restart
 
 ### Key + IP Binning
@@ -55,8 +55,7 @@ section (Rate limiting subsection)**.
 ### Enabling Rate Limiting
 
 Rate limiting is applied **automatically** when authentication is enabled — there is no separate toggle. Just enable
-auth
-and configure the default rate limit:
+auth and configure the default rate limit:
 
 ```bash
 export LLM_ROUTER_AUTH_ENABLED=true
@@ -216,10 +215,10 @@ appendfsync everysec
 
 | Feature          | Sliding Window (current) | Fixed Window                      |
 |------------------|--------------------------|-----------------------------------|
-| Boundary spikes  | ❌ No                     | ✅ Yes                             |
+| Boundary spikes  | ❌ No                    | ✅ Yes                            |
 | Precision        | Per-request              | Per-window                        |
 | Memory           | O(entries)               | O(windows)                        |
-| Burst protection | ✅ Excellent              | ⚠️ Can allow 2× limit at boundary |
+| Burst protection | ✅ Excellent             | ⚠️ Can allow 2× limit at boundary |
 
 ### Why Sliding Window?
 
@@ -244,8 +243,8 @@ Without it, a leaked API key allows unlimited requests to your downstream provid
 
 ### 2. Set up auth Redis connection
 
-Rate limiting **requires** a working Auth Redis connection regardless of key store type
-(because the rate limiter manages its own sorted sets):
+Rate limiting **requires** a working Auth Redis connection regardless of key store type (because the rate limiter
+manages its own sorted sets):
 
 ```bash
 # When using redis for keys — same connection serves both purposes:

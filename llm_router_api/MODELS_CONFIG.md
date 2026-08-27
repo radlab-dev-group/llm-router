@@ -249,8 +249,8 @@ Copy it to your own configuration directory and adjust the values to match your 
 ```
 
 > **Tip:**  
-> *Keep the file name configurable through the environment variable `LLM_ROUTER_MODELS_CONFIG` (the default
-is `resources/configs/models-config.json`).*
+> *Keep the file name configurable through the environment variable `LLM_ROUTER_MODELS_CONFIG` (the default is
+`resources/configs/models-config.json`).*
 
 ---  
 
