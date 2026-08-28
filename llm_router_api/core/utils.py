@@ -11,7 +11,7 @@ and each public method now has a clear description of its behavior,
 parameters, and return value.
 """
 
-from typing import Optional, Any
+from typing import Any, Optional
 
 
 class StrategyHelpers:
@@ -35,7 +35,7 @@ class StrategyHelpers:
 
         Returns
         -------
-        str | None
+        Optional[str]
             Decoded UTF‑8 string, or ``None`` if ``value`` was ``None``.
         """
         if value is None:
@@ -55,7 +55,7 @@ class StrategyHelpers:
 
         Parameters
         ----------
-        name: str | None
+        name: Optional[str]
             Raw model name possibly containing prefixes.
 
         Returns
@@ -89,7 +89,7 @@ class StrategyHelpers:
 
         Returns
         -------
-        str | None
+        Optional[str]
             Host URL if present, otherwise ``None``.
         """
         return provider.get("api_host") or provider.get("host")

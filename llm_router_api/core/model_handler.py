@@ -8,7 +8,7 @@ This module defines:
 """
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 from llm_router_api.core.model_config import ApiModelConfig
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
@@ -195,7 +195,7 @@ class ModelHandler:
         ----------
         model_name : str
             Name of the model whose provider list should be updated.
-        provider : dict
+        provider : Dict
             Provider dictionary (as stored in the configuration) that should be
             un‑selected.  The dictionary must contain either an ``id`` key or a
             ``host`` key that uniquely identifies the provider.

@@ -22,7 +22,7 @@ Typical usage
 import traceback
 
 from flask import Flask
-from typing import List, Type, Optional
+from typing import List, Optional, Type
 
 from rdl_ml_utils.utils.logger import prepare_logger
 
@@ -135,7 +135,7 @@ class FlaskEngine:
         self._services_monitor.start()
 
         self._auth_enabled = False
-        self._auth_metrics: AuthMetrics | None = None
+        self._auth_metrics: Optional[AuthMetrics] = None
         self._router_metrics: Optional[RouterMetrics] = None
 
     # def __del__(self):
