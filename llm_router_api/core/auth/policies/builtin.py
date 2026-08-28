@@ -7,9 +7,11 @@ when the user creates a key without specifying a policy.
 
 from __future__ import annotations
 
+from typing import Dict, List, Optional
+
 from llm_router_api.core.auth.policies.model import EndpointPolicy
 
-_builtin_policies: dict[str, EndpointPolicy] = {
+_builtin_policies: Dict[str, EndpointPolicy] = {
     "developer": EndpointPolicy(can_access=True),
     "admin": EndpointPolicy(can_access=True, metadata={"level": "admin"}),
     "chat": EndpointPolicy(can_access=True),
@@ -20,7 +22,7 @@ _builtin_policies: dict[str, EndpointPolicy] = {
 }
 
 
-def list_builtin_policies() -> list[str]:
+def list_builtin_policies() -> List[str]:
     """
     Return names of all builtin policies.
     """
@@ -28,7 +30,7 @@ def list_builtin_policies() -> list[str]:
     return list(_builtin_policies.keys())
 
 
-def get_builtin_policy(name: str) -> EndpointPolicy | None:
+def get_builtin_policy(name: str) -> Optional[EndpointPolicy]:
     """
     Return a builtin policy by name, or ``None``.
     """

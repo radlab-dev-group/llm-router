@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import time
 
-from typing import Any
+from typing import Any, Dict, Optional
 
 from llm_router_api.core.auth.policies import builtin as builtin_policies
 from llm_router_api.core.auth.policies.model import (
@@ -32,7 +32,7 @@ def _endpoint_key(method: str, path: str) -> str:
 # Values of "_public" mean the endpoint bypasses all auth checks (always accessible).
 # All other values are the required permission type (e.g. "chat", "embedding").
 # NOTE: Auth enforcement only applies when LLM_ROUTER_AUTH_ENABLED=true.
-_ENDPOINT_PERMISSION_MAP: dict[str, str] = {
+_ENDPOINT_PERMISSION_MAP: Dict[str, str] = {
     # ── Public endpoints — always accessible, no auth required
     #    (even when LLM_ROUTER_AUTH_ENABLED=true) ──
     "get:/": "_public",  # Ollama health endpoint
@@ -83,9 +83,9 @@ class PermissionEngine:
     """
 
     def __init__(
-        self, custom_policies: dict[str, EndpointPolicy] | None = None
+        self, custom_policies: Optional[Dict[str, EndpointPolicy]] = None
     ) -> None:
-        self._custom_policies: dict[str, EndpointPolicy] = custom_policies or {}
+        self._custom_policies: Dict[str, EndpointPolicy] = custom_policies or {}
 
     @staticmethod
     def _normalize(record: Any) -> Any:
@@ -114,18 +114,18 @@ class PermissionEngine:
         self,
         key_record: Any,
         endpoint_key: str,
-        model_name: str | None = None,
+        model_name: Optional[str] = None,
     ) -> EndpointPermission:
         """
         Return the permission for *key* on *endpoint*.
 
         Parameters
         ----------
-        key_record : ApiKeyRecord | dict
+        key_record : ApiKeyRecord or Dict
             The authenticated key (object or plain dict — both supported).
         endpoint_key : str
             The normalized endpoint key (e.g. ``"post:/v1/chat/completions"``).
-        model_name : str | None
+        model_name : Optional[str]
             The model being accessed (used for model whitelist checks).
 
         Returns
