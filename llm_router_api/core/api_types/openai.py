@@ -31,7 +31,13 @@ from llm_router_api.core.api_types.types_i import ApiTypesI
 # ---------------------------------------------------------------------------
 # Public constants
 # ---------------------------------------------------------------------------
+"""
+List of request parameters that the OpenAI client recognises.
 
+The list mirrors the official OpenAI specification and can be used for
+validation or filtering of user‑provided dictionaries before they are sent
+to the API.
+"""
 OPENAI_ACCEPTABLE_PARAMS = [
     "model",
     "messages",
@@ -41,14 +47,21 @@ OPENAI_ACCEPTABLE_PARAMS = [
     "tools",
     "input",
     "tool_choice",
+    "temperature",
+    "top_p",
+    "max_tokens",
+    "max_completion_tokens",
+    "n",
+    "stop",
+    "presence_penalty",
+    "frequency_penalty",
+    "response_format",
+    "seed",
+    "logprobs",
+    "top_logprobs",
+    "logit_bias",
+    "user",
 ]
-"""
-List of request parameters that the OpenAI client recognises.
-
-The list mirrors the official OpenAI specification and can be used for
-validation or filtering of user‑provided dictionaries before they are sent
-to the API.
-"""
 
 
 # ---------------------------------------------------------------------------
