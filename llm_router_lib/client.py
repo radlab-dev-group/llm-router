@@ -2,19 +2,29 @@
 High‑level client wrapper for the LLM‑Router API.
 
 The :class:`LLMRouterClient` aggregates the low‑level ``HttpRequester`` with
-the service‑layer classes (conversation, extended conversation, translation)
-to provide a convenient, type‑safe Python interface.  Callers can pass either
-a dictionary or a Pydantic model instance; the client takes care of converting
-the model to a plain ``dict`` before invoking the appropriate service.
+the service‑layer classes (conversation, utility endpoints) to provide a
+convenient, type‑safe Python interface.
+
+Every endpoint method exposes **one unified calling contract**:
+
+* ``payload`` – a ready‑made Pydantic request model (e.g.
+  :class:`Polarity3cModel`) that is serialised via ``model_dump()``; **or**
+* named keyword arguments (domain fields such as ``texts`` /
+  ``user_last_statement``, plus ``model`` and optional generation options
+  ``temperature`` / ``max_new_tokens``), from which the client builds the
+  request model on the fly.  All generation defaults come from the Pydantic
+  models themselves (``GenerativeOptions``).
+
+Raw ``dict`` payloads are **not** accepted – construct the Pydantic model
+explicitly (``MyModel(**kwargs)``) and pass the instance as ``payload``.
 Each public method validates the raw JSON response against the matching
 Pydantic model (see :mod:`llm_router_lib.data_models.response`) and returns
 that typed model rather than a free‑form ``dict``.
 """
 
 import logging
-from typing import Optional, Dict, Any, Union, List
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from llm_router_lib.core.constants import (
     DEFAULT_TIMEOUT_SECONDS,
@@ -38,6 +48,21 @@ from llm_router_lib.services.conversation import (
     ConversationWithModelService,
     ExtendedConversationWithModelService,
 )
+from llm_router_lib.data_models.builtin_chat import (
+    ConversationWithModelRequest,
+    ExtendedConversationWithModelRequest,
+)
+from llm_router_lib.data_models.builtin_utils import (
+    Polarity3cModel,
+    TranslateModel,
+    SimplifyTextModel,
+    GenerativeAnswerModel,
+    GenerateArticleFromTextModel,
+    CreateFullArticleFromTextsModel,
+    GenerateArticleFromTextsModel,
+    GenerateQuestionsModel,
+    GenerateLabelModel,
+)
 from llm_router_lib.data_models.response import (
     PingResponse,
     VersionResponse,
@@ -55,14 +80,6 @@ from llm_router_lib.data_models.response import (
     GenerateLabelResponse,
 )
 
-# ------------------------------------------------------------------ #
-# Type aliases for payload parameter union types (repeated across methods).
-# ------------------------------------------------------------------ #
-_ConvPayload = Union[Dict[str, Any], ConversationWithModelService.model_cls]
-_ExtConvPayload = Union[
-    Dict[str, Any], ExtendedConversationWithModelService.model_cls
-]
-
 
 class LLMRouterClient:
     """
@@ -71,6 +88,12 @@ class LLMRouterClient:
     The client hides the details of HTTP construction, retry handling and
     payload validation.  It is intended for use by downstream applications that
     need to interact with the router in a Pythonic way.
+
+    Every endpoint method follows the same unified contract: either pass a
+    ready‑made Pydantic request model via ``payload``, or pass the named
+    domain arguments (plus ``model`` and optional ``temperature`` /
+    ``max_new_tokens``) and the client builds the request model for you.
+    Raw ``dict`` payloads are no longer supported.
 
     Attributes
     ----------
@@ -92,7 +115,7 @@ class LLMRouterClient:
     def __init__(
         self,
         api: str,
-        token: Optional[str] = None,
+        token: str | None = None,
         timeout: int | None = None,
         retries: int | None = None,
         logger: logging.Logger | None = None,
@@ -226,103 +249,211 @@ class LLMRouterClient:
     # ------------------------------------------------------------------ #
     def conversation_with_model(
         self,
-        payload: _ConvPayload,
+        *,
+        payload: ConversationWithModelRequest | None = None,
+        user_last_statement: str | None = None,
+        historical_messages: list[dict[str, str]] | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> ConversationResponse:
         """
         Call the standard conversation endpoint.
 
-        The method accepts either a raw dictionary or a
-        :class:`ConversationWithModelRequest` instance; in the latter case the
-        model is serialised via ``model_dump()`` before the request is sent.
+        The method can be called in two equivalent ways:
+
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`ConversationWithModelRequest` instance; it is serialised
+           with ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``user_last_statement`` (plus optional
+           ``historical_messages``, ``model``, ``temperature`` and
+           ``max_new_tokens``); the client builds a
+           :class:`ConversationWithModelRequest` from them, using the client's
+           ``default_model`` when ``model`` is omitted.
+
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
+        :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Union[Dict[str, Any], ConversationWithModelRequest]
-            The request body to be forwarded to ``/api/conversation_with_model``.
+        payload : ConversationWithModelRequest | None
+            Optional pre‑constructed request model.
+        user_last_statement : str | None
+            The latest user utterance that the model should respond to
+            (required unless ``payload`` is supplied).
+        historical_messages : list[dict[str, str]] | None
+            Optional previous dialogue turns; each dict must contain ``role``
+            (``"user"`` / ``"assistant"``) and ``content`` keys.
+        model : str | None
+            Model identifier; falls back to the client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
 
         Returns
         -------
         ConversationResponse
-            Validated :class:`ConversationResponse`; ``response`` holds the reply text.
-        """
-        if isinstance(payload, ConversationWithModelService.model_cls):
-            payload = payload.model_dump()
+            Validated :class:`ConversationResponse`; ``response`` holds the
+            reply text.
 
+        Raises
+        ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``user_last_statement`` or a resolvable model
+            name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
+        """
+        request = self._build_payload(
+            model_cls=ConversationWithModelService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            user_last_statement=user_last_statement,
+            historical_messages=historical_messages,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
         return ConversationResponse.model_validate(
-            ConversationWithModelService(self.http, self.logger).call_post(payload)
+            ConversationWithModelService(self.http, self.logger).call_post(request)
         )
 
     def extended_conversation_with_model(
         self,
-        payload: _ExtConvPayload,
+        *,
+        payload: ExtendedConversationWithModelRequest | None = None,
+        user_last_statement: str | None = None,
+        historical_messages: list[dict[str, str]] | None = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> ExtendedConversationResponse:
         """
-        Call the extended conversation endpoint
-        that supports an explicit system prompt.
+        Call the extended conversation endpoint that supports an explicit
+        system prompt.
+
+        The method can be called in two equivalent ways:
+
+        1. **Prebuilt payload** – pass ``payload`` as an
+           :class:`ExtendedConversationWithModelRequest` instance; it is
+           serialised with ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``user_last_statement`` and
+           ``system_prompt`` (plus optional ``historical_messages``, ``model``,
+           ``temperature`` and ``max_new_tokens``); the client builds an
+           :class:`ExtendedConversationWithModelRequest` from them, using the
+           client's ``default_model`` when ``model`` is omitted.
+
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
+        :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Union[Dict[str, Any], ExtendedConversationWithModelRequest]
-            The request body for ``/api/extended_conversation_with_model``.
+        payload : ExtendedConversationWithModelRequest | None
+            Optional pre‑constructed request model.
+        user_last_statement : str | None
+            The latest user utterance that the model should respond to
+            (required unless ``payload`` is supplied).
+        historical_messages : list[dict[str, str]] | None
+            Optional previous dialogue turns; each dict must contain ``role``
+            (``"user"`` / ``"assistant"``) and ``content`` keys.
+        system_prompt : str | None
+            Explicit system prompt prepended to the conversation (required
+            unless ``payload`` is supplied).
+        model : str | None
+            Model identifier; falls back to the client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
 
         Returns
         -------
         ExtendedConversationResponse
-            Validated :class:`ExtendedConversationResponse`; ``response`` holds the
-            reply text.
+            Validated :class:`ExtendedConversationResponse`; ``response`` holds
+            the reply text.
+
+        Raises
+        ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``user_last_statement``, ``system_prompt`` or
+            a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
         """
-        if isinstance(payload, ExtendedConversationWithModelService.model_cls):
-            payload = payload.model_dump()
+        request = self._build_payload(
+            model_cls=ExtendedConversationWithModelService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            user_last_statement=user_last_statement,
+            historical_messages=historical_messages,
+            system_prompt=system_prompt,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
         return ExtendedConversationResponse.model_validate(
             ExtendedConversationWithModelService(self.http, self.logger).call_post(
-                payload
+                request
             )
         )
 
     # ------------------------------------------------------------------ #
     def polarity_3c(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                Polarity3cService.model_cls,
-            ]
-        ] = None,
-        texts: Optional[List[str]] = None,
-        model: Optional[str] = None,
-        temperature: Optional[float] = 0.2,
-        max_new_tokens: Optional[int] = 256,
+        *,
+        payload: Polarity3cModel | None = None,
+        texts: list[str] | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> Polarity3cResponse:
         """
-        Detect 3-class polarity (ambivalent, positive, negative) for a list of texts
-        using the ``/api/polarity_3c`` endpoint.
+        Detect 3‑class polarity (ambivalent, positive, negative) for a list of
+        texts using the ``/api/polarity_3c`` endpoint.
 
-        The method can be used in three ways:
+        The method can be called in two equivalent ways:
 
-        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
-           conforms to :class:`Polarity3cModel`.
-        2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``Polarity3cModel`` and will be serialized automatically.
-        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``Polarity3cModel`` instance on‑the‑fly.
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`Polarity3cModel` instance; it is serialised with
+           ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``texts`` (plus optional ``model``,
+           ``temperature`` and ``max_new_tokens``); the client builds a
+           :class:`Polarity3cModel` from them, using the client's
+           ``default_model`` when ``model`` is omitted.
 
-        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], Polarity3cModel]]
-            Optional pre‑constructed request body.
-        texts : Optional[List[str]]
-            List of source strings to classify (required if ``payload`` is not
+        payload : Polarity3cModel | None
+            Optional pre‑constructed request model.
+        texts : list[str] | None
+            List of source strings to classify (required unless ``payload`` is
             supplied).
-        model : Optional[str]
-            Model identifier to be used for classification (required if ``payload``
-            is not supplied).
-        temperature: Optional[float]
-            Temperature
-        max_new_tokens: Optional[int]
-            Max new tokens
+        model : str | None
+            Model identifier to be used for classification; falls back to the
+            client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
+
         Returns
         -------
         Polarity3cResponse
@@ -331,10 +462,15 @@ class LLMRouterClient:
 
         Raises
         ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
         NoArgsAndNoPayloadError
-            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``texts`` or a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
         """
-        payload = self._build_payload(
+        request = self._build_payload(
             model_cls=Polarity3cService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
@@ -343,51 +479,52 @@ class LLMRouterClient:
             max_new_tokens=max_new_tokens,
         )
         return Polarity3cResponse.model_validate(
-            Polarity3cService(self.http, self.logger).call_post(payload)
+            Polarity3cService(self.http, self.logger).call_post(request)
         )
 
     def translate(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                TranslateService.model_cls,
-            ]
-        ] = None,
-        texts: Optional[List[str]] = None,
-        model: Optional[str] = None,
-        temperature: Optional[float] = 0.75,
-        max_new_tokens: Optional[int] = 512,
+        *,
+        payload: TranslateModel | None = None,
+        texts: list[str] | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> TranslateResponse:
         """
         Translate a list of texts using the ``/api/translate`` endpoint.
 
-        The method can be used in three ways:
+        The method can be called in two equivalent ways:
 
-        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
-           conforms to :class:`TranslateModel`.
-        2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``TranslateModel`` and will be serialized automatically.
-        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``TranslateModel`` instance on‑the‑fly.
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`TranslateModel` instance; it is serialised with
+           ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``texts`` (plus optional ``model``,
+           ``temperature`` and ``max_new_tokens``); the client builds a
+           :class:`TranslateModel` from them, using the client's
+           ``default_model`` when ``model`` is omitted.
 
-        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], TranslateModel]]
-            Optional pre‑constructed request body.
-        texts : Optional[List[str]]
-            List of source strings to translate (required if ``payload`` is not
+        payload : TranslateModel | None
+            Optional pre‑constructed request model.
+        texts : list[str] | None
+            List of source strings to translate (required unless ``payload`` is
             supplied).
-        model : Optional[str]
-            Model identifier to be used for translation (required if ``payload``
-            is not supplied).
-        temperature: Optional[float]
-            Temperature
-        max_new_tokens: Optional[int]
-            Max new tokens
+        model : str | None
+            Model identifier to be used for translation; falls back to the
+            client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
+
         Returns
         -------
         TranslateResponse
@@ -396,10 +533,15 @@ class LLMRouterClient:
 
         Raises
         ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
         NoArgsAndNoPayloadError
-            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``texts`` or a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
         """
-        payload = self._build_payload(
+        request = self._build_payload(
             model_cls=TranslateService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
@@ -408,63 +550,69 @@ class LLMRouterClient:
             max_new_tokens=max_new_tokens,
         )
         return TranslateResponse.model_validate(
-            TranslateService(self.http, self.logger).call_post(payload)
+            TranslateService(self.http, self.logger).call_post(request)
         )
 
     def simplify_text(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                SimplifyTextService.model_cls,
-            ]
-        ] = None,
-        texts: Optional[List[str]] = None,
-        model: Optional[str] = None,
-        temperature: Optional[float] = 0.2,
-        max_new_tokens: Optional[int] = 256,
+        *,
+        payload: SimplifyTextModel | None = None,
+        texts: list[str] | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> SimplifyTextResponse:
         """
         Simplify a list of texts using the ``/api/simplify_text`` endpoint.
 
-        The method can be used in three ways:
+        The method can be called in two equivalent ways:
 
-        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
-           conforms to :class:`SimplifyTextModel`.
-        2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``SimplifyTextModel`` and will be serialized automatically.
-        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``SimplifyTextModel`` instance on‑the‑fly.
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`SimplifyTextModel` instance; it is serialised with
+           ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``texts`` (plus optional ``model``,
+           ``temperature`` and ``max_new_tokens``); the client builds a
+           :class:`SimplifyTextModel` from them, using the client's
+           ``default_model`` when ``model`` is omitted.
 
-        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], SimplifyTextModel]]
-            Optional pre‑constructed request body.
-        texts : Optional[List[str]]
-            List of source strings to simplify (required if ``payload`` is not
+        payload : SimplifyTextModel | None
+            Optional pre‑constructed request model.
+        texts : list[str] | None
+            List of source strings to simplify (required unless ``payload`` is
             supplied).
-        model : Optional[str]
-            Model identifier to be used for simplification (required if ``payload``
-            is not supplied).
-        temperature: Optional[float]
-            Temperature
-        max_new_tokens: Optional[int]
-            Max new tokens
+        model : str | None
+            Model identifier to be used for simplification; falls back to the
+            client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
+
         Returns
         -------
         SimplifyTextResponse
-            Validated :class:`SimplifyTextResponse`; ``response`` is a list of the
-            simplified texts.
+            Validated :class:`SimplifyTextResponse`; ``response`` is a list of
+            the simplified texts.
 
         Raises
         ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
         NoArgsAndNoPayloadError
-            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``texts`` or a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
         """
-        payload = self._build_payload(
+        request = self._build_payload(
             model_cls=SimplifyTextService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
@@ -473,193 +621,402 @@ class LLMRouterClient:
             max_new_tokens=max_new_tokens,
         )
         return SimplifyTextResponse.model_validate(
-            SimplifyTextService(self.http, self.logger).call_post(payload)
+            SimplifyTextService(self.http, self.logger).call_post(request)
         )
 
     def generative_answer(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                GenerativeAnswerService.model_cls,
-            ]
-        ] = None,
-        model: Optional[str] = None,
-        texts: Optional[Dict[str, List[str]] | List[str]] = None,
-        question_str: Optional[str] = None,
+        *,
+        payload: GenerativeAnswerModel | None = None,
+        texts: dict[str, list[str]] | list[str] | None = None,
+        question_str: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> GenerativeAnswerResponse:
-        payload = self._build_payload(
+        """
+        Answer a question based on a context (RAG) using the
+        ``/api/generative_answer`` endpoint.
+
+        The method can be called in two equivalent ways:
+
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`GenerativeAnswerModel` instance; it is serialised with
+           ``model_dump()`` and sent as‑is.  This is the only way to set the
+           advanced options (``doc_name_in_answer``, ``question_prompt``,
+           ``system_prompt``).
+        2. **Named arguments** – pass ``texts`` and ``question_str`` (plus
+           optional ``model``, ``temperature`` and ``max_new_tokens``); the
+           client builds a :class:`GenerativeAnswerModel` from them, using the
+           client's ``default_model`` when ``model`` is omitted.
+
+        ``texts`` is either a mapping of document name → list of passages or a
+        flat list of passages.
+
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : GenerativeAnswerModel | None
+            Optional pre‑constructed request model.
+        texts : dict[str, list[str]] | list[str] | None
+            Knowledge base passages (required unless ``payload`` is supplied).
+        question_str : str | None
+            The user's question to be answered (required unless ``payload`` is
+            supplied).
+        model : str | None
+            Model identifier; falls back to the client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
+
+        Returns
+        -------
+        GenerativeAnswerResponse
+            Validated :class:`GenerativeAnswerResponse`; ``response`` is the
+            generated answer text.
+
+        Raises
+        ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``texts``, ``question_str`` or a resolvable
+            model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
+        """
+        request = self._build_payload(
             model_cls=GenerativeAnswerService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             texts=texts,
             question_str=question_str,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
         )
         return GenerativeAnswerResponse.model_validate(
-            GenerativeAnswerService(self.http, self.logger).call_post(payload)
+            GenerativeAnswerService(self.http, self.logger).call_post(request)
         )
 
     def generate_article_from_text(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                GenerateArticleFromTextService.model_cls,
-            ]
-        ] = None,
-        text: Optional[str] = None,
-        model: Optional[str] = None,
+        *,
+        payload: GenerateArticleFromTextModel | None = None,
+        text: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> GenerateArticleFromTextResponse:
-        payload = self._build_payload(
+        """
+        Expand a single source text into a full article using the
+        ``/api/generate_article_from_text`` endpoint.
+
+        The method can be called in two equivalent ways:
+
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`GenerateArticleFromTextModel` instance; it is serialised
+           with ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``text`` (plus optional ``model``,
+           ``temperature`` and ``max_new_tokens``); the client builds a
+           :class:`GenerateArticleFromTextModel` from them, using the client's
+           ``default_model`` when ``model`` is omitted.
+
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : GenerateArticleFromTextModel | None
+            Optional pre‑constructed request model.
+        text : str | None
+            The source text (e.g. a news snippet) to be expanded into an
+            article (required unless ``payload`` is supplied).
+        model : str | None
+            Model identifier; falls back to the client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
+
+        Returns
+        -------
+        GenerateArticleFromTextResponse
+            Validated :class:`GenerateArticleFromTextResponse`;
+            ``response.article_text`` holds the generated article.
+
+        Raises
+        ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``text`` or a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
+        """
+        request = self._build_payload(
             model_cls=GenerateArticleFromTextService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             text=text,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
         )
         return GenerateArticleFromTextResponse.model_validate(
-            GenerateArticleFromTextService(self.http, self.logger).call_post(payload)
+            GenerateArticleFromTextService(self.http, self.logger).call_post(request)
         )
 
     def generate_article_from_texts(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                GenerateArticleFromTextsService.model_cls,
-            ]
-        ] = None,
-        texts: Optional[List[str]] = None,
-        model: Optional[str] = None,
+        *,
+        payload: GenerateArticleFromTextsModel | None = None,
+        texts: list[str] | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> GenerateArticleFromTextsResponse:
         """
         Generate a short (~A4) article from multiple input texts using the
-        ``/api/generate_article_from_texts`` builtin endpoint.
+        ``/api/generate_article_from_texts`` endpoint.
 
-        Accepts a prebuilt payload dict or model instance, or a ``texts`` list.
-        The client builds a payload when ``payload`` is not provided.
+        The method can be called in two equivalent ways:
+
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`GenerateArticleFromTextsModel` instance; it is serialised
+           with ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``texts`` (plus optional ``model``,
+           ``temperature`` and ``max_new_tokens``); the client builds a
+           :class:`GenerateArticleFromTextsModel` from them, using the
+           client's ``default_model`` when ``model`` is omitted.
+
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : GenerateArticleFromTextsModel | None
+            Optional pre‑constructed request model.
+        texts : list[str] | None
+            Source texts from which to produce the article (required unless
+            ``payload`` is supplied).
+        model : str | None
+            Model identifier; falls back to the client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
+
+        Returns
+        -------
+        GenerateArticleFromTextsResponse
+            Validated :class:`GenerateArticleFromTextsResponse`;
+            ``response.article_text`` holds the generated article.
+
+        Raises
+        ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``texts`` or a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
         """
-        payload = self._build_payload(
+        request = self._build_payload(
             model_cls=GenerateArticleFromTextsService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             texts=texts,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
         )
         return GenerateArticleFromTextsResponse.model_validate(
             GenerateArticleFromTextsService(self.http, self.logger).call_post(
-                payload
+                request
             )
         )
 
     def create_full_article_from_texts(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                CreateFullArticleFromTextsService.model_cls,
-            ]
-        ] = None,
-        user_query: Optional[str] = None,
-        texts: Optional[List[str]] = None,
-        article_type: Optional[str] = None,
-        model: Optional[str] = None,
-        max_new_tokens: Optional[int] = 1024,
+        *,
+        payload: CreateFullArticleFromTextsModel | None = None,
+        user_query: str | None = None,
+        texts: list[str] | None = None,
+        article_type: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> CreateFullArticleFromTextsResponse:
         """
         Create a full article from multiple input texts using the
-        ``/api/create_full_article_from_texts`` builtin endpoint.
+        ``/api/create_full_article_from_texts`` endpoint.
 
-        Accepts a prebuilt payload dict or model instance, or keyword
-        arguments ``user_query`` and ``texts`` and optional ``article_type``.
+        The method can be called in two equivalent ways:
+
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`CreateFullArticleFromTextsModel` instance; it is serialised
+           with ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``user_query`` (plus optional ``texts``,
+           ``article_type``, ``model``, ``temperature`` and ``max_new_tokens``);
+           the client builds a :class:`CreateFullArticleFromTextsModel` from
+           them, using the client's ``default_model`` when ``model`` is
+           omitted.
+
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
+        :class:`NoArgsAndNoPayloadError` is raised.
+
+        Parameters
+        ----------
+        payload : CreateFullArticleFromTextsModel | None
+            Optional pre‑constructed request model.
+        user_query : str | None
+            The query that frames the desired article (required unless
+            ``payload`` is supplied).
+        texts : list[str] | None
+            Source texts that will be merged into the final article.
+        article_type : str | None
+            Optional identifier appended to the system prompt to influence the
+            article's style or format.
+        model : str | None
+            Model identifier; falls back to the client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
+
+        Returns
+        -------
+        CreateFullArticleFromTextsResponse
+            Validated :class:`CreateFullArticleFromTextsResponse`;
+            ``response.article_text`` holds the generated article.
+
+        Raises
+        ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
+        NoArgsAndNoPayloadError
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``user_query`` or a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
         """
-        payload = self._build_payload(
+        request = self._build_payload(
             model_cls=CreateFullArticleFromTextsService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             user_query=user_query,
             texts=texts,
             article_type=article_type,
+            temperature=temperature,
             max_new_tokens=max_new_tokens,
         )
         return CreateFullArticleFromTextsResponse.model_validate(
             CreateFullArticleFromTextsService(self.http, self.logger).call_post(
-                payload
+                request
             )
         )
 
     def generate_questions(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                GenerateQuestionsService.model_cls,
-            ]
-        ] = None,
-        texts: Optional[List[str]] = None,
-        number_of_questions: Optional[int] = 1,
-        model: Optional[str] = None,
+        *,
+        payload: GenerateQuestionsModel | None = None,
+        texts: list[str] | None = None,
+        number_of_questions: int | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> GenerateQuestionsResponse:
         """
         Generate questions from multiple input texts using the
-        ``/api/generate_questions`` builtin endpoint.
+        ``/api/generate_questions`` endpoint.
 
-        The method can be used in three ways:
+        The method can be called in two equivalent ways:
 
-        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that already
-           conforms to :class:`GenerateQuestionsModel`.
-        2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``GenerateQuestionsModel`` and will be serialized automatically.
-        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``GenerateQuestionsModel`` instance on‑the‑fly.
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`GenerateQuestionsModel` instance; it is serialised with
+           ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``texts`` (plus optional
+           ``number_of_questions``, ``model``, ``temperature`` and
+           ``max_new_tokens``); the client builds a
+           :class:`GenerateQuestionsModel` from them, using the client's
+           ``default_model`` when ``model`` is omitted.
 
-        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], GenerateQuestionsModel]]
-            Optional pre‑constructed request body.
-        texts : Optional[List[str]]
-            List of source strings from which to generate questions (required if
-            ``payload`` is not supplied).
-        number_of_questions : Optional[int], default ``1``
-            Desired number of questions to generate per input text.
-        model : Optional[str]
-            Model identifier to be used (required if ``payload`` is not supplied).
+        payload : GenerateQuestionsModel | None
+            Optional pre‑constructed request model.
+        texts : list[str] | None
+            List of source strings from which to generate questions (required
+            unless ``payload`` is supplied).
+        number_of_questions : int | None
+            Desired number of questions per input text; defaults to the model
+            default (``1``) when omitted.
+        model : str | None
+            Model identifier; falls back to the client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens to generate (only used when building the
+            payload from arguments).
 
         Returns
         -------
         GenerateQuestionsResponse
-            Validated :class:`GenerateQuestionsResponse`; ``response`` is a list of
-            ``{text, questions}`` items, one per input text.
+            Validated :class:`GenerateQuestionsResponse`; ``response`` is a
+            list of ``{text, questions}`` items, one per input text.
 
         Raises
         ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
         NoArgsAndNoPayloadError
-            If ``payload`` is ``None`` and either ``texts`` or ``model`` is missing.
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``texts`` or a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
         """
-        payload = self._build_payload(
+        request = self._build_payload(
             model_cls=GenerateQuestionsService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
             texts=texts,
             number_of_questions=number_of_questions,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
         )
         return GenerateQuestionsResponse.model_validate(
-            GenerateQuestionsService(self.http, self.logger).call_post(payload)
+            GenerateQuestionsService(self.http, self.logger).call_post(request)
         )
 
     def generate_label(
         self,
-        payload: Optional[
-            Union[
-                Dict[str, Any],
-                GenerateLabelService.model_cls,
-            ]
-        ] = None,
-        texts: Optional[List[str]] = None,
-        model: Optional[str] = None,
-        temperature: Optional[float] = 0.2,
-        max_new_tokens: Optional[int] = 64,
+        *,
+        payload: GenerateLabelModel | None = None,
+        texts: list[str] | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        max_new_tokens: int | None = None,
     ) -> GenerateLabelResponse:
         """
         Generate a category name (label) for a list of texts using the
@@ -668,47 +1025,54 @@ class LLMRouterClient:
         The endpoint receives a list of related texts and returns a single,
         concise category name that best captures their common essence.
 
-        The method can be used in three ways:
+        The method can be called in two equivalent ways:
 
-        1. **Pass a ready‑made dictionary** – ``payload`` is a ``dict`` that
-           already conforms to :class:`GenerateLabelModel`.
-        2. **Pass a Pydantic model instance** – ``payload`` is a
-           ``GenerateLabelModel`` and will be serialized automatically.
-        3. **Provide ``texts`` and ``model`` arguments** – the client builds a
-           ``GenerateLabelModel`` instance on‑the‑fly.
+        1. **Prebuilt payload** – pass ``payload`` as a
+           :class:`GenerateLabelModel` instance; it is serialised with
+           ``model_dump()`` and sent as‑is.
+        2. **Named arguments** – pass ``texts`` (plus optional ``model``,
+           ``temperature`` and ``max_new_tokens``); the client builds a
+           :class:`GenerateLabelModel` from them, using the client's
+           ``default_model`` when ``model`` is omitted.
 
-        If neither a payload nor the ``texts``/``model`` pair is supplied, a
+        Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
+        If neither a payload nor enough named arguments are provided, a
         :class:`NoArgsAndNoPayloadError` is raised.
 
         Parameters
         ----------
-        payload : Optional[Union[Dict[str, Any], GenerateLabelModel]]
-            Optional pre‑constructed request body.
-        texts : Optional[List[str]]
+        payload : GenerateLabelModel | None
+            Optional pre‑constructed request model.
+        texts : list[str] | None
             List of related source strings whose shared essence should be
-            captured by a single category name (required if ``payload`` is not
+            captured by a single category name (required unless ``payload`` is
             supplied).
-        model : Optional[str]
-            Model identifier to be used (required if ``payload`` is not
-            supplied).
-        temperature : Optional[float], default ``0.2``
-            Sampling temperature; kept low for a deterministic label.
-        max_new_tokens : Optional[int], default ``64``
-            Maximum number of tokens for the generated label.
+        model : str | None
+            Model identifier; falls back to the client ``default_model``.
+        temperature : float | None
+            Sampling temperature (only used when building the payload from
+            arguments).
+        max_new_tokens : int | None
+            Maximum number of tokens for the generated label (only used when
+            building the payload from arguments).
 
         Returns
         -------
         GenerateLabelResponse
-            Validated :class:`GenerateLabelResponse`; ``response`` is the generated
-            category label.
+            Validated :class:`GenerateLabelResponse`; ``response`` is the
+            generated category label.
 
         Raises
         ------
+        TypeError
+            If ``payload`` is a raw ``dict``.
         NoArgsAndNoPayloadError
-            If ``payload`` is ``None`` and either ``texts`` or ``model`` is
-            missing.
+            If ``payload`` is ``None`` and the named arguments do not contain
+            all required fields (``texts`` or a resolvable model name).
+        LLMRouterError
+            Propagated from the underlying service on HTTP/JSON failures.
         """
-        payload = self._build_payload(
+        request = self._build_payload(
             model_cls=GenerateLabelService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
@@ -717,37 +1081,58 @@ class LLMRouterClient:
             max_new_tokens=max_new_tokens,
         )
         return GenerateLabelResponse.model_validate(
-            GenerateLabelService(self.http, self.logger).call_post(payload)
+            GenerateLabelService(self.http, self.logger).call_post(request)
         )
 
     # ------------------------------------------------------------------ #
     @staticmethod
     def _build_payload(
         *,
-        model_cls: type | None,
-        payload_arg: Any,
-        **extra: Any,
-    ) -> Dict[str, Any]:
+        model_cls: type[BaseModel] | None,
+        payload_arg: object,
+        **extra: object,
+    ) -> dict[str, object]:
         """
-        Normalize a payload to a ``dict``.
+        Normalise a payload argument to the ``dict`` sent over the wire.
 
-        Handles three input shapes and builds from keyword arguments when the
-        caller passed individual parameters instead of a pre‑constructed payload:
+        Handles the three supported input shapes:
 
-        1. **Pydantic model instance** → serialised via ``model_dump()``.
-        2. **Dict** → returned unchanged.
-        3. **None** → constructed from *extra* keyword arguments using the
-           provided *model_cls*; raises :class:`NoArgsAndNoPayloadError` if
-           required keys are missing.
+        1. **Pydantic model instance** – serialised via ``model_dump()``.
+        2. **Dict** – rejected with :class:`TypeError` (raw‑dict payloads were
+           removed in favour of explicit Pydantic models).
+        3. **``None``** – constructed from the *extra* keyword arguments using
+           the provided *model_cls*; :class:`NoArgsAndNoPayloadError` is
+           raised when the arguments are missing or fail model validation
+           (e.g. a required field is absent).
+
+        Keyword values explicitly set to ``None`` are dropped so that the
+        Pydantic model's own defaults apply.
         """
         if isinstance(payload_arg, BaseModel):
             return payload_arg.model_dump()
 
-        if isinstance(payload_arg, Dict):
-            return payload_arg
+        if isinstance(payload_arg, dict):
+            raise TypeError(
+                "Passing a raw dict as `payload` is no longer supported. "
+                "Instantiate the matching Pydantic request model explicitly "
+                "(e.g. `<RequestModel>(**payload)`) and pass that instance, "
+                "or use the named keyword arguments instead."
+            )
 
-        # Neither a model nor a dict — build from named parameters.
-        if model_cls is not None and extra:
-            return model_cls(**extra).model_dump()
+        # payload_arg is None — build the request model from named arguments.
+        if model_cls is None:
+            raise NoArgsAndNoPayloadError("No payload and no arguments were passed!")
 
-        raise NoArgsAndNoPayloadError("No payload and no arguments were passed!")
+        # Drop explicit Nones so optional fields fall back to model defaults.
+        fields = {key: value for key, value in extra.items() if value is not None}
+        if not fields:
+            raise NoArgsAndNoPayloadError("No payload and no arguments were passed!")
+
+        try:
+            return model_cls(**fields).model_dump()
+        except ValidationError as exc:
+            raise NoArgsAndNoPayloadError(
+                "No valid payload could be built from the given arguments "
+                f"({exc.error_count()} validation problem(s)); pass a complete "
+                "payload model instance or all required named arguments."
+            ) from exc
