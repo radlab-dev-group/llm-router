@@ -157,11 +157,15 @@ class AuthMiddleware:
                 allowed=False, reason="endpoint_denied_by_policy", status_code=403
             )
 
-        # 5. Rate limit — use the rate_limit from the resolved policy
+        # 5. Rate limit — use the rate_limit from the resolved policy.
+        # Use the real key id from the key store record (not the header
+        # prefix) so that each key gets its own rate-limit bucket; the
+        # prefix-based key_id is only a display label for unknown keys.
+        real_key_id = key_record.get("key_id") or key_id
         rate_limit = getattr(permission, "rate_limit", None) or 60
         client_ip = self._get_client_ip(request_obj)
         rate_result: RateLimitResult = self._limiter.is_allowed(
-            key_id=key_id,
+            key_id=real_key_id,
             ip=client_ip,
             limit=rate_limit,
         )
@@ -172,17 +176,17 @@ class AuthMiddleware:
                 reason="rate_limit",
                 status_code=429,
                 headers={"Retry-After": str(rate_result.retry_after)},
-                key_id=key_id,
+                key_id=real_key_id,
             )
 
         # All checks passed — allow
-        g.api_key_id = key_id
+        g.api_key_id = real_key_id
         g.api_key_prefix = key_record.get("key_prefix", "")
         g.api_key_policy = key_record.get("policy_name", "developer")
 
         self.logger.debug(
             "Auth OK: key=%s endpoint=%s model=%s",
-            key_id,
+            real_key_id,
             endpoint_key,
             model_name,
         )
@@ -191,7 +195,7 @@ class AuthMiddleware:
             allowed=True,
             reason="authenticated",
             status_code=200,
-            key_id=key_id,
+            key_id=real_key_id,
             headers={"X-RateLimit-Remaining": str(rate_result.remaining)},
         )
 
