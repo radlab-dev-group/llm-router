@@ -4,8 +4,8 @@ Auth error codes and messages.
 
 from __future__ import annotations
 
-from typing import Any
 from dataclasses import dataclass
+from typing import Any, Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -21,7 +21,7 @@ class AuthResult:
         Code describing the result (used for logging and error messages).
     status_code : int
         HTTP status code to return (401, 403, 429, …).
-    headers : dict[str, str]
+    headers : Dict[str, str]
         Additional headers to include in the response.
     key_id : str
         The authenticated key ID (only when ``allowed=True``).
@@ -30,8 +30,8 @@ class AuthResult:
     allowed: bool
     reason: str
     status_code: int
-    headers: dict[str, str] = None  # type: ignore[assignment]
-    key_id: str | None = None
+    headers: Dict[str, str] = None  # type: ignore[assignment]
+    key_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.headers is None:
@@ -39,7 +39,7 @@ class AuthResult:
 
 
 # -- reason → message mapping ----------------------------
-_AUTH_MESSAGES: dict[str, str] = {
+_AUTH_MESSAGES: Dict[str, str] = {
     "missing_key": (
         "API key not provided. "
         "Send it in the Authorization header or as x-api-key."
@@ -69,13 +69,13 @@ def auth_error_message(reason: str) -> str:
     return _AUTH_MESSAGES.get(reason, f"Authentication failed: {reason}")
 
 
-def auth_error_response(reason: str, status_code: int) -> dict[str, Any]:
+def auth_error_response(reason: str, status_code: int) -> Dict[str, Any]:
     """
     Build an OpenAI-compatible error response for authentication failures.
 
     Returns
     -------
-    dict
+    Dict
         JSON-serializable error response.
     """
     message = auth_error_message(reason)
@@ -89,7 +89,7 @@ def auth_error_response(reason: str, status_code: int) -> dict[str, Any]:
     }
 
 
-def auth_429_response(retry_after: int) -> dict[str, Any]:
+def auth_429_response(retry_after: int) -> Dict[str, Any]:
     """
     Build a 429 Too Many Requests response.
     """

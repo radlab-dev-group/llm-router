@@ -11,6 +11,8 @@ import re
 import string
 import secrets
 
+from typing import Tuple
+
 
 class KeyGenerator:
     """
@@ -51,7 +53,7 @@ class KeyGenerator:
         return f"{cls.PREFIX}{''.join(characters)}"
 
     @classmethod
-    def validate(cls, key: str) -> tuple[bool, str]:
+    def validate(cls, key: str) -> Tuple[bool, str]:
         """
         Validate the format of an API key.
 
@@ -62,7 +64,7 @@ class KeyGenerator:
 
         Returns
         -------
-        tuple[bool, str]
+        Tuple[bool, str]
             ``(True, "")`` if valid, ``(False, "error message"`` if invalid.
         """
         pattern = rf"^{re.escape(cls.PREFIX)}[a-zA-Z0-9]{{{cls.MIN_LENGTH},}}$"
