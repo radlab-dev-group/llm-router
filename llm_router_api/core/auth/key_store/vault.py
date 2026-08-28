@@ -15,6 +15,8 @@ import bcrypt
 
 import logging
 
+from typing import List, Optional
+
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix
 
@@ -109,10 +111,10 @@ class VaultKeyStore(KeyStoreInterface):
             raise ValueError(f"Unsupported Vault auth method: {auth_method}")
 
     # -- sync wrappers (inherit _run_async from base class) ---------------
-    def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
+    def get_key_by_hash_sync(self, key_hash: str) -> Optional[dict]:
         return self._run_async(self._wrapped.get_key_by_hash(key_hash))
 
-    async def get_key_by_plain(self, key_plain: str) -> dict | None:
+    async def get_key_by_plain(self, key_plain: str) -> Optional[dict]:
         """
         Look up a key record by its plaintext key using bcrypt.checkpw.
 
@@ -174,7 +176,7 @@ class VaultKeyStore(KeyStoreInterface):
                 continue
         return None
 
-    def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+    def get_key_by_plain_sync(self, key_plain: str) -> Optional[dict]:
         """
         Synchronous version of :meth:`get_key_by_plain`.
         """
@@ -182,7 +184,7 @@ class VaultKeyStore(KeyStoreInterface):
         return self._run_async(self.get_key_by_plain(key_plain))
 
     # -- KeyStoreInterface forwarding -------------------------------
-    async def get_key_by_hash(self, key_hash: str) -> dict | None:
+    async def get_key_by_hash(self, key_hash: str) -> Optional[dict]:
         # Forward to cache when available; fall back to full scan for direct use
         if self._wrapped is not self:
             return await self._wrapped.get_key_by_hash(key_hash)
@@ -222,7 +224,7 @@ class VaultKeyStore(KeyStoreInterface):
                 continue
         return None
 
-    async def get_key_by_id(self, key_id: str) -> dict | None:
+    async def get_key_by_id(self, key_id: str) -> Optional[dict]:
         # Forward to cache when available; fall back to direct read for direct use
         if self._wrapped is not self:
             return await self._wrapped.get_key_by_id(key_id)
@@ -387,7 +389,7 @@ class VaultKeyStore(KeyStoreInterface):
                 return
             raise
 
-    async def list_keys(self) -> list[dict]:
+    async def list_keys(self) -> List[dict]:
         """
         List all keys under the mount path, including disabled ones.
         """

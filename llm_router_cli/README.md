@@ -241,8 +241,8 @@ llm-router config discover "10.0.0.1:8080" "ollama.local:11434"
 llm-router config merge base.json override.json -o merged-config.json
 ```
 
-Merges provider entries recursively (overlay wins on conflict), unions `active_models`, and deduplicates providers
-by `api_host`.
+Merges provider entries recursively (overlay wins on conflict), unions `active_models`, and deduplicates providers by
+`api_host`.
 
 | Flag                       | Default      | Description                   |
 |----------------------------|--------------|-------------------------------|

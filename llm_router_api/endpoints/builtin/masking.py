@@ -23,7 +23,7 @@ Response::
     }
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -68,15 +68,15 @@ class FastTextMasking(EndpointWithHttpRequestI):
 
         Parameters
         ----------
-        logger_file_name : str | None, optional
+        logger_file_name : Optional[str], optional
             Destination file for log records.  If ``None`` the default
             ``llm-router.log`` is used.
-        logger_level : str | None, optional
+        logger_level : Optional[str], optional
             Logging verbosity (e.g. ``"INFO"``, ``"DEBUG"``).  Defaults to the
             library‑wide ``REST_API_LOG_LEVEL``.
-        prompt_handler : PromptHandler | None, optional
+        prompt_handler : Optional[PromptHandler], optional
             Not used by this endpoint but required by the base class.
-        model_handler : ModelHandler | None, optional
+        model_handler : Optional[ModelHandler], optional
             Not used by this endpoint but required by the base class.
         ep_name : str, optional
             URL fragment that identifies the endpoint; defaults to
@@ -112,14 +112,14 @@ class FastTextMasking(EndpointWithHttpRequestI):
 
         Parameters
         ----------
-        params : dict | None
+        params : Optional[dict]
             Parsed JSON payload from the client.  Expected to contain a
             ``"text"`` key; missing keys will raise a validation error
             earlier in the request pipeline.
 
         Returns
         -------
-        dict
+        Dict
             ``{"text": <result>}`` where ``<result>`` is the
             masked version of the input text.
         """

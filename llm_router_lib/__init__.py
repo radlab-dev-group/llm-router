@@ -22,11 +22,11 @@ Quick start
 
     from llm_router_lib import LLMRouterClient
 
-    with LLMRouterClient(api="http://router.example.com", token="my-token") as client:
-        result = client.conversation_with_model({
-            "model_name": "google/gemma-3-12b-it",
-            "user_last_statement": "Hello!",
-        })
+    with LLMRouterClient(api="http://localhost:8080", token="my-token") as client:
+        result = client.conversation_with_model(
+            user_last_statement="Hello!",
+            model="google/gemma-3-12b-it",
+        )
 
 For full API reference, see the :class:`LLMRouterClient` docstring and the
 :data_models:`data‑models package <llm_router_lib.data_models>`.

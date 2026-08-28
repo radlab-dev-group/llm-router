@@ -5,6 +5,8 @@ AnyRequestAuditor for compliance/logging.
 
 from __future__ import annotations
 
+from typing import Dict, Optional
+
 from llm_router_api.core.auditor.auditor import AnyRequestAuditor
 
 
@@ -17,17 +19,17 @@ class AuthAuditorBridge:
     persistence (GPG-encrypted, Kafka, etc.).
     """
 
-    def __init__(self, auditor: AnyRequestAuditor | None = None) -> None:
+    def __init__(self, auditor: Optional[AnyRequestAuditor] = None) -> None:
         self._auditor = auditor
 
     def record_event(
         self,
         event_type: str,
         reason: str,
-        key_id: str | None = None,
-        endpoint: str | None = None,
-        model: str | None = None,
-        extra: dict | None = None,
+        key_id: Optional[str] = None,
+        endpoint: Optional[str] = None,
+        model: Optional[str] = None,
+        extra: Optional[Dict] = None,
     ) -> None:
         """
         Record an auth event.
@@ -38,13 +40,13 @@ class AuthAuditorBridge:
             One of ``"auth_success"``, ``"auth_failure"``, ``"rate_limit"``.
         reason : str
             Auth result reason code.
-        key_id : str | None
+        key_id : Optional[str]
             The authenticated key ID (if any).
-        endpoint : str | None
+        endpoint : Optional[str]
             The endpoint path.
-        model : str | None
+        model : Optional[str]
             The model being accessed.
-        extra : dict | None
+        extra : Optional[Dict]
             Additional context (IP, user-agent, …).
         """
         if self._auditor is None:

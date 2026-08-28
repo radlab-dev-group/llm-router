@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import Dict, List, Optional
 
 from llm_router_api.core.lb.strategies.weighted import DynamicWeightedStrategy
 
@@ -15,7 +15,7 @@ class AdaptiveStrategy(DynamicWeightedStrategy):
     def __init__(
         self,
         models_config_path: str,
-        initial_providers: List[Dict] | None = None,
+        initial_providers: Optional[List[Dict]] = None,
         history_size: int = 10_000,
         learning_rate: float = 0.1,
         temperature: float = 1.0,

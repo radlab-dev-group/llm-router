@@ -24,6 +24,7 @@ from importlib.metadata import version as _pkg_version
 # Mark this as a CLI run before any import from ``llm_router_api`` that could
 # trigger the startup configuration validation (in ``constants.py``).
 import llm_router_api.base.const_global as _cg
+from typing import List, Optional
 
 _cg.IS_CLI_COMMAND = True
 
@@ -35,13 +36,13 @@ def _version() -> str:
     return _pkg_version("llm-router")
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: Optional[List[str]] = None) -> int:
     """
     Top-level CLI entry point.
 
     Parameters
     ----------
-    argv : list[str] | None
+    argv : Optional[List[str]]
         Command-line arguments. Defaults to ``sys.argv[1:]``.
 
     Returns

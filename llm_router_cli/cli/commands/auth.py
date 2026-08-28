@@ -24,9 +24,9 @@ import sys
 import json
 import asyncio
 import argparse
-from typing import Any
 
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 class AuthCommand:
@@ -48,7 +48,7 @@ class AuthCommand:
 
     # ---- Built-in rate-limit presets (class-level constant) ---------------
 
-    _BUILTIN_RATE_LIMIT_PRESETS: list[dict] = [
+    _BUILTIN_RATE_LIMIT_PRESETS: List[dict] = [
         {"name": "free", "rpm": 10, "description": "Free tier — limited usage"},
         {"name": "basic", "rpm": 60, "description": "Standard (1/s)"},
         {"name": "pro", "rpm": 120, "description": "Pro tier (2/s)"},
@@ -57,7 +57,7 @@ class AuthCommand:
 
     # ---- Key command dispatch table (class-level constant) -----------------
 
-    _KEY_COMMANDS: dict[str, str] = {
+    _KEY_COMMANDS: Dict[str, str] = {
         "generate": "_key_generate",
         "list": "_key_list",
         "delete": "_key_mutate_delete",
@@ -151,7 +151,7 @@ class AuthCommand:
     # ---- Key-store / Redis helpers ----------------------------------------
 
     @staticmethod
-    def _auth_redis_kwargs(args) -> dict:
+    def _auth_redis_kwargs(args) -> Dict:
         """
         Build redis kwargs for auth key store (CLI args → env vars → defaults).
         """
@@ -174,7 +174,7 @@ class AuthCommand:
         }
 
     @staticmethod
-    def _extract_key_id(argv: list[str]) -> str | None:
+    def _extract_key_id(argv: List[str]) -> Optional[str]:
         """
         Extract the positional key ID from argv (first non-flag token).
         """
@@ -209,7 +209,7 @@ class AuthCommand:
         )
 
     @classmethod
-    def _read_seed_keys(cls) -> tuple[list | None, int]:
+    def _read_seed_keys(cls) -> Tuple[Optional[list], int]:
         """
         Read and validate the seed file. Returns ``(keys_list, 0)`` or ``(None, 1)``.
         """
@@ -227,14 +227,14 @@ class AuthCommand:
     # ---- Rate-limit preset loading ----------------------------------------
 
     @classmethod
-    def _load_rate_limit_presets(cls) -> list[dict]:
+    def _load_rate_limit_presets(cls) -> List[dict]:
         """
         Load predefined rate-limit presets
         (env var → user config → package resource → builtin).
         """
         env_path = os.environ.get("LLM_ROUTER_RATE_LIMITING_CONFIG", "").strip()
 
-        def _try_load(path: Path) -> list[dict] | None:
+        def _try_load(path: Path) -> Optional[List[dict]]:
             if not path.exists():
                 return None
             try:
@@ -244,7 +244,7 @@ class AuthCommand:
             except (json.JSONDecodeError, OSError):
                 return None
 
-        def _try_load_bytes(data: bytes) -> list[dict] | None:
+        def _try_load_bytes(data: bytes) -> Optional[List[dict]]:
             try:
                 presets = json.loads(data)
                 result = [p for p in presets if isinstance(p, dict) and "name" in p]
@@ -315,7 +315,7 @@ class AuthCommand:
     @classmethod
     def register_parser(
         cls,
-        parser: argparse.ArgumentParser | argparse._SubParsersAction,
+        parser: Union[argparse.ArgumentParser, argparse._SubParsersAction],
         nest_auth: bool = True,
     ) -> None:
         """
@@ -405,7 +405,7 @@ class AuthCommand:
     # ---- Public run() entry point -----------------------------------------
 
     @classmethod
-    def run(cls, argv: list[str] | None = None) -> int:
+    def run(cls, argv: Optional[List[str]] = None) -> int:
         """
         Standalone entry point: parse args and dispatch to handlers.
         """
@@ -444,7 +444,7 @@ class AuthCommand:
 
     # ---- Key handler commands (all private methods on the class) ----------
 
-    def _handle_key(self, args, sub: list[str], seed_file: str) -> int:
+    def _handle_key(self, args, sub: List[str], seed_file: str) -> int:
         """
         Route key subcommands via the dispatch table.
         """
@@ -487,7 +487,7 @@ class AuthCommand:
 
         gen = KeyGenerator()
         policy = "developer"
-        expires: float | None = None
+        expires: Optional[float] = None
         for i, arg in enumerate(key_args):
             if arg == "--policy" and i + 1 < len(key_args):
                 policy = key_args[i + 1]
@@ -532,7 +532,7 @@ class AuthCommand:
             print("No API keys found.")
             return 0
 
-        max_w: dict[str, int] = {
+        max_w: Dict[str, int] = {
             "KEY_ID": 8,
             "PREFIX": 8,
             "POLICY": 8,
@@ -623,7 +623,7 @@ class AuthCommand:
         """
         return self._key_mutate(args, key_args, "enable")
 
-    def _key_mutate(self, args, key_args: list[str], action: str) -> int:
+    def _key_mutate(self, args, key_args: List[str], action: str) -> int:
         """
         Shared dispatcher for delete / disable / enable.
         """
@@ -698,7 +698,7 @@ class AuthCommand:
 
     # ---- Policy handler ---------------------------------------------------
 
-    def _handle_policy(self, args, sub: list[str]) -> int:
+    def _handle_policy(self, args, sub: List[str]) -> int:
         """
         Handle policy subcommands.
         """
@@ -739,7 +739,7 @@ class AuthCommand:
 
     # ---- Rate-limit handler -----------------------------------------------
 
-    def _handle_rate_limit(self, sub: list[str]) -> int:
+    def _handle_rate_limit(self, sub: List[str]) -> int:
         """
         Handle rate-limit subcommands.
         """
@@ -758,7 +758,7 @@ class AuthCommand:
             return 1
         return handler(sub)
 
-    def _rl_list(self, sub: list[str]) -> int:
+    def _rl_list(self, sub: List[str]) -> int:
         """
         List all available rate-limit presets.
         """
@@ -782,7 +782,7 @@ class AuthCommand:
             print(f"  {p['name']:<{max_name}}  {rpm:>{max_rpm}}  {p['description']}")
         return 0
 
-    def _rl_apply(self, sub: list[str]) -> int:
+    def _rl_apply(self, sub: List[str]) -> int:
         """
         Apply a rate-limit preset to an existing key.
         """
@@ -861,7 +861,7 @@ class AuthCommand:
 
         return 0
 
-    def _rl_remove(self, sub: list[str]) -> int:
+    def _rl_remove(self, sub: List[str]) -> int:
         """
         Remove rate-limit override from a key.
         """

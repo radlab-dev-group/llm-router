@@ -33,6 +33,7 @@ import asyncio
 import logging as _logging
 
 from pathlib import Path
+from typing import Dict, List, Optional
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix
@@ -43,16 +44,16 @@ class MemoryKeyStore(KeyStoreInterface):
     In-memory store for development / testing.
     """
 
-    def __init__(self, seed_file: str | None = None) -> None:
-        self._keys: dict[str, dict] = {}
-        self._by_hash: dict[str, str] = {}  # hash → key_id
+    def __init__(self, seed_file: Optional[str] = None) -> None:
+        self._keys: Dict[str, dict] = {}
+        self._by_hash: Dict[str, str] = {}  # hash → key_id
         self._seed_file = seed_file
         if seed_file:
             self._seed_keys(seed_file)
 
     # -- seed loading ------------------------------
     @staticmethod
-    def _load_seeds(seed_file: str) -> list[dict]:
+    def _load_seeds(seed_file: str) -> List[dict]:
         """
         Load key seed records from a JSON file.
         """
@@ -112,7 +113,7 @@ class MemoryKeyStore(KeyStoreInterface):
         """
         path = Path(seed_file).expanduser()
         path.parent.mkdir(parents=True, exist_ok=True)
-        out: list[dict] = [
+        out: List[dict] = [
             {
                 "key_plain": rec.get("key_plain", ""),
                 "key_id": rec["key_id"],
@@ -127,7 +128,7 @@ class MemoryKeyStore(KeyStoreInterface):
         path.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
 
     # -- lookups ----------------------------------------------------------------
-    async def get_key_by_hash(self, key_hash: str) -> dict | None:
+    async def get_key_by_hash(self, key_hash: str) -> Optional[dict]:
         key_id = self._by_hash.get(key_hash)
         if key_id is None:
             return None
@@ -136,16 +137,16 @@ class MemoryKeyStore(KeyStoreInterface):
             return None
         return record
 
-    def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
+    def get_key_by_hash_sync(self, key_hash: str) -> Optional[dict]:
         return asyncio.run(self.get_key_by_hash(key_hash))
 
-    async def get_key_by_id(self, key_id: str) -> dict | None:
+    async def get_key_by_id(self, key_id: str) -> Optional[dict]:
         record = self._keys.get(key_id)
         if record and not record.get("is_active"):
             return None
         return record
 
-    async def get_key_by_plain(self, key_plain: str) -> dict | None:
+    async def get_key_by_plain(self, key_plain: str) -> Optional[dict]:
         """
         Look up a key record by its **plaintext** key.
         """
@@ -175,7 +176,7 @@ class MemoryKeyStore(KeyStoreInterface):
         )
         return None
 
-    def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+    def get_key_by_plain_sync(self, key_plain: str) -> Optional[dict]:
         """
         Synchronous version of :meth:`get_key_by_plain`.
         """
@@ -288,7 +289,7 @@ class MemoryKeyStore(KeyStoreInterface):
         if self._seed_file:
             self._persist_seeds(self._seed_file)
 
-    async def list_keys(self) -> list[dict]:
+    async def list_keys(self) -> List[dict]:
         return [
             {
                 "key_id": r["key_id"],

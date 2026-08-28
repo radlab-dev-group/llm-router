@@ -133,15 +133,11 @@ class TestGenerateLabelServiceAndClient:
             assert call_arg["model_name"] == "test-model"
             assert call_arg["texts"] == ["Smartfony"]
 
-    def test_client_generate_label_with_dict_payload(self):
+    def test_client_generate_label_with_dict_payload_raises_type_error(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(GenerateLabelService, "call_post") as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {"model_name": "test-model", "texts": ["Smartfony"]}
-            resp = client.generate_label(payload=payload)
-            assert isinstance(resp, GenerateLabelResponse)
-            assert resp.response is None
-            mock_call.assert_called_once_with(payload)
+        payload = {"model_name": "test-model", "texts": ["Smartfony"]}
+        with pytest.raises(TypeError):
+            client.generate_label(payload=payload)
 
     def test_client_generate_label_with_args(self):
         client = LLMRouterClient(api="http://localhost:8080")

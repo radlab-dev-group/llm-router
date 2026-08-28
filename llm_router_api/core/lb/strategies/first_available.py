@@ -25,7 +25,7 @@ Typical usage::
 import time
 import logging
 
-from typing import List, Dict, Optional, Any
+from typing import Any, Dict, List, Optional
 
 from llm_router_api.base.constants import (
     REDIS_PORT,
@@ -105,7 +105,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
         model_name: str,
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
-    ) -> Dict | None:
+    ) -> Optional[Dict]:
         """
         Acquire a provider for *model_name* from the supplied ``providers`` list.
 
@@ -122,7 +122,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
             A list of provider configuration dictionaries.  Each dictionary must
             contain the information required by :meth:`_provider_field` to build a
             unique Redis hash field name.
-        options : dict, optional
+        options : Dict, optional
             Additional flags that influence the acquisition strategy.  Currently
             supported keys:
             ``random_choice`` (bool) – when ``True`` the provider is chosen at
@@ -130,7 +130,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             The chosen provider dictionary with an extra ``"__chosen_field"``
             entry indicating the Redis hash field that was locked.  Returns
             ``None`` if ``providers`` is empty.

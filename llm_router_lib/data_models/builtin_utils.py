@@ -150,9 +150,9 @@ class CreateFullArticleFromTextsModel(GenerativeOptionsModel):
     ----------
     user_query : str
         The query that frames the desired article (used for prompt mapping).
-    texts : List[str] | None
+    texts : Optional[List[str]]
         A collection of source texts that will be merged into the final article.
-    article_type : str | None
+    article_type : Optional[str]
         Optional identifier that can be appended to the system prompt to
         influence the article’s style or format.
     """

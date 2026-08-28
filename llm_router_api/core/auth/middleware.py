@@ -15,6 +15,7 @@ from flask import (
     jsonify,
     g,
 )
+from typing import Optional, Tuple
 
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 
@@ -217,7 +218,7 @@ class AuthMiddleware:
 
         return False
 
-    def _extract_key(self, request_obj) -> tuple[str | None, str]:
+    def _extract_key(self, request_obj) -> Tuple[Optional[str], str]:
         """
         Extract the API key from headers or query string. Returns (key, key_id).
         """
@@ -246,7 +247,7 @@ class AuthMiddleware:
 
         return None, ""
 
-    def _get_model_name(self, request_obj) -> str | None:
+    def _get_model_name(self, request_obj) -> Optional[str]:
         """
         Extract the model name from the request payload.
         """
@@ -330,9 +331,9 @@ def install_auth_middleware(
         The Flask application to instrument.
     store : KeyStoreInterface
         The key store used for lookups.
-    auth_config : dict
+    auth_config : Dict
         Authentication configuration dict.
-    redis_client : redis.Redis | None, optional
+    redis_client : Optional[redis.Redis], optional
         A verified Redis client (from the key store factory). When provided,
         rate limiting shares the same connection as the key store — no second
         bootstrap attempt is needed.  Defaults to ``None`` (falls back to

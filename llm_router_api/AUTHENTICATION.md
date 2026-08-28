@@ -30,8 +30,8 @@ Client Request → AuthMiddleware → Key Store Lookup → Permission Engine →
 
 ## Environment Variables
 
-All environment variables are documented in **[ENV_DEFINITIONS.md](./ENV_DEFINITIONS.md)**.
-Auth-specific vars start with `LLM_ROUTER_AUTH_*`.
+All environment variables are documented in **[ENV_DEFINITIONS.md](./ENV_DEFINITIONS.md)**. Auth-specific vars start
+with `LLM_ROUTER_AUTH_*`.
 
 ---
 
@@ -223,8 +223,8 @@ configuration, key management commands, and operational notes.
 
 **Use when:** You want to try auth quickly, run locally, or have a single-process deployment.
 
-**Pros:** Zero external dependencies, instant setup. Seed file provides persistence across restarts.
-**Cons:** Still per-process — not multi-process safe even with seed file.
+**Pros:** Zero external dependencies, instant setup. Seed file provides persistence across restarts. **Cons:** Still
+per-process — not multi-process safe even with seed file.
 
 ```bash
 # 1. Create seed file (keys persist to disk)
@@ -270,8 +270,8 @@ curl -H "x-api-key: sk-litm-my-dev-key" https://host/api/chat/completions
 
 **Use when:** You run multiple workers/processes and need persistent key storage without Vault.
 
-**Pros:** Persistent keys across restarts (if Redis is durable), multi-process safe.
-**Cons:** Requires Redis instance. No encryption-at-rest (use TLS for production).
+**Pros:** Persistent keys across restarts (if Redis is durable), multi-process safe. **Cons:** Requires Redis instance.
+No encryption-at-rest (use TLS for production).
 
 ```bash
 # 1. Start Redis
@@ -318,8 +318,8 @@ curl -H "x-api-key: sk-litm-..." https://host/api/chat/completions
 
 **Use when:** You need enterprise-grade key management, secret rotation, or multi-cluster consistency.
 
-**Pros:** Centralized key management, encryption, RBAC, audit logging.
-**Cons:** Requires Vault infrastructure and auth method configuration.
+**Pros:** Centralized key management, encryption, RBAC, audit logging. **Cons:** Requires Vault infrastructure and auth
+method configuration.
 
 #### 3a. Kubernetes Auth (recommended for K8s deployments)
 
@@ -387,15 +387,15 @@ export LLM_ROUTER_AUTH_VAULT_TOKEN=s.your-vault-token-here
 
 ### Comparison Matrix
 
-| Feature                 | Memory (+seed)    | Redis                                                               | Vault (K8s)          | Vault (AppRole)       |
-|-------------------------|-------------------|---------------------------------------------------------------------|----------------------|-----------------------|
-| **Persistence**         | ✅ Yes (seed file) | ✅ Yes (RDB/AOF)                                                     | ✅ Yes                | ✅ Yes                 |
-| **Multi-process safe**  | ❌ No              | ✅ Yes                                                               | ✅ Yes                | ✅ Yes                 |
-| **Encryption-at-rest**  | ❌ No              | ⚠️ No (app does not configure SSL/TLS — use managed Redis with TLS) | ✅ Yes (Vault native) | ✅ Yes (Vault native)  |
-| **Secret rotation**     | Manual            | Manual                                                              | ✅ Automatic + manual | ✅ Automatic + manual  |
-| **External dependency** | None              | Redis                                                               | Vault + K8s SA token | Vault + AppRole creds |
-| **Production ready**    | ❌ Dev only        | ✅ Yes                                                               | ✅ Yes                | ✅ Yes                 |
-| **Audit logging**       | ❌ No              | ❌ No                                                                | ✅ Yes (Vault audit)  | ✅ Yes (Vault audit)   |
+| Feature                 | Memory (+seed)     | Redis                                                               | Vault (K8s)           | Vault (AppRole)       |
+|-------------------------|--------------------|---------------------------------------------------------------------|-----------------------|-----------------------|
+| **Persistence**         | ✅ Yes (seed file) | ✅ Yes (RDB/AOF)                                                    | ✅ Yes                | ✅ Yes                |
+| **Multi-process safe**  | ❌ No              | ✅ Yes                                                              | ✅ Yes                | ✅ Yes                |
+| **Encryption-at-rest**  | ❌ No              | ⚠️ No (app does not configure SSL/TLS — use managed Redis with TLS) | ✅ Yes (Vault native) | ✅ Yes (Vault native) |
+| **Secret rotation**     | Manual             | Manual                                                              | ✅ Automatic + manual | ✅ Automatic + manual |
+| **External dependency** | None               | Redis                                                               | Vault + K8s SA token  | Vault + AppRole creds |
+| **Production ready**    | ❌ Dev only        | ✅ Yes                                                              | ✅ Yes                | ✅ Yes                |
+| **Audit logging**       | ❌ No              | ❌ No                                                               | ✅ Yes (Vault audit)  | ✅ Yes (Vault audit)  |
 
 **Recommendation:**
 

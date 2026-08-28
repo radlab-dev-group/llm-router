@@ -21,7 +21,7 @@ dispatcher itself.
 
 from __future__ import annotations
 
-from typing import Dict, List, Type, Any
+from typing import Any, Dict, List, Type
 
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
@@ -216,7 +216,7 @@ class ApiTypesDispatcher:
 
         Parameters
         ----------
-        models_config : dict
+        models_config : Dict
             Raw configuration dictionary (normally loaded from
             ``models-config.json``) that contains per‑model metadata,
             including a ``"tags"`` entry.
@@ -227,7 +227,7 @@ class ApiTypesDispatcher:
 
         Returns
         -------
-        list | dict
+        List or Dict
             * ``list`` – a flattened collection of tags if ``merge_to_list`` is
               ``True``.
             * ``dict`` – the untouched mapping if ``merge_to_list`` is

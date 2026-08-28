@@ -4,7 +4,8 @@ Base test classes for LLM Router integration tests.
 
 import abc
 import json
-from typing import TYPE_CHECKING, Any
+
+from typing import Any, Callable, Optional, TYPE_CHECKING
 
 from llm_router_lib import LLMRouterClient
 
@@ -19,7 +20,7 @@ class BaseEndpointTest(abc.ABC):
 
     # Subclasses set these as class attributes; they shadow the None defaults here.
     payload: Any = None
-    payload_model: type | None = None
+    payload_model: Optional[type] = None
 
     def __init__(self, client: LLMRouterClient) -> None:
         self._client = client

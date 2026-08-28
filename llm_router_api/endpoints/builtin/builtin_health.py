@@ -12,7 +12,7 @@ The endpoint is intended for load balancers and orchestrators
 not require any request parameters or authentication.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -100,7 +100,7 @@ class Health(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             A response dictionary produced via
             :meth:`EndpointWithHttpRequestI.return_response_ok`, which the
             Flask registrar serialises with an HTTP ``200`` status code.

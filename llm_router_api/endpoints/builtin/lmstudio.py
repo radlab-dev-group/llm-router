@@ -11,7 +11,7 @@ All endpoint classes inherit from :class:`EndpointWithHttpRequestI`,
 a ``prepare_payload`` implementation, and the appropriate HTTP method configuration.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -69,7 +69,7 @@ class LmStudioModelsHandler(PassthroughI):
 
         Returns
         -------
-        dict
+        Dict
             A response containing the object type ``"list"`` and a ``data``
             field with the available model tags.
         """

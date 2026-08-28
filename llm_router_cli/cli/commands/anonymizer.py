@@ -21,6 +21,7 @@ import sys
 import argparse
 
 from pathlib import Path
+from typing import List, Optional, Tuple, Union
 
 
 class AnonymizerCommand:
@@ -45,7 +46,7 @@ class AnonymizerCommand:
 
     _ALGO_HELP = "Anonymization algorithm to use (pii is not yet implemented)"
 
-    _DISABLE_FLAGS: list[tuple[str, str]] = [
+    _DISABLE_FLAGS: List[Tuple[str, str]] = [
         ("phone", "phone-number anonymisation"),
         ("url", "URL anonymisation"),
         ("ip", "IP-address anonymisation"),
@@ -90,13 +91,13 @@ class AnonymizerCommand:
     @classmethod
     def register_parser(
         cls,
-        parser: argparse.ArgumentParser | argparse._SubParsersAction,
+        parser: Union[argparse.ArgumentParser, argparse._SubParsersAction],
     ) -> None:
         """Register the *anonymizer run* sub-subparser under a parent.
 
         Parameters
         ----------
-        parser : argparse.ArgumentParser | argparse._SubParsersAction
+        parser : Union[argparse.ArgumentParser, argparse._SubParsersAction]
             Either a **subparsers action** (nested registration — just adds
             ``run`` and its arguments) or a **flat parser** for standalone
             invocation (configures it directly).
@@ -111,12 +112,12 @@ class AnonymizerCommand:
     # ---- Public run() entry point ------------------------------------------
 
     @classmethod
-    def run(cls, argv: list[str] | None = None) -> int:
+    def run(cls, argv: Optional[List[str]] = None) -> int:
         """Execute the anonymizer ``run`` subcommand.
 
         Parameters
         ----------
-        argv : list[str] | None
+        argv : Optional[List[str]]
             Raw command-line arguments (not including "anonymizer").
         Returns
         -------

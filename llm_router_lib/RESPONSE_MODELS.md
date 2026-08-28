@@ -28,7 +28,7 @@ Concretely, the typing is there to do three things:
 # resp is a typed model, not a dict
 resp = client.translate(texts=["Hello world"], model="speakleash/Bielik-11B-v2.3-Instruct")
 resp.response[0].translated  # str
-resp.generation_time  # float | None
+resp.generation_time  # Optional[float]
 resp.model_dump()  # → plain dict, if you still need one
 ```
 
@@ -66,17 +66,17 @@ The table below maps **every** `LLMRouterClient` method to the model it now retu
 |---------------------------------------------|----------------------------------------------|--------------------------------------|----------------------------------------|
 | `ping()`                                    | `GET /api/ping`                              | `PingResponse`                       | `status: bool`, `body: str`            |
 | `version()`                                 | `GET /api/version`                           | `VersionResponse`                    | `version: str`                         |
-| `models()`                                  | `GET /v1/models`                             | `ModelsListResponse`                 | `object: str`, `data: list[ModelInfo]` |
+| `models()`                                  | `GET /v1/models`                             | `ModelsListResponse`                 | `object: str`, `data: List[ModelInfo]` |
 | `conversation_with_model(payload)`          | `POST /api/conversation_with_model`          | `ConversationResponse`               | `str` (assistant reply)                |
 | `extended_conversation_with_model(payload)` | `POST /api/extended_conversation_with_model` | `ExtendedConversationResponse`       | `str` (assistant reply)                |
-| `polarity_3c(...)`                          | `POST /api/polarity_3c`                      | `Polarity3cResponse`                 | `list[Polarity3cItem]`                 |
-| `translate(...)`                            | `POST /api/translate`                        | `TranslateResponse`                  | `list[TranslateItem]`                  |
-| `simplify_text(...)`                        | `POST /api/simplify_text`                    | `SimplifyTextResponse`               | `list[str]`                            |
+| `polarity_3c(...)`                          | `POST /api/polarity_3c`                      | `Polarity3cResponse`                 | `List[Polarity3cItem]`                 |
+| `translate(...)`                            | `POST /api/translate`                        | `TranslateResponse`                  | `List[TranslateItem]`                  |
+| `simplify_text(...)`                        | `POST /api/simplify_text`                    | `SimplifyTextResponse`               | `List[str]`                            |
 | `generative_answer(...)`                    | `POST /api/generative_answer`                | `GenerativeAnswerResponse`           | `str` (answer)                         |
 | `generate_article_from_text(...)`           | `POST /api/generate_article_from_text`       | `GenerateArticleFromTextResponse`    | `ArticleText`                          |
 | `generate_article_from_texts(...)`          | `POST /api/generate_article_from_texts`      | `GenerateArticleFromTextsResponse`   | `ArticleText`                          |
 | `create_full_article_from_texts(...)`       | `POST /api/create_full_article_from_texts`   | `CreateFullArticleFromTextsResponse` | `ArticleText`                          |
-| `generate_questions(...)`                   | `POST /api/generate_questions`               | `GenerateQuestionsResponse`          | `list[TextQuestions]`                  |
+| `generate_questions(...)`                   | `POST /api/generate_questions`               | `GenerateQuestionsResponse`          | `List[TextQuestions]`                  |
 | `generate_label(...)`                       | `POST /api/generate_label`                   | `GenerateLabelResponse`              | `str` (label)                          |
 
 ---
@@ -259,10 +259,10 @@ from llm_router_lib import LLMRouterClient
 
 client = LLMRouterClient(api="http://localhost:8080", token="...")
 
-# Conversation — a single reply string
+# Conversation — a single reply string (named keyword arguments)
 conv = client.conversation_with_model(
-    payload={"model_name": "google/gemma-3-12b-it",
-             "user_last_statement": "Hello!"}
+    user_last_statement="Hello!",
+    model="google/gemma-3-12b-it",
 )
 print(conv.response)  # "Hi! How can I help?"
 print(conv.generation_time)  # 0.42 (seconds)

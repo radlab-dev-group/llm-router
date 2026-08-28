@@ -11,14 +11,16 @@ import time
 import uuid
 import redis
 
+from typing import Optional
 from dataclasses import dataclass
 
 
-# Atomowy Lua script: czyszczenie starego, sprawdzanie limitu i ew. dodanie requestu.
-# Zwraca tablice {allowed, remaining_or_oldest_ts}:
-#   allowed == 1 -> dozwolony, remaining to liczba dostepnych slotow PO tym requeste
-#   allowed == 0 -> odrzucony, remaining = czas do odswiezienia
-#   (najstarszy entry + window - now)
+# Atomic Lua script: remove old entries, check the limit, and optionally
+# add the request. Returns an array {allowed, remaining_or_oldest_ts}:
+#   allowed == 1 -> allowed, remaining is the number
+#                   of available slots AFTER this request
+#   allowed == 0 -> rejected, remaining = time until refresh
+#   (oldest entry + window - now)
 _ATOMIC_LUA = """
     local bucket = KEYS[1]
     local now      = tonumber(ARGV[1])
@@ -73,11 +75,11 @@ class RedisRateLimiter:
 
     def __init__(
         self,
-        redis_client: redis.Redis | None = None,
-        redis_host: str | None = None,
+        redis_client: Optional[redis.Redis] = None,
+        redis_host: Optional[str] = None,
         redis_port: int = 6379,
         redis_db: int = 0,
-        redis_password: str | None = None,
+        redis_password: Optional[str] = None,
         window: int = 60,
     ) -> None:
         if redis_client is not None:
@@ -92,7 +94,7 @@ class RedisRateLimiter:
             )
         self.WINDOW = window
         # Register the Lua script once on first use (EVALSHA optimization)
-        self._atomic_script: redis.Script | None = None
+        self._atomic_script: Optional[redis.Script] = None
 
     def _get_atomic_script(self) -> redis.Script:
         """

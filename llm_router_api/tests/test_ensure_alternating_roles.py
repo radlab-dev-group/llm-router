@@ -18,6 +18,7 @@ os.environ.setdefault("LLM_ROUTER_MINIMUM", "1")
 os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 
 from llm_router_api.endpoints.endpoint_i import EndpointWithHttpRequestI
+from typing import List
 
 
 EP = EndpointWithHttpRequestI

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import uuid
 
+from typing import Dict
+
 
 def gen_key_prefix(key_plain: str) -> str:
     """
@@ -35,7 +37,7 @@ DEFAULT_RECORD_FIELDS = {
 }
 
 
-def build_key_record(raw: dict) -> dict:
+def build_key_record(raw: dict) -> Dict:
     """
     Normalize a raw key record into the standard ApiKeyRecord shape.
 

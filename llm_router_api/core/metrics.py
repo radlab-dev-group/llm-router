@@ -14,6 +14,7 @@ import time
 
 from typing import Optional
 from flask import Flask, request, Response
+
 from rdl_ml_utils.utils.logger import prepare_logger
 
 from llm_router_api.core.metrics_handler import MetricsHandler
@@ -290,7 +291,7 @@ class PrometheusMetrics:
 
         Returns
         -------
-        tuple
+        Tuple
             ``(data, content_type)`` where *data* is the byte string produced by
             ``prometheus_client.generate_latest`` and *content_type* is the MIME
             type defined by ``CONTENT_TYPE_LATEST``.

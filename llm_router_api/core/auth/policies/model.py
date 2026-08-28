@@ -5,6 +5,7 @@ Data models for the auth layer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -18,22 +19,22 @@ class EndpointPermission:
         Allowed HTTP method(s) — ``"GET"``, ``"POST"``, ``"*"``, or ``"ANY"``.
     allowed : bool
         Whether this endpoint is accessible at all.
-    allowed_models : tuple[str, ...] | None
+    allowed_models : Optional[Tuple[str, ...]]
         Model whitelist (``None`` = all models).
     requires_guardrail : bool
         Whether guardrail checks must be enforced (even if policy says "allow").
     requires_masking : bool
         Whether masking must be enforced.
-    rate_limit : int | None
+    rate_limit : Optional[int]
         Per-endpoint rate limit in requests per minute (``None`` = use global default).
     """
 
     method: str = "ANY"
     allowed: bool = False
-    allowed_models: tuple[str, ...] | None = None
+    allowed_models: Optional[Tuple[str, ...]] = None
     requires_guardrail: bool = True
     requires_masking: bool = False
-    rate_limit: int | None = None
+    rate_limit: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.allowed and self.allowed_models:
@@ -53,33 +54,33 @@ class EndpointPolicy:
     ----------
     can_access : bool
         Whether the key has *any* access at all.
-    permissions : dict[str, EndpointPermission]
+    permissions : Dict[str, EndpointPermission]
         Mapping of endpoint_key → permission.
     rate_limit : int
         Requests per minute (``0`` = unlimited).
-    ip_whitelist : tuple[str, ...] | None
+    ip_whitelist : Optional[Tuple[str, ...]]
         CIDR/IP whitelist (``None`` = no restriction).
-    model_whitelist : tuple[str, ...] | None
+    model_whitelist : Optional[Tuple[str, ...]]
         Global model whitelist (``None`` = all).
-    budget_monthly_tokens : int | None
+    budget_monthly_tokens : Optional[int]
         Monthly token budget in tokens (``None`` = no budget).
     budget_tokens_used : int
         Tokens used this period (synced from Redis).
     is_active : bool
         Whether the policy itself is active.
-    metadata : dict
+    metadata : Dict
         Arbitrary metadata (team, cost_center, …).
     """
 
     can_access: bool = False
-    permissions: dict[str, EndpointPermission] = field(default_factory=dict)
+    permissions: Dict[str, EndpointPermission] = field(default_factory=dict)
     rate_limit: int = 60
-    ip_whitelist: tuple[str, ...] | None = None
-    model_whitelist: tuple[str, ...] | None = None
-    budget_monthly_tokens: int | None = None
+    ip_whitelist: Optional[Tuple[str, ...]] = None
+    model_whitelist: Optional[Tuple[str, ...]] = None
+    budget_monthly_tokens: Optional[int] = None
     budget_tokens_used: int = 0
     is_active: bool = True
-    metadata: dict = field(default_factory=dict)
+    metadata: Dict = field(default_factory=dict)
 
     def get_permission(
         self, endpoint_key: str, method: str = "POST"
@@ -126,19 +127,19 @@ class ApiKeyRecord:
         First 7 characters of the plaintext key (for logs only).
     policy_name : str
         Name of the default policy to apply.
-    policy_override : dict | None
+    policy_override : Optional[dict]
         Inline policy override (takes precedence over the named policy).
     created_at : float
         Unix timestamp of key creation.
-    expires_at : float | None
+    expires_at : Optional[float]
         Expiry timestamp (``None`` = no expiry).
-    last_used_at : float | None
+    last_used_at : Optional[float]
         Last successful authentication time.
     is_active : bool
         Whether the key is currently valid.
-    rotate_at : float | None
+    rotate_at : Optional[float]
         Scheduled rotation time (for planned rotation).
-    grace_until : float | None
+    grace_until : Optional[float]
         Keys are valid until this time even after rotation.
     """
 
@@ -146,10 +147,10 @@ class ApiKeyRecord:
     key_hash: str
     key_prefix: str
     policy_name: str
-    policy_override: dict | None = None
+    policy_override: Optional[dict] = None
     created_at: float = field(default_factory=lambda: __import__("time").time())
-    expires_at: float | None = None
-    last_used_at: float | None = None
+    expires_at: Optional[float] = None
+    last_used_at: Optional[float] = None
     is_active: bool = True
-    rotate_at: float | None = None
-    grace_until: float | None = None
+    rotate_at: Optional[float] = None
+    grace_until: Optional[float] = None

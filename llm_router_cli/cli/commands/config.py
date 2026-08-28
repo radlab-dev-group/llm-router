@@ -14,7 +14,7 @@ import json
 import argparse
 import requests
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 class ConfigCommand:
@@ -199,7 +199,7 @@ class ConfigCommand:
     # ---- Public run() entry point ------------------------------------------
 
     @classmethod
-    def run(cls, argv: list[str] | None = None) -> int:
+    def run(cls, argv: Optional[List[str]] = None) -> int:
         """
         Standalone entry point: parse args and dispatch.
         """
@@ -308,7 +308,7 @@ class ConfigCommand:
         host: str,
         port: int,
         model_name: str,
-        extra_meta: Dict[str, Any] | None = None,
+        extra_meta: Optional[Dict[str, Any]] = None,
         protocol: str = "http",
     ) -> Dict[str, Any]:
         """
@@ -373,7 +373,7 @@ class ConfigCommand:
                 continue
             safe_name = ConfigCommand._sanitize(name)
 
-            extra: Dict[str, Any] | None = None
+            extra: Optional[Dict[str, Any]] = None
             if isinstance(item, dict):
                 meta_keys = (
                     "input_size",
@@ -570,8 +570,8 @@ class ConfigCommand:
             providers = model_data.get("providers")
             if not isinstance(providers, list):
                 continue
-            seen: set[str] = set()
-            filtered: list[Dict[str, Any]] = []
+            seen: Set[str] = set()
+            filtered: List[Dict[str, Any]] = []
             for p in providers:
                 host = p.get("api_host", "")
                 if host not in seen:
@@ -622,7 +622,7 @@ class ConfigCommand:
             config["active_models"] = active
 
         output_json = json.dumps(config, indent=2) + "\n"
-        output_config_file: str | None = getattr(args, "output_config_file", None)
+        output_config_file: Optional[str] = getattr(args, "output_config_file", None)
         if output_config_file and output_config_file != "-":
             try:
                 with open(output_config_file, "w", encoding="utf-8") as fh:
@@ -641,7 +641,7 @@ class ConfigCommand:
         """
         Merge multiple models-config.json files into one.
         """
-        configs_arg: list[str] = getattr(args, "configs", [])
+        configs_arg: List[str] = getattr(args, "configs", [])
 
         merged: Dict[str, Any] = {}
         active: Dict[str, List[str]] = {}
@@ -671,7 +671,7 @@ class ConfigCommand:
             if isinstance(models, dict) and any(
                 isinstance(v, dict) and "providers" in v for v in models.values()
             ):
-                seen: set[str] = set(active_models.get(group_name, []))
+                seen: Set[str] = set(active_models.get(group_name, []))
                 all_models: List[str] = []
                 for name in models.keys():
                     if name not in seen:
@@ -689,7 +689,7 @@ class ConfigCommand:
         merged["active_models"] = active_models
         output_json = json.dumps(merged, indent=2) + "\n"
 
-        out_config_file: str | None = getattr(args, "output_config_file", None)
+        out_config_file: Optional[str] = getattr(args, "output_config_file", None)
         if out_config_file and out_config_file != "-":
             try:
                 with open(out_config_file, "w", encoding="utf-8") as fh:

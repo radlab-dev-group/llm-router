@@ -10,7 +10,7 @@ import os
 import re
 import time
 
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -134,7 +134,7 @@ class ApiVersion(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             ``{"version": "<semver>"}``.
         """
         self.direct_return = True
@@ -226,7 +226,7 @@ class TextListUtilityEndpoint(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             Normalised payload for the downstream service.
         """
         options = self.MODEL_CLS(**params)
@@ -253,9 +253,9 @@ class TextListUtilityEndpoint(EndpointWithHttpRequestI):
 
         Parameters
         ----------
-        raw_texts : list[str]
+        raw_texts : List[str]
             Raw assistant output for each source text (in input order).
-        contents : list[str]
+        contents : List[str]
             The original source texts (in input order).
         """
         raise NotImplementedError
@@ -266,14 +266,14 @@ class TextListUtilityEndpoint(EndpointWithHttpRequestI):
 
         Parameters
         ----------
-        responses : list[requests.Response]
+        responses : List[requests.Response]
             Responses from the model service.
-        contents : list[str]
+        contents : List[str]
             Original source texts.
 
         Returns
         -------
-        dict
+        Dict
             ``{"response": <list>, "generation_time": <seconds>}``.
         """
         assert len(responses) == len(contents)
@@ -594,7 +594,7 @@ class GenerateArticleFromText(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             Normalised payload for the downstream model.
         """
         options = GenerateArticleFromTextModel(**params)
@@ -620,7 +620,7 @@ class GenerateArticleFromText(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             ``{"response": {"article_text": <text>}, "generation_time": <seconds>}``.
         """
         _, choices, _assistant_response = self._get_choices_from_response(
@@ -683,7 +683,7 @@ class CreateFullArticleFromTexts(GenerateArticleFromText):
 
         Returns
         -------
-        dict
+        Dict
             Normalised request payload.
         """
         options = CreateFullArticleFromTextsModel(**params)
@@ -825,7 +825,7 @@ class GenerativeAnswer(GenerateArticleFromText):
 
         Returns
         -------
-        dict
+        Dict
             Normalised request payload for the downstream model.
         """
         options = GenerativeAnswerModel(**params)
@@ -880,7 +880,7 @@ class GenerativeAnswer(GenerateArticleFromText):
 
         Returns
         -------
-        dict
+        Dict
             ``{"response": <answer_text>, "generation_time": <seconds>}``.
         """
         _, choices, _assistant_response = self._get_choices_from_response(
@@ -968,7 +968,7 @@ class GenerateLabel(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             Normalised payload ready for the downstream model.
         """
         options = GenerateLabelModel(**params)
@@ -1045,7 +1045,7 @@ class GenerateLabel(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             ``{"response": <label_text>, "generation_time": <seconds>}``.
         """
         _, choices, _assistant_response = self._get_choices_from_response(

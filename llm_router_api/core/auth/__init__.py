@@ -14,10 +14,11 @@ Or use this package's lazy ``__getattr__`` loader::
     from llm_router_api.core.auth import KeyGenerator  # loads key_generator on demand
 """
 
+import sys
 import importlib
-import sys  # noqa: E402
-from types import ModuleType  # noqa: E402
-from typing import Any  # noqa: E402
+
+from types import ModuleType
+from typing import Any, Dict, Tuple
 
 __all__ = [
     "install_auth_middleware",
@@ -33,7 +34,7 @@ __all__ = [
 ]
 
 # Mapping of exported names to (submodule, attr_name).
-_EXPORTS: dict[str, tuple[str, str]] = {
+_EXPORTS: Dict[str, Tuple[str, str]] = {
     "install_auth_middleware": (".middleware", "install_auth_middleware"),
     "create_key_store": (".key_store", "create_key_store"),
     "RedisRateLimiter": (".rate_limiter", "RedisRateLimiter"),
@@ -46,7 +47,7 @@ _EXPORTS: dict[str, tuple[str, str]] = {
     "AuthResult": (".errors", "AuthResult"),
 }
 
-_MOD_CACHE: dict[str, ModuleType] = {}
+_MOD_CACHE: Dict[str, ModuleType] = {}
 
 
 def __getattr__(name: str) -> Any:

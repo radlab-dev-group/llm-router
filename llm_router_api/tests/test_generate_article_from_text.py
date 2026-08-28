@@ -135,17 +135,13 @@ class TestGenerateArticleFromTextServiceAndClient:
             assert call_arg["model_name"] == "test-model"
             assert call_arg["text"] == "Tekst źródłowy"
 
-    def test_client_generate_news_from_text_with_dict_payload(self):
+    def test_client_generate_article_from_text_with_dict_payload_raises_type_error(
+        self,
+    ):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(
-            GenerateArticleFromTextService, "call_post"
-        ) as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {"model_name": "test-model", "text": "Tekst źródłowy"}
-            resp = client.generate_article_from_text(payload=payload)
-            assert isinstance(resp, GenerateArticleFromTextResponse)
-            assert resp.response.article_text is None
-            mock_call.assert_called_once_with(payload)
+        payload = {"model_name": "test-model", "text": "Tekst źródłowy"}
+        with pytest.raises(TypeError):
+            client.generate_article_from_text(payload=payload)
 
     def test_client_generate_news_from_text_with_args(self):
         client = LLMRouterClient(api="http://localhost:8080")

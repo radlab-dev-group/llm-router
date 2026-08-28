@@ -8,7 +8,7 @@ post‑process the model’s response into a friendly JSON structure.
 
 import time
 
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -108,7 +108,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             Normalised payload ready for HTTP forwarding.
         """
         options = ConversationWithModelRequest(**params)
@@ -169,7 +169,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             ``{"response": <assistant_text>, "generation_time": <seconds>}``.
         """
         _j_response, _choices, assistant_response = self._get_choices_from_response(
@@ -236,7 +236,7 @@ class ExtendedConversationWithModel(ConversationWithModel):
 
         Returns
         -------
-        dict
+        Dict
             Normalised payload ready for the downstream model.
         """
         options = ExtendedConversationWithModelRequest(**params)

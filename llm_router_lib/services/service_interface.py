@@ -15,7 +15,8 @@ payload validation).
 
 import abc
 import logging
-from typing import Any, Dict
+
+from typing import Any, Dict, Optional
 
 from llm_router_lib.exceptions import LLMRouterError
 from llm_router_lib.utils.http import HttpRequester
@@ -38,9 +39,9 @@ class BaseConversationServiceInterface(abc.ABC):
 
     # Pydantic model class used to validate
     # the request payload (None for GET endpoints).
-    model_cls: type | None = None
+    model_cls: Optional[type] = None
 
-    def __init__(self, http: HttpRequester, logger: logging.Logger | None = None):
+    def __init__(self, http: HttpRequester, logger: Optional[logging.Logger] = None):
         """
         Initialise the service wrapper.
 
@@ -48,7 +49,7 @@ class BaseConversationServiceInterface(abc.ABC):
         ----------
         http : HttpRequester
             Helper object that knows how to perform HTTP requests.
-        logger : logging.Logger | None
+        logger : Optional[logging.Logger]
             Logger instance used for debugging and error reporting.
         """
         self.http = http
@@ -58,7 +59,7 @@ class BaseConversationServiceInterface(abc.ABC):
     # JSON parsing helper (DRY: shared by call_post / call_get)
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _parse_json_response(resp) -> dict[str, Any]:
+    def _parse_json_response(resp) -> Dict[str, Any]:
         """Parse a requests.Response as JSON, raising LLMRouterError on failure."""
         try:
             return resp.json()
@@ -85,7 +86,7 @@ class BaseConversationServiceInterface(abc.ABC):
 
         Returns
         -------
-        dict
+        Dict
             The parsed JSON response from the backend service.
 
         Raises
@@ -97,7 +98,7 @@ class BaseConversationServiceInterface(abc.ABC):
         return self._parse_json_response(resp)
 
     # ------------------------------------------------------------------ #
-    def call_get(self, raw_payload: Any | None = None) -> Dict[str, Any]:
+    def call_get(self, raw_payload: Optional[Any] = None) -> Dict[str, Any]:
         """
         Send a GET request to the configured endpoint and return the JSON body.
 
@@ -108,13 +109,13 @@ class BaseConversationServiceInterface(abc.ABC):
 
         Parameters
         ----------
-        raw_payload : Any | None
+        raw_payload : Optional[Any]
             Optional request body, typically an instance of ``self.model_cls``
             or a dictionary produced by its ``model_dump()`` method.
 
         Returns
         -------
-        dict
+        Dict
             The parsed JSON response from the backend service.
 
         Raises

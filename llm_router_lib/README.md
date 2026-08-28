@@ -55,38 +55,42 @@ client = LLMRouterClient(
     token="YOUR_ROUTER_TOKEN",  # optional, if router requires auth
 )
 
-# Build a payload using the provided data model (validation is automatic)
+# Call the standard conversation endpoint with named keyword arguments –
+# the client builds the Pydantic request model for you.
 
-payload = {
-    "model_name": "google/gemma-3-12b-it",
-    "user_last_statement": "Hello, how are you?",
-    "temperature": 0.7,
-    "max_new_tokens": 128,
-}
-
-# Call the standard conversation endpoint
-
-response = client.conversation_with_model(payload)
+response = client.conversation_with_model(
+    user_last_statement="Hello, how are you?",
+    model="google/gemma-3-12b-it",
+    temperature=0.7,
+    max_new_tokens=128,
+)
 
 # response is a typed `ConversationResponse` model:
 print(response.response)  # → the assistant's reply text
 print(response.generation_time)  # → seconds taken by the server
 ```
 
-You can also pass a `pydantic` model instance directly:
+You can also pass a ready‑made `pydantic` request model via the `payload`
+keyword (all endpoint parameters are keyword‑only – there are no positional arguments):
 
 ```python
 from llm_router_lib.data_models.builtin_chat import ConversationWithModelRequest
 
-model = ConversationWithModelRequest(
+payload = ConversationWithModelRequest(
     model_name="google/gemma-3-12b-it",
     user_last_statement="Hello, how are you?",
     temperature=0.7,
     max_new_tokens=128,
 )
 
-response = client.conversation_with_model(model)
+response = client.conversation_with_model(payload=payload)
 ```
+
+> **Note:** raw `dict` payloads are no longer accepted – passing a `dict` as
+> `payload` raises `TypeError`. Build the matching Pydantic model explicitly
+> (e.g. `ConversationWithModelRequest(**dict_payload)`) or use the named
+> keyword arguments. Calling a generation method with neither `payload` nor
+> enough named arguments raises `NoArgsAndNoPayloadError`.
 
 ## Data models
 
@@ -165,18 +169,31 @@ print(response)
 
 `LLMRouterClient` aggregates the low‑level services and exposes a concise, high‑level API:
 
-| Method                                                                                                                   | Description                                                                                                                                                                                                                                                   |
-|--------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `conversation_with_model(payload)`                                                                                       | Calls `/api/conversation_with_model`. Accepts a dict **or** a `ConversationWithModelRequest`.                                                                                                                                                                 |
-| `extended_conversation_with_model(payload)`                                                                              | Calls `/api/extended_conversation_with_model`. Accepts a dict **or** an `ExtendedConversationWithModelRequest`.                                                                                                                                               |
-| `translate(payload=None, texts=None, model=None)`                                                                        | Calls `/api/translate`. Three usage patterns: <br>1️⃣ Pass a ready‑made dict.<br>2️⃣ Pass a `TranslateModel` instance.<br>3️⃣ Provide `texts` + `model` and let the client build the model.                                                                         |
-| `simplify_text(payload=None, texts=None, model=None)`                                                                    | Calls `/api/simplify_text`. Three usage patterns: <br>1️⃣ Pass a ready‑made dict.<br>2️⃣ Pass a `SimplifyTextModel` instance.<br>3️⃣ Provide `texts` + `model` and let the client build the model.                                                                  |
-| `generate_questions(payload=None, texts=None, number_of_questions=1, model=None)`                                        | Calls `/api/generate_questions`. Generates questions from input texts. Alias: `generate_questions`.                                                                                                                                                           |
-| `generate_label(payload=None, texts=None, model=None)`                                                                   | Calls `/api/generate_label`. Generates a single category name (label) from a list of texts. Three usage patterns: <br>1️⃣ Pass a ready‑made dict.<br>2️⃣ Pass a `GenerateLabelModel` instance.<br>3️⃣ Provide `texts` + `model` and let the client build the model. |
-| `generative_answer(payload=None, model=None, texts=None, question_str=None)`                                             | Calls `/api/generative_answer`. Works with a dict, a `GenerativeAnswerModel` instance, or explicit arguments.                                                                                                                                                 |
-| `ping()`                                                                                                                 | Calls `/api/ping` – health‑check endpoint.                                                                                                                                                                                                                    |
-| `version()`                                                                                                              | Calls `/api/version` – retrieves router version information.                                                                                                                                                                                                  |
-| `translate(...)` and `generative_answer(...)` also raise `NoArgsAndNoPayloadError` if called without required arguments. |
+Every endpoint method shares **one keyword‑only calling contract**: pass a pre‑built Pydantic request model via
+`payload=…`, **or** pass the named domain arguments (plus `model` and optional `temperature` / `max_new_tokens`) and the
+client builds the request model for you. Raw `dict` payloads are rejected (`TypeError`); generation defaults come from
+the Pydantic models. Calling a generation method with neither `payload` nor enough named arguments raises
+`NoArgsAndNoPayloadError`.
+
+| Method                                  | Endpoint                                     | Domain arguments (all keyword‑only)                                                                     |
+|-----------------------------------------|----------------------------------------------|---------------------------------------------------------------------------------------------------------|
+| `conversation_with_model(...)`          | `POST /api/conversation_with_model`          | `user_last_statement`, `historical_messages`, `model`, `temperature`, `max_new_tokens`                  |
+| `extended_conversation_with_model(...)` | `POST /api/extended_conversation_with_model` | `user_last_statement`, `historical_messages`, `system_prompt`, `model`, `temperature`, `max_new_tokens` |
+| `polarity_3c(...)`                      | `POST /api/polarity_3c`                      | `texts`, `model`, `temperature`, `max_new_tokens`                                                       |
+| `translate(...)`                        | `POST /api/translate`                        | `texts`, `model`, `temperature`, `max_new_tokens`                                                       |
+| `simplify_text(...)`                    | `POST /api/simplify_text`                    | `texts`, `model`, `temperature`, `max_new_tokens`                                                       |
+| `generative_answer(...)`                | `POST /api/generative_answer`                | `texts`, `question_str`, `model`, `temperature`, `max_new_tokens`                                       |
+| `generate_article_from_text(...)`       | `POST /api/generate_article_from_text`       | `text`, `model`, `temperature`, `max_new_tokens`                                                        |
+| `generate_article_from_texts(...)`      | `POST /api/generate_article_from_texts`      | `texts`, `model`, `temperature`, `max_new_tokens`                                                       |
+| `create_full_article_from_texts(...)`   | `POST /api/create_full_article_from_texts`   | `user_query`, `texts`, `article_type`, `model`, `temperature`, `max_new_tokens`                         |
+| `generate_questions(...)`               | `POST /api/generate_questions`               | `texts`, `number_of_questions`, `model`, `temperature`, `max_new_tokens`                                |
+| `generate_label(...)`                   | `POST /api/generate_label`                   | `texts`, `model`, `temperature`, `max_new_tokens`                                                       |
+| `ping()`                                | `GET /api/ping`                              | – (health‑check endpoint)                                                                               |
+| `version()`                             | `GET /api/version`                           | – (router version information)                                                                          |
+| `models()`                              | `GET /v1/models`                             | – (available model list; use `.ids` / `.data`)                                                          |
+
+Every method above also accepts `payload=<RequestModel>` as the alternative to the named arguments (e.g.
+`translate(payload=TranslateModel(...))`).
 
 All methods return a **typed response model** (a Pydantic `BaseModel`) validated from the JSON body — see
 [`RESPONSE_MODELS.md`](RESPONSE_MODELS.md) for the full reference and the method→model mapping. Call
@@ -186,8 +203,9 @@ the following exceptions (defined in `exceptions.py`):
 - `LLMRouterError` – base class for all library‑specific errors.
 - `AuthenticationError` – HTTP 401/403 (invalid or missing token).
 - `RateLimitError` – HTTP 429 (too many requests).
-- `ValidationError` – HTTP 400 (malformed payload). | `NoArgsAndNoPayloadError` – client‑side validation when required
-  arguments are missing.
+- `ValidationError` – HTTP 400 (malformed payload).
+- `NoArgsAndNoPayloadError` – client‑side validation: raised when a generation method is called without `payload` and
+  without enough named arguments.
 
 :::tip **Field naming across models**
 
@@ -212,7 +230,10 @@ the
 from llm_router_lib import LLMRouterClient
 
 with LLMRouterClient(api="http://localhost:8080", token="...") as client:
-    result = client.conversation_with_model(payload)  # session closed automatically
+    result = client.conversation_with_model(  # session closed automatically
+        user_last_statement="Hi!",
+        model="google/gemma-3-12b-it",
+    )
 ```
 
 :::

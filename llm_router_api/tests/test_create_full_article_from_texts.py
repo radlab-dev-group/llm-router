@@ -162,21 +162,17 @@ class TestCreateFullArticleFromTextsServiceAndClient:
             assert call_arg["user_query"] == "Podsumuj"
             assert call_arg["texts"] == ["Tekst 1", "Tekst 2"]
 
-    def test_client_create_full_article_from_texts_with_dict_payload(self):
+    def test_client_create_full_article_from_texts_with_dict_payload_raises_type_error(
+        self,
+    ):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(
-            CreateFullArticleFromTextsService, "call_post"
-        ) as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {
-                "model_name": "test-model",
-                "user_query": "Podsumuj",
-                "texts": ["Tekst"],
-            }
-            resp = client.create_full_article_from_texts(payload=payload)
-            assert isinstance(resp, CreateFullArticleFromTextsResponse)
-            assert resp.response.article_text is None
-            mock_call.assert_called_once_with(payload)
+        payload = {
+            "model_name": "test-model",
+            "user_query": "Podsumuj",
+            "texts": ["Tekst"],
+        }
+        with pytest.raises(TypeError):
+            client.create_full_article_from_texts(payload=payload)
 
     def test_client_create_full_article_from_texts_with_args(self):
         client = LLMRouterClient(api="http://localhost:8080")

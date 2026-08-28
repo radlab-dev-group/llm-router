@@ -12,6 +12,8 @@ import redis
 import secrets
 import asyncio
 
+from typing import List, Optional
+
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
 
@@ -28,7 +30,7 @@ class RedisKeyStoreCache(KeyStoreInterface):
     def __init__(
         self,
         backend: KeyStoreInterface,
-        redis_client: redis.Redis | None = None,
+        redis_client: Optional[redis.Redis] = None,
         ttl: int = 300,
         jitter: int = 60,
     ) -> None:
@@ -85,11 +87,11 @@ class RedisKeyStoreCache(KeyStoreInterface):
             return asyncio.run_coroutine_threadsafe(coro, loop).result()
         return asyncio.run(coro)
 
-    def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
+    def get_key_by_hash_sync(self, key_hash: str) -> Optional[dict]:
         return self._run_async(self.get_key_by_hash(key_hash))
 
     # -- KeyStoreInterface ------------------------------------------------------
-    async def get_key_by_hash(self, key_hash: str) -> dict | None:
+    async def get_key_by_hash(self, key_hash: str) -> Optional[dict]:
         cache_key = self._cache_key_for_hash(key_hash)
 
         if self._redis is not None:
@@ -102,7 +104,7 @@ class RedisKeyStoreCache(KeyStoreInterface):
             self._set_with_jitter(cache_key, self._record_to_dict(record))
         return record
 
-    async def get_key_by_id(self, key_id: str) -> dict | None:
+    async def get_key_by_id(self, key_id: str) -> Optional[dict]:
         cache_key = self._cache_key_for_id(key_id)
 
         if self._redis is not None:
@@ -136,7 +138,7 @@ class RedisKeyStoreCache(KeyStoreInterface):
         if old:
             self._invalidate(key_id, old.get("key_hash", ""))
 
-    async def list_keys(self) -> list[dict]:
+    async def list_keys(self) -> List[dict]:
         return await self._backend.list_keys()
 
     async def disable_key(self, key_id: str) -> None:
@@ -160,13 +162,13 @@ class RedisKeyStoreCache(KeyStoreInterface):
             self._invalidate(key_id, old.get("key_hash", ""))
 
     # -- plaintext lookup (bypasses cache since salts are random) -------------
-    async def get_key_by_plain(self, key_plain: str) -> dict | None:
+    async def get_key_by_plain(self, key_plain: str) -> Optional[dict]:
         """
         Delegate plaintext lookup to backend — cannot be cached (random bcrypt salts).
         """
         return await self._backend.get_key_by_plain(key_plain)
 
-    def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+    def get_key_by_plain_sync(self, key_plain: str) -> Optional[dict]:
         """
         Sync version of :meth:`get_key_by_plain`.
         """

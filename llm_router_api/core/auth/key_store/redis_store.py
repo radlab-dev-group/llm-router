@@ -14,6 +14,8 @@ import uuid
 import redis
 import bcrypt
 
+from typing import List, Optional
+
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix
 
@@ -28,11 +30,11 @@ class RedisKeyStore(KeyStoreInterface):
 
     def __init__(
         self,
-        redis_client: redis.Redis | None = None,
-        redis_host: str | None = None,
+        redis_client: Optional[redis.Redis] = None,
+        redis_host: Optional[str] = None,
         redis_port: int = 6379,
         redis_db: int = 0,
-        redis_password: str | None = None,
+        redis_password: Optional[str] = None,
         prefix: str = _DEFAULT_REDIS_PREFIX,
     ) -> None:
         if redis_client is not None:
@@ -51,10 +53,10 @@ class RedisKeyStore(KeyStoreInterface):
         return f"{self._prefix}:{key_id}"
 
     # -- sync wrappers (inherit _run_async from base class) ---------------
-    def get_key_by_hash_sync(self, key_hash: str) -> dict | None:
+    def get_key_by_hash_sync(self, key_hash: str) -> Optional[dict]:
         return self._run_async(self.get_key_by_hash(key_hash))
 
-    async def get_key_by_plain(self, key_plain: str) -> dict | None:
+    async def get_key_by_plain(self, key_plain: str) -> Optional[dict]:
         """
         Look up a key record by its plaintext key using bcrypt.checkpw.
         """
@@ -77,14 +79,14 @@ class RedisKeyStore(KeyStoreInterface):
                 break
         return None
 
-    def get_key_by_plain_sync(self, key_plain: str) -> dict | None:
+    def get_key_by_plain_sync(self, key_plain: str) -> Optional[dict]:
         """
         Run the async get_key_by_plain coroutine on the event loop.
         """
 
         return self._run_async(self.get_key_by_plain(key_plain))
 
-    async def get_key_by_hash(self, key_hash: str) -> dict | None:
+    async def get_key_by_hash(self, key_hash: str) -> Optional[dict]:
         # Scan all keys looking for a matching hash
         cursor = 0
         while True:
@@ -103,7 +105,7 @@ class RedisKeyStore(KeyStoreInterface):
                 break
         return None
 
-    async def get_key_by_id(self, key_id: str) -> dict | None:
+    async def get_key_by_id(self, key_id: str) -> Optional[dict]:
         raw = self._redis.get(self._key(key_id))
         if not raw:
             return None
@@ -191,7 +193,7 @@ class RedisKeyStore(KeyStoreInterface):
     async def delete_key(self, key_id: str) -> None:
         self._redis.delete(self._key(key_id))
 
-    async def list_keys(self) -> list[dict]:
+    async def list_keys(self) -> List[dict]:
         result = []
         cursor = 0
         while True:

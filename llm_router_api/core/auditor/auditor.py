@@ -65,7 +65,7 @@ class AnyRequestAuditor:
 
         Parameters
         ----------
-        log : dict or list
+        log : Dict or List
             The audit record(s) to store. Must contain an ``"audit_type"``
             key when ``log`` is a mapping.
 

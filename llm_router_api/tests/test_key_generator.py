@@ -9,6 +9,7 @@ import string
 from collections import Counter
 
 from llm_router_api.core.auth.key_generator import KeyGenerator
+from typing import List
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +91,7 @@ class TestNoModuloBias:
         Collect character frequencies across many keys and verify uniformity.
         """
 
-        chars: list[str] = []
+        chars: List[str] = []
         for _ in range(self.NUM_KEYS):
             key = KeyGenerator.generate(
                 entropy_bytes=64
@@ -123,7 +124,7 @@ class TestNoModuloBias:
         No single character should appear more than ~2x the expected frequency.
         """
 
-        chars: list[str] = []
+        chars: List[str] = []
         for _ in range(self.NUM_KEYS):
             key = KeyGenerator.generate(entropy_bytes=64)
             suffix = key[len(KeyGenerator.PREFIX) :]
