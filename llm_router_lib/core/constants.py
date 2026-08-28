@@ -8,6 +8,8 @@ changed in a single place without risk of accidental drift.
 
 import os
 
+from typing import Dict, List
+
 # ------------------------------------------------------------------ #
 # Shared environment prefix + default endpoint language
 # ------------------------------------------------------------------ #
@@ -31,7 +33,7 @@ DEFAULT_EP_LANGUAGE = os.environ.get(
 DEFAULT_TIMEOUT_SECONDS: int = 10
 DEFAULT_RETRIES: int = 2
 RETRY_BACKOFF_FACTOR: float = 0.5
-RETRY_STATUS_CODELIST: list[int] = [429, 500, 502, 503, 504]
+RETRY_STATUS_CODELIST: List[int] = [429, 500, 502, 503, 504]
 
 # ------------------------------------------------------------------ #
 # Default generation parameters (used by builtin_chat.py / openai.py)
@@ -46,4 +48,4 @@ DEFAULT_REPETITION_PENALTY: float = 1.2
 
 # OpenAI‑compatible endpoint defaults
 DEFAULT_KEEP_ALIVE: str = "30m"
-DEFAULT_OPTIONS: dict[str, int] = {"num_ctx": 128_000}
+DEFAULT_OPTIONS: Dict[str, int] = {"num_ctx": 128_000}

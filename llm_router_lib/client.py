@@ -25,6 +25,7 @@ that typed model rather than a free‑form ``dict``.
 import logging
 
 from pydantic import BaseModel, ValidationError
+from typing import Dict, List, Optional, Type, Union
 
 from llm_router_lib.core.constants import (
     DEFAULT_TIMEOUT_SECONDS,
@@ -115,11 +116,11 @@ class LLMRouterClient:
     def __init__(
         self,
         api: str,
-        token: str | None = None,
-        timeout: int | None = None,
-        retries: int | None = None,
-        logger: logging.Logger | None = None,
-        default_model: str | None = None,
+        token: Optional[str] = None,
+        timeout: Optional[int] = None,
+        retries: Optional[int] = None,
+        logger: Optional[logging.Logger] = None,
+        default_model: Optional[str] = None,
     ) -> None:
         """
         Initialise the client with connection settings.
@@ -136,9 +137,9 @@ class LLMRouterClient:
         retries : int, default ``DEFAULT_RETRIES``
             Number of automatic retry attempts for HTTP status codes defined in
             ``HttpRequester``'s retry policy.
-        logger : logging.Logger | None
+        logger : Optional[logging.Logger]
             Custom logger; if ``None`` a module‑level logger is created.
-        default_model: str | None
+        default_model: Optional[str]
             Default model name. Will be used in case when
             model_name in any service is not given
         """
@@ -250,12 +251,12 @@ class LLMRouterClient:
     def conversation_with_model(
         self,
         *,
-        payload: ConversationWithModelRequest | None = None,
-        user_last_statement: str | None = None,
-        historical_messages: list[dict[str, str]] | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[ConversationWithModelRequest] = None,
+        user_last_statement: Optional[str] = None,
+        historical_messages: Optional[List[Dict[str, str]]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> ConversationResponse:
         """
         Call the standard conversation endpoint.
@@ -277,20 +278,20 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : ConversationWithModelRequest | None
+        payload : Optional[ConversationWithModelRequest]
             Optional pre‑constructed request model.
-        user_last_statement : str | None
+        user_last_statement : Optional[str]
             The latest user utterance that the model should respond to
             (required unless ``payload`` is supplied).
-        historical_messages : list[dict[str, str]] | None
+        historical_messages : Optional[List[Dict[str, str]]]
             Optional previous dialogue turns; each dict must contain ``role``
             (``"user"`` / ``"assistant"``) and ``content`` keys.
-        model : str | None
+        model : Optional[str]
             Model identifier; falls back to the client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -327,13 +328,13 @@ class LLMRouterClient:
     def extended_conversation_with_model(
         self,
         *,
-        payload: ExtendedConversationWithModelRequest | None = None,
-        user_last_statement: str | None = None,
-        historical_messages: list[dict[str, str]] | None = None,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[ExtendedConversationWithModelRequest] = None,
+        user_last_statement: Optional[str] = None,
+        historical_messages: Optional[List[Dict[str, str]]] = None,
+        system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> ExtendedConversationResponse:
         """
         Call the extended conversation endpoint that supports an explicit
@@ -356,23 +357,23 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : ExtendedConversationWithModelRequest | None
+        payload : Optional[ExtendedConversationWithModelRequest]
             Optional pre‑constructed request model.
-        user_last_statement : str | None
+        user_last_statement : Optional[str]
             The latest user utterance that the model should respond to
             (required unless ``payload`` is supplied).
-        historical_messages : list[dict[str, str]] | None
+        historical_messages : Optional[List[Dict[str, str]]]
             Optional previous dialogue turns; each dict must contain ``role``
             (``"user"`` / ``"assistant"``) and ``content`` keys.
-        system_prompt : str | None
+        system_prompt : Optional[str]
             Explicit system prompt prepended to the conversation (required
             unless ``payload`` is supplied).
-        model : str | None
+        model : Optional[str]
             Model identifier; falls back to the client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -413,11 +414,11 @@ class LLMRouterClient:
     def polarity_3c(
         self,
         *,
-        payload: Polarity3cModel | None = None,
-        texts: list[str] | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[Polarity3cModel] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> Polarity3cResponse:
         """
         Detect 3‑class polarity (ambivalent, positive, negative) for a list of
@@ -439,18 +440,18 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : Polarity3cModel | None
+        payload : Optional[Polarity3cModel]
             Optional pre‑constructed request model.
-        texts : list[str] | None
+        texts : Optional[List[str]]
             List of source strings to classify (required unless ``payload`` is
             supplied).
-        model : str | None
+        model : Optional[str]
             Model identifier to be used for classification; falls back to the
             client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -485,11 +486,11 @@ class LLMRouterClient:
     def translate(
         self,
         *,
-        payload: TranslateModel | None = None,
-        texts: list[str] | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[TranslateModel] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> TranslateResponse:
         """
         Translate a list of texts using the ``/api/translate`` endpoint.
@@ -510,18 +511,18 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : TranslateModel | None
+        payload : Optional[TranslateModel]
             Optional pre‑constructed request model.
-        texts : list[str] | None
+        texts : Optional[List[str]]
             List of source strings to translate (required unless ``payload`` is
             supplied).
-        model : str | None
+        model : Optional[str]
             Model identifier to be used for translation; falls back to the
             client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -556,11 +557,11 @@ class LLMRouterClient:
     def simplify_text(
         self,
         *,
-        payload: SimplifyTextModel | None = None,
-        texts: list[str] | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[SimplifyTextModel] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> SimplifyTextResponse:
         """
         Simplify a list of texts using the ``/api/simplify_text`` endpoint.
@@ -581,18 +582,18 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : SimplifyTextModel | None
+        payload : Optional[SimplifyTextModel]
             Optional pre‑constructed request model.
-        texts : list[str] | None
+        texts : Optional[List[str]]
             List of source strings to simplify (required unless ``payload`` is
             supplied).
-        model : str | None
+        model : Optional[str]
             Model identifier to be used for simplification; falls back to the
             client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -627,12 +628,12 @@ class LLMRouterClient:
     def generative_answer(
         self,
         *,
-        payload: GenerativeAnswerModel | None = None,
-        texts: dict[str, list[str]] | list[str] | None = None,
-        question_str: str | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[GenerativeAnswerModel] = None,
+        texts: Optional[Union[Dict[str, List[str]], List[str]]] = None,
+        question_str: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> GenerativeAnswerResponse:
         """
         Answer a question based on a context (RAG) using the
@@ -659,19 +660,19 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : GenerativeAnswerModel | None
+        payload : Optional[GenerativeAnswerModel]
             Optional pre‑constructed request model.
-        texts : dict[str, list[str]] | list[str] | None
+        texts : Optional[Union[Dict[str, List[str]], List[str]]]
             Knowledge base passages (required unless ``payload`` is supplied).
-        question_str : str | None
+        question_str : Optional[str]
             The user's question to be answered (required unless ``payload`` is
             supplied).
-        model : str | None
+        model : Optional[str]
             Model identifier; falls back to the client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -708,11 +709,11 @@ class LLMRouterClient:
     def generate_article_from_text(
         self,
         *,
-        payload: GenerateArticleFromTextModel | None = None,
-        text: str | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[GenerateArticleFromTextModel] = None,
+        text: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> GenerateArticleFromTextResponse:
         """
         Expand a single source text into a full article using the
@@ -734,17 +735,17 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : GenerateArticleFromTextModel | None
+        payload : Optional[GenerateArticleFromTextModel]
             Optional pre‑constructed request model.
-        text : str | None
+        text : Optional[str]
             The source text (e.g. a news snippet) to be expanded into an
             article (required unless ``payload`` is supplied).
-        model : str | None
+        model : Optional[str]
             Model identifier; falls back to the client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -779,11 +780,11 @@ class LLMRouterClient:
     def generate_article_from_texts(
         self,
         *,
-        payload: GenerateArticleFromTextsModel | None = None,
-        texts: list[str] | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[GenerateArticleFromTextsModel] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> GenerateArticleFromTextsResponse:
         """
         Generate a short (~A4) article from multiple input texts using the
@@ -805,17 +806,17 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : GenerateArticleFromTextsModel | None
+        payload : Optional[GenerateArticleFromTextsModel]
             Optional pre‑constructed request model.
-        texts : list[str] | None
+        texts : Optional[List[str]]
             Source texts from which to produce the article (required unless
             ``payload`` is supplied).
-        model : str | None
+        model : Optional[str]
             Model identifier; falls back to the client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -852,13 +853,13 @@ class LLMRouterClient:
     def create_full_article_from_texts(
         self,
         *,
-        payload: CreateFullArticleFromTextsModel | None = None,
-        user_query: str | None = None,
-        texts: list[str] | None = None,
-        article_type: str | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[CreateFullArticleFromTextsModel] = None,
+        user_query: Optional[str] = None,
+        texts: Optional[List[str]] = None,
+        article_type: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> CreateFullArticleFromTextsResponse:
         """
         Create a full article from multiple input texts using the
@@ -881,22 +882,22 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : CreateFullArticleFromTextsModel | None
+        payload : Optional[CreateFullArticleFromTextsModel]
             Optional pre‑constructed request model.
-        user_query : str | None
+        user_query : Optional[str]
             The query that frames the desired article (required unless
             ``payload`` is supplied).
-        texts : list[str] | None
+        texts : Optional[List[str]]
             Source texts that will be merged into the final article.
-        article_type : str | None
+        article_type : Optional[str]
             Optional identifier appended to the system prompt to influence the
             article's style or format.
-        model : str | None
+        model : Optional[str]
             Model identifier; falls back to the client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -935,12 +936,12 @@ class LLMRouterClient:
     def generate_questions(
         self,
         *,
-        payload: GenerateQuestionsModel | None = None,
-        texts: list[str] | None = None,
-        number_of_questions: int | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[GenerateQuestionsModel] = None,
+        texts: Optional[List[str]] = None,
+        number_of_questions: Optional[int] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> GenerateQuestionsResponse:
         """
         Generate questions from multiple input texts using the
@@ -963,20 +964,20 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : GenerateQuestionsModel | None
+        payload : Optional[GenerateQuestionsModel]
             Optional pre‑constructed request model.
-        texts : list[str] | None
+        texts : Optional[List[str]]
             List of source strings from which to generate questions (required
             unless ``payload`` is supplied).
-        number_of_questions : int | None
+        number_of_questions : Optional[int]
             Desired number of questions per input text; defaults to the model
             default (``1``) when omitted.
-        model : str | None
+        model : Optional[str]
             Model identifier; falls back to the client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens to generate (only used when building the
             payload from arguments).
 
@@ -1012,11 +1013,11 @@ class LLMRouterClient:
     def generate_label(
         self,
         *,
-        payload: GenerateLabelModel | None = None,
-        texts: list[str] | None = None,
-        model: str | None = None,
-        temperature: float | None = None,
-        max_new_tokens: int | None = None,
+        payload: Optional[GenerateLabelModel] = None,
+        texts: Optional[List[str]] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
     ) -> GenerateLabelResponse:
         """
         Generate a category name (label) for a list of texts using the
@@ -1041,18 +1042,18 @@ class LLMRouterClient:
 
         Parameters
         ----------
-        payload : GenerateLabelModel | None
+        payload : Optional[GenerateLabelModel]
             Optional pre‑constructed request model.
-        texts : list[str] | None
+        texts : Optional[List[str]]
             List of related source strings whose shared essence should be
             captured by a single category name (required unless ``payload`` is
             supplied).
-        model : str | None
+        model : Optional[str]
             Model identifier; falls back to the client ``default_model``.
-        temperature : float | None
+        temperature : Optional[float]
             Sampling temperature (only used when building the payload from
             arguments).
-        max_new_tokens : int | None
+        max_new_tokens : Optional[int]
             Maximum number of tokens for the generated label (only used when
             building the payload from arguments).
 
@@ -1088,10 +1089,10 @@ class LLMRouterClient:
     @staticmethod
     def _build_payload(
         *,
-        model_cls: type[BaseModel] | None,
+        model_cls: Optional[Type[BaseModel]],
         payload_arg: object,
         **extra: object,
-    ) -> dict[str, object]:
+    ) -> Dict[str, object]:
         """
         Normalise a payload argument to the ``dict`` sent over the wire.
 
