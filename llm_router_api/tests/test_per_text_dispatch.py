@@ -39,6 +39,7 @@ from llm_router_api.endpoints.builtin.builtin_utils import (  # noqa: E402
 from llm_router_api.endpoints.endpoint_i import (
     EndpointWithHttpRequestI,
 )  # noqa: E402
+from typing import List
 
 T1 = "Ile lat ma córka która widzi, że nie ma jeszcze 15 lat?"
 T2 = "Hehehehehe nie wiem o co Ci chodzi ale chodzi Ci dobrze"

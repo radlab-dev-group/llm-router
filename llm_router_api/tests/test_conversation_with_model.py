@@ -28,6 +28,7 @@ from llm_router_lib.services.conversation import (
     ExtendedConversationWithModelService,
 )
 from llm_router_lib.client import LLMRouterClient
+from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.data_models.response import (
     ConversationResponse,
     ExtendedConversationResponse,
@@ -248,25 +249,41 @@ class TestConversationServiceAndClient:
             assert call_arg["model_name"] == "test-model"
             assert call_arg["user_last_statement"] == "Cześć"
 
-    def test_client_conversation_with_model_with_dict_payload(self):
+    def test_client_conversation_with_model_with_dict_payload_raises_type_error(
+        self,
+    ):
+        client = LLMRouterClient(api="http://localhost:8080")
+        payload = {
+            "model_name": "test-model",
+            "user_last_statement": "Cześć",
+        }
+        with pytest.raises(TypeError):
+            client.conversation_with_model(payload=payload)
+
+    def test_client_conversation_with_model_no_args_raises(self):
+        client = LLMRouterClient(api="http://localhost:8080")
+        with pytest.raises(NoArgsAndNoPayloadError):
+            client.conversation_with_model()
+
+    def test_client_conversation_with_model_with_kwargs(self):
         client = LLMRouterClient(api="http://localhost:8080")
         with mock.patch.object(
             ConversationWithModelService, "call_post"
         ) as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {
-                "model_name": "test-model",
-                "user_last_statement": "Cześć",
-            }
-            resp = client.conversation_with_model(payload=payload)
+            mock_call.return_value = {"status": True, "response": "Odpowiedź"}
+            resp = client.conversation_with_model(
+                user_last_statement="Cześć",
+                historical_messages=[{"role": "user", "content": "Witaj"}],
+                model="test-model",
+            )
             assert isinstance(resp, ConversationResponse)
-            assert resp.response is None
-            mock_call.assert_called_once_with(payload)
-
-    def test_client_conversation_with_model_no_payload_raises(self):
-        client = LLMRouterClient(api="http://localhost:8080")
-        with pytest.raises(TypeError):
-            client.conversation_with_model()
+            assert resp.response == "Odpowiedź"
+            call_arg = mock_call.call_args[0][0]
+            assert call_arg["model_name"] == "test-model"
+            assert call_arg["user_last_statement"] == "Cześć"
+            assert call_arg["historical_messages"] == [
+                {"role": "user", "content": "Witaj"}
+            ]
 
     def test_client_extended_conversation_with_model_with_model_instance(self):
         client = LLMRouterClient(api="http://localhost:8080")
@@ -287,26 +304,40 @@ class TestConversationServiceAndClient:
             assert call_arg["model_name"] == "test-model"
             assert call_arg["system_prompt"] == "Jak Yoda"
 
-    def test_client_extended_conversation_with_model_with_dict_payload(self):
+    def test_client_extended_conversation_with_model_with_dict_payload_raises_type_error(
+        self,
+    ):
+        client = LLMRouterClient(api="http://localhost:8080")
+        payload = {
+            "model_name": "test-model",
+            "user_last_statement": "Cześć",
+            "system_prompt": "Jak Yoda",
+        }
+        with pytest.raises(TypeError):
+            client.extended_conversation_with_model(payload=payload)
+
+    def test_client_extended_conversation_with_model_no_args_raises(self):
+        client = LLMRouterClient(api="http://localhost:8080")
+        with pytest.raises(NoArgsAndNoPayloadError):
+            client.extended_conversation_with_model()
+
+    def test_client_extended_conversation_with_model_with_kwargs(self):
         client = LLMRouterClient(api="http://localhost:8080")
         with mock.patch.object(
             ExtendedConversationWithModelService, "call_post"
         ) as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {
-                "model_name": "test-model",
-                "user_last_statement": "Cześć",
-                "system_prompt": "Jak Yoda",
-            }
-            resp = client.extended_conversation_with_model(payload=payload)
+            mock_call.return_value = {"status": True, "response": "Odpowiedź"}
+            resp = client.extended_conversation_with_model(
+                user_last_statement="Cześć",
+                system_prompt="Jak Yoda",
+                model="test-model",
+            )
             assert isinstance(resp, ExtendedConversationResponse)
-            assert resp.response is None
-            mock_call.assert_called_once_with(payload)
-
-    def test_client_extended_conversation_with_model_no_payload_raises(self):
-        client = LLMRouterClient(api="http://localhost:8080")
-        with pytest.raises(TypeError):
-            client.extended_conversation_with_model()
+            assert resp.response == "Odpowiedź"
+            call_arg = mock_call.call_args[0][0]
+            assert call_arg["model_name"] == "test-model"
+            assert call_arg["user_last_statement"] == "Cześć"
+            assert call_arg["system_prompt"] == "Jak Yoda"
 
 
 class TestConversationAuthAndPrompts:

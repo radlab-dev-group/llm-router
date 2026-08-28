@@ -93,19 +93,15 @@ class TestGenerateQuestionsServiceAndClient(unittest.TestCase):
             self.assertEqual(call_arg["texts"], ["Przykładowy tekst"])
             self.assertEqual(call_arg["number_of_questions"], 2)
 
-    def test_client_generate_questions_with_dict_payload(self):
+    def test_client_generate_questions_with_dict_payload_raises_type_error(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(GenerateQuestionsService, "call_post") as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {
-                "model_name": "test-model",
-                "texts": ["Tekst"],
-                "number_of_questions": 1,
-            }
-            resp = client.generate_questions(payload=payload)
-            self.assertIsInstance(resp, GenerateQuestionsResponse)
-            self.assertEqual(resp.response, [])
-            mock_call.assert_called_once_with(payload)
+        payload = {
+            "model_name": "test-model",
+            "texts": ["Tekst"],
+            "number_of_questions": 1,
+        }
+        with self.assertRaises(TypeError):
+            client.generate_questions(payload=payload)
 
     def test_client_generate_questions_with_args(self):
         client = LLMRouterClient(api="http://localhost:8080")

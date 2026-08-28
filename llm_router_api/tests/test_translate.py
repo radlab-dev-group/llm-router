@@ -135,15 +135,11 @@ class TestTranslateServiceAndClient:
             assert call_arg["model_name"] == "test-model"
             assert call_arg["texts"] == ["Hi"]
 
-    def test_client_translate_with_dict_payload(self):
+    def test_client_translate_with_dict_payload_raises_type_error(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(TranslateService, "call_post") as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {"model_name": "test-model", "texts": ["Hi"]}
-            resp = client.translate(payload=payload)
-            assert isinstance(resp, TranslateResponse)
-            assert resp.response == []
-            mock_call.assert_called_once_with(payload)
+        payload = {"model_name": "test-model", "texts": ["Hi"]}
+        with pytest.raises(TypeError):
+            client.translate(payload=payload)
 
     def test_client_translate_with_args(self):
         client = LLMRouterClient(api="http://localhost:8080")

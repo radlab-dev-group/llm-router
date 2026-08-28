@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import time
 
-from typing import Any
+from typing import Any, Dict, List
 
 from llm_router_api.core.auth.rate_limiter import RedisRateLimiter, RateLimitResult
 
@@ -20,9 +20,9 @@ class FakeRedis:
     """
 
     def __init__(self) -> None:
-        self._data: dict[str, dict[str, float]] = {}  # bucket -> {member: score}
-        self._expires: dict[str, int] = {}
-        self._scripts: list[Any] = []
+        self._data: Dict[str, Dict[str, float]] = {}  # bucket -> {member: score}
+        self._expires: Dict[str, int] = {}
+        self._scripts: List[Any] = []
 
     def zremrangebyscore(
         self, bucket: str, min_score: float, max_score: float
@@ -52,7 +52,7 @@ class FakeRedis:
             return list(sliced)
         return [m for m, s in sliced]
 
-    def zadd(self, bucket: str, mapping: dict[str, float]) -> int:
+    def zadd(self, bucket: str, mapping: Dict[str, float]) -> int:
         if bucket not in self._data:
             self._data[bucket] = {}
         new_members = set(mapping.keys()) - set(self._data[bucket].keys())
@@ -123,7 +123,7 @@ class FakeScript:
         # In FakeRedis.register_script + __call__, we need to handle both formats
         return []
 
-    def __call__(self, keys: list[str], args: list):
+    def __call__(self, keys: List[str], args: list):
         """
         Execute the Lua script for this call.
         """

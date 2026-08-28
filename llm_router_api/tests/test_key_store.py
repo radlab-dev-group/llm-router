@@ -12,7 +12,7 @@ import uuid
 import pytest
 import bcrypt
 
-from typing import Any
+from typing import Any, Dict, List, Optional, Set, Tuple
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 @pytest.fixture()
-def memory_store(tmp_path: Path) -> dict[str, Any]:
+def memory_store(tmp_path: Path) -> Dict[str, Any]:
     """
     MemoryKeyStore with seed_file in a temp directory.
     """
@@ -39,7 +39,7 @@ class FakeRedis:
     """
 
     def __init__(self) -> None:
-        self._data: dict[str, str] = {}
+        self._data: Dict[str, str] = {}
         self._scan_cursor: int = 0
 
     def ping(self) -> bool:
@@ -49,7 +49,7 @@ class FakeRedis:
         self._data[key] = value
         return True
 
-    def get(self, key: str) -> str | None:
+    def get(self, key: str) -> Optional[str]:
         return self._data.get(key)
 
     def delete(self, key: str) -> int:
@@ -63,8 +63,8 @@ class FakeRedis:
         return True
 
     def scan(
-        self, cursor: int, match: str | None = None, count: int = 100
-    ) -> tuple[int, list[str]]:
+        self, cursor: int, match: Optional[str] = None, count: int = 100
+    ) -> Tuple[int, List[str]]:
         keys = sorted(k for k in self._data.keys())
         if match:
             # Simple prefix match (enough for our key patterns)
@@ -84,13 +84,13 @@ class _FakePipeline:
 
     def __init__(self, redis: FakeRedis) -> None:
         self._redis = redis
-        self._ops: list[tuple] = []
+        self._ops: List[tuple] = []
 
     def set(self, key: str, value: str) -> "_FakePipeline":
         self._ops.append(("set", key, value))
         return self
 
-    def execute(self) -> list:
+    def execute(self) -> List:
         results = []
         for op in self._ops:
             if op[0] == "set":
@@ -100,7 +100,7 @@ class _FakePipeline:
 
 
 @pytest.fixture()
-def redis_store() -> dict[str, Any]:
+def redis_store() -> Dict[str, Any]:
     """
     RedisKeyStore backed by FakeRedis.
     """
@@ -117,9 +117,9 @@ class _MockSecret:
     Minimal mock for a Vault KV secret.
     """
 
-    def __init__(self, data: dict[str, Any]) -> None:
+    def __init__(self, data: Dict[str, Any]) -> None:
         self.data = data
-        self.metadata: dict = {}
+        self.metadata: Dict = {}
 
 
 class _MockVaultClient:
@@ -128,7 +128,7 @@ class _MockVaultClient:
     """
 
     def __init__(self, **kwargs) -> None:
-        self._secrets: dict[str, dict] = {}
+        self._secrets: Dict[str, dict] = {}
         self.authenticated = False
         self.auth_method: str = ""
         self.last_token: str = ""
@@ -161,7 +161,7 @@ class _MockVaultClient:
         key = f"{mount_point.rstrip('/')}/{path}" if "/" in mount_point else path
         self._secrets.pop(key, None)
 
-    def list_secret(self, path: str) -> dict:
+    def list_secret(self, path: str) -> Dict:
         prefix = path.rstrip("/") + "/"
         keys = sorted(
             k
@@ -177,7 +177,7 @@ class _MockVaultClient:
                 result.append(k[len(prefix) :].rstrip("/"))
         return {"data": {"keys": result}}
 
-    def read_secret(self, path: str) -> dict:
+    def read_secret(self, path: str) -> Dict:
         data = self._secrets.get(path)
         if not data:
             raise KeyError(f"Secret not found: {path}")
@@ -198,8 +198,8 @@ class _MockV2:
         self._parent = parent
 
     def list_secrets(
-        self, path: str | None = None, mount_point: str | None = None
-    ) -> dict:
+        self, path: Optional[str] = None, mount_point: Optional[str] = None
+    ) -> Dict:
         if not path:
             return {"data": {"keys": []}}
         prefix = path.rstrip("/") + "/"
@@ -209,8 +209,8 @@ class _MockV2:
         return {"data": {"keys": [k.split("/")[-1] for k in keys]}}
 
     def read_secret_version(
-        self, path: str | None = None, mount_point: str | None = None
-    ) -> dict:
+        self, path: Optional[str] = None, mount_point: Optional[str] = None
+    ) -> Dict:
         if not path:
             raise KeyError("No path provided")
         data = self._parent._secrets.get(path)
@@ -256,7 +256,7 @@ def vault_client() -> _MockVaultClient:
 
 
 @pytest.fixture()
-def vault_store(vault_client: _MockVaultClient) -> dict[str, Any]:
+def vault_store(vault_client: _MockVaultClient) -> Dict[str, Any]:
     """
     VaultKeyStore backed by a mock hvault client.
     """
@@ -316,7 +316,7 @@ def vault_store(vault_client: _MockVaultClient) -> dict[str, Any]:
     params=["memory_store", "redis_store", "vault_store"],
     ids=["memory", "redis", "vault"],
 )
-def key_store(request: Any) -> dict[str, Any]:
+def key_store(request: Any) -> Dict[str, Any]:
     """
     Yields a fresh key store instance for each backend.
     """
@@ -334,7 +334,7 @@ class TestCreateKey:
     create_key: must hash plaintext, store record, return plaintext.
     """
 
-    def test_returns_plaintext(self, key_store: dict[str, Any]) -> None:
+    def test_returns_plaintext(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         plain = "sk-test-key-" + uuid.uuid4().hex[:16]
         result = asyncio_run(
@@ -343,7 +343,7 @@ class TestCreateKey:
         assert result == plain
 
     def test_does_not_expose_plaintext_in_store(
-        self, key_store: dict[str, Any]
+        self, key_store: Dict[str, Any]
     ) -> None:
         """
         After create_key, the stored record must NOT contain
@@ -376,7 +376,7 @@ class TestCreateKey:
                 "key_plain" not in record
             ), f"{key_store['type']} should not store key_plain"
 
-    def test_creates_unique_key_id(self, key_store: dict[str, Any]) -> None:
+    def test_creates_unique_key_id(self, key_store: Dict[str, Any]) -> None:
         """
         Each create_key call must produce a unique key_id.
         """
@@ -390,14 +390,14 @@ class TestCreateKey:
         assert len(key_ids) == 2
         assert key_ids[0] != key_ids[1]
 
-    def test_default_policy_is_developer(self, key_store: dict[str, Any]) -> None:
+    def test_default_policy_is_developer(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         asyncio_run(store.create_key({"key_plain": "sk-default-policy"}))
         keys = asyncio_run(store.list_keys())
         assert len(keys) == 1
         assert keys[0]["policy_name"] == "developer"
 
-    def test_does_not_mutate_input_dict(self, key_store: dict[str, Any]) -> None:
+    def test_does_not_mutate_input_dict(self, key_store: Dict[str, Any]) -> None:
         """
         create_key must not mutate the caller's input dict.
         """
@@ -416,7 +416,7 @@ class TestGetByKeyHash:
     get_key_by_hash: must return the correct record.
     """
 
-    def test_returns_record_for_known_hash(self, key_store: dict[str, Any]) -> None:
+    def test_returns_record_for_known_hash(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         plain = "sk-hash-test-" + uuid.uuid4().hex[:8]
         asyncio_run(store.create_key({"key_plain": plain}))
@@ -434,7 +434,7 @@ class TestGetByKeyHash:
         assert record is not None
         assert record["is_active"] is True
 
-    def test_returns_none_for_unknown_hash(self, key_store: dict[str, Any]) -> None:
+    def test_returns_none_for_unknown_hash(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         unknown = bcrypt.hashpw(b"sk-does-not-exist", bcrypt.gensalt()).decode()
         record = asyncio_run(store.get_key_by_hash(unknown))
@@ -446,7 +446,7 @@ class TestGetByKeyId:
     get_key_by_id: must return the correct record.
     """
 
-    def test_returns_record_for_known_id(self, key_store: dict[str, Any]) -> None:
+    def test_returns_record_for_known_id(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         plain = "sk-id-test-" + uuid.uuid4().hex[:8]
         asyncio_run(store.create_key({"key_plain": plain}))
@@ -460,7 +460,7 @@ class TestGetByKeyId:
         assert record is not None
         assert record["key_id"] == key_id
 
-    def test_returns_none_for_missing_id(self, key_store: dict[str, Any]) -> None:
+    def test_returns_none_for_missing_id(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         record = asyncio_run(store.get_key_by_id("key-nonexistent"))
         assert record is None
@@ -472,7 +472,7 @@ class TestGetByKeyPlain:
     """
 
     def test_returns_record_for_known_plaintext(
-        self, key_store: dict[str, Any]
+        self, key_store: Dict[str, Any]
     ) -> None:
         store = key_store["store"]
         plain = "sk-plain-test-" + uuid.uuid4().hex[:8]
@@ -483,7 +483,7 @@ class TestGetByKeyPlain:
         assert record["is_active"] is True
 
     def test_returns_none_for_wrong_plaintext(
-        self, key_store: dict[str, Any]
+        self, key_store: Dict[str, Any]
     ) -> None:
         store = key_store["store"]
         asyncio_run(store.create_key({"key_plain": "sk-correct-key"}))
@@ -498,7 +498,7 @@ class TestSyncMethods:
     """
 
     def test_get_key_by_hash_sync_returns_none(
-        self, key_store: dict[str, Any]
+        self, key_store: Dict[str, Any]
     ) -> None:
         store = key_store["store"]
         result = store.get_key_by_hash_sync(
@@ -506,7 +506,7 @@ class TestSyncMethods:
         )
         assert result is None
 
-    def test_update_last_used_available(self, key_store: dict[str, Any]) -> None:
+    def test_update_last_used_available(self, key_store: Dict[str, Any]) -> None:
         """
         All backends must support update_last_used.
         """
@@ -528,7 +528,7 @@ class TestRotateKey:
     rotate_key: must create new key and deactivate old.
     """
 
-    def test_new_key_is_different(self, key_store: dict[str, Any]) -> None:
+    def test_new_key_is_different(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         plain = "sk-rotate-" + uuid.uuid4().hex[:8]
         asyncio_run(store.create_key({"key_plain": plain}))
@@ -542,7 +542,7 @@ class TestRotateKey:
         assert new_plain != plain
         assert new_plain.startswith(plain[:7])
 
-    def test_old_key_becomes_inactive(self, key_store: dict[str, Any]) -> None:
+    def test_old_key_becomes_inactive(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         plain = "sk-rotate2-" + uuid.uuid4().hex[:8]
         asyncio_run(store.create_key({"key_plain": plain}))
@@ -561,7 +561,7 @@ class TestRotateKey:
         assert old_id not in active_ids, "rotated key should not appear as active"
         assert len(active_ids) == 1, "only the new rotated key should be active"
 
-    def test_new_key_appears_in_list(self, key_store: dict[str, Any]) -> None:
+    def test_new_key_appears_in_list(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         plain = "sk-rotate3-" + uuid.uuid4().hex[:8]
         asyncio_run(store.create_key({"key_plain": plain}))
@@ -580,7 +580,7 @@ class TestDeleteKey:
     delete_key: must remove the key.
     """
 
-    def test_key_unfindable_after_delete(self, key_store: dict[str, Any]) -> None:
+    def test_key_unfindable_after_delete(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         plain = "sk-delete-" + uuid.uuid4().hex[:8]
         asyncio_run(store.create_key({"key_plain": plain}))
@@ -595,7 +595,7 @@ class TestDeleteKey:
         assert record is None
 
     def test_list_returns_empty_after_delete(
-        self, key_store: dict[str, Any]
+        self, key_store: Dict[str, Any]
     ) -> None:
         store = key_store["store"]
         plain = "sk-delete2-" + uuid.uuid4().hex[:8]
@@ -607,7 +607,7 @@ class TestDeleteKey:
         keys = asyncio_run(store.list_keys())
         assert len(keys) == 0
 
-    def test_delete_missing_key_is_noop(self, key_store: dict[str, Any]) -> None:
+    def test_delete_missing_key_is_noop(self, key_store: Dict[str, Any]) -> None:
         """
         Deleting a non-existent key must NOT raise.
         """
@@ -622,7 +622,7 @@ class TestListKeys:
     list_keys: must return all active keys as summaries.
     """
 
-    def test_returns_all_active_keys(self, key_store: dict[str, Any]) -> None:
+    def test_returns_all_active_keys(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         for i in range(3):
             asyncio_run(store.create_key({"key_plain": f"sk-list-{i}"}))
@@ -631,7 +631,7 @@ class TestListKeys:
         assert len(keys) == 3
 
     def test_each_record_has_required_fields(
-        self, key_store: dict[str, Any]
+        self, key_store: Dict[str, Any]
     ) -> None:
         store = key_store["store"]
         asyncio_run(store.create_key({"key_plain": "sk-list-fields"}))
@@ -650,7 +650,7 @@ class TestListKeys:
         for field in required_fields:
             assert field in record, f"Missing field {field} in list_keys output"
 
-    def test_empty_list_when_no_keys(self, key_store: dict[str, Any]) -> None:
+    def test_empty_list_when_no_keys(self, key_store: Dict[str, Any]) -> None:
         store = key_store["store"]
         keys = asyncio_run(store.list_keys())
         assert keys == []

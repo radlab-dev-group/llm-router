@@ -132,15 +132,11 @@ class TestSimplifyTextServiceAndClient:
             assert call_arg["model_name"] == "test-model"
             assert call_arg["texts"] == ["Formalny"]
 
-    def test_client_simplify_texts_with_dict_payload(self):
+    def test_client_simplify_texts_with_dict_payload_raises_type_error(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(SimplifyTextService, "call_post") as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {"model_name": "test-model", "texts": ["Formalny"]}
-            resp = client.simplify_text(payload=payload)
-            assert isinstance(resp, SimplifyTextResponse)
-            assert resp.response == []
-            mock_call.assert_called_once_with(payload)
+        payload = {"model_name": "test-model", "texts": ["Formalny"]}
+        with pytest.raises(TypeError):
+            client.simplify_text(payload=payload)
 
     def test_client_simplify_texts_with_args(self):
         client = LLMRouterClient(api="http://localhost:8080")

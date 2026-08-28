@@ -163,19 +163,15 @@ class TestGenerativeAnswerServiceAndClient:
             assert call_arg["model_name"] == "test-model"
             assert call_arg["question_str"] == "Co się wydarzyło?"
 
-    def test_client_generative_answer_with_dict_payload(self):
+    def test_client_generative_answer_with_dict_payload_raises_type_error(self):
         client = LLMRouterClient(api="http://localhost:8080")
-        with mock.patch.object(GenerativeAnswerService, "call_post") as mock_call:
-            mock_call.return_value = {"status": True}
-            payload = {
-                "model_name": "test-model",
-                "question_str": "Co się wydarzyło?",
-                "texts": ["Tekst"],
-            }
-            resp = client.generative_answer(payload=payload)
-            assert isinstance(resp, GenerativeAnswerResponse)
-            assert resp.response is None
-            mock_call.assert_called_once_with(payload)
+        payload = {
+            "model_name": "test-model",
+            "question_str": "Co się wydarzyło?",
+            "texts": ["Tekst"],
+        }
+        with pytest.raises(TypeError):
+            client.generative_answer(payload=payload)
 
     def test_client_generative_answer_with_args(self):
         client = LLMRouterClient(api="http://localhost:8080")
