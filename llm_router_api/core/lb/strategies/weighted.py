@@ -140,7 +140,7 @@ class WeightedStrategy(ChooseProviderStrategyI):
         model_name: str,
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
-    ) -> Dict:
+    ) -> Optional[Dict]:
         """
         Select a provider for *model_name* based on static weights.
 

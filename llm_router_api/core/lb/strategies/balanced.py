@@ -22,7 +22,7 @@ class LoadBalancedStrategy(ChooseProviderStrategyI):
         model_name: str,
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
-    ) -> Dict:
+    ) -> Optional[Dict]:
         if not providers:
             raise ValueError(f"No providers configured for model '{model_name}'")
 
