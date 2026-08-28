@@ -118,11 +118,11 @@ class RedisRateLimiter:
 
     def __init__(
             self,
-            redis_client: redis.Redis | None = None,
-            redis_host: str | None = None,
+            redis_client: Optional[redis.Redis] = None,
+            redis_host: Optional[str] = None,
             redis_port: int = 6379,
             redis_db: int = 0,
-            redis_password: str | None = None,
+            redis_password: Optional[str] = None,
             window: int = 60,
     )
 
