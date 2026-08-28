@@ -18,7 +18,7 @@ import logging
 import requests
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
@@ -165,7 +165,7 @@ class KeepAlive:
 
         Returns
         -------
-        str | None
+        Optional[str]
             Full endpoint URL or ``None`` if the ``api_type`` is unknown.
         """
         if api_type in ("vllm", "openai"):
@@ -176,7 +176,7 @@ class KeepAlive:
 
     def _find_provider(
         self, model_name: str, host: str
-    ) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """
         Locate the provider configuration for *model_name* on *host*.
 
@@ -193,7 +193,7 @@ class KeepAlive:
 
         Returns
         -------
-        (dict | None, str | None)
+        (Optional[dict], Optional[str])
             Provider configuration and the concrete API model name, or ``(None,
             None)`` if no matching provider is found.
         """

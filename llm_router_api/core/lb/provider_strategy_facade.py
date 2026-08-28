@@ -18,7 +18,7 @@ If an invalid ``strategy_name`` is supplied, a :class:`RuntimeError` is
 raised during initialisation.
 """
 
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 from rdl_ml_utils.utils.logger import prepare_logger
 
@@ -62,7 +62,7 @@ class ProviderStrategyFacade:
 
     Attributes
     ----------
-    strategy_name : str | None
+    strategy_name : Optional[str]
         The name of the strategy that was requested (may be ``None``).
     strategy : ChooseProviderStrategyI
         The concrete strategy instance that will be used for provider selection.
@@ -137,7 +137,7 @@ class ProviderStrategyFacade:
 
         Returns
         -------
-        ChooseProviderStrategyI | None
+        Optional[ChooseProviderStrategyI]
             An instance of the requested strategy, or ``None`` if the name is
             unknown.
         """
@@ -223,13 +223,13 @@ class ProviderStrategyFacade:
             The identifier of the model for which the provider is being added
             or updated (e.g., ``"google/gemma-3-12b-it"``).
 
-        provider : dict
+        provider : Dict
             A dictionary describing the provider configuration.  The exact
             schema is strategy‑specific but typically includes keys such as
             ``"url"``, ``"api_key"``, ``"weight"``, and optional health‑check
             information.
 
-        options : dict, optional
+        options : Dict, optional
             Additional options that are passed straight through to the strategy’s
             ``put_provider`` method.  This can be used for flags like
             ``force_update=True`` or to convey custom metadata.

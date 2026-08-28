@@ -15,7 +15,7 @@ import random
 import logging
 
 from abc import ABC
-from typing import List, Dict, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     import redis
@@ -148,7 +148,7 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
         model_name: str,
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[str | None, bool]:
+    ) -> Tuple[Optional[str], bool]:
         """
         Prepare Redis structures for a model and optionally enable random choice.
 
@@ -164,13 +164,13 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
             The logical name of the model (e.g., ``"gpt‑4"``).
         providers: List[Dict]
             A list of provider configuration dictionaries.
-        options: dict | None, optional
+        options: Optional[dict], optional
             If ``options.get("random_choice")`` is true, the caller intends to
             acquire a provider at random; the flag is propagated to the caller.
 
         Returns
         -------
-        Tuple[str | None, bool]
+        Tuple[Optional[str], bool]
             ``(redis_key, is_random)`` where ``redis_key`` is the Redis hash key
             for the model (or ``None`` if ``providers`` is empty) and ``is_random``
             reflects the ``random_choice`` option.
@@ -231,7 +231,7 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
 
         Parameters
         ----------
-        provider : dict
+        provider : Dict
             Provider configuration dictionary.
 
         Returns

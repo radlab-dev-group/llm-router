@@ -12,7 +12,7 @@ import logging
 import requests
 import threading
 
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 try:
     import redis
@@ -247,7 +247,7 @@ class RedisProviderMonitor:
 
         Parameters
         ----------
-        provider : dict
+        provider : Dict
             Provider definition containing at least ``id`` and ``api_host``.
         avail_key : str
             Redis hash key where the status should be stored

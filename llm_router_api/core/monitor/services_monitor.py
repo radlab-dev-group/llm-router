@@ -10,7 +10,7 @@ import time
 import requests
 import threading
 
-from typing import Optional
+from typing import Dict, Optional
 
 from rdl_ml_utils.utils.logger import prepare_logger
 
@@ -67,7 +67,7 @@ class LLMRouterServicesMonitor:
             check_interval (float): Interval between checks as provided at construction.
             logger (logging.Logger): Logger instance configured via ``prepare_logger``.
             request_timeout (float): Timeout used for outbound HTTP requests.
-            available_hosts (dict[str, str]): Mapping of ``strategy_name`` to host that
+            available_hosts (Dict[str, str]): Mapping of ``strategy_name`` to host that
                 responded correctly.
 
         :Returns:
@@ -94,7 +94,7 @@ class LLMRouterServicesMonitor:
         )
 
         # Mapping ``strategy_name -> host`` for hosts that responded correctly.
-        self.available_hosts: dict[str, str] = {}
+        self.available_hosts: Dict[str, str] = {}
 
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -158,7 +158,7 @@ class LLMRouterServicesMonitor:
         Iterate over all strategy names, check their hosts and update
         ``self.available_hosts`` accordingly.
         """
-        new_available: dict[str, str] = {}
+        new_available: Dict[str, str] = {}
         for strategy_name in self._all_strategies:
             # Skip excluded plugins
             if strategy_name in self.EXCLUDE_PLUGINS_TO_CHECK_HOST:

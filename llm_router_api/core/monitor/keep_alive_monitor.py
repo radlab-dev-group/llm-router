@@ -16,7 +16,7 @@ import redis
 import logging
 import threading
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 from llm_router_api.core.monitor.keep_alive import KeepAlive
 from llm_router_api.base.constants import KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS
@@ -110,7 +110,7 @@ class KeepAliveMonitor:
             Logical model name.
         host: str
             Host address.
-        keep_alive: str | None
+        keep_alive: Optional[str]
             Duration specification or falsy value.
         """
         if not keep_alive or not model_name or not host:
@@ -154,7 +154,7 @@ class KeepAliveMonitor:
         return f"{model_name}|{host}"
 
     @staticmethod
-    def _split_member(member: str) -> tuple[str, str]:
+    def _split_member(member: str) -> Tuple[str, str]:
         """
         Split a member identifier back into ``(model_name, host)``.
         """
