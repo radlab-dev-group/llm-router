@@ -8,7 +8,7 @@ exposes a single endpoint class, :class:`Ping`, which implements a simple
 monitoring and for confirming that the service is reachable.
 """
 
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -94,7 +94,7 @@ class Ping(EndpointWithHttpRequestI):
 
         Returns
         -------
-        dict
+        Dict
             A response dictionary with the key ``"pong"`` produced via
             :meth:`EndpointWithHttpRequestI.return_response_ok`.
         """

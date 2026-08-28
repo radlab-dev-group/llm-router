@@ -9,7 +9,7 @@ common functionality from the ``PassthroughI`` abstract base class.
 import abc
 import datetime
 
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -39,7 +39,7 @@ class OpenAIResponseHandler(PassthroughI, abc.ABC):
 
         Returns
         -------
-        dict
+        Dict
             A dictionary ready to be returned to the client in OpenAI‑compatible
             shape.
         """
@@ -214,7 +214,7 @@ class OpenAIEmbeddingsHandler(PassthroughI):
 
         Returns
         -------
-        dict
+        Dict
             A dictionary ready to be returned to the client in OpenAI‑compatible
             shape.
         """
@@ -442,7 +442,7 @@ class OpenAIModelsHandler(PassthroughI):
 
         Returns
         -------
-        dict
+        Dict
             ``{"object": "list", "data": <list_of_models>}``.
         """
         # self.direct_return = True
@@ -458,7 +458,7 @@ class OpenAIModelsHandler(PassthroughI):
 
         Returns
         -------
-        list[dict]
+        List[dict]
             A list of model descriptors containing ``id``, ``object``, ``created``,
             and ``owned_by`` fields.
         """

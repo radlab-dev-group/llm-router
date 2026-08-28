@@ -9,7 +9,7 @@ stream‑handling code easier to test/mocks.
 import requests
 
 from requests import Response
-from typing import Optional, Dict, Any, Iterator
+from typing import Any, Dict, Iterator, Optional
 
 from llm_router_api.core.model_handler import ApiModel
 from llm_router_api.core.stream_handler import StreamHandler, StreamConversion
@@ -125,7 +125,7 @@ class HttpRequestExecutor:
 
         Parameters
         ----------
-        stream_type : StreamConversion | None
+        stream_type : Optional[StreamConversion]
             Which conversion path to use.  Exactly one of the ten
             ``StreamConversion`` members must be selected by the caller;
             ``None`` means passthrough (OpenAI-compatible).

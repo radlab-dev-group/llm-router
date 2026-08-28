@@ -17,8 +17,9 @@ time), exactly like the original in‑class method did, so late‑bound
 overrides, monkey‑patches and subclassing keep working unchanged.
 """
 
-import logging
 import time
+import logging
+
 from typing import Any, List, Optional, Type
 
 # ---------------------------------------------------------------------------
@@ -151,18 +152,18 @@ class HttpDispatch:
             Fully resolved endpoint URL to which the request will be sent.
         prompt_str : str
             Prompt text that may be injected into the request body.
-        orig_params : dict
+        orig_params : Dict
             The original request parameters (kept for possible retry).
-        params : dict
+        params : Dict
             The processed parameters that will be sent to the external service.
-        options : dict
+        options : Dict
             Additional options that may influence request handling.
         reconnect_number : int
             Current retry attempt counter.
 
         Returns
         -------
-        dict | requests.Response | None
+        Optional[Union[Dict, requests.Response]]
             The response from the external service, possibly after retries,
             or ``None`` if all attempts fail.
         """

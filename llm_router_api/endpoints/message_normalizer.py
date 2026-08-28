@@ -230,7 +230,7 @@ def ensure_alternating_roles(
 
     Returns
     -------
-    dict
+    Dict
         The possibly‑modified payload with a correctly ordered ``messages``
         list.
     """

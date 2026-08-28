@@ -25,7 +25,7 @@ import logging
 import datetime
 
 from copy import deepcopy
-from typing import Optional, Dict, Any, Iterable, List, Tuple, Callable
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from rdl_ml_utils.utils.logger import prepare_logger
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
@@ -295,7 +295,7 @@ class SecureEndpointI(abc.ABC):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             A dictionary representing the beginning of the audit log, or
             ``None`` if ``prepare_audit_log`` is ``False``.
         """
@@ -329,7 +329,7 @@ class SecureEndpointI(abc.ABC):
         ----------
         payload : Any
             The payload at the end of the operation (may differ from the start).
-        audit_log : dict | None
+        audit_log : Optional[dict]
             The dictionary returned by ``_begin_audit_log_if_needed``.
         auditor : AnyRequestAuditor
             Auditor instance responsible for persisting the audit record.
@@ -402,7 +402,7 @@ class SecureEndpointI(abc.ABC):
         return is_safe
 
     def _do_masking_if_needed(
-        self, payload: Dict[str, Any] | None
+        self, payload: Optional[Dict[str, Any]]
     ) -> Tuple[Optional[Dict[str, Any]], Dict]:
         """
         Apply masking to the payload when required by configuration or request.
@@ -463,7 +463,7 @@ class SecureEndpointI(abc.ABC):
 
     def _mask_whole_payload(
         self,
-        payload: Dict | str | List | Any,
+        payload: Union[Dict, str, List, Any],
         algorithms: Optional[List[str]] = None,
     ) -> Tuple[Dict[str, Any], Dict]:
         """
@@ -504,10 +504,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
         HTTP method this endpoint expects – ``"GET"`` or ``"POST"``.
     logger: logging.Logger
         Module‑level logger configured with the supplied log file and level.
-    _model_handler: ModelHandler | None
+    _model_handler: Optional[ModelHandler]
         Optional handler used to resolve model names to concrete
         :class:`~llm_router_api.core.model_handler.ApiModel` objects.
-    _prompt_handler: PromptHandler | None
+    _prompt_handler: Optional[PromptHandler]
         Optional handler used to retrieve prompt templates.
     _dont_add_api_prefix: bool
         When ``True`` the endpoint URL is registered without the global
@@ -680,7 +680,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
     # ------------------------------------------------------------------
     def run_ep(
         self, params: Optional[Dict[str, Any]]
-    ) -> Optional[Dict[str, Any] | Iterable[str | bytes]]:
+    ) -> Optional[Union[Dict[str, Any], Iterable[Union[str, bytes]]]]:
         """
         Execute the endpoint for a given request payload.
 
@@ -699,7 +699,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
         Returns
         -------
-        dict | Iterable[bytes] | None
+        Optional[Union[Dict, Iterable[bytes]]]
             The concrete result that will be JSON‑encoded (or streamed) back
             to the client.
 
@@ -734,7 +734,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             Normalised payload that will be forwarded to the downstream
             service, or ``None`` if the endpoint produces no output.
 
@@ -764,7 +764,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
 
         Returns
         -------
-        dict
+        Dict
             Mapping ready for JSON serialisation.
         """
         return {"status": True, "body": body}
@@ -1023,7 +1023,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
     @staticmethod
     def _model_name_from_params_or_model(
         params: Dict[str, Any], api_model_provider: Optional[ApiModel] = None
-    ) -> str | None:
+    ) -> Optional[str]:
         model_name = None
         if api_model_provider:
             return api_model_provider.name
@@ -1045,9 +1045,9 @@ class EndpointI(SecureEndpointI, abc.ABC):
         map_prompt: Optional[Dict[str, str]],
         prompt_str_force: Optional[str] = None,
         prompt_str_postfix: Optional[str] = None,
-    ) -> tuple[str | None, str | None]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         prompt_str = None
-        prompt_name: str | None = None
+        prompt_name: Optional[str] = None
         if self.SYSTEM_PROMPT_NAME is not None:
             lang_str = self.__get_language(params=params)
             prompt_name = self.SYSTEM_PROMPT_NAME[lang_str]
@@ -1236,7 +1236,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         params: Optional[Dict[str, Any]],
         reconnect_number: Optional[int] = 0,
         options: Optional[Dict] = None,
-    ) -> Optional[Dict[str, Any] | Iterable[str | bytes]]:
+    ) -> Optional[Union[Dict[str, Any], Iterable[Union[str, bytes]]]]:
         """
         Execute the endpoint logic for a request.
 
@@ -1261,7 +1261,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         Returns
         -------
-        dict | Iterator[bytes] | None
+        Optional[Union[Dict, Iterator[bytes]]]
             Either a normal JSON‑serializable dictionary, a streaming NDJSON
             iterator, or ``None`` when the endpoint does not produce a
             response.
@@ -1590,7 +1590,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         Returns
         -------
-        dict
+        Dict
             JSON payload or a raw‑response wrapper.
 
         Raises
@@ -1626,7 +1626,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     # ==============================================================================
     # Private helpers
     @staticmethod
-    def _clear_payload(payload: Dict[str, Any] | None):
+    def _clear_payload(payload: Optional[Dict[str, Any]]):
         """
         Remove internal‑only keys from the payload before it is sent to the
         downstream model.
