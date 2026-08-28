@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any, Dict
 from abc import ABC, abstractmethod
 
 
@@ -81,7 +81,7 @@ class ApiTypesI(ABC):
 
         Parameters
         ----------
-        m : dict
+        m : Dict
             A single model configuration entry.  Expected keys include
             ``name``, ``api_type``, ``input_size``, ``api_host``, and
             ``model_path``.  Any missing keys are replaced with empty strings or
@@ -89,7 +89,7 @@ class ApiTypesI(ABC):
 
         Returns
         -------
-        dict
+        Dict
             A normalized model description compatible with the internal API.
             Example output::
 

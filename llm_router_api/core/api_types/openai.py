@@ -22,8 +22,9 @@ dependencies beyond what the rest of the project already uses.
 from __future__ import annotations
 
 import datetime
+
 from dateutil import parser
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
@@ -220,20 +221,20 @@ class OpenAIConverters:
         """
 
         @staticmethod
-        def convert_embedding(response: dict) -> dict:
+        def convert_embedding(response: Dict) -> Dict:
             """
             Transform an Ollama *embedding* response to OpenAI format.
 
             Parameters
             ----------
-            response : dict
+            response : Dict
                 The raw Ollama payload.  Expected keys are:
                 ``model`` (str) and ``embeddings`` (list of vectors).  Optional
                 ``prompt_eval_count`` is used for the ``usage`` block.
 
             Returns
             -------
-            dict
+            Dict
                 A dictionary that follows the OpenAI *embeddings* response
                 schema:
 
@@ -267,20 +268,20 @@ class OpenAIConverters:
             return _resp
 
         @staticmethod
-        def convert(response: dict) -> dict:
+        def convert(response: Dict) -> Dict:
             """
             Convert an Ollama chat response to the OpenAI *Chat Completion* format.
 
             Parameters
             ----------
-            response : dict
+            response : Dict
                 The raw response dictionary from Ollama.  The function extracts
                 the fields required by the OpenAI schema and supplies defaults
                 for optional items.
 
             Returns
             -------
-            dict
+            Dict
                 A dictionary that complies with the OpenAI Chat Completion
                 specification.  The structure contains:
 

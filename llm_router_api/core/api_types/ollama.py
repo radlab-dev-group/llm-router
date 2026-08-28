@@ -19,6 +19,8 @@ analysis tools such as ``mypy`` and IDEs like PyCharm.
 
 from __future__ import annotations
 
+from typing import Dict
+
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
 
@@ -106,13 +108,13 @@ class OllamaConverters:
         """
 
         @staticmethod
-        def convert_embedding(response: dict) -> dict:
+        def convert_embedding(response: Dict) -> Dict:
             """
             Translate an OpenAI embedding payload to Ollama’s format.
 
             Parameters
             ----------
-            response : dict
+            response : Dict
                 The OpenAI embedding response.  Expected keys include:
 
                 - ``model`` (str): model identifier.
@@ -121,7 +123,7 @@ class OllamaConverters:
 
             Returns
             -------
-            dict
+            Dict
                 A dictionary compatible with Ollama’s ``/api/embed`` endpoint,
                 containing:
 
