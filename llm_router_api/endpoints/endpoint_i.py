@@ -314,7 +314,11 @@ class SecureEndpointI(abc.ABC):
 
     @staticmethod
     def _end_audit_log_if_needed(
-        payload, mappings, audit_log, auditor: Optional[AnyRequestAuditor], force_end: bool
+        payload,
+        mappings,
+        audit_log,
+        auditor: Optional[AnyRequestAuditor],
+        force_end: bool,
     ):
         """
         Finalize an audit log entry and persist it via the provided auditor.
