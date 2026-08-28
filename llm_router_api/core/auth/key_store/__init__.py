@@ -7,8 +7,10 @@ from __future__ import annotations
 import os
 import secrets
 
-from .interface import KeyStoreInterface
-from .memory import MemoryKeyStore
+from typing import Optional, Tuple
+
+from llm_router_api.core.auth.key_store.memory import MemoryKeyStore
+from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
 # Lazy imports to avoid hard dependency on hvault/bcrypt at import time
 _VAULT_AVAILABLE = False
@@ -28,7 +30,7 @@ except ImportError:
     pass
 
 
-def _make_shared_redis_client(kwargs: dict) -> redis.Redis | None:
+def _make_shared_redis_client(kwargs: dict) -> Optional[redis.Redis]:
     """
     Return a single ``redis.Redis`` instance shared between store and cache.
 
@@ -71,7 +73,7 @@ def _make_shared_redis_client(kwargs: dict) -> redis.Redis | None:
 def create_key_store(
     store_type: str = "memory",
     **kwargs,
-) -> tuple[KeyStoreInterface, redis.Redis | None]:
+) -> Tuple[KeyStoreInterface, Optional[redis.Redis]]:
     """
     Create a key store instance.
 
@@ -84,7 +86,7 @@ def create_key_store(
 
     Returns
     -------
-    tuple[KeyStoreInterface, redis.Redis | None]
+    Tuple[KeyStoreInterface, Optional[redis.Redis]]
         ``(store, shared_client)`` — the key store and the verified Redis
         client (``None`` for in-memory stores).  ``shared_client`` is useful
         for callers that need a ready-to-use Redis connection (rate limiter,

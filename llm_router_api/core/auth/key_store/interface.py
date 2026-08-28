@@ -10,7 +10,7 @@ from __future__ import annotations
 import abc
 import asyncio
 
-from typing import Any
+from typing import Any, List, Optional
 
 
 class KeyStoreInterface(metaclass=abc.ABCMeta):
@@ -41,7 +41,7 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
         ).result()
 
     @abc.abstractmethod
-    async def get_key_by_hash(self, key_hash: str) -> Any | None:
+    async def get_key_by_hash(self, key_hash: str) -> Optional[Any]:
         """
         Look up a key record by its **bcrypt** hash.
 
@@ -52,12 +52,12 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
 
         Returns
         -------
-        ApiKeyRecord | None
+        Optional[ApiKeyRecord]
             The matching record, or ``None`` when the key does not exist.
         """
 
     @abc.abstractmethod
-    def get_key_by_hash_sync(self, key_hash: str) -> Any | None:
+    def get_key_by_hash_sync(self, key_hash: str) -> Optional[Any]:
         """
         Synchronous version of :meth:`get_key_by_hash`.
 
@@ -66,7 +66,7 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    async def get_key_by_id(self, key_id: str) -> Any | None:
+    async def get_key_by_id(self, key_id: str) -> Optional[Any]:
         """
         Look up a key record by its ``key_id``.
 
@@ -77,7 +77,7 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
 
         Returns
         -------
-        ApiKeyRecord | None
+        Optional[ApiKeyRecord]
             The matching record, or ``None`` when the key does not exist.
         """
 
@@ -88,7 +88,7 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
 
         Parameters
         ----------
-        record : dict
+        record : Dict
             Dictionary containing at least ``"key_plain"`` (the raw secret).
             The rest of the record describes policy, expiry, etc.
 
@@ -155,11 +155,11 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
         """
 
     @abc.abstractmethod
-    async def list_keys(self) -> list[Any]:
+    async def list_keys(self) -> List[Any]:
         """
         List all key records (for CLI ``auth key list``).
 
         Returns
         -------
-        list[ApiKeyRecord]
+        List[ApiKeyRecord]
         """
