@@ -28,7 +28,7 @@ import logging
 
 from collections import deque
 from collections import defaultdict
-from typing import List, Dict, Optional, Any
+from typing import Any, Dict, List, Optional, Union
 
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
 
@@ -74,13 +74,13 @@ class WeightedStrategy(ChooseProviderStrategyI):
         )
 
     @staticmethod
-    def _clamp_weight(w: float | str) -> float:
+    def _clamp_weight(w: Union[float, str]) -> float:
         """
         Clamp a raw weight value to a ``float`` in the interval ``[0, 1]``.
 
         Parameters
         ----------
-        w : float | str
+        w : Union[float, str]
             The raw weight value supplied by the user.  It may be a
             ``float`` or a string representation of a number.
 
@@ -226,7 +226,7 @@ class DynamicWeightedStrategy(WeightedStrategy):
     def __init__(
         self,
         models_config_path: str,
-        initial_providers: List[Dict] | None = None,
+        initial_providers: Optional[List[Dict]] = None,
         history_size: int = 10_000,
         logger: Optional[logging.Logger] = None,
     ) -> None:
@@ -235,7 +235,7 @@ class DynamicWeightedStrategy(WeightedStrategy):
 
         Parameters
         ----------
-        initial_providers : List[Dict] | None, optional
+        initial_providers : Optional[List[Dict]], optional
             An optional list of provider configurations that should be
             pre‑loaded with their static weights.  For each provider the
             internal dynamic‑weight mapping is populated using the
@@ -260,7 +260,7 @@ class DynamicWeightedStrategy(WeightedStrategy):
         # Mapping: provider key -> timestamp of the most recent selection.
         self._last_chosen_time: Dict[str, float] = {}
 
-    def __init_when_needed(self, initial_providers: List[Dict] | None) -> None:
+    def __init_when_needed(self, initial_providers: Optional[List[Dict]]) -> None:
         """
         Populate the internal dynamic‑weight table from ``initial_providers``.
 
@@ -269,7 +269,7 @@ class DynamicWeightedStrategy(WeightedStrategy):
 
         Parameters
         ----------
-        initial_providers : List[Dict] | None
+        initial_providers : Optional[List[Dict]]
             Provider configurations whose static ``weight`` values should be
             copied into the dynamic‑weight mapping.
         """

@@ -7,7 +7,7 @@ hosts when possible, reducing latency and improving cache utilization.
 
 import logging
 
-from typing import List, Dict, Optional, Any, Callable
+from typing import Any, Callable, Dict, List, Optional
 
 from llm_router_api.core.monitor.keep_alive import KeepAlive
 from llm_router_api.core.utils import StrategyHelpers
@@ -107,7 +107,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         model_name: str,
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
-    ) -> Dict | None:
+    ) -> Optional[Dict]:
         """
         Choose a provider for *model_name* using the optimization steps.
 
@@ -129,7 +129,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             The selected provider dictionary, or ``None`` if no provider
             could be chosen.
         """
@@ -235,7 +235,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             The enriched provider dictionary if acquisition succeeded,
             otherwise ``None``.
         """
@@ -275,7 +275,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             The first successfully acquired provider, or ``None`` if none
             could be acquired.
         """
@@ -351,7 +351,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             Provider from the last host if it is free, otherwise ``None``.
         """
         last_host = StrategyHelpers.decode_redis(
@@ -389,7 +389,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             Provider from a known host if one is free, otherwise ``None``.
         """
         hosts_key = self._model_hosts_set_key(model_name)
@@ -423,7 +423,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
 
         Returns
         -------
-        dict | None
+        Optional[dict]
             Provider from an unused host if one is free, otherwise ``None``.
         """
         known_hosts_key = self._model_hosts_set_key(model_name)
