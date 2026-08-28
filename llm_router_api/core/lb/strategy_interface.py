@@ -47,7 +47,7 @@ class ChooseProviderStrategyI(ABC):
         model_name: str,
         providers: List[Dict],
         options: Optional[Dict[str, Any]] = None,
-    ) -> Dict:
+    ) -> Optional[Dict]:
         """
         Choose a provider for the given model.
 
