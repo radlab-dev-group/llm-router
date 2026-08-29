@@ -92,13 +92,18 @@ def auth_error_response(reason: str, status_code: int) -> Dict[str, Any]:
 def auth_429_response(retry_after: int) -> Dict[str, Any]:
     """
     Build a 429 Too Many Requests response.
+
+    Returns a **single** JSON object (not a tuple) so the client receives a
+    well-formed error body.  ``retry_after`` (seconds) is included both in the
+    body and echoed by the caller in the ``Retry-After`` header.
     """
 
     return {
         "error": {
-            "message": "Rate limit exceeded.",
+            "message": "Rate limit exceeded. Please retry later.",
             "type": "rate_limit_error",
             "param": None,
             "code": 429,
+            "retry_after": int(retry_after),
         }
-    }, retry_after
+    }
