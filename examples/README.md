@@ -86,4 +86,4 @@ Learn more about the router:
 - [Main README](../README.md)
 - [API Documentation](../llm_router_api/README.md)
 - [Endpoints Overview](../llm_router_api/endpoints/README.md)
-- [Load‑Balancing Strategies](../llm_router_api/LB_STRATEGIES.md)
+- [Load‑Balancing Strategies](../llm_router_api/docs/LB_STRATEGIES.md)

@@ -425,4 +425,4 @@ export LLM_ROUTER_AUTH_VAULT_TOKEN=s.your-vault-token-here
 ## See Also
 
 - **[Rate Limiting](RATE_LIMITING.md)** — sliding-window rate limiting, configuration, and monitoring
-- **[Auditing subsystem](core/auditor/README.md)** — tamper-evident audit logging
+- **[Auditing subsystem](../core/auditor/README.md)** — tamper-evident audit logging

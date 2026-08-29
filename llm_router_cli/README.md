@@ -321,6 +321,6 @@ sk-litm-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
 
 ## See Also
 
-- **[Authentication docs](../llm_router_api/AUTHENTICATION.md)** — full auth architecture, seed files, deployment
+- **[Authentication docs](../llm_router_api/docs/AUTHENTICATION.md)** — full auth architecture, seed files, deployment
   options
-- **[Rate Limiting docs](../llm_router_api/RATE_LIMITING.md)** — sliding-window algorithm, monitoring, presets
+- **[Rate Limiting docs](../llm_router_api/docs/RATE_LIMITING.md)** — sliding-window algorithm, monitoring, presets

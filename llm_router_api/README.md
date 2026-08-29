@@ -50,7 +50,7 @@ Configuration is driven primarily by environment variables and a JSON model‑co
 
 ### Environment Variables
 
-All environment variables are documented in **[ENV_DEFINITIONS.md](./ENV_DEFINITIONS.md)**.
+All environment variables are documented in **[ENV_DEFINITIONS.md](./docs/ENV_DEFINITIONS.md)**.
 
 Key categories: **Core** · **Redis** · **Masking & Guardrail** · **Semantic BiEncoder Routing** · **LangChainRAG** · *
 *Utils Plugins** · **Authentication**.
@@ -59,10 +59,10 @@ Key categories: **Core** · **Redis** · **Masking & Guardrail** · **Semantic B
 
 ### Authentication variables
 
-Auth-specific environment variables are documented in **[ENV_DEFINITIONS.md](./ENV_DEFINITIONS.md) → Authentication
+Auth-specific environment variables are documented in **[ENV_DEFINITIONS.md](./docs/ENV_DEFINITIONS.md) → Authentication
 section**.
 
-> See full authentication docs: **[AUTHENTICATION.md](AUTHENTICATION.md)**
+> See full authentication docs: **[AUTHENTICATION.md](docs/AUTHENTICATION.md)**
 
 ### Model Configuration
 
@@ -100,7 +100,7 @@ section**.
 Only the fields required by the router are needed: `id`, `api_host`, `api_token` (optional), `api_type`, `input_size`,
 and optionally `model_path`.
 
-**Configuration Details** – see the full schema and a ready‑made example in [MODELS_CONFIG.md](MODELS_CONFIG.md).
+**Configuration Details** – see the full schema and a ready‑made example in [MODELS_CONFIG.md](docs/MODELS_CONFIG.md).
 
 ---
 
@@ -142,7 +142,7 @@ The router selects a provider for a given model request using the **ProviderChoo
 the `LLM_ROUTER_BALANCE_STRATEGY` variable.
 
 The current list of available strategies, the interface description, and an example extension can be found at the link
-[load balancing strategies](LB_STRATEGIES.md#load-balancing-strategies)
+[load balancing strategies](docs/LB_STRATEGIES.md#load-balancing-strategies)
 
 ---
 
@@ -150,11 +150,11 @@ The current list of available strategies, the interface description, and an exam
 
 The keep‑alive subsystem periodically pings model endpoints to keep them warm, reducing latency for the first request
 after idle periods. Configuration is driven by the `keep_alive` field in the provider definition
-(see [KEEPALIVE.md](KEEPALIVE.md)). Strategies that select providers can register usage with the `KeepAliveMonitor`,
+(see [KEEPALIVE.md](docs/KEEPALIVE.md)). Strategies that select providers can register usage with the `KeepAliveMonitor`,
 which handles scheduling and background execution.
 
 For details on how to enable and configure keep‑alive, refer to the dedicated documentation:
-[Keep‑Alive Overview](KEEPALIVE.md)
+[Keep‑Alive Overview](docs/KEEPALIVE.md)
 
 ---
 
@@ -201,7 +201,7 @@ When `LLM_ROUTER_USE_PROMETHEUS=1` (or `true`) the router automatically:
   selection, pipeline funnel stages, retry attempts, token usage (input/output), streaming format distribution, and
   payload conversion counts.
 
-See **[ROUTING_METRICS.md](./ROUTING_METRICS.md)** for the full list of 10 new router metrics with documentation,
+See **[ROUTING_METRICS.md](./docs/ROUTING_METRICS.md)** for the full list of 10 new router metrics with documentation,
 example PromQL queries, and Grafana dashboard snippets.
 
 You can scrape this endpoint with a Prometheus server or query it manually.
