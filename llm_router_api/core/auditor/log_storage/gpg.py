@@ -101,21 +101,37 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
 
         Raises
         ------
+        RuntimeError
+            If GPG encryption fails (``encrypt`` returns a falsy result). An
+            audit record must never be persisted unencrypted or empty, so the
+            failure is fatal rather than silently writing ``"False"``.
         Exception
             Propagates any exception raised by the underlying GPG encryption
             or file I/O operations.
         """
+        # Encrypt *before* touching the filesystem so that a failed
+        # encryption leaves no orphan (empty or partial) record behind.
+        audit_str = json.dumps(audit_log, indent=2, ensure_ascii=False)
+        encrypted_data = self._gpg.encrypt(
+            audit_str,
+            recipients=self._import_result.fingerprints,
+            always_trust=True,
+            armor=True,
+        )
+        # python-gnupg returns ``False``/empty on failure (e.g. missing or
+        # revoked key).  Writing ``str(False)`` would silently destroy the
+        # audit record, so a failed encryption is fatal — audit integrity
+        # must not depend on the caller noticing an empty file.
+        if not encrypted_data:
+            raise RuntimeError(
+                "GPG encryption of the audit log failed. Refusing to store "
+                "an unencrypted or empty record — audit integrity is critical."
+            )
+
         date_str = datetime.now().strftime("%Y%m%d_%H%M%S.%f")
         out_file_name = f"{audit_type}__{date_str}.audit"
         out_file_path = DEFAULT_AUDITOR_OUT_DIR / out_file_name
         with open(out_file_path, "wt", encoding="utf-8") as f:
-            audit_str = json.dumps(audit_log, indent=2, ensure_ascii=False)
-            encrypted_data = self._gpg.encrypt(
-                audit_str,
-                recipients=self._import_result.fingerprints,
-                always_trust=True,
-                armor=True,
-            )
             f.write(str(encrypted_data))
 
     def __verify(self):
@@ -144,7 +160,8 @@ class GPGAuditorLogStorage(AuditorLogStorageInterface):
                 f"GPG public key {self.AUDITOR_PUB_KEY_FILE} does not exists!"
             )
 
-    def __check_write_permission(self):
+    @staticmethod
+    def __check_write_permission():
         """
         Verify that the process can write to ``DEFAULT_AUDITOR_OUT_DIR``.
         Writes a temporary file containing the string ``"llm-router"``,
