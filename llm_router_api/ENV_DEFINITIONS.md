@@ -45,6 +45,7 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_REDIS_PORT`     | `6379`    | Redis port.                                                    |
 | `LLM_ROUTER_REDIS_DB`       | `0`       | Redis database number.                                         |
 | `LLM_ROUTER_REDIS_PASSWORD` | *(empty)* | Redis password.                                                |
+| `LLM_ROUTER_REDIS_PROTOCOL` | `3`       | Redis protocol version (RESP2 = `2`, RESP3 = `3`).             |
 
 When `LLM_ROUTER_REDIS_HOST` is set, the router uses Redis for load-balancing state and provider availability tracking.
 
@@ -161,6 +162,7 @@ Auth-specific Redis connection used by the key store and rate limiter:
 | `LLM_ROUTER_AUTH_REDIS_PORT`     | `6379`    | Auth Redis port.            |
 | `LLM_ROUTER_AUTH_REDIS_DB`       | `0`       | Auth Redis database number. |
 | `LLM_ROUTER_AUTH_REDIS_PASSWORD` | *(empty)* | Auth Redis password.        |
+| `LLM_ROUTER_AUTH_REDIS_PROTOCOL` | `3`       | Auth Redis protocol version (RESP2 = `2`, RESP3 = `3`). |
 
 ### Rate limiting
 

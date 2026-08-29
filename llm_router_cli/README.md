@@ -46,6 +46,7 @@ llm-router auth rate-limit <command>   # Per-key rate limit overrides
 | `--auth-redis-port`     | `6379`    | Auth Redis port                          |
 | `--auth-redis-db`       | `0`       | Auth Redis database number               |
 | `--auth-redis-password` | —         | Auth Redis password                      |
+| `--auth-redis-protocol` | `2`       | Auth Redis protocol: `2` (RESP2) or `3` (RESP3) |
 
 > **Note:** These auth-specific Redis flags are separate from general `LLM_ROUTER_REDIS_*` env vars.
 

@@ -294,6 +294,7 @@ export LLM_ROUTER_AUTH_REDIS_HOST=127.0.0.1
 export LLM_ROUTER_AUTH_REDIS_PORT=6379
 export LLM_ROUTER_AUTH_REDIS_DB=0
 # export LLM_ROUTER_AUTH_REDIS_PASSWORD=secret  # if Redis requires auth
+# export LLM_ROUTER_AUTH_REDIS_PROTOCOL=3  # RESP3 (default) or 2 (RESP2)
 
 # 3. Generate keys (written to Redis)
 llm-router auth key generate --policy developer --store redis
@@ -314,6 +315,7 @@ curl -H "x-api-key: sk-litm-..." https://host/api/chat/completions
 | `LLM_ROUTER_AUTH_REDIS_PORT`     | Redis port (default `6379`)      |
 | `LLM_ROUTER_AUTH_REDIS_DB`       | Redis DB number (default `0`)    |
 | `LLM_ROUTER_AUTH_REDIS_PASSWORD` | Redis password (default: none)   |
+| `LLM_ROUTER_AUTH_REDIS_PROTOCOL` | Redis protocol (default `3`)     |
 
 **Operational notes:**
 
