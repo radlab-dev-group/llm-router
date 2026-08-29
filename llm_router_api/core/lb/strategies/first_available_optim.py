@@ -14,6 +14,9 @@ from llm_router_api.core.utils import StrategyHelpers
 from llm_router_api.base.constants import (
     REDIS_HOST,
     REDIS_PORT,
+    REDIS_DB,
+    REDIS_PASSWORD,
+    REDIS_PROTOCOL,
     KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
     PROVIDER_MONITOR_INTERVAL_SECONDS,
 )
@@ -35,8 +38,10 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         self,
         models_config_path: str,
         redis_host: str = REDIS_HOST,
+        redis_password: Optional[str] = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
-        redis_db: int = 0,
+        redis_db: int = REDIS_DB,
+        redis_protocol: int = REDIS_PROTOCOL,
         timeout: int = 60,
         monitor_check_interval: float = PROVIDER_MONITOR_INTERVAL_SECONDS,
         clear_buffers: bool = True,
@@ -52,10 +57,14 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             Path to the models configuration file.
         redis_host: str, optional
             Hostname of the Redis server (default from :data:`REDIS_HOST`).
+        redis_password: Optional[str], optional
+            Password of the Redis server (default from :data:`REDIS_PASSWORD`).
         redis_port: int, optional
             Port of the Redis server (default from :data:`REDIS_PORT`).
         redis_db: int, optional
-            Redis database index to use.
+            Redis database index to use (default from :data:`REDIS_DB`).
+        redis_protocol: int, optional
+            Redis protocol version (default from :data:`REDIS_PROTOCOL`).
         timeout: int, optional
             Request timeout in seconds.
         monitor_check_interval: float, optional
@@ -70,8 +79,10 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         super().__init__(
             models_config_path=models_config_path,
             redis_host=redis_host,
+            redis_password=redis_password,
             redis_port=redis_port,
             redis_db=redis_db,
+            redis_protocol=redis_protocol,
             timeout=timeout,
             monitor_check_interval=monitor_check_interval,
             clear_buffers=clear_buffers,

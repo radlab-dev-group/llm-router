@@ -241,7 +241,7 @@ Utility scripts:
 
 The router supports API-key-based authentication with per-endpoint policies, rate limiting, and audit trail.
 
-➡️ **[Authentication documentation](llm_router_api/AUTHENTICATION.md)**
+➡️ **[Authentication documentation](llm_router_api/docs/AUTHENTICATION.md)**
 
 ---
 
@@ -250,7 +250,7 @@ The router supports API-key-based authentication with per-endpoint policies, rat
 Sliding-window rate limiting backed by Redis sorted sets. Each API key + IP gets a configurable number of requests per
 minute. Returns `Retry-After` on 429 responses and exposes Prometheus metrics.
 
-➡️ **[Rate Limiting documentation](llm_router_api/RATE_LIMITING.md)**
+➡️ **[Rate Limiting documentation](llm_router_api/docs/RATE_LIMITING.md)**
 
 ---
 
@@ -343,7 +343,7 @@ Helm charts for Kubernetes deployment are available in the `helm_charts/` direct
 
 ## Configuration
 
-All environment variables are documented in **[ENV_DEFINITIONS.md](llm_router_api/ENV_DEFINITIONS.md)**.
+All environment variables are documented in **[ENV_DEFINITIONS.md](llm_router_api/docs/ENV_DEFINITIONS.md)**.
 
 | Category                                                                          | Description                                                |
 |-----------------------------------------------------------------------------------|------------------------------------------------------------|
@@ -354,14 +354,14 @@ All environment variables are documented in **[ENV_DEFINITIONS.md](llm_router_ap
 | [Utils Plugins](llm_router_api/README.md#utils-plugins-variables)                 | Pipeline plugins configuration                             |
 | [Authentication](llm_router_api/README.md#authentication)                         | Auth, key management, rate limiting                        |
 
-> See full authentication docs: **[AUTHENTICATION.md](llm_router_api/AUTHENTICATION.md)**
+> See full authentication docs: **[AUTHENTICATION.md](llm_router_api/docs/AUTHENTICATION.md)**
 
 ---
 
 ## ⚖️ Load Balancing Strategies
 
 The current list of available strategies, the interface description, and an example extension can be found
-at: [Load‑Balancing Strategies](llm_router_api/LB_STRATEGIES.md#load-balancing-strategies)
+at: [Load‑Balancing Strategies](llm_router_api/docs/LB_STRATEGIES.md#load-balancing-strategies)
 
 Strategies: **balanced**, **weighted**, **dynamic_weighted**, **first_available**, **first_available_optim**.
 

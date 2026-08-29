@@ -101,6 +101,14 @@ class AuthCommand:
             default=None,
             help="Redis password for auth key store (default: env)",
         )
+        p.add_argument(
+            "--auth-redis-protocol",
+            type=int,
+            choices=[2, 3],
+            default=2,
+            help="Redis protocol version for auth key store: "
+            "2 (RESP2) or 3 (RESP3), default 2",
+        )
 
     @staticmethod
     def _add_key_id_arg(p: argparse.ArgumentParser) -> None:
@@ -169,6 +177,10 @@ class AuthCommand:
                 or os.environ.get("LLM_ROUTER_AUTH_REDIS_PASSWORD")
             )
             or None,
+            "redis_protocol": int(
+                getattr(args, "auth_redis_protocol", 2)
+                or os.environ.get("LLM_ROUTER_AUTH_REDIS_PROTOCOL", 2)
+            ),
         }
 
     @staticmethod
@@ -202,8 +214,17 @@ class AuthCommand:
         password = redis_kwargs.get("redis_password") or os.environ.get(
             "LLM_ROUTER_AUTH_REDIS_PASSWORD"
         )
+        protocol = int(
+            redis_kwargs.get("redis_protocol")
+            or os.environ.get("LLM_ROUTER_AUTH_REDIS_PROTOCOL", 2)
+        )
         return _redis_mod.Redis(
-            host=host, port=port, db=db, decode_responses=True, password=password
+            host=host,
+            port=port,
+            db=db,
+            decode_responses=True,
+            password=password,
+            protocol=protocol,
         )
 
     @classmethod

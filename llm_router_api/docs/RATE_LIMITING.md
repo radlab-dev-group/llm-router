@@ -204,6 +204,7 @@ export LLM_ROUTER_AUTH_REDIS_HOST=127.0.0.1
 export LLM_ROUTER_AUTH_REDIS_PORT=6379
 export LLM_ROUTER_AUTH_REDIS_DB=0
 # export LLM_ROUTER_AUTH_REDIS_PASSWORD=secret  # if Redis requires auth
+# export LLM_ROUTER_AUTH_REDIS_PROTOCOL=3  # RESP3 (default) or 2 (RESP2)
 ```
 
 If using `memory` as the key store, `LLM_ROUTER_AUTH_REDIS_HOST` must still be set for rate limiting to work.

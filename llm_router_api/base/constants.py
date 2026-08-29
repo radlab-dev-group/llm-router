@@ -156,6 +156,10 @@ REDIS_PASSWORD = os.environ.get(
 ).strip()
 if not REDIS_PASSWORD:
     REDIS_PASSWORD = None
+# Redis protocol version (default: 3, RESP3)
+REDIS_PROTOCOL = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}REDIS_PROTOCOL", 3)
+)
 
 # =============================================================================
 # MASKING
@@ -308,6 +312,10 @@ _llm_router_auth_redis_password = os.environ.get(
 ).strip()
 LLM_ROUTER_AUTH_REDIS_PASSWORD = (
     _llm_router_auth_redis_password if _llm_router_auth_redis_password else None
+)
+
+LLM_ROUTER_AUTH_REDIS_PROTOCOL = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_REDIS_PROTOCOL", 3)
 )
 
 # Redis cache settings for key lookups

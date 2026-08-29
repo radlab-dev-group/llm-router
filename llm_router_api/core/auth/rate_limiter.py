@@ -14,6 +14,8 @@ import redis
 from typing import Optional
 from dataclasses import dataclass
 
+from llm_router_api.base.constants import LLM_ROUTER_AUTH_REDIS_PROTOCOL
+
 
 # Atomic Lua script: remove old entries, check the limit, and optionally
 # add the request. Returns an array {allowed, remaining_or_oldest_ts}:
@@ -86,6 +88,7 @@ class RedisRateLimiter:
         redis_port: int = 6379,
         redis_db: int = 0,
         redis_password: Optional[str] = None,
+        redis_protocol: int = LLM_ROUTER_AUTH_REDIS_PROTOCOL,
         window: int = 60,
     ) -> None:
         if redis_client is not None:
@@ -97,6 +100,7 @@ class RedisRateLimiter:
                 db=redis_db,
                 decode_responses=True,
                 password=redis_password,
+                protocol=redis_protocol,
             )
         self.WINDOW = window
         # Register the Lua script once on first use (EVALSHA optimization)

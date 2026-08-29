@@ -32,6 +32,7 @@ from llm_router_api.base.constants import (
     REDIS_HOST,
     REDIS_PASSWORD,
     REDIS_DB,
+    REDIS_PROTOCOL,
     PROVIDER_MONITOR_INTERVAL_SECONDS,
 )
 from llm_router_api.core.lb.redis_based_interface import RedisBasedStrategy
@@ -58,6 +59,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
         redis_password: str = REDIS_PASSWORD,
         redis_port: int = REDIS_PORT,
         redis_db: int = REDIS_DB,
+        redis_protocol: int = REDIS_PROTOCOL,
         timeout: int = 60,
         monitor_check_interval: float = PROVIDER_MONITOR_INTERVAL_SECONDS,
         clear_buffers: bool = True,
@@ -77,6 +79,8 @@ class FirstAvailableStrategy(RedisBasedStrategy):
             Redis server port. Default is ``6379``.
         redis_db : int, optional
             Redis database number. Default is ``0``.
+        redis_protocol : int, optional
+            Redis protocol version (RESP2 vs RESP3). Default is ``3``.
         timeout : int, optional
             Maximum time (in seconds) to wait for an available provider.
             Default is ``60``.
@@ -92,6 +96,7 @@ class FirstAvailableStrategy(RedisBasedStrategy):
             redis_password=redis_password,
             redis_port=redis_port,
             redis_db=redis_db,
+            redis_protocol=redis_protocol,
             monitor_check_interval=monitor_check_interval,
             clear_buffers=clear_buffers,
             logger=logger,
