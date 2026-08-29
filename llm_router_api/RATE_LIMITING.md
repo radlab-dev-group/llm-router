@@ -43,6 +43,24 @@ auth:ratelimit:{key_id}:{ip}
 
 Example: `auth:ratelimit:dev-a1b2c3d3:192.168.1.100`
 
+### Client IP Resolution (anti-spoofing)
+
+The client IP is the **direct peer** (`remote_addr`) by default. The
+`X-Forwarded-For` header is attacker-controlled and is honoured **only** when the direct peer is a configured trusted
+proxy (`LLM_ROUTER_TRUSTED_PROXIES`, IP or CIDR); in that case the *right-most* XFF entry is used (proxies append, not
+prepend). Without this gate, a client could rotate `X-Forwarded-For` to obtain a fresh rate-limit bucket per request.
+
+```bash
+export LLM_ROUTER_TRUSTED_PROXIES="10.0.0.1,192.168.0.0/24"  # your LB / reverse proxy
+```
+
+### Failed-Authentication Lockout
+
+Failed attempts (missing or invalid key) never reach the key-scoped limiter, so they are throttled separately in a
+dedicated per-IP bucket (`auth:ratelimit:__auth_fail__:{ip}`) with the
+`LLM_ROUTER_AUTH_FAILURE_LIMIT` budget (default `20`/window; `0` disables). Once exceeded, the client receives `429` —
+protecting the key-lookup path from brute-force / DoS.
+
 ---
 
 ## Configuration
@@ -79,7 +97,7 @@ Example:
 HTTP/1.1 429 Too Many Requests
 Retry-After: 35
 
-{"error": {"message": "Rate limit exceeded"}}
+{"error": {"message": "Rate limit exceeded. Please retry later.", "type": "rate_limit_error", "code": 429, "retry_after": 35}}
 ```
 
 The `Retry-After` value is calculated from the oldest entry still in the window — this tells the client exactly when it
