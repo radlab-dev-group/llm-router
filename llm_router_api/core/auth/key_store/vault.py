@@ -18,7 +18,10 @@ import logging
 from typing import List, Optional
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
-from llm_router_api.core.auth.key_store._record_helpers import gen_key_prefix
+from llm_router_api.core.auth.key_store._record_helpers import (
+    gen_key_prefix,
+    gen_sha256_index,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -47,6 +50,8 @@ class VaultKeyStore(KeyStoreInterface):
         self._addr = addr.rstrip("/")
         self._mount_path = mount_path.rstrip("/")
         self._auth_method = auth_method
+        # Optional Redis for the O(1) sha256 reverse index (shared with the cache)
+        self._redis = redis_client
 
         # Lazy import — do not require hvault at import time
         import hvault
@@ -114,20 +119,41 @@ class VaultKeyStore(KeyStoreInterface):
     def get_key_by_hash_sync(self, key_hash: str) -> Optional[dict]:
         return self._run_async(self._wrapped.get_key_by_hash(key_hash))
 
+    def _index_key(self, key_index: str) -> str:
+        """
+        Redis reverse-index key: ``sha256(plaintext) -> key_id`` (O(1) lookup).
+        """
+
+        return f"auth:key:idx:{key_index}"
+
     async def get_key_by_plain(self, key_plain: str) -> Optional[dict]:
         """
         Look up a key record by its plaintext key using bcrypt.checkpw.
 
-        Scans all keys in Vault since hashes are stored with random salts
-        and cannot be looked up by hash directly.  This is **O(n)** and may
-        cause high latency when many keys exist — consider migrating to the
-        :meth:`get_key_by_hash` path (which the ``RedisKeyStoreCache`` layer
-        handles automatically) for production workloads with >50 keys.
+        Preferred path: O(1) via the ``sha256(plaintext) -> key_id`` reverse
+        index in Redis (populated by :meth:`create_key`), verified with a
+        single constant-time ``bcrypt.checkpw``.  Falls back to an O(n) scan
+        of the Vault for legacy keys created before the index existed.
 
         .. note::
-           Each authentication triggers *one* ``list_secrets`` call plus one
+           Without the index (no Redis configured), each authentication
+           triggers *one* ``list_secrets`` call plus one
            ``read_secret_version`` per Vault key until a match is found.
         """
+        # O(1) index path (Redis available)
+        if self._redis is not None:
+            key_id = self._redis.get(self._index_key(gen_sha256_index(key_plain)))
+            if key_id:
+                record = await self.get_key_by_id(key_id)
+                if record is not None:
+                    stored_hash = record.get("key_hash")
+                    if stored_hash and bcrypt.checkpw(
+                        key_plain.encode(), stored_hash.encode()
+                    ):
+                        return record
+                return None
+
+        # Legacy fallback: full scan (constant-time bcrypt per key)
         kv_path = self._mount_path.rstrip("/")
         try:
             secret = self._client.secrets.kv.v2.list_secrets(
@@ -136,8 +162,7 @@ class VaultKeyStore(KeyStoreInterface):
             )
         except Exception as exc:
             # If Vault is down we return None (the caller will reject the key)
-            # self.logger.error("Vault list_secrets failed: %s", exc)
-            print("Vault list_secrets failed: %s", exc)
+            _logger.error("Vault list_secrets failed: %s", exc)
             return None
 
         secrets_data = secret.get("data", {}) or {}
@@ -260,12 +285,14 @@ class VaultKeyStore(KeyStoreInterface):
         record = dict(record)  # prevent mutating caller's dict
         key_plain = record.pop("key_plain")
         key_hash = bcrypt.hashpw(key_plain.encode(), bcrypt.gensalt()).decode()
+        key_index = gen_sha256_index(key_plain)
 
         key_id = record.get("key_id", f"key-{uuid.uuid4().hex[:8]}")
         now = time.time()
         api_record = {
             "key_id": key_id,
             "key_hash": key_hash,
+            "key_index": key_index,
             "key_prefix": gen_key_prefix(key_plain),
             "policy_name": record.get("policy_name", "developer"),
             "policy_override": record.get("policy_override"),
@@ -284,6 +311,9 @@ class VaultKeyStore(KeyStoreInterface):
             mount_point=self._mount_path,
             data={"data": api_record},
         )
+        # O(1) reverse index (best-effort — the scan fallback still works)
+        if self._redis is not None:
+            self._redis.set(self._index_key(key_index), key_id)
         return key_plain
 
     async def rotate_key(self, key_id: str, grace_period: int) -> str:
@@ -292,21 +322,25 @@ class VaultKeyStore(KeyStoreInterface):
             raise ValueError(f"Key {key_id} not found in Vault")
 
         new_plain = f"{old['key_prefix']}{uuid.uuid4().hex[:40]}"
-        new_hash = bcrypt.hashpw(new_plain.encode(), bcrypt.gensalt()).decode()
         new_id = f"{key_id}-rotated-{int(time.time())}"
         now = time.time()
 
         new_record = {
             **old,
             "key_id": new_id,
-            "key_hash": new_hash,
             "key_plain": new_plain,
             "key_prefix": gen_key_prefix(new_plain),
             "created_at": now,
             "is_active": True,
             "grace_until": old.get("expires_at") or (now + grace_period),
         }
+        new_record.pop("key_hash", None)  # create_key re-hashes from key_plain
+        # create_key stores the new O(1) index and writes the record
         await self.create_key(new_record)
+        # Retire the old key's index so the old plaintext stops resolving
+        old_index = old.get("key_index")
+        if self._redis is not None and old_index:
+            self._redis.delete(self._index_key(old_index))
 
         # Ensure grace_until is persisted (create_key always writes grace_until:
         # None, override it)
@@ -338,12 +372,16 @@ class VaultKeyStore(KeyStoreInterface):
             record = secret_data.get("data", {}).get("data", {}) or {}
         except Exception:
             raise ValueError(f"Key {key_id} not found") from None
+        old_index = record.get("key_index")
         record["is_active"] = False
         self._client.write_secret(
             path=key_id,
             mount_point=self._mount_path,
             data={"data": record},
         )
+        # Retire the index so the disabled key can't authenticate
+        if self._redis is not None and old_index:
+            self._redis.delete(self._index_key(old_index))
 
     async def enable_key(self, key_id: str) -> None:
         """
@@ -363,12 +401,16 @@ class VaultKeyStore(KeyStoreInterface):
             record = secret_data.get("data", {}).get("data", {}) or {}
         except Exception:
             raise ValueError(f"Key {key_id} not found") from None
+        index = record.get("key_index")
         record["is_active"] = True
         self._client.write_secret(
             path=key_id,
             mount_point=self._mount_path,
             data={"data": record},
         )
+        # Re-add the index so the re-enabled key can authenticate again
+        if self._redis is not None and index:
+            self._redis.set(self._index_key(index), key_id)
 
     async def delete_key(self, key_id: str) -> None:
         """
@@ -378,6 +420,12 @@ class VaultKeyStore(KeyStoreInterface):
         deleted externally).  Network or authentication errors propagate to the
         caller so that failures are not masked.
         """
+        # Best-effort index removal (record may already be inactive/absent)
+        if self._redis is not None:
+            old = await self._wrapped.get_key_by_id(key_id)
+            old_index = (old or {}).get("key_index")
+            if old_index:
+                self._redis.delete(self._index_key(old_index))
         try:
             self._client.delete_secret(
                 path=key_id,
