@@ -209,6 +209,7 @@ class FlaskEngine:
             LLM_ROUTER_AUTH_REDIS_PORT,
             LLM_ROUTER_AUTH_REDIS_DB,
             LLM_ROUTER_AUTH_REDIS_PASSWORD,
+            LLM_ROUTER_AUTH_REDIS_PROTOCOL,
             LLM_ROUTER_TRUSTED_PROXIES,
             LLM_ROUTER_AUTH_FAILURE_LIMIT,
         )
@@ -254,6 +255,7 @@ class FlaskEngine:
                 "redis_port": LLM_ROUTER_AUTH_REDIS_PORT,
                 "redis_db": LLM_ROUTER_AUTH_REDIS_DB,
                 "redis_password": LLM_ROUTER_AUTH_REDIS_PASSWORD,
+                "redis_protocol": LLM_ROUTER_AUTH_REDIS_PROTOCOL,
             }
 
         store, shared_client = create_key_store(

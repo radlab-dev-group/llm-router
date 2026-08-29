@@ -9,6 +9,7 @@ import secrets
 
 from typing import Optional, Tuple
 
+from llm_router_api.base.constants import LLM_ROUTER_AUTH_REDIS_PROTOCOL
 from llm_router_api.core.auth.key_store.memory import MemoryKeyStore
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
@@ -51,12 +52,14 @@ def _make_shared_redis_client(kwargs: dict) -> Optional[redis.Redis]:
     port = int(kwargs.get("redis_port", 6379))
     db = int(kwargs.get("redis_db", 0))
     password = kwargs.get("redis_password")
+    protocol = int(kwargs.get("redis_protocol") or LLM_ROUTER_AUTH_REDIS_PROTOCOL)
     client = redis.Redis(
         host=host,
         port=port,
         db=db,
         decode_responses=True,
         password=password,
+        protocol=protocol,
     )
     # Verify connectivity: redis.Redis() is lazy — the first real operation
     # (ping) is what actually opens the TCP connection.

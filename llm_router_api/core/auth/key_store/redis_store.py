@@ -16,6 +16,7 @@ import bcrypt
 
 from typing import List, Optional
 
+from llm_router_api.base.constants import LLM_ROUTER_AUTH_REDIS_PROTOCOL
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import (
     gen_key_prefix,
@@ -38,6 +39,7 @@ class RedisKeyStore(KeyStoreInterface):
         redis_port: int = 6379,
         redis_db: int = 0,
         redis_password: Optional[str] = None,
+        redis_protocol: int = LLM_ROUTER_AUTH_REDIS_PROTOCOL,
         prefix: str = _DEFAULT_REDIS_PREFIX,
     ) -> None:
         if redis_client is not None:
@@ -49,6 +51,7 @@ class RedisKeyStore(KeyStoreInterface):
                 db=redis_db,
                 decode_responses=True,
                 password=redis_password,
+                protocol=redis_protocol,
             )
         self._prefix = prefix
 
