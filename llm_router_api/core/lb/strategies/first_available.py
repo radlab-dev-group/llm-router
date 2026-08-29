@@ -221,18 +221,24 @@ class FirstAvailableStrategy(RedisBasedStrategy):
         otherwise returns ``None``.  May raise ``TimeoutError`` if the overall
         timeout has been exceeded.
         """
+        # Check the overall timeout BEFORE the empty-providers short‑circuit:
+        # the caller (``get_provider``) loops until a provider is acquired,
+        # so returning ``None`` here while the budget is still available would
+        # spin forever when no provider is active (all unhealthy or Redis
+        # health data missing) instead of surfacing the documented
+        # ``TimeoutError``.
+        if time.time() - start_time > self.timeout:
+            raise TimeoutError(
+                f"No available provider found for model '{model_name}' "
+                f"within {self.timeout} seconds"
+            )
+
         _providers = self._get_active_providers(
             model_name=model_name, providers=providers
         )
 
         if not _providers:
             return None
-
-        if time.time() - start_time > self.timeout:
-            raise TimeoutError(
-                f"No available provider found for model '{model_name}' "
-                f"within {self.timeout} seconds"
-            )
 
         if is_random:
             provider = self._try_acquire_random_provider(

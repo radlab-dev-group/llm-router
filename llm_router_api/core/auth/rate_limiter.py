@@ -34,9 +34,13 @@ _ATOMIC_LUA = """
     local count = redis.call('zcard', bucket)
 
     if count >= limit then
-        -- Odrzucony — policz retry_after z najstarszego entry
+        -- Odrzucony — policz retry_after z najstarszego entry.
+        -- Uwaga: `zrange ... withscores` zwraca PLASKA tablice
+        -- {member, score}, więc score jest w `oldest[2]` (nie `oldest[1][2]`,
+        -- co jest drugim znakiem stringa-membera i w Lua daje błąd
+        -- "attempt to perform arithmetic on a string value").
         local oldest = redis.call('zrange', bucket, 0, 0, 'withscores')
-        local oldest_ts = oldest[1][2]
+        local oldest_ts = oldest[2]
         local retry_after = math.ceil(oldest_ts + window - now)
         if retry_after < 1 then retry_after = 1 end
         return {0, retry_after}

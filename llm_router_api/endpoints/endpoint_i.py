@@ -314,7 +314,11 @@ class SecureEndpointI(abc.ABC):
 
     @staticmethod
     def _end_audit_log_if_needed(
-        payload, mappings, audit_log, auditor: AnyRequestAuditor, force_end: bool
+        payload,
+        mappings,
+        audit_log,
+        auditor: Optional[AnyRequestAuditor],
+        force_end: bool,
     ):
         """
         Finalize an audit log entry and persist it via the provided auditor.
@@ -340,6 +344,9 @@ class SecureEndpointI(abc.ABC):
         -------
         None
         """
+        if not auditor:
+            return
+
         if not audit_log:
             if force_end:
                 raise RuntimeError("Cannot end audit! Audit log is not set!")
@@ -375,7 +382,7 @@ class SecureEndpointI(abc.ABC):
         if (
             self.EP_DONT_NEED_GUARDRAIL_AND_MASKING
             or not self._guardrails_pipeline_request
-            or not self._guardrail_auditor_request
+            # or not self._guardrail_auditor_request
         ):
             return True
 
