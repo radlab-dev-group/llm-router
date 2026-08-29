@@ -115,9 +115,16 @@ class PermissionEngine:
         key_record: Any,
         endpoint_key: str,
         model_name: Optional[str] = None,
+        client_ip: Optional[str] = None,
+        tokens_used: Optional[int] = None,
     ) -> EndpointPermission:
         """
         Return the permission for *key* on *endpoint*.
+
+        Authorization is **default-deny**: an endpoint is reachable only if
+        (a) it is known to the endpoint→type map, (b) the key's policy grants
+        that endpoint's required permission type, (c) any IP whitelist and
+        token budget hold, and (d) the endpoint-level policy allows it.
 
         Parameters
         ----------
@@ -127,99 +134,157 @@ class PermissionEngine:
             The normalized endpoint key (e.g. ``"post:/v1/chat/completions"``).
         model_name : Optional[str]
             The model being accessed (used for model whitelist checks).
+        client_ip : Optional[str]
+            The client IP (used for the policy's ``ip_whitelist``).
+        tokens_used : Optional[int]
+            Tokens the key has used this period (budget check). Falls back to
+            ``policy.budget_tokens_used`` when ``None``.
 
         Returns
         -------
         EndpointPermission
         """
         record = self._normalize(key_record)
+        # Normalise the method case: callers send Flask-style uppercase
+        # methods ("POST:/v1/...") while the endpoint map is lowercase.
+        method, _, path = endpoint_key.partition(":")
+        endpoint_key = f"{method.lower()}:{path}"
+        method = method.upper()
 
-        # Public endpoints — always pass
-        builtin_perm = _ENDPOINT_PERMISSION_MAP.get(endpoint_key)
-        if builtin_perm == "_public":
+        # 1. Public endpoints — always pass
+        required_type = _ENDPOINT_PERMISSION_MAP.get(endpoint_key)
+        if required_type == "_public":
             return EndpointPermission(
-                method=endpoint_key.split(":")[0],
+                method=method,
                 allowed=True,
                 requires_guardrail=False,
                 requires_masking=False,
             )
 
-        # Fetch policy
+        # 2. Policy
         policy = self._get_policy(record)
 
-        # Key is inactive or expired
+        # 3. Master switch + key active + not expired
         if not policy.is_active or not record.is_active:
-            return EndpointPermission(
-                method=endpoint_key.split(":")[0],
-                allowed=False,
-            )
+            return EndpointPermission(method=method, allowed=False)
         if record.expires_at and time.time() > record.expires_at:
-            return EndpointPermission(
-                method=endpoint_key.split(":")[0],
-                allowed=False,
+            return EndpointPermission(method=method, allowed=False)
+
+        # 4. Default-deny: endpoint must be known AND its type must be granted.
+        #    An endpoint absent from the map (required_type is None) is denied.
+        if required_type is None or not policy.grants_type(required_type):
+            return EndpointPermission(method=method, allowed=False)
+
+        # 5. IP whitelist (default-deny when configured)
+        if policy.ip_whitelist and not self._ip_in_whitelist(
+            client_ip, policy.ip_whitelist
+        ):
+            return EndpointPermission(method=method, allowed=False)
+
+        # 6. Monthly token budget (default-deny when set and exceeded)
+        if policy.budget_monthly_tokens is not None:
+            used = (
+                tokens_used if tokens_used is not None else policy.budget_tokens_used
             )
+            if used >= policy.budget_monthly_tokens:
+                return EndpointPermission(method=method, allowed=False)
 
-        # Get the permission for this endpoint
-        perm = policy.get_permission(endpoint_key)
-
+        # 7. Endpoint-level refinement (model lists, guardrail/masking flags)
+        perm = policy.get_permission(endpoint_key, method=method)
         if not perm.allowed:
-            return EndpointPermission(
-                method=endpoint_key.split(":")[0],
-                allowed=False,
-            )
+            return EndpointPermission(method=method, allowed=False)
 
-        # Model whitelist check (global)
+        # 8. Model whitelist check (global)
         if policy.model_whitelist and model_name:
             model_lower = model_name.lower()
-            whitelisted = any(
-                model_lower in w.lower() for w in policy.model_whitelist
-            )
-            if not whitelisted:
-                return EndpointPermission(
-                    method=endpoint_key.split(":")[0],
-                    allowed=False,
-                )
+            if not any(model_lower in w.lower() for w in policy.model_whitelist):
+                return EndpointPermission(method=method, allowed=False)
 
-        # Endpoint-specific model whitelist
+        # 9. Endpoint-specific model whitelist
         if perm.allowed_models and model_name:
             model_lower = model_name.lower()
-            whitelisted = any(model_lower in w.lower() for w in perm.allowed_models)
-            if not whitelisted:
-                return EndpointPermission(
-                    method=endpoint_key.split(":")[0],
-                    allowed=False,
-                )
+            if not any(model_lower in w.lower() for w in perm.allowed_models):
+                return EndpointPermission(method=method, allowed=False)
 
         return EndpointPermission(
-            method=endpoint_key.split(":")[0],
+            method=method,
             allowed=True,
             requires_guardrail=perm.requires_guardrail,
             requires_masking=perm.requires_masking,
             rate_limit=policy.rate_limit if hasattr(policy, "rate_limit") else 60,
         )
 
+    @staticmethod
+    def _ip_in_whitelist(client_ip: Optional[str], whitelist) -> bool:
+        """
+        Return True if *client_ip* is covered by *whitelist* (IPs and/or CIDRs).
+
+        ``client_ip`` must be a valid IP; malformed whitelist entries are
+        skipped rather than raising.
+        """
+        if not client_ip:
+            return False
+        import ipaddress
+
+        try:
+            ip = ipaddress.ip_address(client_ip)
+        except ValueError:
+            return False
+        for entry in whitelist:
+            entry = str(entry).strip()
+            if not entry:
+                continue
+            try:
+                if "/" in entry:
+                    if ip in ipaddress.ip_network(entry, strict=False):
+                        return True
+                elif ip == ipaddress.ip_address(entry):
+                    return True
+            except ValueError:
+                continue
+        return False
+
     def _get_policy(self, record: Any) -> EndpointPolicy:
         """
         Resolve the policy for a key record (object or dict).
         """
 
-        # 1. policy_override
+        base = self._named_policy(record)
+
+        # 1. policy_override (partial — e.g. just a rate_limit tweak)
         if record.policy_override:
             policy = self._parse_override(record.policy_override)
             policy.is_active = True
+            # Inherit the type grants from the base policy when the override
+            # does not explicitly set ``allowed_types``.  Without this, a
+            # partial override like ``{"rate_limit": N}`` (written by the CLI
+            # ``rate-limit apply``) would grant *no* types and default-deny
+            # everything for that key.
+            if policy.allowed_types is None:
+                policy.allowed_types = base.allowed_types
             return policy
 
         # 2. Named policy (builtin or custom)
+        return base
+
+    def _named_policy(self, record: Any) -> EndpointPolicy:
+        """
+        Return the named policy for *record*, or a default-deny policy.
+        """
+
         named = record.policy_name
         policy = self._custom_policies.get(named)
         if policy is None:
             policy = builtin_policies.get_builtin_policy(named)
         if policy is None:
-            # Fallback to developer
-            policy = builtin_policies.get_builtin_policy("developer")
+            # Default-deny: an unknown policy name grants *nothing*.
+            # (Previously this silently fell back to the allow-all
+            # "developer" role — a authorization hole.)
+            policy = EndpointPolicy(can_access=False)
         return policy
 
-    def _parse_override(self, override: dict) -> EndpointPolicy:
+    @staticmethod
+    def _parse_override(override: dict) -> EndpointPolicy:
         """
         Parse an inline policy override into an EndpointPolicy.
         """
@@ -231,8 +296,12 @@ class PermissionEngine:
             elif isinstance(perms_config, dict):
                 perms[ep] = EndpointPermission(**perms_config)
 
+        allowed_types = override.get("allowed_types")
+        if allowed_types is not None:
+            allowed_types = tuple(allowed_types)
         return EndpointPolicy(
             can_access=override.get("can_access", True),
+            allowed_types=allowed_types,
             permissions=perms,
             rate_limit=override.get("rate_limit", 60),
             is_active=override.get("is_active", True),

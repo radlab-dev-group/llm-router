@@ -11,14 +11,22 @@ from typing import Dict, List, Optional
 
 from llm_router_api.core.auth.policies.model import EndpointPolicy
 
+# Every permission type that can appear in the engine's endpoint→type map.
+_ALL_TYPES = ("chat", "embedding", "anthropic", "ollama", "builtin")
+
+# Default-deny: a policy grants access only to the types listed in
+# ``allowed_types``.  Full-access roles explicitly enumerate every type;
+# single-purpose roles grant only their own type.
 _builtin_policies: Dict[str, EndpointPolicy] = {
-    "developer": EndpointPolicy(can_access=True),
-    "admin": EndpointPolicy(can_access=True, metadata={"level": "admin"}),
-    "chat": EndpointPolicy(can_access=True),
-    "embedding": EndpointPolicy(can_access=True),
-    "anthropic": EndpointPolicy(can_access=True),
-    "ollama": EndpointPolicy(can_access=True),
-    "builtin": EndpointPolicy(can_access=True),
+    "developer": EndpointPolicy(can_access=True, allowed_types=_ALL_TYPES),
+    "admin": EndpointPolicy(
+        can_access=True, allowed_types=_ALL_TYPES, metadata={"level": "admin"}
+    ),
+    "chat": EndpointPolicy(can_access=True, allowed_types=("chat",)),
+    "embedding": EndpointPolicy(can_access=True, allowed_types=("embedding",)),
+    "anthropic": EndpointPolicy(can_access=True, allowed_types=("anthropic",)),
+    "ollama": EndpointPolicy(can_access=True, allowed_types=("ollama",)),
+    "builtin": EndpointPolicy(can_access=True, allowed_types=("builtin",)),
 }
 
 

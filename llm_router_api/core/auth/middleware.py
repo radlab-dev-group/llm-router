@@ -99,6 +99,9 @@ class AuthMiddleware:
         # 2. Extract key
         key, key_id = self._extract_key(request_obj)
         if key is None:
+            lockout = self._throttle_failed_auth(request_obj)
+            if lockout is not None:
+                return lockout
             return AuthResult(allowed=False, reason="missing_key", status_code=401)
 
         # 3. Authenticate — plaintext lookup (avoids bcrypt salt mismatch)
@@ -108,6 +111,9 @@ class AuthMiddleware:
                 "Authentication failed: invalid key (prefix=%s)",
                 key[:7] if len(key) > 6 else key,
             )
+            lockout = self._throttle_failed_auth(request_obj)
+            if lockout is not None:
+                return lockout
             return AuthResult(allowed=False, reason="invalid_key", status_code=401)
 
         # 3a. Check key status
@@ -136,14 +142,17 @@ class AuthMiddleware:
         # Update last_used_at (async — don't block)
         self._update_last_used(key_record)
 
-        # 4. Authorize — policy check
+        # 4. Authorize — policy check (default-deny; type + IP + budget gates)
         endpoint_key = f"{request_obj.method.upper()}:{request_obj.path}"
         model_name = self._get_model_name(request_obj)
+        client_ip = self._get_client_ip(request_obj)
 
         permission: EndpointPermission = self._engine.resolve(
             key_record=key_record,
             endpoint_key=endpoint_key,
             model_name=model_name,
+            client_ip=client_ip,
+            tokens_used=None,
         )
 
         if not permission.allowed:
@@ -151,7 +160,7 @@ class AuthMiddleware:
                 "Authorization failed: key=%s endpoint=%s reason=%s",
                 key_id,
                 endpoint_key,
-                "denied_by_policy" if not permission.allowed else "unknown",
+                "denied_by_policy",
             )
             return AuthResult(
                 allowed=False, reason="endpoint_denied_by_policy", status_code=403
@@ -163,7 +172,6 @@ class AuthMiddleware:
         # prefix-based key_id is only a display label for unknown keys.
         real_key_id = key_record.get("key_id") or key_id
         rate_limit = getattr(permission, "rate_limit", None) or 60
-        client_ip = self._get_client_ip(request_obj)
         rate_result: RateLimitResult = self._limiter.is_allowed(
             key_id=real_key_id,
             ip=client_ip,
@@ -264,13 +272,92 @@ class AuthMiddleware:
 
     def _get_client_ip(self, request_obj) -> str:
         """
-        Get the client IP, respecting X-Forwarded-For.
+        Determine the real client IP.
+
+        ``X-Forwarded-For`` is attacker-controlled and is only honoured when
+        the *direct* peer (``remote_addr``) is a configured trusted proxy
+        (``LLM_ROUTER_TRUSTED_PROXIES``).  When the peer is not trusted the
+        header is ignored and ``remote_addr`` is used — otherwise a client
+        could rotate XFF to obtain a fresh rate-limit bucket per request.
+        When the peer *is* a trusted proxy, the right-most (last) XFF entry
+        is the original client (proxies append, not prepend).
         """
 
-        forwarded = request_obj.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        return request_obj.remote_addr or "unknown"
+        remote = request_obj.remote_addr or "unknown"
+        trusted = self._trusted_proxies()
+        if trusted and self._ip_trusted(remote, trusted):
+            forwarded = request_obj.headers.get("X-Forwarded-For")
+            if forwarded:
+                parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+                if parts:
+                    return parts[-1]
+        return remote
+
+    def _trusted_proxies(self) -> list[str]:
+        """
+        Normalised list of trusted proxy IPs/CIDRs from config (empty = none).
+        """
+        raw = self._config.get("trusted_proxies")
+        if not raw:
+            return []
+        if isinstance(raw, (list, tuple, set)):
+            return [str(p).strip() for p in raw if str(p).strip()]
+        return [p.strip() for p in str(raw).split(",") if p.strip()]
+
+    @staticmethod
+    def _ip_trusted(ip: str, trusted: list[str]) -> bool:
+        """
+        Return True if *ip* is in *trusted* (exact IP or CIDR).
+        """
+        import ipaddress
+
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        for entry in trusted:
+            try:
+                if "/" in entry:
+                    if addr in ipaddress.ip_network(entry, strict=False):
+                        return True
+                elif addr == ipaddress.ip_address(entry):
+                    return True
+            except ValueError:
+                continue
+        return False
+
+    def _throttle_failed_auth(self, request_obj) -> Optional[AuthResult]:
+        """
+        Record a failed-authentication attempt against the client IP and return
+        a 429 lockout result once the per-IP failure budget is exceeded.
+
+        Uses the same sliding-window limiter as per-key rate limiting, in a
+        dedicated ``__auth_fail__`` bucket, so failed attempts (which never
+        reach the key-scoped limiter) are still throttled — protecting the
+        lookup path from brute-force / DoS.
+
+        Returns
+        -------
+        Optional[AuthResult]
+            A 429 result when locked out; ``None`` when the attempt is within
+            budget (and has been recorded), so the caller returns its own
+            specific 401 reason.
+        """
+        limit = self._config.get("auth_failure_limit", 0)
+        if not limit:
+            return None
+        client_ip = self._get_client_ip(request_obj)
+        result = self._limiter.is_allowed(
+            key_id="__auth_fail__", ip=client_ip, limit=limit
+        )
+        if not result.allowed:
+            return AuthResult(
+                allowed=False,
+                reason="rate_limit",
+                status_code=429,
+                headers={"Retry-After": str(result.retry_after)},
+            )
+        return None
 
     def _update_last_used(self, key_record: dict) -> None:
         """
@@ -359,13 +446,10 @@ def install_auth_middleware(
         if not result.allowed:
             # Special handling for 429
             if result.reason == "rate_limit":
-                response = jsonify(
-                    auth_429_response(result.headers.get("Retry-After", 60))
-                )
+                retry_after = result.headers.get("Retry-After", "60")
+                response = jsonify(auth_429_response(retry_after))
                 response.status_code = 429
-                response.headers["Retry-After"] = result.headers.get(
-                    "Retry-After", "60"
-                )
+                response.headers["Retry-After"] = str(retry_after)
                 return response
 
             response = jsonify(

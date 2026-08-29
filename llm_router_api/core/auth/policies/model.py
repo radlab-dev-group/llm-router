@@ -53,9 +53,18 @@ class EndpointPolicy:
     Attributes
     ----------
     can_access : bool
-        Whether the key has *any* access at all.
+        Master switch — whether the key has *any* access at all.
+    allowed_types : Optional[Tuple[str, ...]]
+        Set of permission **types** the key is granted (e.g. ``"chat"``,
+        ``"embedding"``, ``"anthropic"``, ``"ollama"``, ``"builtin"``).
+        This is the **default-deny** gate: an endpoint is reachable only if
+        its required type (see the engine's endpoint→type map) is present
+        here.  ``None``/empty grants *no* types (deny everything) — there is
+        no implicit allow-all.
     permissions : Dict[str, EndpointPermission]
-        Mapping of endpoint_key → permission.
+        Optional per-endpoint refinements (model whitelists, guardrail flags).
+        An empty map imposes no endpoint-level restriction *beyond* the type
+        gate; a non-empty map requires the endpoint to be listed there.
     rate_limit : int
         Requests per minute (``0`` = unlimited).
     ip_whitelist : Optional[Tuple[str, ...]]
@@ -73,6 +82,7 @@ class EndpointPolicy:
     """
 
     can_access: bool = False
+    allowed_types: Optional[Tuple[str, ...]] = None
     permissions: Dict[str, EndpointPermission] = field(default_factory=dict)
     rate_limit: int = 60
     ip_whitelist: Optional[Tuple[str, ...]] = None
@@ -82,22 +92,30 @@ class EndpointPolicy:
     is_active: bool = True
     metadata: Dict = field(default_factory=dict)
 
+    def grants_type(self, required_type: str) -> bool:
+        """
+        Return True if *required_type* (e.g. ``"chat"``) is in the granted set.
+
+        Default-deny: an ``allowed_types`` of ``None`` or empty grants nothing.
+        """
+        return required_type in (self.allowed_types or ())
+
     def get_permission(
         self, endpoint_key: str, method: str = "POST"
     ) -> EndpointPermission:
         """
-        Return the permission for a specific endpoint and method.
+        Return the **endpoint-level** permission for a specific endpoint.
 
-        If ``can_access`` is True and there are no explicit per-endpoint
-        restrictions (``permissions`` dict), return an allow-all permission.
-        Otherwise look up the exact endpoint_key in ``permissions`` — if it
-        is absent, deny (the policy has *some* endpoint-level rules and this
-        one wasn't listed).
+        This is a refinement on top of the type-level default-deny gate
+        (handled by :meth:`grants_type` / the engine):
+
+        * ``can_access`` False → deny.
+        * no per-endpoint map → allow (no endpoint-level restriction).
+        * a per-endpoint map exists but this endpoint is absent → deny.
         """
         if not self.can_access:
             return EndpointPermission(method=method, allowed=False)
 
-        # When can_access=True but no per-endpoint map exists → allow everything
         if not self.permissions:
             return EndpointPermission(
                 method=method,

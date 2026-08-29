@@ -40,7 +40,9 @@ _ATOMIC_LUA = """
         -- co jest drugim znakiem stringa-membera i w Lua daje błąd
         -- "attempt to perform arithmetic on a string value").
         local oldest = redis.call('zrange', bucket, 0, 0, 'withscores')
-        local oldest_ts = oldest[2]
+        -- ZRANGE ... WITHSCORES returns scores as strings in Redis Lua;
+        -- coerce explicitly so the arithmetic below is unambiguous.
+        local oldest_ts = tonumber(oldest[2])
         local retry_after = math.ceil(oldest_ts + window - now)
         if retry_after < 1 then retry_after = 1 end
         return {0, retry_after}
