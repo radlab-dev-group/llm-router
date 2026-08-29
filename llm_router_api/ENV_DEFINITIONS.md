@@ -177,6 +177,13 @@ Rate limiting is always applied when authentication is enabled:
 |------------------------------------|-------------------------------------|---------------------------------------------------|
 | `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS` | `/ping,/version,/models,/,/metrics` | Comma-separated paths that bypass authentication. |
 
+### Hardening
+
+| Variable                        | Default   | Description                                                                                                                                                                          |
+|---------------------------------|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_TRUSTED_PROXIES`    | *(empty)* | Comma-separated IPs/CIDRs of trusted proxies. Only a direct peer listed here may supply `X-Forwarded-For`; otherwise the header is ignored (anti-spoofing for rate-limit/IP checks). |
+| `LLM_ROUTER_AUTH_FAILURE_LIMIT` | `20`      | Max failed-authentication attempts (missing/invalid key) per client IP per window before a `429` lockout. `0` disables the lockout.                                                  |
+
 ### Key generation
 
 | Variable                     | Default   | Description                                              |

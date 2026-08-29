@@ -9,7 +9,6 @@ Usage::
     llm-router auth key disable <key-id> [--store memory]
     llm-router auth key enable <key-id> [--store memory]
     llm-router auth key rotate <key-id> [--grace 3600]
-    llm-router auth key reveal <key-id>
     llm-router auth policy list
     llm-router auth policy create <name> <json-policy>
     llm-router auth rate-limit list
@@ -64,7 +63,6 @@ class AuthCommand:
         "disable": "_key_mutate_disable",
         "enable": "_key_mutate_enable",
         "rotate": "_key_rotate",
-        "reveal": "_key_reveal",
     }
 
     # ---- Argument-adding helpers -------------------------------------------
@@ -360,12 +358,6 @@ class AuthCommand:
             default=False,
             help="Output in JSON format",
         )
-        list_p.add_argument(
-            "--reveal",
-            action="store_true",
-            default=False,
-            help="Reveal plaintext keys (memory store only)",
-        )
 
         for name, help_text in [
             ("delete", "Delete an API key"),
@@ -385,12 +377,6 @@ class AuthCommand:
             default=3600,
             help="Grace period in seconds (default: 3600)",
         )
-
-        reveal_p = key_sub.add_parser(
-            "reveal", help="Reveal a key (only available in memory store)"
-        )
-        cls._add_key_id_arg(reveal_p)
-        cls._add_store_and_redis_args(reveal_p)
 
         policy_parser = auth_sub.add_parser(cls.POLICY_NAME, help="Manage policies")
         policy_sub = policy_parser.add_subparsers(dest="policy_command")
@@ -526,7 +512,6 @@ class AuthCommand:
         key_store, _ = create_key_store(
             store_type=args.store, **self._auth_redis_kwargs(args)
         )
-        show_plain = getattr(args, "reveal", False)
         keys = asyncio.run(key_store.list_keys())
         if not keys:
             print("No API keys found.")
@@ -575,8 +560,6 @@ class AuthCommand:
                 f"{k['policy_name']:<{w[2]}} "
                 f"{'yes' if k.get('is_active') else 'no':<{w[3]}} {exp_str:<{w[4]}}"
             )
-            if show_plain and "key_plain" in k:
-                line += f"  PLAIN: {k['key_plain']}"
             print(line)
         return 0
 
@@ -667,33 +650,6 @@ class AuthCommand:
         print(f"Rotated key {key_id} -> new key:")
         print(new_key)
         print("\n⚠️  This key is displayed ONCE. Store it securely!")
-        return 0
-
-    def _key_reveal(self, args, key_args) -> int:
-        """
-        Handle the 'reveal' subcommand.
-        """
-        from llm_router_api.core.auth.key_store import create_key_store
-
-        key_id = self._extract_key_id(key_args)
-        if not key_id:
-            print("Error: key_id is required for reveal.")
-            return 1
-
-        key_store, _ = create_key_store(
-            store_type=args.store, **self._auth_redis_kwargs(args)
-        )
-        record = asyncio.run(key_store.get_key_by_id(key_id))
-        if not record:
-            print(f"Key {key_id} not found.")
-            return 1
-
-        plain = record.get("key_plain")
-        if plain:
-            print(f"Key {key_id}:")
-            print(plain)
-        else:
-            print(f"Key {key_id} hash: {record.get('key_hash', 'N/A')}")
         return 0
 
     # ---- Policy handler ---------------------------------------------------
@@ -818,9 +774,10 @@ class AuthCommand:
                 return err
             found = False
             for rec in keys:
-                if rec.get("key_id") == key_id or rec.get(
-                    "key_plain", ""
-                ).startswith(key_id[:7]):
+                if (
+                    rec.get("key_id") == key_id
+                    or rec.get("key_prefix") == key_id[:7]
+                ):
                     override = rec.get("policy_override") or {}
                     override["rate_limit"] = rate_limit
                     rec["policy_override"] = override
@@ -880,9 +837,10 @@ class AuthCommand:
                 return err
             found = False
             for rec in keys:
-                if rec.get("key_id") == key_id or rec.get(
-                    "key_plain", ""
-                ).startswith(key_id[:7]):
+                if (
+                    rec.get("key_id") == key_id
+                    or rec.get("key_prefix") == key_id[:7]
+                ):
                     if rec.get("policy_override"):
                         override = rec["policy_override"]
                         if "rate_limit" in override:

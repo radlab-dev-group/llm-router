@@ -8,6 +8,7 @@ key-prefix algorithm and default field values — this module centralizes them.
 from __future__ import annotations
 
 import uuid
+import hashlib
 
 from typing import Dict
 
@@ -18,6 +19,20 @@ def gen_key_prefix(key_plain: str) -> str:
     """
 
     return key_plain[:7] if len(key_plain) > 6 else key_plain
+
+
+def gen_sha256_index(key_plain: str) -> str:
+    """
+    Return a deterministic O(1) index key: the hex SHA-256 of the plaintext key.
+
+    All key stores keep a ``sha256(plaintext) -> key_id`` index so that a
+    lookup finds the single candidate record in O(1) instead of scanning
+    every stored key.  The candidate is then verified with ``bcrypt.checkpw``
+    (constant-time) — the SHA-256 index is only a *locator*, never a proof of
+    authenticity, so it is safe to store alongside the bcrypt hash.
+    """
+
+    return hashlib.sha256(key_plain.encode("utf-8")).hexdigest()
 
 
 def gen_default_key_id() -> str:

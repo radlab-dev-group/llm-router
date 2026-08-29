@@ -209,6 +209,8 @@ class FlaskEngine:
             LLM_ROUTER_AUTH_REDIS_PORT,
             LLM_ROUTER_AUTH_REDIS_DB,
             LLM_ROUTER_AUTH_REDIS_PASSWORD,
+            LLM_ROUTER_TRUSTED_PROXIES,
+            LLM_ROUTER_AUTH_FAILURE_LIMIT,
         )
         from llm_router_api.core.auth import (
             create_key_store,
@@ -279,6 +281,8 @@ class FlaskEngine:
             "key_prefix": LLM_ROUTER_AUTH_KEY_PREFIX,
             "key_length": LLM_ROUTER_AUTH_KEY_LENGTH,
             "audit_enabled": LLM_ROUTER_AUTH_AUDIT,
+            "trusted_proxies": LLM_ROUTER_TRUSTED_PROXIES,
+            "auth_failure_limit": LLM_ROUTER_AUTH_FAILURE_LIMIT,
         }
 
         # 5. Install middleware (with verified Redis client for rate limiter)

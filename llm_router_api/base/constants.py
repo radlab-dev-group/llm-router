@@ -332,6 +332,21 @@ LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS = os.environ.get(
     "/metrics,/,/health",
 ).strip()
 
+# Trusted reverse proxies (CSV of IPs/CIDRs). X-Forwarded-For is honoured
+# only when the direct peer is one of these; otherwise it is ignored and the
+# real socket peer (remote_addr) is used. Empty = no proxy is trusted, so
+# XFF is always ignored (safe default — prevents rate-limit bypass).
+LLM_ROUTER_TRUSTED_PROXIES = os.environ.get(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}TRUSTED_PROXIES", ""
+).strip()
+
+# Maximum failed-authentication attempts per client IP per window before the
+# IP is locked out (429). 0 disables the lockout. Protects the (otherwise
+# unauthenticated) lookup path from brute-force / DoS.
+LLM_ROUTER_AUTH_FAILURE_LIMIT = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_FAILURE_LIMIT", "20")
+)
+
 # Key generation settings
 LLM_ROUTER_AUTH_KEY_PREFIX = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_KEY_PREFIX", "sk-litm"
