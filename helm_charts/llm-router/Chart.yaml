@@ -3,7 +3,7 @@ name: llm-router
 description: Helm chart for the LLM‑Router
 type: application
 version: 0.1.0
-appVersion: "0.9.1"
+appVersion: "0.9.3"
 
 dependencies:
   - name: redis
