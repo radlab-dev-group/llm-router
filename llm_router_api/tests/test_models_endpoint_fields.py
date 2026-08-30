@@ -233,7 +233,7 @@ class TestLmStudioModelsFormat:
         assert data[0]["arch"] == ""
         assert data[0]["compatibility_type"] == ""
         assert data[0]["quantization"] == ""
-        assert data[0]["state"] == "not-loaded"
+        assert data[0]["state"] == "loaded"
         assert data[0]["max_context_length"] == 32768
 
     def test_embedding_flag_maps_to_type(self):
