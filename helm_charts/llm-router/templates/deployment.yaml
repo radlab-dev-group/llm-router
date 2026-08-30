@@ -14,7 +14,7 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "llm-router.fullname" . }}
       annotations:
-        checksum/config-models: {{ .Files.Get "files/config-models.json" | sha256sum }}
+        checksum/config-models: {{ .Files.Get "files/models-config.json" | sha256sum }}
     spec:
       containers:
         - name: llm-router
