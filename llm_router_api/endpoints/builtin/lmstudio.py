@@ -83,18 +83,23 @@ class LmStudioModelsHandler(PassthroughI):
         proper_models = []
         for m in _models_data:
             m = cast(Dict[str, Any], m)
-            _model = {
-                "id": m["id"],
-                "object": m["object"],
-                "type": m.get("type"),
-                "publisher": m.get("publisher"),
-                "arch": m.get("arch"),
-                "compatibility_type": m.get("compatibility_type"),
-                "quantization": m.get("quantization"),
-                "state": m.get("state"),
-                "max_context_length": m["max_context_length"],
-            }
-            proper_models.append(_model)
+            _name = str(m.get("name") or m["id"])
+            _publisher = m.get("publisher") or (
+                _name.split("/", 1)[0] if "/" in _name else ""
+            )
+            proper_models.append(
+                {
+                    "id": m["id"],
+                    "object": m["object"],
+                    "type": "embeddings" if m.get("is_embedding") else "llm",
+                    "publisher": _publisher,
+                    "arch": m.get("arch") or "",
+                    "compatibility_type": m.get("compatibility_type") or "",
+                    "quantization": m.get("quantization") or "",
+                    "state": "loaded",
+                    "max_context_length": m["max_context_length"],
+                }
+            )
 
         _response = {"data": proper_models, "object": "list"}
         return _response
