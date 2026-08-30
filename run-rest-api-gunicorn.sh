@@ -129,7 +129,7 @@ export LLM_ROUTER_AUTH_KEY_CACHE_JITTER=${LLM_ROUTER_AUTH_KEY_CACHE_JITTER:-60}
 export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=${LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT:-60}
 
 # Public endpoints (always bypass auth, comma-separated)
-export LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS=${LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS:-"/metrics,/,/health"}
+export LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS=${LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS:-"/metrics,/health"}
 
 # Trusted reverse proxies (CSV of IPs/CIDRs); empty = X-Forwarded-For is always ignored
 export LLM_ROUTER_TRUSTED_PROXIES=${LLM_ROUTER_TRUSTED_PROXIES:-""}

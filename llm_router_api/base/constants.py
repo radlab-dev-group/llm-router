@@ -335,7 +335,7 @@ LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT = int(
 # Public endpoints (always bypass auth)
 LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS = os.environ.get(
     f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_PUBLIC_ENDPOINTS",
-    "/metrics,/,/health",
+    "/metrics,/health",
 ).strip()
 
 # Trusted reverse proxies (CSV of IPs/CIDRs). X-Forwarded-For is honoured
