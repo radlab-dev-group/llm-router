@@ -123,9 +123,15 @@ class LLMRouterServicesMonitor:
     def stop(self) -> None:
         """
         Stop the background thread and wait for it to finish.
+
+        Idempotent — safe to call multiple times (e.g. from an ``atexit``
+        hook *and* an explicit :meth:`FlaskEngine.stop`).
         """
         self._stop_event.set()
-        self._thread.join()
+        # Only join a thread that was actually started; joining an unstarted
+        # (or already-joined) thread raises RuntimeError.
+        if self._thread.is_alive():
+            self._thread.join()
         self.logger.debug("[services-monitor] thread stopped")
 
     # --------------------------------------------------------------------- #

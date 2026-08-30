@@ -261,6 +261,8 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
                 provider["__chosen_field"] = field
                 return provider
         except Exception:
+            # intentional: acquisition errors are non-fatal; this provider is
+            # simply skipped and the next candidate is tried by the caller.
             pass
         return None
 
