@@ -11,6 +11,8 @@ export LLM_ROUTER_MINIMUM=${LLM_ROUTER_MINIMUM:-1}
 export LLM_ROUTER_LOG_FILENAME=${LLM_ROUTER_LOG_FILENAME:-"llm-router.log"}
 # Also write logs to the log file (in addition to console)
 export LLM_ROUTER_LOG_TO_FILE=${LLM_ROUTER_LOG_TO_FILE:-1}
+# Logging level
+export LLM_ROUTER_LOG_LEVEL=${LLM_ROUTER_LOG_LEVEL:-"INFO"}
 # Log file rotation: rotate once the file reaches this size (bytes, default 50 MB)
 export LLM_ROUTER_LOG_MAX_BYTES=${LLM_ROUTER_LOG_MAX_BYTES:-52428800}
 # Maximum number of rotated log files to keep (llm-router.log.1 … llm-router.log.N)
@@ -24,6 +26,11 @@ export LLM_ROUTER_USE_PROMETHEUS=${LLM_ROUTER_USE_PROMETHEUS:-1}
 # Router resources
 export LLM_ROUTER_PROMPTS_DIR=${LLM_ROUTER_PROMPTS_DIR:-"resources/prompts"}
 export LLM_ROUTER_MODELS_CONFIG=${LLM_ROUTER_MODELS_CONFIG:-"resources/configs/models-config.json"}
+
+# ==================================================================================
+# Request limits
+# Maximum request body size in bytes (default: 10 MB, larger payloads -> 413)
+export LLM_ROUTER_MAX_REQUEST_BODY_SIZE=${LLM_ROUTER_MAX_REQUEST_BODY_SIZE:-10485760}
 
 # ==================================================================================
 # Default endpoint prefix, language
@@ -49,6 +56,10 @@ export LLM_ROUTER_EXTERNAL_TIMEOUT=${LLM_ROUTER_EXTERNAL_TIMEOUT:-300}
 # Redis configuration (used f.e. in fa_* strategies)
 export LLM_ROUTER_REDIS_HOST=${LLM_ROUTER_REDIS_HOST:-""}
 export LLM_ROUTER_REDIS_PORT=${LLM_ROUTER_REDIS_PORT:-6379}
+export LLM_ROUTER_REDIS_DB=${LLM_ROUTER_REDIS_DB:-0}
+export LLM_ROUTER_REDIS_PASSWORD=${LLM_ROUTER_REDIS_PASSWORD:-""}
+# Redis protocol version (default: 3, RESP3)
+export LLM_ROUTER_REDIS_PROTOCOL=${LLM_ROUTER_REDIS_PROTOCOL:-3}
 
 # ==================================================================================
 # LLM Router services monitoring (if any services will be used)
@@ -57,6 +68,10 @@ export LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS=${LLM_ROUTER_SERVICES_MONITO
 export LLM_ROUTER_KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS=${LLM_ROUTER_KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS:-1}
 # Models providers monitoring interval (in seconds)
 export LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS=${LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS:-5}
+# Per-provider health-check ping timeout (seconds)
+export LLM_ROUTER_PROVIDER_MONITOR_PING_TIMEOUT_SECONDS=${LLM_ROUTER_PROVIDER_MONITOR_PING_TIMEOUT_SECONDS:-5.0}
+# Consecutive failed pings required before a provider is marked unavailable
+export LLM_ROUTER_PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES=${LLM_ROUTER_PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES:-2}
 
 # ==================================================================================
 # Data protection (additional endpoints will be available)
@@ -97,6 +112,7 @@ export LLM_ROUTER_AUTH_REDIS_HOST=${LLM_ROUTER_AUTH_REDIS_HOST:-""}
 export LLM_ROUTER_AUTH_REDIS_PORT=${LLM_ROUTER_AUTH_REDIS_PORT:-6379}
 export LLM_ROUTER_AUTH_REDIS_DB=${LLM_ROUTER_AUTH_REDIS_DB:-0}
 export LLM_ROUTER_AUTH_REDIS_PASSWORD=${LLM_ROUTER_AUTH_REDIS_PASSWORD:-""}
+export LLM_ROUTER_AUTH_REDIS_PROTOCOL=${LLM_ROUTER_AUTH_REDIS_PROTOCOL:-3}
 
 # Vault settings (used when --store vault)
 export LLM_ROUTER_AUTH_VAULT_ADDR=${LLM_ROUTER_AUTH_VAULT_ADDR:-""}
@@ -110,11 +126,15 @@ export LLM_ROUTER_AUTH_KEY_CACHE_TTL=${LLM_ROUTER_AUTH_KEY_CACHE_TTL:-300}
 export LLM_ROUTER_AUTH_KEY_CACHE_JITTER=${LLM_ROUTER_AUTH_KEY_CACHE_JITTER:-60}
 
 # Rate limiting
-export LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED=${LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED:-""}
 export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=${LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT:-60}
 
 # Public endpoints (always bypass auth, comma-separated)
 export LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS=${LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS:-"/metrics,/,/health"}
+
+# Trusted reverse proxies (CSV of IPs/CIDRs); empty = X-Forwarded-For is always ignored
+export LLM_ROUTER_TRUSTED_PROXIES=${LLM_ROUTER_TRUSTED_PROXIES:-""}
+# Max failed-auth attempts per client IP per window before 429 lockout (0 disables)
+export LLM_ROUTER_AUTH_FAILURE_LIMIT=${LLM_ROUTER_AUTH_FAILURE_LIMIT:-20}
 
 # Key generation settings
 export LLM_ROUTER_AUTH_KEY_PREFIX=${LLM_ROUTER_AUTH_KEY_PREFIX:-"sk-litm"}
