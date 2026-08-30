@@ -1785,6 +1785,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if api_type == "openai":
             for p in OPENAI_ACCEPTABLE_PARAMS:
                 if p in params:
+                    # Some clients (e.g. LiteLLM) send ``max_tokens: -1`` as
+                    # "no limit"; providers such as Google reject non‑positive
+                    # values with HTTP 400, so drop them instead of forwarding.
+                    if (
+                        p in ("max_tokens", "max_completion_tokens")
+                        # and isinstance(params[p], (int, float))
+                        # and not isinstance(params[p], bool)
+                        and int(params[p]) < 1
+                    ):
+                        continue
                     _params[p] = params[p]
         else:
             raise ValueError(f"Unsupported API type: {api_type}")
