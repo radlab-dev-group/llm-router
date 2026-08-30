@@ -391,7 +391,7 @@ int-import-graph=
 known-standard-library=
 
 # Force import order to recognize a module as part of a third party library.
-known-third-party=enchant,hvault
+known-third-party=enchant,hvac
 
 # Couples of modules and preferred modules, separated by a comma.
 preferred-modules=
@@ -469,7 +469,7 @@ disable=raw-checker-failed,
         # Dynamic attribute access on gnupg and other C-extension modules
         no-member,
 
-        # Optional dependencies (hvault may not be installed)
+        # Optional dependencies (hvac may not be installed)
         import-error,
 
         # Dynamic export names from auth __all__

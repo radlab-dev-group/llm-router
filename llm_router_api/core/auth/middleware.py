@@ -412,7 +412,8 @@ def install_auth_middleware(
     when ``LLM_ROUTER_AUTH_ENABLED`` is ``"true"``.
 
     Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
-    ``/ping,/version,/models,/,/metrics,/health``) bypass all auth checks. All other endpoints
+    ``/ping,/version,/models,/,/metrics,/health``) bypass all auth checks.
+    All other endpoints
     are mapped to required permission types in
     :data:`~llm_router_api.core.auth.policies.engine._ENDPOINT_PERMISSION_MAP`.
 

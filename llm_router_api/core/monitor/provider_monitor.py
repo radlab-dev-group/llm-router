@@ -27,8 +27,11 @@ class RedisProviderMonitor:
 
     For every model a separate Redis hash ``availability:<model_name>`` is
     maintained where each field is the provider ``id`` and the value is
-    ``'true'`` (available) or ``'false'`` (unreachable).  The monitor runs
-    continuously until :meth:`stop` is called.
+    ``'true'`` (available) or ``'false'`` (unreachable).  A provider is
+    marked unavailable only after ``max_consecutive_failures`` pings fail in
+    a row (hysteresis), so a single slow/busy ping does not kick a live host
+    out of the pool; one successful ping restores it immediately.  The
+    monitor runs continuously until :meth:`stop` is called.
     """
 
     def __init__(
@@ -37,6 +40,8 @@ class RedisProviderMonitor:
         check_interval: float = 30,
         clear_buffers: bool = False,
         logger: Optional[logging.Logger] = None,
+        check_timeout: float = 2.0,
+        max_consecutive_failures: int = 2,
     ) -> None:
         """
         Initialize the monitor and start its background thread.
@@ -52,6 +57,14 @@ class RedisProviderMonitor:
             start.
         logger : logging.Logger, optional
             Logger instance; if omitted, a module‑level logger is created.
+        check_timeout : float, optional
+            Per‑provider ping timeout in seconds (default: 2.0).  Kept short
+            so a hanging host cannot stall the whole health‑check cycle.
+        max_consecutive_failures : int, optional
+            Number of **consecutive** failed pings required before a
+            provider is marked unavailable (hysteresis, default: 2).  A
+            single slow/busy ping therefore does not kick a live provider
+            out of the active pool; one successful ping resets the counter.
         """
 
         self.logger = logger or logging.getLogger(__name__)
@@ -61,6 +74,10 @@ class RedisProviderMonitor:
             self._clear_buffers()
 
         self._check_interval = check_interval
+        self._check_timeout = check_timeout
+        self._max_consecutive_failures = max(1, int(max_consecutive_failures))
+        # provider id -> number of consecutive failed pings (hysteresis).
+        self._consecutive_failures: Dict[str, int] = {}
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
@@ -158,14 +175,14 @@ class RedisProviderMonitor:
         return providers
 
     @staticmethod
-    def _monitor_key():
+    def _monitor_key() -> str:
         """
         Base Redis key used for storing provider sets.
         """
 
         return "monitor:providers"
 
-    def _monitor_model_key(self, model_name: str):
+    def _monitor_model_key(self, model_name: str) -> str:
         """
         Redis key for the set of providers belonging to *model_name*.
         """
@@ -173,7 +190,7 @@ class RedisProviderMonitor:
         return f"{self._monitor_key()}:{model_name}"
 
     @staticmethod
-    def _availability_key():
+    def _availability_key() -> str:
         """
         Base Redis key used for availability hashes.
         """
@@ -240,10 +257,85 @@ class RedisProviderMonitor:
         except Exception as e:
             self.logger.error(f"Failed to clear Redis buffers: {e}")
 
+    #: Real health‑check ping path per provider ``api_type``.
+    #:
+    #: A lightweight, provider‑specific endpoint is preferred over ``/``
+    #: (which many servers answer with an HTML page or ``405``):
+    #:
+    #: * ``vllm``      → ``/health``
+    #: * ``ollama``    → ``/api/version``
+    #: * ``openai``    → ``/v1/models`` (OpenAI‑compatible)
+    #: * ``lmstudio``  → ``/v1/models`` (OpenAI‑compatible)
+    #: * ``anthropic`` → ``/v1/models``
+    PING_PATHS = {
+        "vllm": "/health",
+        "ollama": "/api/version",
+        "openai": "/v1/models",
+        "lmstudio": "/v1/models",
+        "anthropic": "/v1/models",
+    }
+    DEFAULT_PING_PATH = "/"
+
+    #: Generic probe paths tried when the ``api_type``‑specific path is
+    #: **not implemented** by the server (``404``/``405``).  A live
+    #: OpenAI‑compatible endpoint is a strong signal that the host serves
+    #: LLM traffic even when its advertised ``api_type`` (e.g. ``vllm``)
+    #: is a mislabel — the first 2xx/3xx answer wins.
+    FALLBACK_PING_PATHS: List[str] = ["/v1/models", "/api/version", "/"]
+
+    @classmethod
+    def _ping_path(cls, api_type: Optional[str]) -> str:
+        """Return the ping path for an ``api_type`` (``/`` when unknown)."""
+        if not api_type:
+            return cls.DEFAULT_PING_PATH
+        return cls.PING_PATHS.get(
+            str(api_type).strip().lower(), cls.DEFAULT_PING_PATH
+        )
+
+    @classmethod
+    def _ping_candidates(cls, api_type: Optional[str]) -> List[str]:
+        """
+        Ordered list of probe paths for *api_type*.
+
+        The type‑specific path comes first; the generic
+        :data:`FALLBACK_PING_PATHS` follow (deduplicated) so a server that
+        simply lacks the specific health endpoint is still detected.
+        """
+        first = cls._ping_path(api_type)
+        candidates = [first]
+        for path in cls.FALLBACK_PING_PATHS:
+            if path not in candidates:
+                candidates.append(path)
+        return candidates
+
+    @staticmethod
+    def _diagnose_status(status_code: int) -> str:
+        """
+        Map a non‑OK ping status code to a short diagnostic label.
+
+        ``401``/``403`` → ``auth_error`` (token missing/expired/wrong),
+        ``404`` → ``not_found`` (wrong path or host), other 4xx →
+        ``client_error_<code>``, 5xx → ``server_error_<code>``.
+        """
+        if status_code in (401, 403):
+            return "auth_error"
+        if status_code == 404:
+            return "not_found"
+        if status_code < 500:
+            return f"client_error_{status_code}"
+        return f"server_error_{status_code}"
+
     def _check_and_update_status(self, provider: Dict, avail_key: str) -> None:
         """
         Perform a health‑check for a single provider and store the result
         in the ``availability`` hash.
+
+        Availability contract: a provider is **available only on a 2xx/3xx
+        ping response**.  Any 4xx (e.g. ``401``/``403`` broken auth, ``404``
+        wrong endpoint) marks it *unavailable* — such a provider would fail
+        real requests, so it must stay out of the active pool — with a
+        distinct diagnostic label (``auth_error`` vs ``not_found`` vs …)
+        stored in the ``availability:reason`` hash for operator triage.
 
         Parameters
         ----------
@@ -258,23 +350,94 @@ class RedisProviderMonitor:
         if not provider_id or not host:
             return
 
-        ep_to_call = "/"
-        api_type = provider["api_type"]
-        if api_type in ["vllm"]:
-            ep_to_call = "/health"
+        # ``.get`` — providers without an ``api_type`` field must not crash
+        # the monitor (KeyError used to take the worker down).
+        api_type = provider.get("api_type")
+        base_url = host.rstrip("/")
+        candidates = self._ping_candidates(api_type)
 
-        host = host.rstrip("/") + ep_to_call
-        try:
-            resp = requests.get(host, timeout=1)
-            status = "true" if resp.status_code < 500 else "false"
-        except Exception:
-            status = "false"
+        # Send the provider token when configured: auth‑required providers
+        # (OpenAI, Anthropic, …) would otherwise 401 on the ping and be
+        # wrongly reported as broken (``auth_error``).
+        headers: Dict[str, str] = {}
+        api_token = provider.get("api_token")
+        if api_token:
+            headers["Authorization"] = f"Bearer {api_token}"
+
+        ok = False
+        reason = "unreachable"
+        last_url = base_url + candidates[0]
+        primary_diag: Optional[str] = None
+        for path in candidates:
+            url = base_url + path
+            last_url = url
+            try:
+                resp = requests.get(
+                    url, timeout=self._check_timeout, headers=headers
+                )
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                # Connection refused / DNS failure / timeout — host is
+                # down; further paths would fail identically.
+                reason = f"unreachable ({type(exc).__name__})"
+                break
+            if resp.status_code < 400:
+                ok = True
+                reason = "ok"
+                break
+            diag = self._diagnose_status(resp.status_code)
+            if primary_diag is None:
+                primary_diag = diag
+            # 404/405 = "this path is not implemented on that server" —
+            # fall back to the next probe path before giving up.
+            if resp.status_code in (404, 405):
+                continue
+            # 401/403 (auth) and other 4xx/5xx are definitive answers
+            # about the *server*, not the path — stop probing.
+            reason = diag
+            break
+        else:
+            # Every probe path was tried (all 404/405): report the
+            # diagnosis of the type‑specific (primary) path.
+            reason = primary_diag or "not_found"
+
+        # Hysteresis: a provider is marked unavailable only after
+        # ``max_consecutive_failures`` failed pings in a row.  A busy but
+        # alive host (slow to accept a *new* connection while serving
+        # keep‑alive traffic) must not be kicked out of the pool by a
+        # single transient timeout.  One successful ping resets the
+        # counter and immediately restores availability.
+        if ok:
+            self._consecutive_failures[provider_id] = 0
+            status = "true"
+        else:
+            failures = self._consecutive_failures.get(provider_id, 0) + 1
+            self._consecutive_failures[provider_id] = failures
+            if failures >= self._max_consecutive_failures:
+                status = "false"
+            else:
+                status = None  # keep the last known availability
+                reason = (
+                    f"{reason} (transient, {failures}/"
+                    f"{self._max_consecutive_failures})"
+                )
 
         self.logger.debug(
-            f"[provider-monitor.status] {provider_id} [{host}] status={status}"
+            "[provider-monitor.status] %s [%s] status=%s reason=%s",
+            provider_id,
+            last_url,
+            status if status is not None else "unchanged",
+            reason,
         )
 
         try:
-            self._redis_client.hset(avail_key, provider_id, status)
-        except Exception:
-            pass
+            if status is not None:
+                self._redis_client.hset(avail_key, provider_id, status)
+            # Diagnostic label so operators can see *why* a provider was
+            # removed from the active pool (auth_error vs not_found vs …).
+            self._redis_client.hset(
+                f"{self._availability_key()}:reason", provider_id, reason
+            )
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            # Intentionally non‑fatal: a Redis hiccup must not kill the
+            # monitor loop — the next cycle retries.
+            self.logger.debug("failed to store availability: %s", exc)

@@ -1,3 +1,16 @@
+## Runtime dependencies (pinned for reproducible installs — see requirements.lock)
+#flask==3.1.2
+#gunicorn==23.0.0
+#redis==8.0.0
+#prometheus-client==0.21.0
+#python-dateutil==2.8.2
+#gnupg==2.3.1
+#tqdm==4.70.0
+#requests==2.32.3
+#pydantic==2.12.3
+#urllib3==2.3.0
+
+
 flask
 gunicorn
 redis
@@ -6,3 +19,5 @@ python-dateutil
 gnupg
 tqdm
 requests
+pydantic
+urllib3

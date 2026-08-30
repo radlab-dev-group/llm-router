@@ -55,19 +55,22 @@ When `LLM_ROUTER_REDIS_HOST` is set, the router uses Redis for load-balancing st
 
 ### Payload masking
 
-| Variable                               | Default   | Description                                                             |
-|----------------------------------------|-----------|-------------------------------------------------------------------------|
-| `LLM_ROUTER_FORCE_MASKING`             | `False`   | Enable masking of every endpoint's payload before provider call.        |
-| `LLM_ROUTER_MASKING_STRATEGY_PIPELINE` | *(empty)* | Comma-separated list of masker plugins (e.g. `fast_masker,pii_masker`). |
-| `LLM_ROUTER_MASKING_WITH_AUDIT`        | `False`   | Record each masking operation in the audit log.                         |
+| Variable                               | Default   | Description                                                                                              |
+|----------------------------------------|-----------|----------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_FORCE_MASKING`             | `False`   | Enable masking of every endpoint's payload before provider call.                                         |
+| `LLM_ROUTER_MASKING_STRATEGY_PIPELINE` | *(empty)* | Comma-separated list of masker plugins (e.g. `fast_masker,pii_masker`).                                  |
+| `LLM_ROUTER_MASKING_WITH_AUDIT`        | `False`   | Record each masking operation in the audit log.                                                          |
+| `LLM_ROUTER_MASKER_PII_HOST`           | *(empty)* | Host URL of the remote ML-based `pii_masker` service. Must be set when using `pii_masker` in a pipeline. |
 
 ### Request guardrails
 
-| Variable                                         | Default   | Description                                             |
-|--------------------------------------------------|-----------|---------------------------------------------------------|
-| `LLM_ROUTER_FORCE_GUARDRAIL_REQUEST`             | `False`   | Force guardrail evaluation on every request.            |
-| `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST`        | `False`   | Audit all guardrail decisions for requests.             |
-| `LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_REQUEST` | *(empty)* | Comma-separated list of guardrail strategies (request). |
+| Variable                                         | Default   | Description                                                                                                                  |
+|--------------------------------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_FORCE_GUARDRAIL_REQUEST`             | `False`   | Force guardrail evaluation on every request.                                                                                 |
+| `LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST`        | `False`   | Audit all guardrail decisions for requests.                                                                                  |
+| `LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_REQUEST` | *(empty)* | Comma-separated list of guardrail strategies (request).                                                                      |
+| `LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST`           | *(empty)* | Host URL of the remote `nask_guard` service (HerBERT‑PL‑Guard, NASK‑PIB). Must be set when using `nask_guard` in a pipeline. |
+| `LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST`          | *(empty)* | Host URL of the remote `sojka_guard` service (Bielik‑Guard). Must be set when using `sojka_guard` in a pipeline.             |
 
 ### Response guardrails
 
@@ -156,22 +159,21 @@ Seed file path (hardcoded): `${HOME}/.llm-router/configs/auth/memory-keys.json`
 
 Auth-specific Redis connection used by the key store and rate limiter:
 
-| Variable                         | Default   | Description                 |
-|----------------------------------|-----------|-----------------------------|
-| `LLM_ROUTER_AUTH_REDIS_HOST`     | *(empty)* | Auth Redis host.            |
-| `LLM_ROUTER_AUTH_REDIS_PORT`     | `6379`    | Auth Redis port.            |
-| `LLM_ROUTER_AUTH_REDIS_DB`       | `0`       | Auth Redis database number. |
-| `LLM_ROUTER_AUTH_REDIS_PASSWORD` | *(empty)* | Auth Redis password.        |
+| Variable                         | Default   | Description                                             |
+|----------------------------------|-----------|---------------------------------------------------------|
+| `LLM_ROUTER_AUTH_REDIS_HOST`     | *(empty)* | Auth Redis host.                                        |
+| `LLM_ROUTER_AUTH_REDIS_PORT`     | `6379`    | Auth Redis port.                                        |
+| `LLM_ROUTER_AUTH_REDIS_DB`       | `0`       | Auth Redis database number.                             |
+| `LLM_ROUTER_AUTH_REDIS_PASSWORD` | *(empty)* | Auth Redis password.                                    |
 | `LLM_ROUTER_AUTH_REDIS_PROTOCOL` | `3`       | Auth Redis protocol version (RESP2 = `2`, RESP3 = `3`). |
 
 ### Rate limiting
 
 Rate limiting is always applied when authentication is enabled:
 
-| Variable                             | Default   | Description                                                                     |
-|--------------------------------------|-----------|---------------------------------------------------------------------------------|
-| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` | `60`      | Default rate limit (requests per minute).                                       |
-| `LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED` | *(empty)* | Explicit toggle for rate limiting (usually unnecessary when AUTH_ENABLED=true). |
+| Variable                             | Default | Description                                                                                                                            |
+|--------------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` | `60`    | Default rate limit (requests per minute). Rate limiting is always active when authentication is enabled — there is no separate toggle. |
 
 ### Public endpoints
 
@@ -209,11 +211,13 @@ Rate limiting is always applied when authentication is enabled:
 
 ## Monitoring intervals
 
-| Variable                                              | Default | Description                                      |
-|-------------------------------------------------------|---------|--------------------------------------------------|
-| `LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS`        | `5`     | Seconds between llm-router-services checks.      |
-| `LLM_ROUTER_KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS` | `1`     | Interval (seconds) for model keepalive check.    |
-| `LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS`        | `5`     | Seconds between next checks of models providers. |
+| Variable                                               | Default | Description                                                                                                                                                    |
+|--------------------------------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS`         | `5`     | Seconds between llm-router-services checks.                                                                                                                    |
+| `LLM_ROUTER_KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS`  | `1`     | Interval (seconds) for model keepalive check.                                                                                                                  |
+| `LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS`         | `5`     | Seconds between next checks of models providers.                                                                                                               |
+| `LLM_ROUTER_PROVIDER_MONITOR_PING_TIMEOUT_SECONDS`     | `5`     | Per-provider health-check ping timeout (seconds). Busy LLM hosts (e.g. Ollama serving a large model) may need more than 2 s to accept a new connection.        |
+| `LLM_ROUTER_PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES` | `2`     | Number of *consecutive* failed pings required before a provider is marked unavailable (hysteresis, prevents a single slow ping from removing a live provider). |
 
 ---
 

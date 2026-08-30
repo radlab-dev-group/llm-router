@@ -162,6 +162,19 @@ class RedisKeyStoreCache(KeyStoreInterface):
             self._invalidate(key_id, old.get("key_hash", ""))
 
     # -- plaintext lookup (bypasses cache since salts are random) -------------
+    async def update_policy_override(
+        self, key_id: str, rate_limit: Optional[int]
+    ) -> None:
+        """
+        Set or clear the ``rate_limit`` policy override — forwards to backend
+        and invalidates the cached record.
+        """
+
+        old = await self._backend.get_key_by_id(key_id) or {}
+        await self._backend.update_policy_override(key_id, rate_limit)
+        if old:
+            self._invalidate(key_id, old.get("key_hash", ""))
+
     async def get_key_by_plain(self, key_plain: str) -> Optional[dict]:
         """
         Delegate plaintext lookup to backend — cannot be cached (random bcrypt salts).

@@ -31,9 +31,13 @@ from llm_router_api.base.constants import (
     REDIS_PASSWORD,
     REDIS_PROTOCOL,
     PROVIDER_MONITOR_INTERVAL_SECONDS,
+    PROVIDER_MONITOR_PING_TIMEOUT_SECONDS,
+    PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES,
 )
 from llm_router_api.core.monitor.provider_monitor import RedisProviderMonitor
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
+
+logger = logging.getLogger(__name__)
 
 
 class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
@@ -114,6 +118,8 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
             clear_buffers=clear_buffers,
             logger=logger,
             check_interval=monitor_check_interval,
+            check_timeout=PROVIDER_MONITOR_PING_TIMEOUT_SECONDS,
+            max_consecutive_failures=PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES,
         )
 
         self.strategy_prefix = strategy_prefix
@@ -444,20 +450,21 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
 
         The output is formatted in a table‑like layout for readability.
         """
+        _log = self.logger if self.logger is not None else logger
         try:
             # Retrieve the entire hash; missing fields default to None
             hash_data = self.redis_client.hgetall(redis_key)
         except Exception as exc:
-            print(f"[⚠️] Could not read Redis key '{redis_key}': {exc}")
+            # Intentional: this is a best-effort diagnostic; a read failure
+            # must never break the selection path, so log and bail out.
+            _log.warning("Could not read Redis key '%s': %s", redis_key, exc)
             return
 
-        print("\nProvider lock status:")
-        print("-" * 40)
+        _log.info("Provider lock status:")
         for provider in providers:
             field = self._provider_field(provider)
             status = hash_data.get(field, "false")
-            icon = "🔴" if status == "true" else "🟢"
             # Show a short identifier for the provider (fallback to field)
             provider_id = provider.get("id") or provider.get("api_host") or field
-            print(f"{icon}  {provider_id:<30} [{field}]")
-        print("-" * 40)
+            state = "locked" if status == "true" else "free"
+            _log.info("  %-30s [%s] (%s)", provider_id, field, state)

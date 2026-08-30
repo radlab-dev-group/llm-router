@@ -1396,6 +1396,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 options=options or {},
                 reconnect_number=reconnect_number or 0,
             )
+        except ValueError:
+            # Input‑validation failure (e.g. missing required argument):
+            # propagate to the Flask registrar, which is the single owner of
+            # the exception→HTTP‑code mapping and maps ``ValueError`` to a
+            # 400 response carrying the exception message.
+            clear_chosen_provider_finally = True
+            raise
         except Exception as e:
             self.logger.exception(e)
             clear_chosen_provider_finally = True
@@ -1499,6 +1506,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     model_name=api_model_provider.name,
                 )
             except Exception:  # pylint: disable=broad-exception-caught
+                # intentional: metrics must never break the response path.
                 pass  # metrics must never break the request
         return api_model_provider
 
@@ -1516,6 +1524,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     provider_type=api_model_provider.api_type,
                 )
             except Exception:  # pylint: disable=broad-exception-caught
+                # intentional: metrics must never break the response path.
                 pass
 
     def _dispatch_streaming(
@@ -1580,10 +1589,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         Normalize an HTTP response object into a Python dictionary.
 
-        If the response status code indicates an error, a
-        :class:`RuntimeError` is raised with the provider ID.
-        When the body cannot be parsed as JSON, a ``{"raw_response": <text>}``
-        mapping is returned instead.
+        On success the body is parsed as JSON (or passed through
+        ``prepare_response_function``).  When the body cannot be parsed as
+        JSON, a ``{"raw_response": <text>}`` mapping is returned instead.
 
         Parameters
         ----------
@@ -1597,25 +1605,31 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
         Returns
         -------
-        Dict
-            JSON payload or a raw‑response wrapper.
+        Union[Dict, requests.Response]
+            On success a JSON payload (or raw‑response wrapper).  On a
+            non‑OK response the **raw** ``requests.Response`` object is
+            returned so that the dispatch layer
+            (:mod:`llm_router_api.endpoints.http_dispatch`) can inspect
+            ``status_code``, retry on another provider, or translate the
+            status into an error payload for the client.
 
-        Raises
-        ------
-        RuntimeError
-            If ``response.ok`` is ``False``.
+        .. note::
+            Raising here (the previous behaviour) would mask the provider
+            status code from the retry logic in ``http_dispatch``.  Returning
+            the response object instead keeps the streaming body intact and
+            lets the dispatch layer own the 2xx vs non‑2xx decision.
         """
         if not response.ok:
             provider_id = api_model_provider.id if api_model_provider else "unknown"
-            self.logger.error(
+            self.logger.warning(
                 "Provider [%s] HTTP %d — response body: %s",
                 provider_id,
                 response.status_code,
                 response.text,
             )
-            raise RuntimeError(
-                f"Provider {provider_id} returned HTTP {response.status_code}"
-            )
+            # Do NOT raise: return the raw response (carrying ``status_code``)
+            # so the dispatch layer can retry or surface the provider status.
+            return response
         try:
             if self._prepare_response_function is not None:
                 result = self._prepare_response_function(response)

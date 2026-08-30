@@ -18,7 +18,7 @@ If an invalid ``strategy_name`` is supplied, a :class:`RuntimeError` is
 raised during initialisation.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from rdl_ml_utils.utils.logger import prepare_logger
 
@@ -44,6 +44,53 @@ STRATEGIES = {
     BalanceStrategies.FIRST_AVAILABLE: FirstAvailableStrategy,
     BalanceStrategies.FIRST_AVAILABLE_OPTIM: FirstAvailableOptimStrategy,
 }
+
+
+def _build_shared_redis_client() -> Optional[Any]:
+    """
+    Build a shared Redis client for worker‑global LB counters, or ``None``.
+
+    The client is created **lazily** (no immediate connection) and reuses the
+    same Redis endpoint the auth rate‑limiter uses (``LLM_ROUTER_AUTH_REDIS_*``)
+    so that all workers/containers observe the *same* selection counters.
+
+    It returns ``None`` (→ in‑memory counters) when:
+
+    * ``redis`` is not installed,
+    * no Redis host is configured, or
+    * client construction raises for any reason.
+
+    A short socket timeout is set so a downed Redis does not block selection
+    for long — :class:`LbCounters` falls back to in‑memory on any error.
+    """
+    try:
+        import redis  # noqa: F401
+
+        from llm_router_api.base.constants import (
+            REDIS_HOST,
+            REDIS_PORT,
+            REDIS_DB,
+            REDIS_PASSWORD,
+            REDIS_PROTOCOL,
+        )
+    except Exception:  # redis not installed / constants unavailable
+        return None
+
+    if not REDIS_HOST:
+        return None
+
+    try:
+        return redis.Redis(
+            host=REDIS_HOST,
+            port=REDIS_PORT,
+            db=REDIS_DB,
+            password=REDIS_PASSWORD,
+            protocol=REDIS_PROTOCOL,
+            socket_connect_timeout=1,
+            socket_timeout=2,
+        )
+    except Exception:  # pragma: no cover - defensive
+        return None
 
 
 class ProviderStrategyFacade:
@@ -75,6 +122,7 @@ class ProviderStrategyFacade:
         strategy_name: Optional[str] = None,
         logger_file_name: Optional[str] = None,
         logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        redis_client: Optional[Any] = None,
     ) -> None:
         """
         Initialize the chooser with either a concrete strategy instance or a
@@ -102,8 +150,19 @@ class ProviderStrategyFacade:
         )
 
         self.strategy_name: Optional[str] = strategy_name
+
+        # Optional shared Redis client for worker‑global counters
+        # (balanced / weighted).  When ``None`` the strategies fall back to
+        # in‑memory counters.
+        self._redis_client = redis_client
+        if self._redis_client is None:
+            # Default to the shared auth Redis endpoint (global across
+            # workers) when available; otherwise in‑memory counters.
+            self._redis_client = _build_shared_redis_client()
         self.strategy: ChooseProviderStrategyI = strategy or LoadBalancedStrategy(
-            models_config_path=models_config_path, logger=self._logger
+            models_config_path=models_config_path,
+            logger=self._logger,
+            redis_client=redis_client,
         )
 
         if not strategy and self.strategy_name:
@@ -148,7 +207,21 @@ class ProviderStrategyFacade:
         if not _cls:
             raise RuntimeError(f"Strategy {strategy_name} not found!")
 
-        return _cls(models_config_path=models_config_path, logger=self._logger)
+        import inspect
+
+        kwargs: Dict[str, Any] = {
+            "models_config_path": models_config_path,
+            "logger": self._logger,
+        }
+        # Only the counter‑based strategies (balanced / weighted / dynamic)
+        # accept a shared Redis client; pass it when supported.
+        try:
+            params: Dict[str, Any] = dict(inspect.signature(_cls).parameters)
+        except (TypeError, ValueError):  # pragma: no cover
+            params = {}
+        if "redis_client" in params and self._redis_client is not None:
+            kwargs["redis_client"] = self._redis_client
+        return _cls(**kwargs)
 
     def get_provider(
         self, model_name: str, providers: List[Dict], options: Optional[Dict] = None
@@ -194,6 +267,7 @@ class ProviderStrategyFacade:
                     model_name=model_name,
                 )
             except Exception:  # pylint: disable=broad-exception-caught
+                # intentional: metrics must never break provider selection.
                 pass
 
         return result

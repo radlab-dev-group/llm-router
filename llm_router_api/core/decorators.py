@@ -32,8 +32,6 @@ import time
 
 from typing import Callable, Any, Dict, Optional
 
-from llm_router_api.core.errors import error_as_dict, ERROR_NO_REQUIRED_PARAMS
-
 
 class EP:
     """
@@ -51,7 +49,8 @@ class EP:
     The two decorators provided are:
 
     * :meth:`EP.require_params` – aborts the call early when required
-      arguments are missing and returns a standard error payload.
+      arguments are missing by propagating the underlying
+      :class:`ValueError` (mapped to HTTP 400 by the Flask registrar).
     * :meth:`EP.response_time` – measures how long the wrapped method takes to
       execute and injects a ``response_time`` field into the returned mapping.
     """
@@ -68,10 +67,10 @@ class EP:
         endpoint base classes.  Inside the wrapper the endpoint’s private
         ``_check_required_params`` method is called.  If that method raises a
         :class:`ValueError` (meaning one or more required arguments are
-        missing) the decorator short‑circuits the call and returns an error
-        payload that follows the library’s response convention:
-
-        ``{"status": False, "body": {"error": "...", "error_msg": "..."} }``
+        missing) the exception is allowed to propagate: the Flask registrar is
+        the single owner of the exception→HTTP‑code mapping and translates
+        ``ValueError`` into an HTTP 400 response carrying the exception
+        message.
 
         Parameters
         ----------
@@ -89,24 +88,22 @@ class EP:
         -----
         * The wrapper treats a ``None`` ``params`` argument as an empty dictionary,
           because some endpoints do not require any input.
-        * The error payload is built with
-          :func:`llm_router_api.core.errors.error_as_dict`
-          using the constant ``ERROR_NO_REQUIRED_PARAMS``.
+        * Validation failures raise :class:`ValueError` (consistent contract);
+          they are **not** converted into error tuples here, so invalid input
+          never leaks into ``params`` downstream.
         * The wrapper returns the result of *func* unchanged when validation passes.
         """
 
         def wrapper(self, params: Optional[Dict[str, Any]] = None):
-            try:
-                # ``params`` may be ``None`` – treat it as an empty dict
-                self._check_required_params(params or {})
-            except ValueError as exc:
-                # Build the error payload and return it directly
-                return self.return_response_not_ok(
-                    error_as_dict(
-                        error=ERROR_NO_REQUIRED_PARAMS,
-                        error_msg=str(exc),
-                    )
-                )
+            # ``params`` may be ``None`` – treat it as an empty dict.
+            #
+            # ``_check_required_params`` raises :class:`ValueError` when a
+            # required argument is missing.  The exception is deliberately
+            # allowed to propagate (instead of being converted into an error
+            # tuple here): the Flask registrar is the *single owner* of the
+            # exception→HTTP‑code mapping and translates ``ValueError`` into
+            # an HTTP 400 response with the exception message.
+            self._check_required_params(params or {})
             # All required params are present – proceed with the original logic
             return func(self, params)
 

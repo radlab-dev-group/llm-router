@@ -11,7 +11,7 @@ All endpoint classes inherit from :class:`EndpointWithHttpRequestI`,
 a ``prepare_payload`` implementation, and the appropriate HTTP method configuration.
 """
 
-from typing import Any, Dict, Optional
+from typing import cast, Any, Dict, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -77,20 +77,21 @@ class LmStudioModelsHandler(PassthroughI):
 
     def __proper_models_list_format(self):
         _models_data = self._api_type_dispatcher.tags(
-            models_config=self._model_handler.list_active_models(),
+            models_config=self._model_handler.list_active_models() if self._model_handler else {},
             merge_to_list=True,
         )
         proper_models = []
         for m in _models_data:
+            m = cast(Dict[str, Any], m)
             _model = {
                 "id": m["id"],
-                "object": "model",
-                "type": "llm",
-                "publisher": m["publisher"],
-                "arch": m["arch"],
-                "compatibility_type": "gguf",
-                "quantization": "Q8_0",
-                "state": "loaded",
+                "object": m["object"],
+                "type": m.get("type"),
+                "publisher": m.get("publisher"),
+                "arch": m.get("arch"),
+                "compatibility_type": m.get("compatibility_type"),
+                "quantization": m.get("quantization"),
+                "state": m.get("state"),
                 "max_context_length": m["max_context_length"],
             }
             proper_models.append(_model)

@@ -163,3 +163,29 @@ class KeyStoreInterface(metaclass=abc.ABCMeta):
         -------
         List[ApiKeyRecord]
         """
+
+    @abc.abstractmethod
+    async def update_policy_override(
+        self, key_id: str, rate_limit: Optional[int]
+    ) -> None:
+        """
+        Set or clear the ``rate_limit`` policy override on an existing key.
+
+        Parameters
+        ----------
+        key_id : str
+            The key to update.
+        rate_limit : Optional[int]
+            New per-minute rate limit.  ``None`` clears the override.
+
+        Raises
+        ------
+        ValueError
+            When no key with ``key_id`` exists.
+
+        Notes
+        -----
+        Works on inactive (disabled) keys as well, so an override can be
+        managed before re-enabling a key.  Other ``policy_override`` fields
+        are preserved.
+        """

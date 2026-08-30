@@ -25,12 +25,29 @@ interface.
 
 import time
 import logging
+import hashlib
 
 from collections import deque
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 
+from llm_router_api.core.lb.lb_counters import LbCounters
 from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
+
+
+def _stable_unit(model_name: str, seq: int) -> float:
+    """
+    Deterministic pseudo‑random value in ``[0, 1)`` for a given
+    (model, selection‑index) pair.
+
+    Unlike the builtin :func:`hash` (which is salted per‑process via
+    ``PYTHONHASHSEED``), this is stable across workers and across
+    interpreters, so every worker computes the *same* offset for the same
+    global selection index.  That is what makes the shared counter translate
+    into a globally consistent weighted distribution.
+    """
+    digest = hashlib.sha256(f"{model_name}:{seq}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big") / 2**64
 
 
 class WeightedStrategy(ChooseProviderStrategyI):
@@ -58,17 +75,30 @@ class WeightedStrategy(ChooseProviderStrategyI):
     """
 
     def __init__(
-        self, models_config_path: str, logger: Optional[logging.Logger]
+        self,
+        models_config_path: str,
+        logger: Optional[logging.Logger] = None,
+        redis_client: Optional[Any] = None,
+        key_prefix: str = "llm-router:lb",
+        ttl: int = 0,
     ) -> None:
         """
         Initialize a new :class:`WeightedStrategy` instance.
 
-        The constructor creates an empty usage‑counter dictionary that is
-        populated lazily as models are routed.  No external state is
-        required.
+        The constructor creates the selection counters.  When a
+        ``redis_client`` is supplied the global selection sequence is stored
+        in Redis (shared across all workers); otherwise an in‑memory counter
+        is used.
         """
         super().__init__(models_config_path=models_config_path, logger=logger)
 
+        self._counters = LbCounters(
+            redis_client=redis_client,
+            key_prefix=key_prefix,
+            ttl=ttl,
+            lb_logger=logger,
+        )
+        # Legacy in‑process counter, retained for backwards‑compatibility.
         self._usage_counters: Dict[str, Dict[str, int]] = defaultdict(
             lambda: defaultdict(int)
         )
@@ -190,9 +220,10 @@ class WeightedStrategy(ChooseProviderStrategyI):
             acc += p
             cdf.append(acc)
 
-        # Deterministic offset based on usage counters.
-        total_uses = sum(self._usage_counters[model_name].values()) or 0
-        u = (hash((model_name, total_uses)) & 0xFFFFFFFF) / 0x100000000
+        # Global (worker‑shared) selection index — atomic when Redis-backed.
+        total_uses = self._counters.next_sequence(model_name)
+        # Stable, cross‑process offset in [0, 1).
+        u = _stable_unit(model_name, total_uses)
 
         # Find the first index where u <= cdf[i].
         idx = 0
@@ -201,8 +232,8 @@ class WeightedStrategy(ChooseProviderStrategyI):
                 idx = i
                 break
         chosen_cfg = providers[idx]
-        chosen_key = self._provider_key(chosen_cfg)
-        self._usage_counters[model_name][chosen_key] += 1
+        # Keep the in‑process counter in sync for backwards‑compat.
+        self._usage_counters[model_name][self._provider_key(chosen_cfg)] += 1
         return chosen_cfg
 
 
@@ -229,6 +260,9 @@ class DynamicWeightedStrategy(WeightedStrategy):
         initial_providers: Optional[List[Dict]] = None,
         history_size: int = 10_000,
         logger: Optional[logging.Logger] = None,
+        redis_client: Optional[Any] = None,
+        key_prefix: str = "llm-router:lb",
+        ttl: int = 0,
     ) -> None:
         """
         Initialise a new :class:`DynamicWeightedStrategy`.
@@ -244,8 +278,17 @@ class DynamicWeightedStrategy(WeightedStrategy):
             The maximum number of latency measurements to retain for each
             provider.  The underlying ``deque`` discards the oldest entry
             when the limit is exceeded.  Defaults to ``10_000``.
+        redis_client : Optional[Any], optional
+            Shared Redis client for worker‑global selection counters (see
+            :class:`WeightedStrategy`).
         """
-        super().__init__(models_config_path=models_config_path, logger=logger)
+        super().__init__(
+            models_config_path=models_config_path,
+            logger=logger,
+            redis_client=redis_client,
+            key_prefix=key_prefix,
+            ttl=ttl,
+        )
 
         # Mapping: provider key -> dynamic weight in [0, 1].
         self._dynamic_weights: Dict[str, float] = {}

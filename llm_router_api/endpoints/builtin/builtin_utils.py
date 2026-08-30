@@ -385,6 +385,8 @@ class GenerateQuestions(TextListUtilityEndpoint):
             _ = int(q_number)
             question_str = question_str[dot_pos + 1 :]
         except Exception:
+            # intentional: a non-numeric prefix is not a numbered question —
+            # keep the original string unchanged.
             pass
         return question_str
 

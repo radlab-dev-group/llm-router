@@ -2,7 +2,7 @@
 Parameterized interface-level tests for all KeyStore backends.
 
 Every test runs against MemoryKeyStore, RedisKeyStore (with mock Redis),
-and VaultKeyStore (with mocked hvault). Store-specific tests are in
+and VaultKeyStore (with mocked hvac). Store-specific tests are in
 separate files (`test_memory_key_store.py`, etc.).
 """
 
@@ -124,7 +124,7 @@ class _MockSecret:
 
 class _MockVaultClient:
     """
-    Minimal mock of hvault.Client for testing VaultKeyStore without Vault.
+    Minimal mock of hvac.Client for testing VaultKeyStore without Vault.
     """
 
     def __init__(self, **kwargs) -> None:
@@ -132,15 +132,11 @@ class _MockVaultClient:
         self.authenticated = False
         self.auth_method: str = ""
         self.last_token: str = ""
+        self._auth = _MockAuth(self)
 
-    # --- hvault.Client API ----------------------------------------
-    def auth_kubernetes(self, role: str, jwt: str, mount_point: str) -> None:
-        self.authenticated = True
-        self.auth_method = "kubernetes"
-
-    def auth_approle(self, role_id: str, secret_id: str) -> None:
-        self.authenticated = True
-        self.auth_method = "approle"
+    @property
+    def auth(self) -> Any:
+        return self._auth
 
     @property
     def token(self) -> str:
@@ -152,72 +148,105 @@ class _MockVaultClient:
         self.auth_method = "token"
         self.last_token = value
 
-    def write_secret(self, path: str, mount_point: str, data: dict) -> None:
-        # Store at the full Vault KV v2 path so list_secret/find_secret work correctly
-        key = f"{mount_point.rstrip('/')}/{path}" if "/" in mount_point else path
-        self._secrets[key] = data
+    def _store_key(self, path: str, mount_point: Optional[str]) -> str:
+        mp = (mount_point or "").rstrip("/")
+        return f"{mp}/{path}" if mp else path
 
-    def delete_secret(self, path: str, mount_point: str) -> None:
-        key = f"{mount_point.rstrip('/')}/{path}" if "/" in mount_point else path
-        self._secrets.pop(key, None)
-
-    def list_secret(self, path: str) -> Dict:
-        prefix = path.rstrip("/") + "/"
-        keys = sorted(
-            k
-            for k in self._secrets.keys()
-            if k == path.rstrip("/") or k.startswith(prefix)
-        )
-        # Return just the leaf names (relative to path)
-        result = []
-        for k in keys:
-            if k == path.rstrip("/"):
-                result.append(path.rstrip("/").split("/")[-1])
-            else:
-                result.append(k[len(prefix) :].rstrip("/"))
-        return {"data": {"keys": result}}
-
-    def read_secret(self, path: str) -> Dict:
-        data = self._secrets.get(path)
-        if not data:
-            raise KeyError(f"Secret not found: {path}")
-        return {"data": {"data": data}}
-
-    # --- hvault secrets.kv.v2 API (used by get_key_by_hash/Id direct paths) ---
+    # --- hvac secrets.kv.v2 API (used by VaultKeyStore) -----------------
     @property
     def secrets(self) -> Any:
         return _MockSecrets(self)
 
 
-class _MockV2:
+class _MockAuth:
     """
-    Mock for secrets.kv.v2.
+    Mock for hvac client.auth (kubernetes / approle login).
     """
 
     def __init__(self, parent: _MockVaultClient) -> None:
         self._parent = parent
 
+    @property
+    def kubernetes(self) -> Any:
+        return self
+
+    @property
+    def approle(self) -> Any:
+        return self
+
+    def login(
+        self,
+        role: Optional[str] = None,
+        jwt: Optional[str] = None,
+        role_id: Optional[str] = None,
+        secret_id: Optional[str] = None,
+        mount_point: Optional[str] = None,
+        **kwargs: Any,
+    ) -> None:
+        if jwt is not None:
+            self._parent.auth_method = "kubernetes"
+        else:
+            self._parent.auth_method = "approle"
+        self._parent.authenticated = True
+
+
+class _MockV2:
+    """
+    Mock for hvac secrets.kv.v2 (KV v2 backend).
+    """
+
+    def __init__(self, parent: _MockVaultClient) -> None:
+        self._parent = parent
+
+    def _key(self, path: Optional[str], mount_point: Optional[str]) -> str:
+        return self._parent._store_key(path or "", mount_point)
+
     def list_secrets(
         self, path: Optional[str] = None, mount_point: Optional[str] = None
     ) -> Dict:
-        if not path:
+        base = self._key(path, mount_point).rstrip("/")
+        if not base:
             return {"data": {"keys": []}}
-        prefix = path.rstrip("/") + "/"
+        prefix = base + "/"
         keys = sorted(
             k for k in self._parent._secrets.keys() if k.startswith(prefix)
         )
-        return {"data": {"keys": [k.split("/")[-1] for k in keys]}}
+        return {"data": {"keys": [k[len(prefix) :] for k in keys]}}
 
     def read_secret_version(
-        self, path: Optional[str] = None, mount_point: Optional[str] = None
+        self,
+        path: Optional[str] = None,
+        mount_point: Optional[str] = None,
+        **kwargs: Any,
     ) -> Dict:
-        if not path:
+        key = self._key(path, mount_point)
+        if not key:
             raise KeyError("No path provided")
-        data = self._parent._secrets.get(path)
-        if not data:
-            raise KeyError(f"Secret not found: {path}")
-        # hvault SDK returns the stored value directly under "data" key (single level)
-        return {"data": data}
+        data = self._parent._secrets.get(key)
+        if data is None:
+            raise KeyError(f"Secret not found: {key}")
+        # hvac returns the record nested under data.data (KV v2)
+        return {"data": {"data": data}}
+
+    def create_or_update_secret(
+        self,
+        path: str,
+        data: dict,
+        mount_point: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict:
+        self._parent._secrets[self._key(path, mount_point)] = dict(data)
+        return {}
+
+    def delete_secret_version(
+        self,
+        path: str,
+        version: Optional[int] = None,
+        mount_point: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict:
+        self._parent._secrets.pop(self._key(path, mount_point), None)
+        return {}
 
 
 class _MockKV:
@@ -258,7 +287,7 @@ def vault_client() -> _MockVaultClient:
 @pytest.fixture()
 def vault_store(vault_client: _MockVaultClient) -> Dict[str, Any]:
     """
-    VaultKeyStore backed by a mock hvault client.
+    VaultKeyStore backed by a mock hvac client.
     """
 
     import os
@@ -268,17 +297,20 @@ def vault_store(vault_client: _MockVaultClient) -> Dict[str, Any]:
     old_token = os.environ.get("LLM_ROUTER_AUTH_VAULT_TOKEN")
     os.environ["LLM_ROUTER_AUTH_VAULT_TOKEN"] = "test-token"
 
-    # Mock hvault BEFORE creating the store
-    orig_hvault = sys.modules.pop("hvault", None)
+    # Mock hvac BEFORE creating the store
+    orig_hvac = sys.modules.pop("hvac", None)
     orig_modules = {}
     for mod in list(sys.modules.keys()):
-        if "hvault" in mod and mod != "hvault":
+        if "hvac" in mod and mod != "hvac":
             orig_modules[mod] = sys.modules.pop(mod)
 
-    class _MockHvault:
+    class _MockHvac:
         Client = _MockVaultClient
+        exceptions = type(
+            "exceptions", (), {"InvalidPath": type("InvalidPath", (Exception,), {})}
+        )
 
-    sys.modules["hvault"] = _MockHvault()
+    sys.modules["hvac"] = _MockHvac()
 
     try:
         from llm_router_api.core.auth.key_store.vault import (
@@ -295,8 +327,8 @@ def vault_store(vault_client: _MockVaultClient) -> Dict[str, Any]:
         # Replace the internal client with our fixture's mock
         store._client = vault_client
     finally:
-        if orig_hvault is not None:
-            sys.modules["hvault"] = orig_hvault
+        if orig_hvac is not None:
+            sys.modules["hvac"] = orig_hvac
         for mod, mod_obj in orig_modules.items():
             sys.modules[mod] = mod_obj
         if old_token is not None:

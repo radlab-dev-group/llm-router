@@ -19,10 +19,11 @@ Typical usage
 >>> app.run()
 """
 
+import atexit
 import traceback
 
 from flask import Flask
-from typing import List, Optional, Type
+from typing import Any, List, Optional, Type
 
 from rdl_ml_utils.utils.logger import prepare_logger
 
@@ -138,9 +139,56 @@ class FlaskEngine:
         self._auth_metrics: Optional[AuthMetrics] = None
         self._router_metrics: Optional[RouterMetrics] = None
 
-    # def __del__(self):
-    #     if self._services_monitor:
-    #         self._services_monitor.stop()
+        # Track background threads we own so ``stop`` can be explicit and
+        # idempotent.  The constructor auto-starts the monitor (existing
+        # behaviour); ``stop`` (or the context manager / ``atexit`` hook)
+        # guarantees it is always torn down — previously the stop lived only
+        # in a commented-out ``__del__`` and each gunicorn worker leaked its
+        # monitor thread.
+        self._monitor_started = True
+        atexit.register(self._shutdown_background)
+
+    # ------------------------------------------------------------------ #
+    # Explicit background-thread lifecycle (M13)
+    # ------------------------------------------------------------------ #
+    def start(self) -> "FlaskEngine":
+        """
+        Start the engine's background threads (idempotent).
+
+        Returns
+        -------
+        FlaskEngine
+            ``self`` (enables method‑chaining).
+        """
+        monitor = getattr(self, "_services_monitor", None)
+        if monitor is not None and not getattr(self, "_monitor_started", False):
+            monitor.start()
+            self._monitor_started = True
+        return self
+
+    def stop(self) -> None:
+        """
+        Stop the engine's background threads and wait for them to finish.
+
+        Idempotent — safe to call from a shutdown hook, a signal handler and
+        an ``atexit`` callback.
+        """
+        self._shutdown_background()
+
+    def _shutdown_background(self) -> None:
+        monitor = getattr(self, "_services_monitor", None)
+        if monitor is not None and getattr(self, "_monitor_started", False):
+            try:
+                monitor.stop()
+            finally:
+                self._monitor_started = False
+
+    def __enter__(self) -> "FlaskEngine":
+        self.start()
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+        self.stop()
 
     def prepare_flask_app(
         self,
@@ -199,7 +247,6 @@ class FlaskEngine:
             LLM_ROUTER_AUTH_VAULT_ROLE_ID,
             LLM_ROUTER_AUTH_VAULT_SECRET_ID,
             LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD,
-            LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED,
             LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT,
             LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS,
             LLM_ROUTER_AUTH_AUDIT,
@@ -277,7 +324,6 @@ class FlaskEngine:
         # 4. Auth config
         auth_config = {
             "public_endpoints": LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS,
-            "rate_limit_enabled": LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED,
             "default_rate_limit": LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT,
             "rotation_grace_period": LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD,
             "key_prefix": LLM_ROUTER_AUTH_KEY_PREFIX,

@@ -208,7 +208,7 @@ marimo/_lsp/
 __marimo__/
 
 # Local configuration
-*-pkedzia.json
+*-pkedzia.json*
 __gpg/
 resources/keys/
 local-https/
@@ -222,3 +222,4 @@ logs/prometheus_multiproc/*.db
 
 docstore.pkl
 index.faiss
+/logs/auditor/request*.audit

@@ -100,7 +100,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == AuthCommand.NAME:
-        return AuthCommand.run(argv[1:])
+        return AuthCommand.dispatch(args)
 
     if args.command == _CfgCmdReg.NAME:
         return _CfgCmdReg.run(argv[1:])
