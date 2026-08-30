@@ -1,16 +1,27 @@
-# Lint / type-check tools (pinned for reproducible CI)
-black==24.4.2
-flake8==7.1.1
-pylint==3.2.7
-mypy==1.10.1
-bandit[toml]==1.7.9
-# type stubs for setuptools (type-checking only, not a runtime dep)
+## Lint / type-check tools (pinned for reproducible CI)
+#black==24.4.2
+#flake8==7.1.1
+#pylint==3.2.7
+#mypy==1.10.1
+#bandit[toml]==1.7.9
+### type stubs for setuptools (type-checking only, not a runtime dep)
+#types-setuptools>=68.0.0
+#
+### Test runner + test-only runtime deps
+#pytest==8.2.2
+#openai==1.109.1
+#nest_asyncio==1.6.0
+
+
+## Lint / type-check tools (pinned for reproducible CI)
+black
+flake8
+pylint
+mypy
+bandit[toml]
+## type stubs for setuptools (type-checking only, not a runtime dep)
 types-setuptools
-
-# Test runner + test-only runtime deps
-pytest==8.2.2
-openai>=1.0
-nest_asyncio>=1.6
-
-# safety
-# pre-commit
+## Test runner + test-only runtime deps
+pytest
+openai
+nest_asyncio
