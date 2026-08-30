@@ -197,11 +197,22 @@ class FlaskEndpointRegistrar:
 
                 return jsonify(result or {}), 200
             except ValueError as ve:
+                # Input‑validation error (missing required argument, bad
+                # payload, …) → HTTP 400.  The registrar is the *single
+                # owner* of the exception→status‑code mapping: endpoints
+                # raise :class:`ValueError` (or a subclass such as pydantic's
+                # ``ValidationError``) for client‑side input problems and
+                # let it propagate out of ``run_ep``.
                 return (
                     jsonify(
                         {
-                            "error": "bad_request",
-                            "details": sanitize_error_message(str(ve)),
+                            "error": {
+                                "message": sanitize_error_message(str(ve)),
+                                "type": "invalid_request_error",
+                                "param": None,
+                                "code": 400,
+                            },
+                            "status": False,
                         }
                     ),
                     400,
