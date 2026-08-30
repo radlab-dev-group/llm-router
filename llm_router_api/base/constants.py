@@ -395,6 +395,27 @@ PROVIDER_MONITOR_INTERVAL_SECONDS = int(
     )
 )
 
+# Per‑provider health‑check ping timeout (seconds).  Busy LLM hosts
+# (e.g. Ollama serving a large model) can take longer than 2 s to accept
+# a *new* TCP connection while still serving keep‑alive traffic, so the
+# default is generous and operator‑tunable.
+PROVIDER_MONITOR_PING_TIMEOUT_SECONDS = float(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}PROVIDER_MONITOR_PING_TIMEOUT_SECONDS",
+        5.0,
+    )
+)
+
+# Number of *consecutive* failed pings required before a provider is
+# marked unavailable (hysteresis).  Prevents a single slow/busy ping from
+# kicking a live provider out of the active pool.
+PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES",
+        2,
+    )
+)
+
 
 # =============================================================================
 # STARTUP VALIDATION
