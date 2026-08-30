@@ -1384,6 +1384,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     ep_url=ep_url,
                     params=params or {},
                     options=options,
+                    orig_params=orig_params,
+                    reconnect_number=reconnect_number or 0,
                 )
 
             return self._dispatch_non_streaming(
@@ -1532,6 +1534,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         ep_url: str,
         params: Dict,
         options: Optional[Dict],
+        orig_params: Optional[Dict] = None,
+        reconnect_number: int = 0,
     ):
         """
         Dispatch a streaming response (format metrics + executor).
@@ -1552,6 +1556,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             options=options,
             stream_type=stream_type,
             api_model_provider=api_model_provider,
+            orig_params=orig_params,
+            reconnect_number=reconnect_number,
         )
 
     def _dispatch_non_streaming(
