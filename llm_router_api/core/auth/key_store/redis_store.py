@@ -19,6 +19,7 @@ from typing import List, Optional
 from llm_router_api.base.constants import LLM_ROUTER_AUTH_REDIS_PROTOCOL
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import (
+    apply_rate_limit_override,
     gen_key_prefix,
     gen_sha256_index,
 )
@@ -238,6 +239,18 @@ class RedisKeyStore(KeyStoreInterface):
             raise ValueError(f"Key {key_id} not found")
         record = json.loads(raw)
         record["is_active"] = True
+        self._redis.set(self._key(key_id), json.dumps(record))
+
+    async def update_policy_override(
+        self, key_id: str, rate_limit: Optional[int]
+    ) -> None:
+        """
+        Set or clear the ``rate_limit`` policy override (see interface).
+        """
+        raw = self._redis.get(self._key(key_id))
+        if not raw:
+            raise ValueError(f"Key {key_id} not found")
+        record = apply_rate_limit_override(json.loads(raw), rate_limit)
         self._redis.set(self._key(key_id), json.dumps(record))
 
     async def delete_key(self, key_id: str) -> None:

@@ -1,9 +1,17 @@
 """
 HashiCorp Vault KV v2 key store.
 
-Uses the Vault Python SDK (``hvac``) to read/write API key secrets
-under a configurable path.  Supports Kubernetes, AppRole, and token auth
-methods.
+Uses the official HashiCorp Vault Python client (``hvac``) to read/write API
+key secrets under a configurable path.  Supports Kubernetes, AppRole, and
+token auth methods.
+
+Mount path convention
+---------------------
+``mount_path`` is the full KV v2 location, e.g.
+``secret/data/llm-router/api-keys``.  The first segment (``secret``) is the
+engine **mount point**; the remainder after ``data/`` is the **base path**
+under the engine's ``data/`` directory.  ``hvac`` is called with
+``mount_point="secret"`` and ``path="llm-router/api-keys/<key_id>"``.
 """
 
 from __future__ import annotations
@@ -15,10 +23,11 @@ import bcrypt
 
 import logging
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import (
+    apply_rate_limit_override,
     gen_key_prefix,
     gen_sha256_index,
 )
@@ -53,10 +62,10 @@ class VaultKeyStore(KeyStoreInterface):
         # Optional Redis for the O(1) sha256 reverse index (shared with the cache)
         self._redis = redis_client
 
-        # Lazy import — do not require hvault at import time
-        import hvault
+        # Lazy import — hvac is an optional dependency (llm-router[vault])
+        import hvac
 
-        self._client = hvault.Client(url=addr)
+        self._client = hvac.Client(url=addr)
         self._authenticate_vault(
             auth_method, role_id, secret_id, k8s_service_account, k8s_review_path
         )
@@ -78,6 +87,91 @@ class VaultKeyStore(KeyStoreInterface):
         else:
             self._wrapped = self
 
+    # ---- hvac path helpers -------------------------------------------------
+
+    @property
+    def _mount_point(self) -> str:
+        """
+        KV engine mount (e.g. ``secret`` from ``secret/data/llm-router/...``).
+        """
+        parts = self._mount_path.split("/")
+        return parts[0]
+
+    @property
+    def _base_path(self) -> str:
+        """
+        Path under the engine's ``data/`` directory
+        (e.g. ``llm-router/api-keys``), or ``""`` for the mount root.
+        """
+        parts = self._mount_path.split("/")
+        if len(parts) > 2 and parts[1] == "data":
+            return "/".join(parts[2:])
+        return "/".join(parts[1:])
+
+    def _secret_path(self, key_id: str) -> str:
+        """
+        Full ``hvac`` secret path for *key_id* (base path + key name).
+        """
+        base = self._base_path
+        return f"{base}/{key_id}" if base else key_id
+
+    def _read_record(self, key_id: str) -> Dict[str, Any]:
+        """
+        Read a key record from Vault KV v2 (raises on missing key).
+        """
+        secret_data = self._client.secrets.kv.v2.read_secret_version(
+            path=self._secret_path(key_id),
+            mount_point=self._mount_point,
+        )
+        return secret_data.get("data", {}).get("data", {}) or {}
+
+    def _write_record(self, key_id: str, record: Dict[str, Any]) -> None:
+        """
+        Create or update a key record in Vault KV v2.
+        """
+        self._client.secrets.kv.v2.create_or_update_secret(
+            path=self._secret_path(key_id),
+            data=record,
+            mount_point=self._mount_point,
+        )
+
+    def _list_key_names(self) -> List[str]:
+        """
+        List key names stored under the base path.
+        """
+        secret = self._client.secrets.kv.v2.list_secrets(
+            path=self._base_path,
+            mount_point=self._mount_point,
+        )
+        return (secret.get("data", {}) or {}).get("keys", []) or []
+
+    def _delete_secret(self, key_id: str) -> None:
+        """
+        Delete the latest version of a key (raises on missing key).
+        """
+        self._client.secrets.kv.v2.delete_secret_version(
+            path=self._secret_path(key_id),
+            mount_point=self._mount_point,
+        )
+
+    @staticmethod
+    def _is_not_found(exc: Exception) -> bool:
+        """
+        True when *exc* means "the secret does not exist" (HTTP 404).
+        """
+        try:
+            import hvac
+
+            if isinstance(exc, hvac.exceptions.InvalidPath):
+                return True
+        except ImportError:
+            # intentional: hvac may be absent; fall back to the string check.
+            pass
+        text = str(exc)
+        return "404" in text or "not found" in text.lower()
+
+    # ---- authentication ------------------------------------------------------
+
     def _authenticate_vault(
         self,
         auth_method: str,
@@ -93,13 +187,13 @@ class VaultKeyStore(KeyStoreInterface):
         if auth_method == "kubernetes":
             with open(sa_path, "r", encoding="utf-8") as f:
                 jwt = f.read().strip()
-            self._client.auth_kubernetes(
+            self._client.auth.kubernetes.login(
                 role=os.environ.get("LLM_ROUTER_AUTH_VAULT_ROLE_ID", role_id),
                 jwt=jwt,
                 mount_point=review_path,
             )
         elif auth_method == "approle":
-            self._client.auth_approle(
+            self._client.auth.approle.login(
                 role_id=os.environ.get("LLM_ROUTER_AUTH_VAULT_ROLE_ID", role_id),
                 secret_id=os.environ.get(
                     "LLM_ROUTER_AUTH_VAULT_SECRET_ID", secret_id
@@ -154,19 +248,12 @@ class VaultKeyStore(KeyStoreInterface):
                 return None
 
         # Legacy fallback: full scan (constant-time bcrypt per key)
-        kv_path = self._mount_path.rstrip("/")
         try:
-            secret = self._client.secrets.kv.v2.list_secrets(
-                path=kv_path,
-                mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
-            )
+            keys = self._list_key_names()
         except Exception as exc:
             # If Vault is down we return None (the caller will reject the key)
             _logger.error("Vault list_secrets failed: %s", exc)
             return None
-
-        secrets_data = secret.get("data", {}) or {}
-        keys = secrets_data.get("keys") or []
 
         # Warn when scanning many keys (indicates need for hash-based lookup)
         if len(keys) > 50:
@@ -178,11 +265,7 @@ class VaultKeyStore(KeyStoreInterface):
 
         for key_name in keys:
             try:
-                secret_data = self._client.secrets.kv.v2.read_secret_version(
-                    path=f"{kv_path}/{key_name}",
-                    mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
-                )
-                record = secret_data.get("data", {}).get("data", {}) or {}
+                record = self._read_record(key_name)
                 stored_hash = record.get("key_hash")
                 if stored_hash and bcrypt.checkpw(
                     key_plain.encode(), stored_hash.encode()
@@ -214,25 +297,14 @@ class VaultKeyStore(KeyStoreInterface):
         if self._wrapped is not self:
             return await self._wrapped.get_key_by_hash(key_hash)
         # Direct path (when _no_internal_cache=True): scan all keys and compare hash
-        kv_path = self._mount_path.rstrip("/")
         try:
-            secret = self._client.secrets.kv.v2.list_secrets(
-                path=kv_path,
-                mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
-            )
+            keys = self._list_key_names()
         except Exception:
             return None
 
-        secrets_data = secret.get("data", {}) or {}
-        keys = secrets_data.get("keys") or []
-
         for key_name in keys:
             try:
-                secret_data = self._client.secrets.kv.v2.read_secret_version(
-                    path=f"{kv_path}/{key_name}",
-                    mount_point=kv_path.split("/")[0] if "/" in kv_path else None,
-                )
-                record = secret_data.get("data", {}).get("data", {}) or {}
+                record = self._read_record(key_name)
                 stored_hash = record.get("key_hash")
                 if stored_hash and stored_hash == key_hash:
                     return {
@@ -254,31 +326,22 @@ class VaultKeyStore(KeyStoreInterface):
         if self._wrapped is not self:
             return await self._wrapped.get_key_by_id(key_id)
         # Direct path (when _no_internal_cache=True): read from Vault directly
-        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
-            secret_data = self._client.secrets.kv.v2.read_secret_version(
-                path=kv_path,
-                mount_point=(
-                    self._mount_path.split("/")[0]
-                    if "/" in self._mount_path
-                    else None
-                ),
-            )
-            record = secret_data.get("data", {}).get("data", {}) or {}
-            if not record.get("is_active"):
-                return None
-            return {
-                "key_id": key_id,
-                "key_hash": record.get("key_hash"),
-                "key_plain": None,
-                "key_prefix": record.get("key_prefix", ""),
-                "policy_name": record.get("policy_name", "developer"),
-                "is_active": record.get("is_active", True),
-                "created_at": record.get("created_at"),
-                "expires_at": record.get("expires_at"),
-            }
+            record = self._read_record(key_id)
         except Exception:
             return None
+        if not record.get("is_active"):
+            return None
+        return {
+            "key_id": key_id,
+            "key_hash": record.get("key_hash"),
+            "key_plain": None,
+            "key_prefix": record.get("key_prefix", ""),
+            "policy_name": record.get("policy_name", "developer"),
+            "is_active": record.get("is_active", True),
+            "created_at": record.get("created_at"),
+            "expires_at": record.get("expires_at"),
+        }
 
     async def create_key(self, record: dict) -> str:
         # The vault write goes directly to vault (backend), cache invalidated afterwards
@@ -305,12 +368,8 @@ class VaultKeyStore(KeyStoreInterface):
             "metadata": record.get("metadata", {}),
         }
 
-        # Write to Vault KV v2 (data field for KV v2)
-        self._client.write_secret(
-            path=key_id,
-            mount_point=self._mount_path,
-            data={"data": api_record},
-        )
+        # Write to Vault KV v2 (hvac wraps the record in the "data" field)
+        self._write_record(key_id, api_record)
         # O(1) reverse index (best-effort — the scan fallback still works)
         if self._redis is not None:
             self._redis.set(self._index_key(key_index), key_id)
@@ -347,38 +406,20 @@ class VaultKeyStore(KeyStoreInterface):
         await self.update_grace_until(new_id, new_record["grace_until"])
 
         # Invalidate old
-        self._client.write_secret(
-            path=key_id,
-            mount_point=self._mount_path,
-            data={"data": {"is_active": False, "rotated_to": new_id}},
-        )
+        self._write_record(key_id, {"is_active": False, "rotated_to": new_id})
         return new_plain
 
     async def disable_key(self, key_id: str) -> None:
         """
         Deactivate a key by setting is_active=False.
         """
-
-        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
-            secret_data = self._client.secrets.kv.v2.read_secret_version(
-                path=kv_path,
-                mount_point=(
-                    self._mount_path.split("/")[0]
-                    if "/" in self._mount_path
-                    else None
-                ),
-            )
-            record = secret_data.get("data", {}).get("data", {}) or {}
+            record = self._read_record(key_id)
         except Exception:
             raise ValueError(f"Key {key_id} not found") from None
         old_index = record.get("key_index")
         record["is_active"] = False
-        self._client.write_secret(
-            path=key_id,
-            mount_point=self._mount_path,
-            data={"data": record},
-        )
+        self._write_record(key_id, record)
         # Retire the index so the disabled key can't authenticate
         if self._redis is not None and old_index:
             self._redis.delete(self._index_key(old_index))
@@ -387,30 +428,29 @@ class VaultKeyStore(KeyStoreInterface):
         """
         Re-activate a previously deactivated key.
         """
-
-        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
-            secret_data = self._client.secrets.kv.v2.read_secret_version(
-                path=kv_path,
-                mount_point=(
-                    self._mount_path.split("/")[0]
-                    if "/" in self._mount_path
-                    else None
-                ),
-            )
-            record = secret_data.get("data", {}).get("data", {}) or {}
+            record = self._read_record(key_id)
         except Exception:
             raise ValueError(f"Key {key_id} not found") from None
         index = record.get("key_index")
         record["is_active"] = True
-        self._client.write_secret(
-            path=key_id,
-            mount_point=self._mount_path,
-            data={"data": record},
-        )
+        self._write_record(key_id, record)
         # Re-add the index so the re-enabled key can authenticate again
         if self._redis is not None and index:
             self._redis.set(self._index_key(index), key_id)
+
+    async def update_policy_override(
+        self, key_id: str, rate_limit: Optional[int]
+    ) -> None:
+        """
+        Set or clear the ``rate_limit`` policy override (see interface).
+        """
+        try:
+            record = self._read_record(key_id)
+        except Exception:
+            raise ValueError(f"Key {key_id} not found") from None
+        record = apply_rate_limit_override(record, rate_limit)
+        self._write_record(key_id, record)
 
     async def delete_key(self, key_id: str) -> None:
         """
@@ -427,13 +467,10 @@ class VaultKeyStore(KeyStoreInterface):
             if old_index:
                 self._redis.delete(self._index_key(old_index))
         try:
-            self._client.delete_secret(
-                path=key_id,
-                mount_point=self._mount_path,
-            )
+            self._delete_secret(key_id)
         except Exception as exc:
             # Treat HTTP 404 as "key already gone" — no-op
-            if "404" in str(exc) or "not found" in str(exc).lower():
+            if self._is_not_found(exc):
                 return
             raise
 
@@ -443,27 +480,13 @@ class VaultKeyStore(KeyStoreInterface):
         """
 
         try:
-            response = self._client.list_secret(
-                path=self._mount_path.rstrip("/"),
-            )
-            if not response or not response.get("data"):
-                return []
-            keys = response["data"].get("keys", [])
+            keys = self._list_key_names()
             # Strip trailing slashes from key names
             keys = [k.rstrip("/") for k in keys if k.strip()]
             result = []
             for kid in keys:
-                kv_path = f"{self._mount_path.rstrip('/')}/{kid}"
                 try:
-                    secret_data = self._client.secrets.kv.v2.read_secret_version(
-                        path=kv_path,
-                        mount_point=(
-                            self._mount_path.split("/")[0]
-                            if "/" in self._mount_path
-                            else None
-                        ),
-                    )
-                    record = secret_data.get("data", {}).get("data", {}) or {}
+                    record = self._read_record(kid)
                 except Exception:
                     continue
                 result.append(
@@ -484,26 +507,12 @@ class VaultKeyStore(KeyStoreInterface):
         """
         Update last_used_at for a key via targeted write — never re-hashes.
         """
-
-        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
-            secret_data = self._client.secrets.kv.v2.read_secret_version(
-                path=kv_path,
-                mount_point=(
-                    self._mount_path.split("/")[0]
-                    if "/" in self._mount_path
-                    else None
-                ),
-            )
-            record = secret_data.get("data", {}).get("data", {}) or {}
+            record = self._read_record(key_id)
         except Exception:  # key not found — fire-and-forget semantics
             return
         record["last_used_at"] = time.time()
-        self._client.write_secret(
-            path=key_id,
-            mount_point=self._mount_path,
-            data={"data": record},
-        )
+        self._write_record(key_id, record)
 
     def update_last_used_sync(self, key_id: str) -> None:
         """
@@ -519,29 +528,16 @@ class VaultKeyStore(KeyStoreInterface):
 
             asyncio.get_event_loop().create_task(self.update_last_used(key_id))
         except RuntimeError:
+            # intentional: no running event loop — best-effort, skip scheduling.
             pass
 
     async def update_grace_until(self, key_id: str, grace_until: float) -> None:
         """
         Update grace_until for a key (read-modify-write to preserve the record).
         """
-
-        kv_path = f"{self._mount_path.rstrip('/')}/{key_id}"
         try:
-            secret_data = self._client.secrets.kv.v2.read_secret_version(
-                path=kv_path,
-                mount_point=(
-                    self._mount_path.split("/")[0]
-                    if "/" in self._mount_path
-                    else None
-                ),
-            )
-            record = secret_data.get("data", {}).get("data", {}) or {}
+            record = self._read_record(key_id)
         except Exception:
             return
         record["grace_until"] = grace_until
-        self._client.write_secret(
-            path=key_id,
-            mount_point=self._mount_path,
-            data={"data": record},
-        )
+        self._write_record(key_id, record)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 import hashlib
 
-from typing import Dict
+from typing import Any, Dict
 
 
 def gen_key_prefix(key_plain: str) -> str:
@@ -68,4 +68,26 @@ def build_key_record(raw: dict) -> Dict:
     record.setdefault("key_plain", None)
     record.setdefault("metadata", {})
     record.setdefault("policy_override", None)
+    return record
+
+
+def apply_rate_limit_override(
+    record: Dict[str, Any],
+    rate_limit: Any,
+) -> Dict[str, Any]:
+    """
+    Return a copy of *record* with the ``rate_limit`` policy override
+    set (or cleared when *rate_limit* is ``None``).
+
+    Other ``policy_override`` fields are preserved.  When clearing leaves
+    the override empty, it is normalised to ``None``.
+    """
+    record = dict(record)
+    override = dict(record.get("policy_override") or {})
+    if rate_limit is None:
+        override.pop("rate_limit", None)
+        record["policy_override"] = override or None
+    else:
+        override["rate_limit"] = int(rate_limit)
+        record["policy_override"] = override
     return record

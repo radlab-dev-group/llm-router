@@ -326,10 +326,8 @@ LLM_ROUTER_AUTH_KEY_CACHE_JITTER = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_KEY_CACHE_JITTER", "60")
 )
 
-# Rate limiting
-LLM_ROUTER_AUTH_RATE_LIMIT_ENABLED = bool_env_value(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_RATE_LIMIT_ENABLED"
-)
+# Rate limiting (applied automatically with auth — there is no separate
+# toggle; see docs/RATE_LIMITING.md)
 LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_DEFAULT_RATE_LIMIT", "60")
 )

@@ -13,7 +13,7 @@ from llm_router_api.base.constants import LLM_ROUTER_AUTH_REDIS_PROTOCOL
 from llm_router_api.core.auth.key_store.memory import MemoryKeyStore
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 
-# Lazy imports to avoid hard dependency on hvault/bcrypt at import time
+# Lazy imports to avoid hard dependency on hvac/bcrypt at import time
 _VAULT_AVAILABLE = False
 _REDIS_AVAILABLE = False
 try:
@@ -21,13 +21,15 @@ try:
 
     _REDIS_AVAILABLE = True
 except ImportError:
+    # intentional: redis is optional — flag stays False when not installed.
     pass
 
 try:
-    import hvault  # noqa: F401
+    import hvac  # noqa: F401
 
     _VAULT_AVAILABLE = True
 except ImportError:
+    # intentional: hvac is optional — flag stays False when not installed.
     pass
 
 
@@ -105,8 +107,8 @@ def create_key_store(
     if store_type == "vault":
         if not _VAULT_AVAILABLE:
             raise RuntimeError(
-                "hashicorp-vault is not installed. Install it with: "
-                "pip install llm-router[vault]"
+                "hvac is not installed. Install it with: "
+                "pip install llm-router[vault] (or: pip install hvac)"
             )
         from .vault import VaultKeyStore
 

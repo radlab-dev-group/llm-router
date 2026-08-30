@@ -104,12 +104,12 @@ class ApiTypesI(ABC):
                     "root": "gpt-oss:20b",
                     "host": "https://api.example.com",
                     "path": "",
-                    "type": "vllm",
-                    "publisher": "ollama",
-                    "state": "not-loaded",
-                    "arch": "gpt-oss:20b",
-                    "compatibility_type": "mlx",
-                    "quantization": "4bit",
+                    "type": "ollama",
+                    "publisher": None,
+                    "state": None,
+                    "arch": None,
+                    "compatibility_type": None,
+                    "quantization": None,
                 }
 
         Notes
@@ -121,6 +121,7 @@ class ApiTypesI(ABC):
           client libraries, facilitating seamless integration downstream.
         """
 
+        _type = m.get("type") or m.get("api_type")
         return {
             "id": str(m.get("name", "")),
             "name": str(m.get("name", "")),
@@ -132,12 +133,16 @@ class ApiTypesI(ABC):
             "root": str(m.get("name", "")),
             "host": str(m.get("api_host", "")),
             "path": str(m.get("model_path", "")),
-            "type": "vllm",
-            "publisher": str(m.get("api_type", "") or ""),
-            "state": "not-loaded",
-            "arch": str(m.get("name", "")),
-            "compatibility_type": "mlx",
-            "quantization": "4bit",
+            # Provider-specific metadata: sourced from the real per-provider
+            # configuration (e.g. vLLM ``/api/tags``, Ollama ``/api/tags``,
+            # OpenAI ``/models``) whenever the operator supplied it; ``None``
+            # otherwise — never fabricated constants.
+            "type": _type,
+            "publisher": m.get("publisher"),
+            "state": m.get("state"),
+            "arch": m.get("arch"),
+            "compatibility_type": m.get("compatibility_type"),
+            "quantization": m.get("quantization"),
             "is_embedding": bool(m.get("is_embedding", False)),
         }
 
