@@ -37,6 +37,7 @@ from typing import Dict, List, Optional
 
 from llm_router_api.core.auth.key_store.interface import KeyStoreInterface
 from llm_router_api.core.auth.key_store._record_helpers import (
+    apply_rate_limit_override,
     gen_key_prefix,
     gen_sha256_index,
 )
@@ -345,6 +346,19 @@ class MemoryKeyStore(KeyStoreInterface):
         if index is not None:
             self._by_sha256[index] = key_id
         # Persist to seed file if configured
+        if self._seed_file:
+            self._persist_seeds(self._seed_file)
+
+    async def update_policy_override(
+        self, key_id: str, rate_limit: Optional[int]
+    ) -> None:
+        """
+        Set or clear the ``rate_limit`` policy override (see interface).
+        """
+        record = self._keys.get(key_id)
+        if record is None:
+            raise ValueError(f"Key {key_id} not found")
+        self._keys[key_id] = apply_rate_limit_override(record, rate_limit)
         if self._seed_file:
             self._persist_seeds(self._seed_file)
 
