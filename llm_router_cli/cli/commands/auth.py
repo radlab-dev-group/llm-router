@@ -4,7 +4,7 @@ CLI commands for API key management.
 Usage::
 
     llm-router auth key generate [--policy developer] [--store memory]
-    llm-router auth key list [--store memory]
+    llm-router auth key list [--store memory] [--json]
     llm-router auth key delete <key-id> [--store memory]
     llm-router auth key disable <key-id> [--store memory]
     llm-router auth key enable <key-id> [--store memory]
@@ -25,15 +25,21 @@ import asyncio
 import argparse
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 
 class AuthCommand:
-    """Encapsulates the ``auth`` CLI subcommand and all its children.
+    """
+    Encapsulates the ``auth`` CLI subcommand and all its children.
 
-    Public API (exactly two methods):
-      - :meth:`register_parser`  – register *auth* under a parent argparse parser.
-      - :meth:`run`             – standalone entry point; parse + dispatch.
+    A single argparse tree is built once (see :meth:`register_parser` /
+    :meth:`build_parser`) and dispatching happens **exclusively on the
+    parsed namespace** — the raw argv is never re-scanned.
+
+    Public API:
+      - :meth:`register_parser` – register *auth* under a parent parser.
+      - :meth:`run`             – standalone entry point (parse + dispatch).
+      - :meth:`dispatch`        – dispatch an already-parsed namespace.
     """
 
     NAME = "auth"
@@ -76,7 +82,7 @@ class AuthCommand:
             "--store",
             default="memory",
             choices=AuthCommand.STORE_BACKENDS,
-            help="Key store backend",
+            help="Key store backend (default: memory)",
         )
         p.add_argument(
             "--auth-redis-host",
@@ -133,7 +139,8 @@ class AuthCommand:
     @classmethod
     def _seed_policies(cls, config_dir: Path) -> None:
         """
-        Copy the shipped policies JSON into *config_dir* when it does not exist yet.
+        Copy the shipped policies JSON into *config_dir* when it does not
+        exist yet.
         """
         dest = config_dir / "rate_limiting-policies.json"
         if dest.exists():
@@ -149,17 +156,19 @@ class AuthCommand:
             dest.write_bytes(src_data)
             return
         except (ImportError, OSError):
+            # intentional: packaged preset missing/unreadable — try the
+            # filesystem fallback next.
             pass
         fallback = Path("resources/configs/rate_limiting-policies.json")
         if fallback.is_file():
             dest.write_text(fallback.read_text(encoding="utf-8"))
 
-    # ---- Key-store / Redis helpers ----------------------------------------
+    # ---- Key-store kwargs / factory -----------------------------------------
 
     @staticmethod
-    def _auth_redis_kwargs(args) -> Dict:
+    def _auth_redis_kwargs(args: Any) -> Dict[str, Any]:
         """
-        Build redis kwargs for auth key store (CLI args → env vars → defaults).
+        Build redis kwargs for the auth key store (CLI args → env vars).
         """
         return {
             "redis_host": getattr(args, "auth_redis_host", None)
@@ -184,66 +193,50 @@ class AuthCommand:
         }
 
     @staticmethod
-    def _extract_key_id(argv: List[str]) -> Optional[str]:
+    def _vault_kwargs() -> Dict[str, Any]:
         """
-        Extract the positional key ID from argv (first non-flag token).
+        Build vault kwargs for the auth key store from the standard
+        ``LLM_ROUTER_AUTH_VAULT_*`` environment variables (same source the
+        server engine uses — see ``core/engine.py``).
         """
-        for arg in argv:
-            if not arg.startswith("-"):
-                return arg
-        return None
+        return {
+            "addr": os.environ.get("LLM_ROUTER_AUTH_VAULT_ADDR", "").strip(),
+            "mount_path": (
+                os.environ.get("LLM_ROUTER_AUTH_VAULT_PATH", "").strip()
+                or "secret/data/llm-router/api-keys"
+            ),
+            "auth_method": (
+                os.environ.get("LLM_ROUTER_AUTH_VAULT_AUTH_METHOD", "kubernetes")
+                .strip()
+                .lower()
+                or "kubernetes"
+            ),
+            "role_id": os.environ.get("LLM_ROUTER_AUTH_VAULT_ROLE_ID", "").strip(),
+            "secret_id": os.environ.get(
+                "LLM_ROUTER_AUTH_VAULT_SECRET_ID", ""
+            ).strip(),
+        }
 
-    @classmethod
-    def _make_redis_client(cls, redis_kwargs: dict) -> Any:
+    def _make_store(self, args: Any) -> Any:
         """
-        Create and return a Redis client from *redis_kwargs* with env fallbacks.
+        Create the key store selected by ``--store``, forwarding the
+        right kwargs (redis or vault) to the shared factory.
         """
-        import redis as _redis_mod
+        from llm_router_api.core.auth.key_store import create_key_store
 
-        host = redis_kwargs.get("redis_host") or os.environ.get(
-            "LLM_ROUTER_AUTH_REDIS_HOST", "127.0.0.1"
-        )
-        port = int(
-            redis_kwargs.get("redis_port")
-            or os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379)
-        )
-        db = int(
-            redis_kwargs.get("redis_db")
-            or os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0)
-        )
-        password = redis_kwargs.get("redis_password") or os.environ.get(
-            "LLM_ROUTER_AUTH_REDIS_PASSWORD"
-        )
-        protocol = int(
-            redis_kwargs.get("redis_protocol")
-            or os.environ.get("LLM_ROUTER_AUTH_REDIS_PROTOCOL", 2)
-        )
-        return _redis_mod.Redis(
-            host=host,
-            port=port,
-            db=db,
-            decode_responses=True,
-            password=password,
-            protocol=protocol,
-        )
+        if args.store == "vault":
+            kwargs = self._vault_kwargs()
+            if not kwargs["addr"]:
+                raise ValueError(
+                    "LLM_ROUTER_AUTH_VAULT_ADDR is required for "
+                    "--store vault (vault address, e.g. http://127.0.0.1:8200)"
+                )
+        else:
+            kwargs = self._auth_redis_kwargs(args)
+        store, _shared = create_key_store(store_type=args.store, **kwargs)
+        return store
 
-    @classmethod
-    def _read_seed_keys(cls) -> Tuple[Optional[list], int]:
-        """
-        Read and validate the seed file. Returns ``(keys_list, 0)`` or ``(None, 1)``.
-        """
-        seed_file = cls.DEFAULT_SEED_FILE
-        seed_path = Path(seed_file)
-        if not seed_path.exists():
-            print(f"Error: Seed file {seed_file} does not exist.")
-            return None, 1
-        keys = json.loads(seed_path.read_text(encoding="utf-8"))
-        if not isinstance(keys, list):
-            print("Error: Seed file must contain a JSON array.")
-            return None, 1
-        return keys, 0
-
-    # ---- Rate-limit preset loading ----------------------------------------
+    # ---- Rate-limit preset loading -----------------------------------------
 
     @classmethod
     def _load_rate_limit_presets(cls) -> List[dict]:
@@ -301,6 +294,8 @@ class AuthCommand:
             if loaded is not None:
                 return loaded
         except (ImportError, OSError):
+            # intentional: packaged preset missing/unreadable — fall back to
+            # the builtin presets below.
             pass
 
         return cls._BUILTIN_RATE_LIMIT_PRESETS
@@ -362,13 +357,13 @@ class AuthCommand:
             "--expires",
             type=str,
             default=None,
-            help="Expiry time (Unix timestamp or None for no expiry)",
+            help="Expiry time (Unix timestamp; omit for no expiry)",
         )
         generate_p.add_argument(
             "--output",
             type=str,
             default=None,
-            help="Output file path (default: stdout)",
+            help="Write the generated key to a file instead of stdout",
         )
 
         list_p = key_sub.add_parser("list", help="List all API keys")
@@ -409,133 +404,150 @@ class AuthCommand:
 
         cls.register_rate_limit_subparser(auth_sub)
 
-    # ---- Public run() entry point -----------------------------------------
+    # ---- Public entry points -----------------------------------------------
+
+    @classmethod
+    def build_parser(cls) -> argparse.ArgumentParser:
+        """
+        Build the standalone ``auth`` parser (single source of the tree).
+        """
+        parser = argparse.ArgumentParser(
+            prog="llm-router auth",
+            description="Manage API keys and authentication",
+        )
+        auth_sub = parser.add_subparsers(dest="auth_command")
+        cls.register_parser(auth_sub, nest_auth=False)  # type: ignore[arg-type]
+        return parser
+
+    @classmethod
+    def dispatch(cls, args: argparse.Namespace) -> int:
+        """
+        Dispatch an already-parsed *args* namespace (no re-parsing).
+        """
+        auth_command = getattr(args, "auth_command", None)
+        if auth_command is None:
+            cls.build_parser().print_help()
+            return 0
+
+        cls._ensure_seed_env()
+        self = cls()
+        handler = {
+            cls.KEY_NAME: self._handle_key,
+            cls.POLICY_NAME: self._handle_policy,
+            cls.RATE_LIMIT_NAME: self._handle_rate_limit,
+        }.get(auth_command)
+        if handler is None:
+            cls.build_parser().print_help()
+            return 1
+        return handler(args)
 
     @classmethod
     def run(cls, argv: Optional[List[str]] = None) -> int:
         """
-        Standalone entry point: parse args and dispatch to handlers.
+        Standalone entry point: parse once, then dispatch on the namespace.
         """
         if argv is None:
             argv = sys.argv[1:]
-
-        parser = argparse.ArgumentParser(
-            description="Manage API keys and authentication"
-        )
-        auth_sub = parser.add_subparsers(dest="auth_command")
-        parser.add_argument(
-            "--store",
-            default="memory",
-            choices=cls.STORE_BACKENDS,
-            help="Key store backend (default: memory)",
-        )
-        cls.register_parser(auth_sub, nest_auth=False)  # type: ignore[arg-type]
-        args = parser.parse_args(argv)
-
-        if args.auth_command is None or not argv:
-            parser.print_help()
+        if not argv:
+            cls.build_parser().print_help()
             return 0
-
-        cmd = argv[0]
-        sub = argv[1:] if len(argv) > 1 else []
-        seed_file = cls._ensure_seed_env()
-
-        if cmd == "key":
-            return cls()._handle_key(args, sub, seed_file)
-        if cmd == "policy":
-            return cls()._handle_policy(args, sub)
-        if cmd == "rate-limit":
-            return cls()._handle_rate_limit(sub)
-        parser.print_help()
-        return 1
+        args = cls.build_parser().parse_args(argv)
+        return cls.dispatch(args)
 
     # ---- Key handler commands (all private methods on the class) ----------
 
-    def _handle_key(self, args, sub: List[str], seed_file: str) -> int:
+    def _handle_key(self, args: Any) -> int:
         """
         Route key subcommands via the dispatch table.
         """
-        if not sub:
-            print(f"Usage: llm-router auth key <{'|'.join(self._KEY_COMMANDS)}>")
+        cmd = getattr(args, "key_command", None)
+        if cmd is None:
+            print(
+                f"Usage: llm-router auth key <{'|'.join(self._KEY_COMMANDS)}>",
+                file=sys.stderr,
+            )
             return 1
 
-        cmd = sub[0]
-        key_args = sub[1:]
         handler_method_name = self._KEY_COMMANDS.get(cmd)
         if handler_method_name is None:
-            print(f"Unknown key command: {cmd}")
+            print(f"Unknown key command: {cmd}", file=sys.stderr)
             return 1
+        return getattr(self, handler_method_name)(args)
 
-        # delete/disable/enable — create their own store inline via _key_action
-        if cmd in ("delete", "disable", "enable"):
-            key_id = self._extract_key_id(key_args)
-            if not key_id:
-                print(f"Error: key_id is required for {cmd}.")
-                return 1
-            from llm_router_api.core.auth.key_store import create_key_store
-
-            key_store, _ = create_key_store(
-                store_type=getattr(args, "store", "memory"),
-                **self._auth_redis_kwargs(args),
-            )
-            return self._key_action(key_store, key_id, cmd, seed_file=seed_file)
-
-        # Other handlers receive (args, key_args).
-        handler = getattr(self, handler_method_name)
-        return handler(args, key_args)
-
-    def _key_generate(self, args, key_args) -> int:
+    def _key_generate(self, args: Any) -> int:
         """
         Handle the 'generate' subcommand.
         """
         from llm_router_api.core.auth.key_generator import KeyGenerator
-        from llm_router_api.core.auth.key_store import create_key_store
         from llm_router_api.core.auth.policies.builtin import get_builtin_policy
 
-        gen = KeyGenerator()
-        policy = "developer"
-        expires: Optional[float] = None
-        for i, arg in enumerate(key_args):
-            if arg == "--policy" and i + 1 < len(key_args):
-                policy = key_args[i + 1]
-            elif arg == "--expires" and i + 1 < len(key_args):
-                expires = float(key_args[i + 1])
-
+        policy = args.policy
         policy_obj = get_builtin_policy(policy)
         if policy_obj is None:
-            print(f"Error: Policy '{policy}' does not exist.")
+            print(f"Error: Policy '{policy}' does not exist.", file=sys.stderr)
             return 1
 
-        key_store, _ = create_key_store(
-            store_type=args.store, **self._auth_redis_kwargs(args)
-        )
-        record = {
-            "key_plain": gen.generate(),
-            "policy_name": policy,
-            "expires_at": expires,
-            "metadata": {},
-        }
-        plaintext_key = asyncio.run(key_store.create_key(record))
+        expires: Optional[float]
+        if args.expires in (None, ""):
+            expires = None
+        else:
+            try:
+                expires = float(args.expires)
+            except ValueError:
+                print(
+                    f"Error: --expires must be a Unix timestamp "
+                    f"(got '{args.expires}').",
+                    file=sys.stderr,
+                )
+                return 1
 
-        print(f"Generated key for policy '{policy}':")
-        print(plaintext_key)
-        print("\n⚠️  This key is displayed ONCE. Store it securely!")
+        try:
+            key_store = self._make_store(args)
+            plaintext_key = asyncio.run(
+                key_store.create_key(
+                    {
+                        "key_plain": KeyGenerator().generate(),
+                        "policy_name": policy,
+                        "expires_at": expires,
+                        "metadata": {},
+                    }
+                )
+            )
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
+
+        if args.output:
+            out_path = Path(args.output).expanduser()
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(plaintext_key + "\n", encoding="utf-8")
+            print(f"Generated key for policy '{policy}' written to {out_path}")
+            print("⚠️  This key is displayed ONCE. Store it securely!")
+        else:
+            print(f"Generated key for policy '{policy}':")
+            print(plaintext_key)
+            print("\n⚠️  This key is displayed ONCE. Store it securely!")
         print(f"Expires at: {expires}")
         print(f"Policy: {policy}")
         return 0
 
-    def _key_list(self, args, key_args) -> int:
+    def _key_list(self, args: Any) -> int:
         """
         Handle the 'list' subcommand.
         """
-        from llm_router_api.core.auth.key_store import create_key_store
+        try:
+            key_store = self._make_store(args)
+            keys = asyncio.run(key_store.list_keys())
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
 
-        key_store, _ = create_key_store(
-            store_type=args.store, **self._auth_redis_kwargs(args)
-        )
-        keys = asyncio.run(key_store.list_keys())
         if not keys:
             print("No API keys found.")
+            return 0
+
+        if getattr(args, "json", False):
+            print(json.dumps(keys, indent=2))
             return 0
 
         max_w: Dict[str, int] = {
@@ -546,15 +558,9 @@ class AuthCommand:
             "EXPIRES": 10,
         }
         for k in keys:
-            exp_str = (
-                f"{k.get('expires_at', 'none'):.0f}"
-                if k.get("expires_at")
-                else "none"
-            )
             max_w["KEY_ID"] = max(max_w["KEY_ID"], len(k["key_id"]) + 1)
             max_w["PREFIX"] = max(max_w["PREFIX"], len(k.get("key_prefix", "")) + 1)
             max_w["POLICY"] = max(max_w["POLICY"], len(k.get("policy_name", "")) + 1)
-            max_w["ACTIVE"] = max(max_w["ACTIVE"], 4 + 1)
 
         w = (
             max_w["KEY_ID"],
@@ -584,9 +590,7 @@ class AuthCommand:
             print(line)
         return 0
 
-    def _key_action(
-        self, key_store, key_id: str, action: str, *, seed_file=None
-    ) -> int:
+    def _key_action(self, key_store: Any, key_id: str, action: str) -> int:
         """
         Handle delete / disable / enable — they share the same flow.
         """
@@ -598,144 +602,132 @@ class AuthCommand:
             method = getattr(key_store, method_name)
             asyncio.run(method(key_id))
         except ValueError as exc:
-            print(f"Error: {exc}")
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
         if hasattr(key_store, "_persist_seeds"):
-            target = seed_file or getattr(key_store, "_seed_file", None)
+            target = getattr(key_store, "_seed_file", None)
             if target:
                 key_store._persist_seeds(target)
 
         print(success_msg)
         return 0
 
-    def _key_mutate_delete(self, args, key_args) -> int:
-        """
-        dispatch → _key_mutate with action='delete'.
-        """
-        return self._key_mutate(args, key_args, "delete")
-
-    def _key_mutate_disable(self, args, key_args) -> int:
-        """
-        dispatch → _key_mutate with action='disable'.
-        """
-        return self._key_mutate(args, key_args, "disable")
-
-    def _key_mutate_enable(self, args, key_args) -> int:
-        """
-        dispatch → _key_mutate with action='enable'.
-        """
-        return self._key_mutate(args, key_args, "enable")
-
-    def _key_mutate(self, args, key_args: List[str], action: str) -> int:
+    def _key_mutate(self, args: Any, action: str) -> int:
         """
         Shared dispatcher for delete / disable / enable.
         """
-        key_id = self._extract_key_id(key_args)
-        if not key_id:
-            print(f"Error: key_id is required for {action}.")
+        try:
+            key_store = self._make_store(args)
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
+        return self._key_action(key_store, args.key_id, action)
 
-        from llm_router_api.core.auth.key_store import create_key_store
+    def _key_mutate_delete(self, args: Any) -> int:
+        """
+        dispatch → _key_mutate with action='delete'.
+        """
+        return self._key_mutate(args, "delete")
 
-        key_store, _ = create_key_store(
-            store_type=args.store, **self._auth_redis_kwargs(args)
-        )
-        seed_file = getattr(key_store, "_seed_file", None)
-        return self._key_action(key_store, key_id, action, seed_file=seed_file)
+    def _key_mutate_disable(self, args: Any) -> int:
+        """
+        dispatch → _key_mutate with action='disable'.
+        """
+        return self._key_mutate(args, "disable")
 
-    def _key_rotate(self, args, key_args) -> int:
+    def _key_mutate_enable(self, args: Any) -> int:
+        """
+        dispatch → _key_mutate with action='enable'.
+        """
+        return self._key_mutate(args, "enable")
+
+    def _key_rotate(self, args: Any) -> int:
         """
         Handle the 'rotate' subcommand.
         """
-        from llm_router_api.core.auth.key_store import create_key_store
-
-        key_id = self._extract_key_id(key_args)
-        if not key_id:
-            print("Error: key_id is required for rotate.")
+        try:
+            key_store = self._make_store(args)
+            new_key = asyncio.run(key_store.rotate_key(args.key_id, args.grace))
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
-        grace = 3600
-        for i, arg in enumerate(key_args):
-            if arg == "--grace" and i + 1 < len(key_args):
-                grace = int(key_args[i + 1])
+        if hasattr(key_store, "_persist_seeds"):
+            seed_file = getattr(key_store, "_seed_file", None)
+            if seed_file:
+                key_store._persist_seeds(seed_file)
 
-        key_store, _ = create_key_store(
-            store_type=args.store, **self._auth_redis_kwargs(args)
-        )
-        seed_file = getattr(key_store, "_seed_file", None)
-        new_key = asyncio.run(key_store.rotate_key(key_id, grace))
-        if hasattr(key_store, "_persist_seeds") and seed_file:
-            key_store._persist_seeds(seed_file)
-
-        print(f"Rotated key {key_id} -> new key:")
+        print(f"Rotated key {args.key_id} -> new key:")
         print(new_key)
         print("\n⚠️  This key is displayed ONCE. Store it securely!")
         return 0
 
     # ---- Policy handler ---------------------------------------------------
 
-    def _handle_policy(self, args, sub: List[str]) -> int:
+    def _handle_policy(self, args: Any) -> int:
         """
         Handle policy subcommands.
         """
-        from llm_router_api.core.auth.policies.engine import EndpointPolicy
-        from llm_router_api.core.auth.policies.builtin import (
-            list_builtin_policies,
-            register_policy,
-        )
-
-        if not sub:
-            print("Usage: llm-router auth policy <list|create> ...")
+        cmd = getattr(args, "policy_command", None)
+        if cmd is None:
+            print("Usage: llm-router auth policy <list|create> ...", file=sys.stderr)
             return 1
 
-        cmd = sub[0]
         if cmd == "list":
+            from llm_router_api.core.auth.policies.builtin import (
+                list_builtin_policies,
+            )
+
             print("Builtin policies:")
             for name in list_builtin_policies():
                 print(f"  {name}")
             return 0
 
         if cmd == "create":
-            if len(sub) < 3:
-                print("Usage: llm-router auth policy create <name> <json-policy>")
-                return 1
-            name, policy_json = sub[1], sub[2]
-            try:
-                policy_dict = json.loads(policy_json)
-            except json.JSONDecodeError as e:
-                print(f"Error: Invalid JSON: {e}")
-                return 1
+            from llm_router_api.core.auth.policies.engine import EndpointPolicy
+            from llm_router_api.core.auth.policies.builtin import register_policy
 
-            register_policy(name, EndpointPolicy(**policy_dict))
-            print(f"Policy '{name}' created.")
+            try:
+                policy_dict = json.loads(args.policy_json)
+            except json.JSONDecodeError as e:
+                print(f"Error: Invalid JSON: {e}", file=sys.stderr)
+                return 1
+            try:
+                register_policy(args.name, EndpointPolicy(**policy_dict))
+            except (TypeError, ValueError) as e:
+                print(f"Error: Invalid policy definition: {e}", file=sys.stderr)
+                return 1
+            print(f"Policy '{args.name}' created.")
             return 0
 
-        print(f"Unknown policy command: {cmd}")
+        print(f"Unknown policy command: {cmd}", file=sys.stderr)
         return 1
 
     # ---- Rate-limit handler -----------------------------------------------
 
-    def _handle_rate_limit(self, sub: List[str]) -> int:
+    def _handle_rate_limit(self, args: Any) -> int:
         """
         Handle rate-limit subcommands.
         """
-        if not sub:
-            print("Usage: llm-router auth rate-limit <list|apply|remove> ...")
+        cmd = getattr(args, "rate_limit_command", None)
+        if cmd is None:
+            print(
+                "Usage: llm-router auth rate-limit <list|apply|remove> ...",
+                file=sys.stderr,
+            )
             return 1
-        cmd = sub[0]
-        handler_map = {
+        handler = {
             "list": self._rl_list,
             "apply": self._rl_apply,
             "remove": self._rl_remove,
-        }
-        handler = handler_map.get(cmd)
+        }.get(cmd)
         if handler is None:
-            print(f"Unknown rate-limit command: {cmd}")
+            print(f"Unknown rate-limit command: {cmd}", file=sys.stderr)
             return 1
-        return handler(sub)
+        return handler(args)
 
-    def _rl_list(self, sub: List[str]) -> int:
+    def _rl_list(self, args: Any) -> int:
         """
         List all available rate-limit presets.
         """
@@ -759,169 +751,59 @@ class AuthCommand:
             print(f"  {p['name']:<{max_name}}  {rpm:>{max_rpm}}  {p['description']}")
         return 0
 
-    def _rl_apply(self, sub: List[str]) -> int:
+    def _resolve_rate_limit_preset(self, preset_name: str) -> Optional[int]:
         """
-        Apply a rate-limit preset to an existing key.
+        Resolve a preset name to a per-minute rate limit (or ``None``).
         """
-        if len(sub) < 2:
-            print("Usage: llm-router auth rate-limit apply <key_id> --preset <name>")
-            return 1
-
-        key_id = sub[1]
-        parsed = self._rl_parser(add_preset=True).parse_args(sub[1:])
-        store = getattr(parsed, "store", "memory")
-        preset_name = getattr(parsed, "preset", None)
-        redis_kwargs = self._auth_redis_kwargs(parsed)
-
-        if not preset_name:
-            print("Error: --preset is required.")
-            return 1
-
         presets = self._load_rate_limit_presets()
         preset = next((p for p in presets if p["name"] == preset_name), None)
         if not preset:
-            names = ", ".join(p["name"] for p in presets)
-            print(f"Error: Unknown preset '{preset_name}'. Available: {names}")
-            return 1
-
+            return None
         rate_limit = preset.get("rpm")
         daily_limit = preset.get("daily_limit")
         if rate_limit is None and daily_limit is not None:
             rate_limit = max(1, daily_limit // 1440)
+        return rate_limit
 
-        if store == "memory":
-            keys, err = self._read_seed_keys()
-            if err:
-                return err
-            found = False
-            for rec in keys:
-                if (
-                    rec.get("key_id") == key_id
-                    or rec.get("key_prefix") == key_id[:7]
-                ):
-                    override = rec.get("policy_override") or {}
-                    override["rate_limit"] = rate_limit
-                    rec["policy_override"] = override
-                    found = True
-                    break
-            if not found:
-                print(f"Error: Key '{key_id}' not found in seed file.")
-                return 1
-            Path(self.DEFAULT_SEED_FILE).write_text(
-                json.dumps(keys, indent=2) + "\n", encoding="utf-8"
-            )
+    def _rl_apply(self, args: Any) -> int:
+        """
+        Apply a rate-limit preset to an existing key (any store backend).
+        """
+        rate_limit = self._resolve_rate_limit_preset(args.preset)
+        if rate_limit is None:
+            names = ", ".join(p["name"] for p in self._load_rate_limit_presets())
             print(
-                f"Applied preset '{preset_name}' "
-                f"(rate_limit='{rate_limit}'/min) to key {key_id}."
-            )
-
-        elif store == "redis":
-            r = self._make_redis_client(redis_kwargs)
-            key_hash_key = f"auth:key:{key_id}"
-            raw = r.hget(key_hash_key, "policy_override")
-            policy_override = json.loads(raw) if raw else {}
-            policy_override["rate_limit"] = rate_limit
-            r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
-            print(
-                f"Applied preset '{preset_name}' "
-                f"(rate_limit='{rate_limit}'/min) to key {key_id}."
-            )
-
-        elif store == "vault":
-            print(
-                "Error: 'rate-limit apply' on vault store, requires Vault API. "
-                "Use seed file or --store memory."
+                f"Error: Unknown preset '{args.preset}'. Available: {names}",
+                file=sys.stderr,
             )
             return 1
-        else:
-            print(f"Error: Unknown store '{store}'.")
+
+        try:
+            key_store = self._make_store(args)
+            asyncio.run(key_store.update_policy_override(args.key_id, rate_limit))
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
+        print(
+            f"Applied preset '{args.preset}' "
+            f"(rate_limit='{rate_limit}'/min) to key {args.key_id}."
+        )
         return 0
 
-    def _rl_remove(self, sub: List[str]) -> int:
+    def _rl_remove(self, args: Any) -> int:
         """
-        Remove rate-limit override from a key.
+        Remove the rate-limit override from a key (any store backend).
         """
-        if len(sub) < 2:
-            print("Usage: llm-router auth rate-limit remove <key_id>")
+        try:
+            key_store = self._make_store(args)
+            asyncio.run(key_store.update_policy_override(args.key_id, None))
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
-        key_id = sub[1]
-        parsed = self._rl_parser().parse_args(sub[1:])
-        store = getattr(parsed, "store", "memory")
-        redis_kwargs = self._auth_redis_kwargs(parsed)
-
-        if store == "memory":
-            keys, err = self._read_seed_keys()
-            if err:
-                return err
-            found = False
-            for rec in keys:
-                if (
-                    rec.get("key_id") == key_id
-                    or rec.get("key_prefix") == key_id[:7]
-                ):
-                    if rec.get("policy_override"):
-                        override = rec["policy_override"]
-                        if "rate_limit" in override:
-                            del override["rate_limit"]
-                        if not override:
-                            del rec["policy_override"]
-                    found = True
-                    break
-            if not found:
-                print(f"Error: Key '{key_id}' not found in seed file.")
-                return 1
-            Path(self.DEFAULT_SEED_FILE).write_text(
-                json.dumps(keys, indent=2) + "\n", encoding="utf-8"
-            )
-            print(
-                f"Removed rate-limit override for key {key_id} "
-                f"(will use global default)."
-            )
-
-        elif store == "redis":
-            r = self._make_redis_client(redis_kwargs)
-            key_hash_key = f"auth:key:{key_id}"
-            raw = r.hget(key_hash_key, "policy_override")
-            policy_override = json.loads(raw) if raw else {}
-            if "rate_limit" in policy_override:
-                del policy_override["rate_limit"]
-            if not policy_override:
-                r.hdel(key_hash_key, "policy_override")
-            else:
-                r.hset(key_hash_key, "policy_override", json.dumps(policy_override))
-            print(
-                f"Removed rate-limit override for key {key_id} "
-                f"(will use global default)."
-            )
-
-        elif store == "vault":
-            print(
-                "Error: 'rate-limit remove' on vault store, requires Vault API. "
-                "Use seed file or --store memory."
-            )
-            return 1
-        else:
-            print(f"Error: Unknown store '{store}'.")
-            return 1
-
+        print(
+            f"Removed rate-limit override for key {args.key_id} "
+            f"(will use global default)."
+        )
         return 0
-
-    # ---- Shared inline parser for rate-limit subcommands ------------------
-
-    @staticmethod
-    def _rl_parser(add_preset: bool = False) -> argparse.ArgumentParser:
-        """
-        Build the shared argument parser for rate-limit subcommands.
-        """
-        p = argparse.ArgumentParser(add_help=False)
-        p.add_argument("--store", default="memory")
-        p.add_argument("--auth-redis-host", default=None)
-        p.add_argument("--auth-redis-port", type=int, default=None)
-        p.add_argument("--auth-redis-db", type=int, default=None)
-        p.add_argument("--auth-redis-password", default=None)
-        if add_preset:
-            p.add_argument("--preset", default=None)
-        return p
