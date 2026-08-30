@@ -14,9 +14,10 @@ These helpers are used by ``rest_api.py`` to select the appropriate server
 based on command‑line flags or the ``SERVER_TYPE`` configuration constant.
 """
 
+import signal
 import logging
 
-from typing import Optional
+from typing import Any, Optional
 
 from logging.handlers import RotatingFileHandler
 
@@ -29,6 +30,34 @@ from llm_router_api.base.constants import (
     REST_API_LOG_MAX_BYTES,
     REST_API_LOG_BACKUP_COUNT,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def install_shutdown_hooks(engine: FlaskEngine) -> None:
+    """
+    Install a best‑effort graceful‑shutdown hook for *engine*.
+
+    Registers a SIGTERM/SIGINT handler that calls ``engine.stop()`` so the
+    background monitor thread is torn down cleanly on signal (in addition to
+    the ``atexit`` hook the engine already registers and the ``daemon=True``
+    threads as a final safety net).  Safe to call more than once.
+    """
+
+    def _handler(signum: int, frame: Optional[Any]) -> None:
+        try:
+            engine.stop()
+        finally:
+            # Restore default disposition and re‑raise so the process exits.
+            signal.signal(signum, signal.SIG_DFL)
+            raise SystemExit(128 + int(signum))
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _handler)
+        except (ValueError, OSError):  # not in main thread / unsupported
+            pass
+
 
 # ------------------------------------------------------------------ #
 # Flask app.logger does not inherit handlers from the root logger
@@ -71,12 +100,14 @@ def run_flask_server(host: str, port: int, debug: bool = False):
     """
     logger_level = "DEBUG" if debug else REST_API_LOG_LEVEL
 
-    flask_app = FlaskEngine(
+    _engine = FlaskEngine(
         prompts_dir=PROMPTS_DIR,
         models_config_path=MODELS_CONFIG_FILE,
         logger_file_name=REST_API_LOG_FILE_NAME,
         logger_level=logger_level,
-    ).prepare_flask_app()
+    )
+    install_shutdown_hooks(_engine)
+    flask_app = _engine.prepare_flask_app()
     _ensure_flask_logger_handlers(flask_app)
 
     try:
@@ -182,13 +213,17 @@ def run_waitress_server(host: str, port: int, threads: int = 4):
             "Waitress is not installed. Install it with: pip install waitress"
         ) from exc
 
-    app = FlaskEngine(
+    _engine = FlaskEngine(
         prompts_dir=PROMPTS_DIR,
         models_config_path=MODELS_CONFIG_FILE,
         logger_file_name=REST_API_LOG_FILE_NAME,
         logger_level=REST_API_LOG_LEVEL,
-    ).prepare_flask_app()
+    )
+    install_shutdown_hooks(_engine)
+    app = _engine.prepare_flask_app()
     _ensure_flask_logger_handlers(app)
 
-    print(f"Starting Waitress server on {host}:{port} with {threads} threads...")
+    logger.info(
+        "Starting Waitress server on %s:%s with %s threads...", host, port, threads
+    )
     serve(app, host=host, port=port, threads=threads, channel_timeout=300)
