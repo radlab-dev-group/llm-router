@@ -211,7 +211,7 @@ class ProviderStrategyFacade:
 
         kwargs: Dict[str, Any] = {
             "models_config_path": models_config_path,
-            "lb_logger": self._logger,
+            "logger": self._logger,
         }
         # Only the counter‑based strategies (balanced / weighted / dynamic)
         # accept a shared Redis client; pass it when supported.
