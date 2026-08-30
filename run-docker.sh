@@ -1,6 +1,13 @@
 #!/bin/bash
 
-VERSION=rc1
+# Single source of truth for the image tag: the `.version` file in the repo
+# root (same value the wheel/Helm chart use).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VERSION="$(tr -d '[:space:]' < "${SCRIPT_DIR}/.version")"
+if [ -z "${VERSION}" ]; then
+  echo "Error: could not determine version from ./.version" >&2
+  exit 1
+fi
 
 PWD=$(pwd)
 docker run \
@@ -19,4 +26,4 @@ docker run \
   -e LLM_ROUTER_PROMPTS_DIR="/srv/prompts" \
   -v "${PWD}/resources/configs/models-config.json":/srv/cfg.json \
   -v "${PWD}/resources/prompts":/srv/prompts \
-  quay.io/radlab/llm-router:${VERSION}
+  quay.io/radlab/llm-router:"${VERSION}"
