@@ -95,3 +95,26 @@ class TestOpenaiParamWhitelist:
             EndpointWithHttpRequestI._filter_params_to_acceptable(
                 api_type="nope", params={"model": "m"}
             )
+
+    def test_non_positive_max_tokens_dropped(self):
+        """``max_tokens: -1`` ("no limit") must be dropped — providers like
+        Google reject non‑positive values with HTTP 400."""
+        params = {
+            "model": "gemini",
+            "messages": [{"role": "user", "content": "hi"}],
+            "max_tokens": -1,
+            "max_completion_tokens": 0,
+        }
+        filtered = EndpointWithHttpRequestI._filter_params_to_acceptable(
+            api_type="openai", params=params
+        )
+        assert "max_tokens" not in filtered
+        assert "max_completion_tokens" not in filtered
+
+    def test_positive_max_tokens_kept(self):
+        params = {"model": "m", "max_tokens": 1, "max_completion_tokens": 256}
+        filtered = EndpointWithHttpRequestI._filter_params_to_acceptable(
+            api_type="openai", params=params
+        )
+        assert filtered["max_tokens"] == 1
+        assert filtered["max_completion_tokens"] == 256

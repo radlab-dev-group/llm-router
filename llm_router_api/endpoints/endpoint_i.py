@@ -25,6 +25,7 @@ import logging
 import datetime
 
 from copy import deepcopy
+from flask import current_app
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 from rdl_ml_utils.utils.logger import prepare_logger
@@ -72,10 +73,8 @@ from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher, API_TYP
 from llm_router_api.endpoints.httprequest import HttpRequestExecutor
 from llm_router_api.endpoints import http_dispatch, message_normalizer
 
-
 if USE_PROMETHEUS:
     from llm_router_api.core.metrics_handler import MetricsHandler
-    from flask import current_app
 
     try:
         from llm_router_api.core.router_metrics import (
@@ -1340,7 +1339,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
 
             prompt_name, prompt_str = self._resolve_prompt_name(
-                params=params,
+                params=params or {},
                 map_prompt=map_prompt,
                 prompt_str_force=prompt_str_force,
                 prompt_str_postfix=prompt_str_postfix,
@@ -1358,7 +1357,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     ep_url=ep_url,
                     prompt_str=prompt_str or "",
                     orig_params=orig_params,
-                    params=params,
+                    params=params or {},
                     options=options or {},
                     reconnect_number=reconnect_number or 0,
                 )
@@ -1369,7 +1368,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
             if api_model_provider.api_type in ["openai"]:
                 params = self._filter_params_to_acceptable(
-                    api_type=api_model_provider.api_type, params=params
+                    api_type=api_model_provider.api_type, params=params or {}
                 )
 
             if use_streaming:
@@ -1383,8 +1382,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 return self._dispatch_streaming(
                     api_model_provider=api_model_provider,
                     ep_url=ep_url,
-                    params=params,
+                    params=params or {},
                     options=options,
+                    orig_params=orig_params,
+                    reconnect_number=reconnect_number or 0,
                 )
 
             return self._dispatch_non_streaming(
@@ -1392,7 +1393,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 ep_url=ep_url,
                 prompt_str=prompt_str or "",
                 orig_params=orig_params,
-                params=params,
+                params=params or {},
                 options=options or {},
                 reconnect_number=reconnect_number or 0,
             )
@@ -1411,7 +1412,7 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             if clear_chosen_provider_finally and api_model_provider is not None:
                 self.unset_model(
                     api_model_provider=api_model_provider,
-                    params=params,
+                    params=params or {},
                     options=options,
                 )
 
@@ -1533,6 +1534,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         ep_url: str,
         params: Dict,
         options: Optional[Dict],
+        orig_params: Optional[Dict] = None,
+        reconnect_number: int = 0,
     ):
         """
         Dispatch a streaming response (format metrics + executor).
@@ -1553,6 +1556,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             options=options,
             stream_type=stream_type,
             api_model_provider=api_model_provider,
+            orig_params=orig_params,
+            reconnect_number=reconnect_number,
         )
 
     def _dispatch_non_streaming(
@@ -1786,6 +1791,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         if api_type == "openai":
             for p in OPENAI_ACCEPTABLE_PARAMS:
                 if p in params:
+                    # Some clients (e.g. LiteLLM) send ``max_tokens: -1`` as
+                    # "no limit"; providers such as Google reject non‑positive
+                    # values with HTTP 400, so drop them instead of forwarding.
+                    if (
+                        p in ("max_tokens", "max_completion_tokens")
+                        # and isinstance(params[p], (int, float))
+                        # and not isinstance(params[p], bool)
+                        and int(params[p]) < 1
+                    ):
+                        continue
                     _params[p] = params[p]
         else:
             raise ValueError(f"Unsupported API type: {api_type}")

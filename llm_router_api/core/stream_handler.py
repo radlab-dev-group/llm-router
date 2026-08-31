@@ -20,6 +20,55 @@ from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
 from llm_router_api.core.errors import sanitize_error_message
 
 
+def _request_error_message(exc: Exception) -> str:
+    """
+    Build a human‑readable error string for a failed provider request.
+
+    Unlike ``str(HTTPError)`` (which only carries the status line), this
+    also surfaces the provider's response body — e.g. Google's
+    ``400 {"error": {"message": "Invalid value for parameter ..."}}`` —
+    truncated to 500 characters so the client/operator can see *why*
+    the provider rejected the request.
+    """
+    base = sanitize_error_message(str(exc))
+    body = getattr(exc, "provider_body", None)
+    if not body:
+        resp = getattr(exc, "response", None)
+        if resp is not None:
+            try:
+                body = (resp.text or "").strip()
+            except Exception:
+                body = ""
+    if not body:
+        return base
+    return f"{base} — provider: {body[:500]}"
+
+
+def _raise_for_status(resp: Response) -> None:
+    """
+    Raise an ``HTTPError`` for a non‑2xx response **while it is still
+    open**, capturing the provider's response body on the exception
+    (``provider_body``).
+
+    Plain ``resp.raise_for_status()`` does not work here: it is called
+    inside ``with resp:`` blocks, so by the time the surrounding
+    ``except`` handler runs the response is already closed and its body
+    can no longer be read.
+    """
+    if resp is None or resp.status_code < 400:
+        return
+    try:
+        body = (resp.text or "").strip()
+    except Exception:
+        body = ""
+    exc = requests.HTTPError(
+        f"{resp.status_code} {getattr(resp, 'reason', '')} for url: {resp.url}",
+        response=resp,
+    )
+    exc.provider_body = body[:1000]  # type: ignore[attr-defined]
+    raise exc
+
+
 # ------------------------------------------------#
 # Helper enum for stream‑type resolution
 # ------------------------------------------------#
@@ -64,6 +113,28 @@ class StreamHandler:
                 api_model_provider=api_model_provider,
                 options=options,
             )
+
+    @staticmethod
+    def _log_request_error(endpoint: Any, exc: Exception) -> None:
+        """
+        Log a failed provider request at ``ERROR`` level (server‑side —
+        the client only ever receives the sanitized error chunk).
+        """
+        logger = getattr(endpoint, "logger", None)
+        if logger is None:
+            return
+        try:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+        except Exception:  # pylint: disable=broad-exception-caught
+            status = None
+        if status is not None:
+            logger.error(
+                "Provider request failed: HTTP %s — %s",
+                status,
+                _request_error_message(exc),
+            )
+        else:
+            logger.error("Provider request failed: %s", _request_error_message(exc))
 
     @staticmethod
     def _force_iter_openai(force_text: str, api_model_provider) -> Iterator[bytes]:
@@ -194,7 +265,8 @@ class StreamHandler:
                     headers=headers,
                 )
             except requests.RequestException as exc:
-                err = {"error": sanitize_error_message(str(exc))}
+                self._log_request_error(endpoint, exc)
+                err = {"error": _request_error_message(exc)}
                 # Preserve the original formatting used in the two callers
                 yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
                 return
@@ -373,7 +445,7 @@ class StreamHandler:
                         stream=True,
                         timeout=endpoint.timeout,
                     )
-                    response.raise_for_status()
+                    _raise_for_status(response)
 
                     for line in response.iter_lines():
                         if not line:
@@ -405,7 +477,8 @@ class StreamHandler:
                                 continue
 
                 except requests.RequestException as exc:
-                    err = {"error": sanitize_error_message(str(exc))}
+                    self._log_request_error(endpoint, exc)
+                    err = {"error": _request_error_message(exc)}
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
                     return
 
@@ -458,7 +531,7 @@ class StreamHandler:
             resp = requests.get(**request_kwargs, timeout=endpoint.timeout)
 
         with resp as r:
-            r.raise_for_status()
+            _raise_for_status(r)
             for chunk in r.iter_content(chunk_size=None):
                 if chunk:
                     yield chunk
@@ -507,12 +580,13 @@ class StreamHandler:
                             headers=headers,
                         )
                     with req as resp:
-                        resp.raise_for_status()
+                        _raise_for_status(resp)
                         yield from self._parse_ollama_stream(
                             resp, api_model_provider
                         )
                 except requests.RequestException as exc:
-                    err = {"error": sanitize_error_message(str(exc))}
+                    self._log_request_error(endpoint, exc)
+                    err = {"error": _request_error_message(exc)}
                     yield (json.dumps(err) + "\n").encode("utf-8")
                     return
 
@@ -566,7 +640,7 @@ class StreamHandler:
                             headers=headers,
                         )
                     with ctx as resp:
-                        resp.raise_for_status()
+                        _raise_for_status(resp)
                         for raw_line in resp.iter_lines(decode_unicode=False):
                             if not raw_line:
                                 continue
@@ -617,7 +691,8 @@ class StreamHandler:
                                     + "\n\n"
                                 ).encode("utf-8")
                 except requests.RequestException as exc:
-                    err = {"error": sanitize_error_message(str(exc))}
+                    self._log_request_error(endpoint, exc)
+                    err = {"error": _request_error_message(exc)}
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
                     return
 
@@ -770,7 +845,7 @@ class StreamHandler:
                         resp = requests.get(**req_kwargs, timeout=endpoint.timeout)
 
                     with resp:
-                        resp.raise_for_status()
+                        _raise_for_status(resp)
                         for raw_line in resp.iter_lines(decode_unicode=False):
                             if not raw_line:
                                 continue
@@ -797,7 +872,8 @@ class StreamHandler:
                             yield _as_lmstudio_sse(event_obj)
 
                 except requests.RequestException as exc:
-                    err = {"error": sanitize_error_message(str(exc))}
+                    self._log_request_error(endpoint, exc)
+                    err = {"error": _request_error_message(exc)}
                     yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
                     return
 
@@ -891,7 +967,7 @@ class StreamHandler:
                         )
 
                     with ctx as resp:
-                        resp.raise_for_status()
+                        _raise_for_status(resp)
                         for raw_line in resp.iter_lines(decode_unicode=False):
                             if not raw_line:
                                 continue
@@ -917,7 +993,8 @@ class StreamHandler:
                                 )
 
                 except requests.RequestException as exc:
-                    err = {"error": sanitize_error_message(str(exc))}
+                    self._log_request_error(endpoint, exc)
+                    err = {"error": _request_error_message(exc)}
                     yield ("data: " + json.dumps(err) + "\n\n").encode("utf-8")
                     return
 

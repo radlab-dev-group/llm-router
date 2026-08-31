@@ -211,23 +211,88 @@ class TestLmStudioModelsFormat:
         models = [
             {
                 "id": "qwen2.5-7b",
+                "name": "qwen2.5-7b",
                 "object": "model",
-                "type": "llm",
+                "type": "vllm",
                 "publisher": None,
                 "arch": None,
                 "compatibility_type": None,
                 "quantization": None,
                 "state": None,
+                "is_embedding": False,
                 "max_context_length": 32768,
             }
         ]
         resp = self._run_handler(models)
         data = resp["data"]
         assert resp["object"] == "list"
-        assert data[0]["compatibility_type"] is None
-        assert data[0]["quantization"] is None
-        assert data[0]["state"] is None
+        # The LM Studio schema always carries the full field set — never
+        # ``null`` (strict clients reject it).
         assert data[0]["type"] == "llm"
+        assert data[0]["publisher"] == ""
+        assert data[0]["arch"] == ""
+        assert data[0]["compatibility_type"] == ""
+        assert data[0]["quantization"] == ""
+        assert data[0]["state"] == "loaded"
+        assert data[0]["max_context_length"] == 32768
+
+    def test_embedding_flag_maps_to_type(self):
+        models = [
+            {
+                "id": "nomic-embed-text",
+                "name": "nomic-embed-text",
+                "object": "model",
+                "type": "ollama",
+                "publisher": None,
+                "arch": None,
+                "compatibility_type": None,
+                "quantization": None,
+                "state": None,
+                "is_embedding": True,
+                "max_context_length": 2048,
+            }
+        ]
+        data = self._run_handler(models)["data"]
+        assert data[0]["type"] == "embeddings"
+
+    def test_publisher_from_name_prefix(self):
+        models = [
+            {
+                "id": "google/gemma-3-12b-it",
+                "name": "google/gemma-3-12b-it",
+                "object": "model",
+                "type": "vllm",
+                "publisher": None,
+                "arch": None,
+                "compatibility_type": None,
+                "quantization": None,
+                "state": None,
+                "is_embedding": False,
+                "max_context_length": 4096,
+            }
+        ]
+        data = self._run_handler(models)["data"]
+        assert data[0]["publisher"] == "google"
+
+    def test_real_metadata_included(self):
+        models = [
+            {
+                "id": "qwen2.5-7b",
+                "object": "model",
+                "type": "qwen-2",
+                "publisher": "Qwen",
+                "arch": "qwen-2",
+                "compatibility_type": "chat",
+                "quantization": "4bit",
+                "state": "loaded",
+                "max_context_length": 32768,
+            }
+        ]
+        data = self._run_handler(models)["data"]
+        assert data[0]["publisher"] == "Qwen"
+        assert data[0]["state"] == "loaded"
+        assert data[0]["quantization"] == "4bit"
+        assert data[0]["max_context_length"] == 32768
         assert data[0]["max_context_length"] == 32768
 
     def test_real_data_passthrough(self):

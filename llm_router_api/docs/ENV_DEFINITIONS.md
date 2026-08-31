@@ -177,9 +177,9 @@ Rate limiting is always applied when authentication is enabled:
 
 ### Public endpoints
 
-| Variable                           | Default                             | Description                                       |
-|------------------------------------|-------------------------------------|---------------------------------------------------|
-| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS` | `/ping,/version,/models,/,/metrics` | Comma-separated paths that bypass authentication. |
+| Variable                           | Default            | Description                                       |
+|------------------------------------|--------------------|---------------------------------------------------|
+| `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS` | `/health,/metrics` | Comma-separated paths that bypass authentication. |
 
 ### Hardening
 
