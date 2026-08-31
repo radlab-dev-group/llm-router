@@ -40,9 +40,7 @@ _ENDPOINT_PERMISSION_MAP: Dict[str, str] = {
     # ── Auth endpoints — require valid API key with the
     #    matching permission (only when LLM_ROUTER_AUTH_ENABLED=true) ──
     "get:/": "chat",  # Ollama health endpoint
-    "get:/ping": "chat",  # Health‑check
     "get:/api/ping": "builtin",  # Health‑check
-    "get:/version": "chat",  # Router version info
     "get:/api/version": "builtin",  # Router version info
     "get:/api/tags": "chat",  # Ollama model tags (prefix path)
     "get:/models": "chat",  # OpenAI‑compatible models list
