@@ -112,10 +112,13 @@ class ApiVersion(EndpointWithHttpRequestI):
             try:
                 with open(self.VERSION_FILE, encoding="utf-8") as f:
                     self.version = f.read().strip()
-                    if not re.fullmatch(r"\d+\.\d+\.[\dA-Za-z]+", self.version):
+                    if not re.fullmatch(
+                        r"\d+\.\d+\.\d+(?:-[A-Za-z]+\d*)?", self.version
+                    ):
                         raise ValueError(
                             f"Invalid version format: '{self.version}'. "
-                            f"Expected format X.X.Y (e.g., 0.5.2, 1.0.2rc)"
+                            f"Expected format X.X.Y or X.X.Y-suffix "
+                            f"(e.g., 0.5.2, 1.0.2rc, 1.0.0-rc1)"
                         )
             except Exception as e:
                 raise e
