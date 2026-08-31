@@ -1,5 +1,8 @@
 ## Endpoints Overview
 
+> **Creating new endpoints?** See the [Endpoint Development Guide](../docs/ENDPOINT_DEV.md)
+> (`llm_router_api/docs/ENDPOINT_DEV.md`).
+
 All endpoints are exposed under the REST API service. Unless stated otherwise, methods are POST and consume/produce
 JSON.
 

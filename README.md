@@ -372,6 +372,9 @@ Strategies: **balanced**, **weighted**, **dynamic_weighted**, **first_available*
 The list of endpoints — categorized into built‑in, provider‑dependent, and utility endpoints — and a description of the
 streaming mechanisms can be found at: [Endpoints Overview](llm_router_api/endpoints/README.md#endpoints-overview)
 
+To create a custom endpoint, see the **[Endpoint Development Guide](llm_router_api/docs/ENDPOINT_DEV.md)** —
+class hierarchy, `run_ep` lifecycle, payload hooks, guardrail/masking controls, and a worked example.
+
 ### Highlights
 
 | Endpoint                                | Method | Auth (when `LLM_ROUTER_AUTH_ENABLED=true`) | Description                                                       |

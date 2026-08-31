@@ -134,6 +134,9 @@ All routes are prefixed by `LLM_ROUTER_EP_PREFIX` (default `/api`). The list of 
 provider‑dependent, and extended endpoints—and a description of the streaming mechanisms can be found at the link:
 [load endpoints overview](endpoints/README.md#endpoints-overview)
 
+**Creating a new endpoint?** See the [Endpoint Development Guide](docs/ENDPOINT_DEV.md) — class hierarchy,
+the 16‑step `run_ep` cycle, payload hooks, guardrail/masking controls, and a worked example.
+
 ---
 
 ## Load‑Balancing Strategies
