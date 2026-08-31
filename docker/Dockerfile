@@ -28,6 +28,4 @@ RUN pip3 install --no-cache-dir .[api]
 USER llm-router
 WORKDIR /srv/llm-router
 
-RUN cp docker/entrypoint.sh . && chmod +x run-rest-api.sh && chmod +x entrypoint.sh
-
-ENTRYPOINT ["/srv/llm-router/entrypoint.sh"]
+CMD ["./run-rest-api-gunicorn.sh"]

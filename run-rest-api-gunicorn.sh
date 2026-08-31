@@ -39,7 +39,7 @@ export LLM_ROUTER_DEFAULT_EP_LANGUAGE=${LLM_ROUTER_DEFAULT_EP_LANGUAGE:-"pl"}
 
 # ==================================================================================
 # Routing strategies: [balanced, weighted, first_available, first_available_optim]
-export LLM_ROUTER_BALANCE_STRATEGY=${LLM_ROUTER_BALANCE_STRATEGY:-"first_available"}
+export LLM_ROUTER_BALANCE_STRATEGY=${LLM_ROUTER_BALANCE_STRATEGY:-"balanced"}
 
 # ==================================================================================
 # Server engine configuration (flask, gunicorn, waitress)
