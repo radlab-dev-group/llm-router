@@ -89,6 +89,14 @@ class ModelInfo(BaseResponse):
     object: Optional[str] = None
     created: Optional[float] = None
     owned_by: Optional[str] = None
+    # LM‑Studio‑compatible extension fields (superset of the OpenAI schema)
+    type: Optional[str] = None
+    publisher: Optional[str] = None
+    arch: Optional[str] = None
+    compatibility_type: Optional[str] = None
+    quantization: Optional[str] = None
+    state: Optional[str] = None
+    max_context_length: Optional[int] = None
 
 
 class ModelsListResponse(BaseResponse):

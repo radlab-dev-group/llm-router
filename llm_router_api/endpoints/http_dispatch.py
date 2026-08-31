@@ -278,6 +278,7 @@ class HttpDispatch:
             return self._return_response_not_ok(error_exc)
 
         if not response:
+            self._logger().error("Provider returned no response")
             return self._return_response_not_ok("Provider returned no response")
 
         # ------------------------------------------------------------------
@@ -300,6 +301,7 @@ class HttpDispatch:
         # ------------------------------------------------------------------
         status_code = int(getattr(response, "status_code", 500))
         retryable = status_code in self._retry_policy().RETRY_WHEN_STATUS
+        self._log_provider_error(response, status_code, api_model_provider)
 
         if retryable and self._can_retry(reconnect_number):
             self._log_retry(api_model_provider, reconnect_number, status_code)
@@ -448,6 +450,30 @@ class HttpDispatch:
             fn(*args, **kwargs)
         except Exception:  # pylint: disable=broad-exception-caught
             pass  # metrics must never break the request
+
+    def _log_provider_error(
+        self, response: Any, status_code: int, api_model_provider: Any
+    ) -> None:
+        """
+        Log a non‑OK provider response at ``ERROR`` level (server‑side only;
+        the client receives the sanitized body from
+        :meth:`_build_provider_error`).
+        """
+        provider_id = (
+            getattr(api_model_provider, "id", "unknown")
+            if api_model_provider is not None
+            else "unknown"
+        )
+        try:
+            message = self._extract_provider_error_message(response, status_code)
+        except Exception:  # pylint: disable=broad-exception-caught
+            message = "unavailable"
+        self._logger().error(
+            "Provider %s returned an error: HTTP %s — %s",
+            provider_id,
+            status_code,
+            message,
+        )
 
     def _build_provider_error(
         self, response: Any, status_code: int, api_model_provider: Any

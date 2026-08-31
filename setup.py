@@ -39,8 +39,8 @@ requirements_api = _read_requirements(BASE_DIR / "requirements.txt")
 # ----------------------------------------------------------------------
 extras = {
     "api": requirements_api,
-    "metrics": ["prometheus-client"],   # prometheus-client==0.21.0
-    "vault": ["hvac", "bcrypt"],        # "hvac==2.3.0", "bcrypt==5.0.0"
+    "metrics": ["prometheus-client"],  # prometheus-client==0.21.0
+    "vault": ["hvac", "bcrypt"],  # "hvac==2.3.0", "bcrypt==5.0.0"
 }
 
 # ----------------------------------------------------------------------
@@ -79,8 +79,7 @@ setup(
     },
     python_requires=">=3.10",
     install_requires=[
-        "ml-utils @ "
-        "git+https://github.com/radlab-dev-group/ml-utils.git",
+        "ml-utils @ " "git+https://github.com/radlab-dev-group/ml-utils.git",
         "llm-router-plugins @ "
         "git+https://github.com/radlab-dev-group/llm-router-plugins",
     ],

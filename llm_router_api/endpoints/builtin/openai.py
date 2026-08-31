@@ -463,7 +463,11 @@ class OpenAIModelsHandler(PassthroughI):
             and ``owned_by`` fields.
         """
         _models_data = self._api_type_dispatcher.tags(
-            models_config=self._model_handler.list_active_models(),
+            models_config=(
+                self._model_handler.list_active_models()
+                if self._model_handler
+                else {}
+            ),
             merge_to_list=True,
         )
         proper_models = []
