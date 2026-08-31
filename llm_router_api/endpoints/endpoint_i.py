@@ -1556,8 +1556,6 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             options=options,
             stream_type=stream_type,
             api_model_provider=api_model_provider,
-            orig_params=orig_params,
-            reconnect_number=reconnect_number,
         )
 
     def _dispatch_non_streaming(
