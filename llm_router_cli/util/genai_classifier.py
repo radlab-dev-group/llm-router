@@ -145,9 +145,7 @@ class GenAIClassifierApp:
         for data_file in jsonl_files:
             try:
                 dataset_records = read_records(data_file, "jsonl")
-                columns = (
-                    list(dataset_records[0].keys()) if dataset_records else []
-                )
+                columns = list(dataset_records[0].keys()) if dataset_records else []
                 fields = df_fields or columns
                 ds_name = data_file.stem
                 log.info(

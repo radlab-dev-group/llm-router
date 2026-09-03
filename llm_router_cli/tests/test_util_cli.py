@@ -172,6 +172,7 @@ def test_no_heavy_dependencies_leak():
     import importlib
 
     import llm_router_cli.util  # noqa: F401
+
     importlib.reload(llm_router_cli.util)
     import llm_router_cli.util.loaders  # noqa: F401
     import llm_router_cli.util.retry  # noqa: F401

@@ -314,7 +314,9 @@ class UtilCommand:
         translate_p = subparsers.add_parser(cls.TRANSLATE, help=cls.TRANSLATE_HELP)
         cls._add_translate_args(translate_p)
 
-        classifier_p = subparsers.add_parser(cls.CLASSIFIER, help=cls.CLASSIFIER_HELP)
+        classifier_p = subparsers.add_parser(
+            cls.CLASSIFIER, help=cls.CLASSIFIER_HELP
+        )
         cls._add_classifier_args(classifier_p)
 
         augmentation_p = subparsers.add_parser(
@@ -462,8 +464,6 @@ class UtilCommand:
         try:
             app.run()
         except Exception as exc:
-            print(
-                f"Error running genai-data-augmentation: {exc}", file=sys.stderr
-            )
+            print(f"Error running genai-data-augmentation: {exc}", file=sys.stderr)
             return 1
         return 0

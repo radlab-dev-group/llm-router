@@ -62,8 +62,14 @@ def fake_translate(monkeypatch):
 def _install_fake_extended(monkeypatch, payload_json: str):
     """Install a fake ``extended_conversation_with_model`` returning *payload_json*."""
 
-    def _fake_extended(self, user_last_statement=None, system_prompt=None,
-                        model=None, temperature=None, **kwargs):  # noqa: ANN001
+    def _fake_extended(
+        self,
+        user_last_statement=None,
+        system_prompt=None,
+        model=None,
+        temperature=None,
+        **kwargs,
+    ):  # noqa: ANN001
         return _FakeConvResponse(payload_json)
 
     monkeypatch.setattr(
@@ -88,7 +94,9 @@ def fake_augmentation(monkeypatch):
 
 @pytest.fixture
 def fake_version(monkeypatch):
-    monkeypatch.setattr(LLMRouterClient, "version", lambda self, **kw: _FakeVersionResponse())
+    monkeypatch.setattr(
+        LLMRouterClient, "version", lambda self, **kw: _FakeVersionResponse()
+    )
     return lambda self, **kw: _FakeVersionResponse()
 
 

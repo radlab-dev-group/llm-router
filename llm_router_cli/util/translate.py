@@ -145,7 +145,9 @@ class TranslateApp:
         """Translate every batch and return a flat, order‑preserving list."""
         if self.num_workers <= 1:
             flat_results: List[str] = []
-            for batch in tqdm(batches, desc="Translating (single thread)", unit="batch"):
+            for batch in tqdm(
+                batches, desc="Translating (single thread)", unit="batch"
+            ):
                 response = self.service.translate(batch)
                 if isinstance(response, list):
                     flat_results.extend(response)
@@ -176,7 +178,9 @@ class TranslateApp:
                 flat_results.append(res)
         return flat_results
 
-    def _translate_records(self, records: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _translate_records(
+        self, records: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """
         Translate the accepted fields of *records* in place and return the
         output records (restricted to the accepted fields).
@@ -251,9 +255,7 @@ class TranslateApp:
             all_records.extend(self._translate_records(records))
 
         self._write_jsonl(self.output, all_records)
-        self.translations = [
-            json.dumps(r, ensure_ascii=False) for r in all_records
-        ]
+        self.translations = [json.dumps(r, ensure_ascii=False) for r in all_records]
         self.written_paths.append(self.output)
         log.info(
             "Translated %d record(s) from %d input(s) -> %s",
