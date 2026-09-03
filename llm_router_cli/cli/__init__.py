@@ -12,6 +12,9 @@ Usage::
     llm-router config discover localhost 192.168.1.50 -o models-config.json
     llm-router config merge base.json override.json -o merged-config.json
     llm-router anonymizer run --algorithm fast_masker [input_file]
+    llm-router util translate --llm-router-host URL --model M --dataset-path d.jsonl
+    llm-router util genai-classifier --dataset-dir DIR --prompts-dir P --output-dir O
+    llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P --labels a,b
 """
 
 from __future__ import annotations
@@ -93,6 +96,18 @@ def main(argv: Optional[List[str]] = None) -> int:
     config_sub = config_parser.add_subparsers(dest="config_command")
     _CfgCmdReg.register_parser(config_sub)  # type: ignore[arg-type]
 
+    from .commands.util import UtilCommand as _UtilCmdReg  # noqa: E402
+
+    util_parser = subparsers.add_parser(
+        "util",
+        help=(
+            "Utility commands: translate, genai-classifier, "
+            "genai-data-augmentation"
+        ),
+    )
+    util_sub = util_parser.add_subparsers(dest="util_command")
+    _UtilCmdReg.register_parser(util_sub)  # type: ignore[arg-type]
+
     args = parser.parse_args(argv)
 
     if args.command is None:
@@ -107,6 +122,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.command == _AnonCmdReg.NAME:
         return _AnonCmdReg.run(argv[1:])
+
+    if args.command == _UtilCmdReg.NAME:
+        return _UtilCmdReg.run(argv[1:])
 
     # Unknown command
     parser.print_help()
