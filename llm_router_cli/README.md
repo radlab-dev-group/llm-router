@@ -24,6 +24,7 @@ llm-router --version
 | `auth`           | Manage API keys, policies, and rate limiting  |
 | `config`         | Auto-discover local providers & merge configs |
 | `anonymizer run` | Anonymize text using a selectable algorithm   |
+| `util`           | Utility apps: `translate`, `genai-classifier`, `genai-data-augmentation` |
 
 ---
 
@@ -269,6 +270,101 @@ llm-router anonymizer run --algorithm fast_masker [input_file] -o output_file \
 | `--disable-ip`    | `false` | Skip IP address anonymization    |
 | `--disable-pesel` | `false` | Skip PESEL anonymization         |
 | `--disable-email` | `false` | Skip email anonymization         |
+
+---
+
+## `llm-router util` — Utility Apps (translate / genai-classifier / genai-data-augmentation)
+
+Light, dependency-free ports of the `llm-router-utils` applications. They read
+**local JSON/JSONL** files only (no HuggingFace `datasets`, no `pandas` /
+`openpyxl` / XLSX, no `tenacity`) and talk to the router through
+`LLMRouterClient`.
+
+### Command Tree
+
+```
+llm-router util translate --llm-router-host URL --model M --dataset-path d.jsonl [--accept-field f] [-o out.jsonl]
+llm-router util genai-classifier --dataset-dir DIR --prompts-dir P --output-dir O [--model-name M]
+llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P --labels a,b [--output-dir DIR]
+```
+
+### `translate` — Translate texts in JSON/JSONL datasets
+
+```bash
+llm-router util translate \
+  --llm-router-host http://localhost:8080 \
+  --model speakleash/Bielik-11B-v2.3-Instruct \
+  --dataset-path data.jsonl --dataset-path more.json \
+  --accept-field text --accept-field title
+```
+
+| Flag                | Default | Description                                                    |
+|---------------------|---------|----------------------------------------------------------------|
+| `--llm-router-host` | *(req)* | Base URL of the LLM router service                             |
+| `--model`           | *(req)* | Model name used for translation                                |
+| `--dataset-path`    | *(req)* | Dataset file (JSON/JSONL); repeatable                          |
+| `--dataset-type`    | *(auto)*| Explicit `json` / `jsonl` (else inferred from extension)       |
+| `--accept-field`    | *(all)* | Field to translate/retain; repeatable                          |
+| `--num-workers`     | `1`     | Translation worker threads                                      |
+| `--batch-size`      | `8`     | Texts per request                                               |
+| `--llm-router-token`| —       | Auth token                                                     |
+| `--llm-router-timeout`| `10`  | Per-request timeout (s)                                         |
+| `-o, --output`      | —       | Single output JSONL file (else `<stem>.translated.jsonl` per input) |
+
+> **Output:** without `-o`, each input `<stem>` writes `<stem>.translated.jsonl`
+> next to it; with `-o`, all records go to that one file. **Input files are
+> never overwritten.**
+
+### `genai-classifier` — Classify translated datasets (JSONL only)
+
+```bash
+llm-router util genai-classifier \
+  --dataset-dir ./data --prompts-dir ./prompts --output-dir ./out \
+  --model-name gpt-oss:120b --num-workers 2 --n-sample 50
+```
+
+| Flag                 | Default    | Description                                             |
+|----------------------|------------|---------------------------------------------------------|
+| `--dataset-dir`      | *(req)*    | Directory with the local `*.jsonl` datasets             |
+| `--dataset-path`     | —          | Explicit dataset file(s); repeatable                    |
+| `--prompts-dir`      | *(req)*    | Directory with `*.prompt` files                         |
+| `--output-dir`       | *(req)*    | Where the result `.jsonl` files are stored              |
+| `--model-name`       | `gpt-oss:120b` | Model identifier passed to the router              |
+| `--temperature`      | `0.0`      | Sampling temperature                                    |
+| `--num-workers`      | `2`        | Parallel worker threads                                 |
+| `--n-sample`         | `50`       | Samples per field (`<=0` = all)                         |
+| `--batch-save-size`  | `5`        | Records flushed to disk at once                         |
+| `--text-column-name` | `Tekst`    | Column holding the text to classify                     |
+| `--dry-run` / `--verbose` | `false`| Process without writing / DEBUG logging             |
+| `--llm-router-url`   | `http://localhost:8080` | Base URL of the router                   |
+
+> Produces `<name>.jsonl` and `<name>_clean_labels.jsonl` (no XLSX).
+
+### `genai-data-augmentation` — Augment a local JSONL dataset
+
+```bash
+llm-router util genai-data-augmentation \
+  --dataset-path dataset.jsonl --prompt-file prompt.txt --labels cat,dog
+```
+
+| Flag                   | Default | Description                                          |
+|------------------------|---------|------------------------------------------------------|
+| `--dataset-path`       | *(req)* | Local JSONL dataset file                             |
+| `--prompt-file`        | *(req)* | Prompt file                                          |
+| `--labels`             | *(req)* | Comma-separated labels to augment                    |
+| `--n-samples`          | `5`     | Samples per class to augment (`0` = all)             |
+| `--n-examples`         | `3`     | Augmented examples the LLM should generate           |
+| `--samples-as-examples`| `5`     | Samples per class included in the prompt context     |
+| `--model-name`         | `gpt-oss:120b` | Model identifier                              |
+| `--temperature`        | `0.7`   | Sampling temperature                                 |
+| `--num-workers`        | `2`     | Parallel worker threads                              |
+| `--text-column-name`   | `Tekst` | Column holding the text                              |
+| `--label-column-name`  | `label` | Column holding the label                             |
+| `--output-dir`         | —       | Override output directory (else dataset dir)         |
+| `--dry-run` / `--verbose` | `false`| Process without writing / DEBUG logging           |
+| `--llm-router-url`     | `http://localhost:8080` | Base URL of the router                 |
+
+> Produces `<stem>_augmented.jsonl` and `<stem>_augmented-train.jsonl` (no XLSX).
 
 ---
 
