@@ -355,7 +355,7 @@ LLM_ROUTER_AUTH_FAILURE_LIMIT = int(
 
 # Key generation settings
 LLM_ROUTER_AUTH_KEY_PREFIX = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_KEY_PREFIX", "sk-litm"
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_KEY_PREFIX", "sk-llmr-live"
 ).strip()
 LLM_ROUTER_AUTH_KEY_LENGTH = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}AUTH_KEY_LENGTH", "48")

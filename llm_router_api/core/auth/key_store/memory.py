@@ -13,8 +13,8 @@ Seed file format
 :
 
     [
-      { "key_plain": "sk-litm-...", "policy_name": "developer" },
-      { "key_plain": "sk-litm-...",
+      { "key_plain": "sk-llmr-live-...", "policy_name": "developer" },
+      { "key_plain": "sk-llmr-live-...",
         "policy_name": "readonly", "expires_at": 1700000000 },
     ]
 
