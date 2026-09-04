@@ -115,7 +115,9 @@ class TranslateApp:
         for idx, rec in enumerate(records):
             if self.accept_fields:
                 candidates = (
-                    (field, rec[field]) for field in self.accept_fields if field in rec
+                    (field, rec[field])
+                    for field in self.accept_fields
+                    if field in rec
                 )
             else:
                 candidates = (

@@ -90,6 +90,20 @@ def test_generate_output_file(auth_home, tmp_path, capsys):
     assert mode == 0o600, f"expected 0o600, got {oct(mode)}"
 
 
+def test_generate_prints_key_id(auth_home, capsys):
+    assert AuthCommand.run(["key", "generate"]) == 0
+    out = capsys.readouterr().out
+    assert "Key ID:" in out
+    kid = [
+        line.split("Key ID:", 1)[1].strip()
+        for line in out.splitlines()
+        if line.startswith("Key ID:")
+    ][0]
+    assert kid, "Key ID must be non-empty"
+    # The printed ID must match the persisted record's ID.
+    assert _read_seed(auth_home)[0]["key_id"] == kid
+
+
 # ---- key list -----------------------------------------------------------
 
 
@@ -264,7 +278,9 @@ def test_policy_create_from_file(tmp_path, auth_home, capsys):
 
     # missing --file target is a clean error, not a traceback
     assert (
-        AuthCommand.run(["policy", "create", "nope", "--file", str(tmp_path / "x.json")])
+        AuthCommand.run(
+            ["policy", "create", "nope", "--file", str(tmp_path / "x.json")]
+        )
         == 1
     )
     assert "Cannot read policy file" in capsys.readouterr().err
@@ -274,9 +290,7 @@ def test_policy_create_from_file(tmp_path, auth_home, capsys):
 def test_policy_create_from_stdin(tmp_path, auth_home, capsys, monkeypatch):
     payload = json.dumps({"can_access": True, "allowed_types": ["embedding"]})
     monkeypatch.setattr("sys.stdin", io.StringIO(payload))
-    assert (
-        AuthCommand.run(["policy", "create", "fromstdin", "--file", "-"]) == 0
-    )
+    assert AuthCommand.run(["policy", "create", "fromstdin", "--file", "-"]) == 0
     policy_file = Path(os.environ["LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE"])
     assert "fromstdin" in json.loads(policy_file.read_text(encoding="utf-8"))
     policy_file.unlink(missing_ok=True)

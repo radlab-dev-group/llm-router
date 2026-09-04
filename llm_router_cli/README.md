@@ -80,8 +80,8 @@ llm-router auth key generate \
 | `--expires` | `None`      | Expiry (Unix timestamp or `None`)                  |
 | `--output`  | *(stdout)*  | Output file path (created with `0600` permissions) |
 
-Output: `sk-litm-<base62>` key (plaintext shown **once** at creation) plus the
-generated `Key ID:` (e.g. `key-fe8fc388`) — use the ID with `list`/`delete`/
+Output: `sk-litm-<base62>` key (plaintext shown **once** at creation) plus the generated `Key ID:` (e.g.
+`key-fe8fc388`) — use the ID with `list`/`delete`/
 `disable`/`enable`/`rotate`.
 
 #### `list` — List all API keys
