@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+
 from dataclasses import asdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -39,9 +40,7 @@ def custom_policies_file() -> Path:
     env_path = os.environ.get("LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE", "").strip()
     if env_path:
         return Path(env_path).expanduser()
-    return (
-        Path.home() / ".llm-router" / "configs" / "auth" / "custom-policies.json"
-    )
+    return Path.home() / ".llm-router" / "configs" / "auth" / "custom-policies.json"
 
 
 def _normalize_policy(data: Dict) -> EndpointPolicy:
@@ -68,6 +67,7 @@ def _normalize_policy(data: Dict) -> EndpointPolicy:
         metadata=dict(data.get("metadata") or {}),
     )
     return policy
+
 
 # Every permission type that can appear in the engine's endpoint→type map.
 _ALL_TYPES = ("chat", "embedding", "anthropic", "ollama", "builtin")

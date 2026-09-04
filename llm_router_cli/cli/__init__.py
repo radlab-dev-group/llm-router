@@ -39,11 +39,11 @@ import llm_router_api.base.const_global as _cg
 
 _cg.IS_CLI_COMMAND = True
 
-from .commands.anonymizer import AnonymizerCommand  # noqa: E402
-from .commands.auth import AuthCommand  # noqa: E402
-from .commands.base import BaseCommand  # noqa: E402
-from .commands.config import ConfigCommand  # noqa: E402
-from .commands.util import UtilCommand  # noqa: E402
+from llm_router_cli.cli.commands.anonymizer import AnonymizerCommand
+from llm_router_cli.cli.commands.auth import AuthCommand
+from llm_router_cli.cli.commands.base import BaseCommand
+from llm_router_cli.cli.commands.config import ConfigCommand
+from llm_router_cli.cli.commands.util import UtilCommand
 
 #: All top‑level commands, in the order they appear in the help text.
 COMMANDS: Tuple[Type[BaseCommand], ...] = (

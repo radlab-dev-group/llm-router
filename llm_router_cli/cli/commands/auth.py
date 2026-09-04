@@ -25,12 +25,12 @@ import logging
 import os
 import sys
 import time
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from llm_router_cli.log_utils import setup_logging
-
-from .base import BaseCommand
+from llm_router_cli.cli.commands.base import BaseCommand
 
 log = logging.getLogger(__name__)
 
@@ -600,6 +600,9 @@ class AuthCommand(BaseCommand):
         Handle the ``generate`` subcommand.
         """
         from llm_router_api.core.auth.key_generator import KeyGenerator
+        from llm_router_api.core.auth.key_store._record_helpers import (
+            gen_default_key_id,
+        )
         from llm_router_api.core.auth.policies.builtin import get_builtin_policy
 
         policy = args.policy
@@ -616,7 +619,9 @@ class AuthCommand(BaseCommand):
                 )
 
         log.debug("Generating key (policy=%s, expires=%s)", policy, expires)
+        key_id = gen_default_key_id()
         record = {
+            "key_id": key_id,
             "key_plain": KeyGenerator().generate(),
             "policy_name": policy,
             "expires_at": expires,
@@ -638,6 +643,7 @@ class AuthCommand(BaseCommand):
         else:
             print(f"Generated key for policy '{policy}':")
             print(plaintext_key)
+        print(f"Key ID: {key_id}")
         print("⚠️  This key is displayed ONCE. Store it securely!")
         print(f"Expires at: {expires}")
         print(f"Policy: {policy}")

@@ -12,16 +12,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import requests
 import sys
 import time
-
-import requests
 
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from llm_router_cli.log_utils import setup_logging
-
-from .base import BaseCommand
+from llm_router_cli.cli.commands.base import BaseCommand
 
 log = logging.getLogger(__name__)
 
