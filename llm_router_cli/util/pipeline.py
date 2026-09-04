@@ -227,7 +227,7 @@ class ConcurrentLLMPipeline:
         """Thread target: own one client and process tasks until drained."""
         client = self._make_client()
         try:
-            ctx = self._make_context()
+            ctx: Any = self._make_context()  # base hook may return None
             self._process_loop(client, ctx, task_queue)
         except Exception:
             # A crashed worker must not leave tasks unprocessed — otherwise

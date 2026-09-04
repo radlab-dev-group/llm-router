@@ -18,6 +18,7 @@ tiny in-repo helper (:func:`llm_router_cli.util.retry.with_retries`) plus the
 from __future__ import annotations
 
 __all__ = [
+    "json_utils",
     "loaders",
     "pipeline",
     "retry",

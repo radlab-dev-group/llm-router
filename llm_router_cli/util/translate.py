@@ -23,7 +23,7 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 from tqdm import tqdm
 
@@ -201,58 +201,54 @@ class TranslateApp:
         input_path = Path(input_path)
         return input_path.with_name(f"{input_path.stem}.translated.jsonl")
 
+    def _register_output(
+        self, records: List[Dict[str, Any]], out_path: Path
+    ) -> None:
+        """Record *records* (written to *out_path*) for library use."""
+        self.translations.extend(json.dumps(r, ensure_ascii=False) for r in records)
+        self.written_paths.append(out_path)
+
     # ------------------------------------------------------------------ #
     # Main workflow
     # ------------------------------------------------------------------ #
-    def run(self) -> None:
-        """Execute the translation pipeline and write the output files."""
-        self.translations = []
-        self.written_paths = []
-
-        if not self.dataset_paths:
-            raise ValueError("No dataset paths were provided.")
-
-        if self.output is not None:
-            self._run_single_output()
-        else:
-            self._run_per_input()
-
-    def _run_per_input(self) -> None:
-        """Write one ``<stem>.translated.jsonl`` per input file."""
+    def _translated_inputs(self) -> Iterator[Tuple[Path, List[Dict[str, Any]]]]:
+        """Yield ``(input_path, translated_records)`` for every input file."""
         for raw_path in self.dataset_paths:
             input_path = Path(raw_path)
             records = read_records(input_path, self.dataset_type)
-            out_records = self._translate_records(records)
-            out_path = self._output_path_for_input(input_path)
-            self._write_jsonl(out_path, out_records)
-            self.translations.extend(
-                json.dumps(r, ensure_ascii=False) for r in out_records
-            )
-            self.written_paths.append(out_path)
+            yield input_path, self._translate_records(records)
+
+    def run(self) -> None:
+        """Execute the translation pipeline and write the output files."""
+        if not self.dataset_paths:
+            raise ValueError("No dataset paths were provided.")
+
+        self.translations = []
+        self.written_paths = []
+
+        if self.output is not None:
+            all_records: List[Dict[str, Any]] = []
+            for _input_path, out_records in self._translated_inputs():
+                all_records.extend(out_records)
+            self._write_jsonl(self.output, all_records)
+            self._register_output(all_records, self.output)
             log.info(
-                "Translated %d record(s) from %s -> %s",
-                len(out_records),
-                input_path,
-                out_path,
+                "Translated %d record(s) from %d input(s) -> %s",
+                len(all_records),
+                len(self.dataset_paths),
+                self.output,
             )
-
-    def _run_single_output(self) -> None:
-        """Merge the translated records of every input into one output file."""
-        assert self.output is not None
-        all_records: List[Dict[str, Any]] = []
-        for raw_path in self.dataset_paths:
-            records = read_records(Path(raw_path), self.dataset_type)
-            all_records.extend(self._translate_records(records))
-
-        self._write_jsonl(self.output, all_records)
-        self.translations = [json.dumps(r, ensure_ascii=False) for r in all_records]
-        self.written_paths.append(self.output)
-        log.info(
-            "Translated %d record(s) from %d input(s) -> %s",
-            len(all_records),
-            len(self.dataset_paths),
-            self.output,
-        )
+        else:
+            for input_path, out_records in self._translated_inputs():
+                out_path = self._output_path_for_input(input_path)
+                self._write_jsonl(out_path, out_records)
+                self._register_output(out_records, out_path)
+                log.info(
+                    "Translated %d record(s) from %s -> %s",
+                    len(out_records),
+                    input_path,
+                    out_path,
+                )
 
     def close(self) -> None:
         """Release the underlying HTTP client."""
