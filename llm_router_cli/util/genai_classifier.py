@@ -329,6 +329,10 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
         """One shared :class:`PromptHandler` per worker."""
         return PromptHandler(str(self.prompts_dir))
 
+    def _progress_description(self) -> str:
+        """Label for the run‑wide progress bar."""
+        return "Classifying"
+
     def _build_task_queue(self) -> queue.Queue[Any]:
         """Load every local dataset and enqueue its unprocessed (field, text)."""
         all_datasets = self._load_local_datasets(fields=[self.text_column_name])

@@ -9,7 +9,9 @@ share the same infrastructure:
   :class:`llm_router_lib.client.LLMRouterClient`;
 * collect the resulting records into a per‑file, thread‑safe buffer;
 * flush the buffer to a primary JSONL file (plus an optional auxiliary file)
-  every ``batch_save_size`` records and once more at the end.
+  every ``batch_save_size`` records and once more at the end;
+* advance a single thread‑safe ``tqdm`` progress bar per processed task,
+  so every run shows live progress regardless of worker count.
 
 :class:`ConcurrentLLMPipeline` owns that machinery once.  Concrete apps only
 supply the app‑specific pieces: input validation, task‑queue construction,
@@ -34,6 +36,8 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+
+from tqdm import tqdm
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -74,6 +78,9 @@ class ConcurrentLLMPipeline:
         self._buffers: Dict[Path, List[Any]] = {}
         self._file_locks: Dict[Path, threading.Lock] = {}
         self._buffers_lock = threading.Lock()
+
+        #: Run‑wide progress bar; created in :meth:`run`, ``None`` outside it.
+        self._progress: Optional[tqdm] = None
 
         if verbose:
             log.setLevel(logging.DEBUG)
@@ -120,6 +127,10 @@ class ConcurrentLLMPipeline:
 
     def _flush_aux(self, path: Path, records: List[Any]) -> None:
         """Write an auxiliary file for *records* (none by default)."""
+
+    def _progress_description(self) -> str:
+        """Label shown on the run‑wide progress bar (apps may override)."""
+        return "Processing"
 
     # ------------------------------------------------------------------ #
     # Shared machinery
@@ -212,14 +223,20 @@ class ConcurrentLLMPipeline:
                 log.exception("Failed to process task %r: %s", task, exc)
             finally:
                 task_queue.task_done()
+                self._progress_bump()
 
-    @staticmethod
-    def _drain(task_queue: queue.Queue[Any]) -> None:
+    def _progress_bump(self) -> None:
+        """Advance the run‑wide progress bar (thread‑safe; no‑op when idle)."""
+        if self._progress is not None:
+            self._progress.update(1)
+
+    def _drain(self, task_queue: queue.Queue[Any]) -> None:
         """Mark every pending task as done (so ``join()`` cannot hang)."""
         while not task_queue.empty():
             try:
                 task_queue.get_nowait()
                 task_queue.task_done()
+                self._progress_bump()
             except queue.Empty:  # pragma: no cover - another worker got it
                 break
 
@@ -251,20 +268,31 @@ class ConcurrentLLMPipeline:
         self._make_client()
         task_queue = self._build_task_queue()
 
-        threads = [
-            threading.Thread(
-                target=self._worker,
-                args=(task_queue,),
-                name=f"llm-pipeline-worker-{index}",
-                daemon=True,
+        if task_queue.qsize():
+            self._progress = tqdm(
+                total=task_queue.qsize(),
+                desc=self._progress_description(),
+                unit="task",
             )
-            for index in range(self.num_workers)
-        ]
-        for thread in threads:
-            thread.start()
-        task_queue.join()
-        for thread in threads:
-            thread.join()
+        try:
+            threads = [
+                threading.Thread(
+                    target=self._worker,
+                    args=(task_queue,),
+                    name=f"llm-pipeline-worker-{index}",
+                    daemon=True,
+                )
+                for index in range(self.num_workers)
+            ]
+            for thread in threads:
+                thread.start()
+            task_queue.join()
+            for thread in threads:
+                thread.join()
 
-        self._flush_all()
+            self._flush_all()
+        finally:
+            if self._progress is not None:
+                self._progress.close()
+                self._progress = None
         log.info("Processing finished.")

@@ -268,6 +268,10 @@ class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
         """Per-worker context: the resolved prompt and the sample examples."""
         return self._prompt_content, self._all_samples_info
 
+    def _progress_description(self) -> str:
+        """Label for the run‑wide progress bar."""
+        return "Augmenting"
+
     def _build_task_queue(self) -> queue.Queue[Any]:
         """Load the dataset, build the sample context and enqueue the tasks."""
         records = self._load_dataset()
