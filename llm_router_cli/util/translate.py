@@ -105,14 +105,27 @@ class TranslateApp:
         """
         Split records into a flat list of strings plus positions mapping each
         string back to ``(record_index, field_name)``.
+
+        When no ``--accept-field`` was given, every string-valued field of
+        every record is translated (matching the help text "if omitted all
+        fields are kept" — and translated).
         """
         flat_texts: List[str] = []
         positions: List[Tuple[int, str]] = []
         for idx, rec in enumerate(records):
-            for field in self.accept_fields:
-                if field in rec:
-                    flat_texts.append(str(rec[field]))
-                    positions.append((idx, field))
+            if self.accept_fields:
+                candidates = (
+                    (field, rec[field]) for field in self.accept_fields if field in rec
+                )
+            else:
+                candidates = (
+                    (field, value)
+                    for field, value in rec.items()
+                    if isinstance(value, str)
+                )
+            for field, value in candidates:
+                flat_texts.append(str(value))
+                positions.append((idx, field))
         return flat_texts, positions
 
     def _select_output_records(
