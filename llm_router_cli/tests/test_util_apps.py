@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -382,3 +383,123 @@ def test_with_retries_propagates_non_retriable_immediately():
 def test_with_retries_invalid_attempts():
     with pytest.raises(ValueError):
         with_retries(lambda: 1, attempts=0)
+
+
+# --------------------------------------------------------------------- #
+# --verbose / logging
+# --------------------------------------------------------------------- #
+def test_setup_logging_levels_and_idempotency():
+    from llm_router_cli.util.log_utils import setup_logging
+
+    root = logging.getLogger()
+    original = (root.level, list(root.handlers))
+    added = []
+    try:
+        setup_logging(verbose=False)
+        assert root.level == logging.INFO
+        n_handlers = len(root.handlers)
+        assert n_handlers >= 1
+        setup_logging(verbose=False)  # idempotent: no handler duplication
+        assert len(root.handlers) == n_handlers
+        setup_logging(verbose=True)
+        assert root.level == logging.DEBUG
+        assert len(root.handlers) == n_handlers
+        for h in root.handlers[n_handlers - len(added) :]:
+            added.append(h)
+    finally:
+        for h in list(root.handlers):
+            if h not in original[1]:
+                root.removeHandler(h)
+        root.setLevel(original[0])
+        root.handlers[:] = original[1]
+
+
+def test_shorten_collapses_lines_and_truncates():
+    from llm_router_cli.util.log_utils import shorten
+
+    assert shorten("hello") == "hello"
+    assert shorten("a" * 300, 20).endswith("…")
+    assert len(shorten("a" * 300, 20)) == 20
+    assert "\n" not in shorten("line1\nline2", 100)
+
+
+def test_verbose_shows_per_task_and_llm_detail(
+    tmp_path, caplog, fake_conversation, fake_version
+):
+    dataset_dir = tmp_path / "datasets"
+    dataset_dir.mkdir()
+    (dataset_dir / "data.jsonl").write_text(
+        "\n".join(json.dumps({"Tekst": f"t{i}"}) for i in range(4)) + "\n",
+        encoding="utf-8",
+    )
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "feature1.prompt").write_text("Classify.", encoding="utf-8")
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    app = GenAIClassifierApp(
+        dataset_dir=dataset_dir,
+        prompts_dir=prompts_dir,
+        llm_router_url="http://localhost:8080",
+        model_name="m",
+        temperature=0.0,
+        batch_save_size=5,
+        dry_run=False,
+        output_dir=output_dir,
+        verbose=True,
+        num_workers=2,
+        n_sample=None,
+        dataset_paths=[],
+        text_column_name="Tekst",
+    )
+    with caplog.at_level(logging.DEBUG):
+        app.run()
+
+    messages = [r.getMessage() for r in caplog.records]
+    # pipeline-level detail (what is happening per task)
+    assert any(m.startswith("Task done in") for m in messages), messages
+    # LLM-level detail (what is sent / what comes back)
+    assert any("Classifying (feature=" in m for m in messages), messages
+    assert any("LLM raw response" in m for m in messages), messages
+    # secrets must never leak into logs
+    assert not any("llm_router_token" in m and "token=" in m for m in messages)
+
+
+def test_verbose_config_dump_masks_token(
+    tmp_path, caplog, fake_conversation, fake_version
+):
+    dataset_dir = tmp_path / "datasets"
+    dataset_dir.mkdir()
+    (dataset_dir / "data.jsonl").write_text(
+        json.dumps({"Tekst": "t1"}) + "\n", encoding="utf-8"
+    )
+    prompts_dir = tmp_path / "prompts"
+    prompts_dir.mkdir()
+    (prompts_dir / "feature1.prompt").write_text("Classify.", encoding="utf-8")
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+
+    secret = "super-secret-token-123"
+    app = GenAIClassifierApp(
+        dataset_dir=dataset_dir,
+        prompts_dir=prompts_dir,
+        llm_router_url="http://localhost:8080",
+        model_name="m",
+        llm_router_token=secret,
+        temperature=0.0,
+        batch_save_size=5,
+        dry_run=False,
+        output_dir=output_dir,
+        verbose=True,
+        num_workers=1,
+        n_sample=None,
+        dataset_paths=[],
+        text_column_name="Tekst",
+    )
+    with caplog.at_level(logging.DEBUG):
+        app.run()
+
+    all_text = "\n".join(r.getMessage() for r in caplog.records)
+    assert secret not in all_text, "the token must never appear in logs"
+    assert "'llm_router_token': '***'" in all_text
