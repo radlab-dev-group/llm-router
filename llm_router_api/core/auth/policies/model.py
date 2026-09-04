@@ -142,7 +142,8 @@ class ApiKeyRecord:
     key_hash : str
         bcrypt hash of the plaintext key — *never* stored in plaintext.
     key_prefix : str
-        First 7 characters of the plaintext key (for logs only).
+        First 12 characters of the plaintext key (enough to show the
+        full ``sk-llmr-live`` prefix).
     policy_name : str
         Name of the default policy to apply.
     policy_override : Optional[dict]

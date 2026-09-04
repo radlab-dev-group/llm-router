@@ -13,8 +13,8 @@ Seed file format
 :
 
     [
-      { "key_plain": "sk-litm-...", "policy_name": "developer" },
-      { "key_plain": "sk-litm-...",
+      { "key_plain": "sk-llmr-live-...", "policy_name": "developer" },
+      { "key_plain": "sk-llmr-live-...",
         "policy_name": "readonly", "expires_at": 1700000000 },
     ]
 
@@ -202,7 +202,7 @@ class MemoryKeyStore(KeyStoreInterface):
         if key_id is None:
             logger.warning(
                 "get_key_by_plain: NO MATCH for key with prefix=%s",
-                key_plain[:7] if len(key_plain) > 6 else key_plain,
+                gen_key_prefix(key_plain),
             )
             return None
         record = self._keys.get(key_id)
@@ -221,7 +221,7 @@ class MemoryKeyStore(KeyStoreInterface):
         Synchronous version of :meth:`get_key_by_plain`.
         """
 
-        prefix = key_plain[:7] if len(key_plain) > 6 else key_plain
+        prefix = gen_key_prefix(key_plain)
         logger = _logging.getLogger(__name__)
         logger.debug(
             "get_key_by_plain_sync: checking prefix=%s (total_keys=%d)",
@@ -243,7 +243,7 @@ class MemoryKeyStore(KeyStoreInterface):
             "key_id": key_id,
             "key_hash": key_hash,
             "key_index": key_index,
-            "key_prefix": key_plain[:7] if len(key_plain) > 6 else key_plain,
+            "key_prefix": gen_key_prefix(key_plain),
             "policy_name": record.get("policy_name", "developer"),
             "policy_override": record.get("policy_override"),
             "created_at": now,

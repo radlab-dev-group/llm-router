@@ -74,13 +74,15 @@ llm-router auth key generate \
   --store memory
 ```
 
-| Flag        | Default     | Description                       |
-|-------------|-------------|-----------------------------------|
-| `--policy`  | `developer` | Policy name to assign             |
-| `--expires` | `None`      | Expiry (Unix timestamp or `None`) |
-| `--output`  | *(stdout)*  | Output file path                  |
+| Flag        | Default     | Description                                        |
+|-------------|-------------|----------------------------------------------------|
+| `--policy`  | `developer` | Policy name to assign                              |
+| `--expires` | `None`      | Expiry (Unix timestamp or `None`)                  |
+| `--output`  | *(stdout)*  | Output file path (created with `0600` permissions) |
 
-Output: `sk-litm-<base62>` key (plaintext shown **once** at creation).
+Output: `sk-llmr-live-<base62>` key (plaintext shown **once** at creation) plus the generated `Key ID:` (e.g.
+`key-fe8fc388`) — use the ID with `list`/`delete`/
+`disable`/`enable`/`rotate`.
 
 #### `list` — List all API keys
 
@@ -142,15 +144,26 @@ llm-router auth policy list
 | `ollama`    | Ollama      | Ollama endpoints                     |
 | `builtin`   | All builtin | Built-in endpoints (translate, etc.) |
 
-#### `create <name> <json-policy>` — Register a custom policy
+#### `create <name> [<json-policy>]` — Create a custom policy
 
 ```bash
+# inline JSON
 llm-router auth policy create my-team '{
   "can_access": true,
   "rate_limit": 120,
   "model_whitelist": ["gpt-4", "llama-3"]
 }' --store memory
+
+# from a file, or from stdin (-) — avoids leaking policy JSON into shell history
+llm-router auth policy create my-team --file my-team.json
+cat my-team.json | llm-router auth policy create my-team --file -
 ```
+
+> **Persistence:** custom policies are saved to
+> `$LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE` (default:
+> `~/.llm-router/configs/auth/custom-policies.json`) and are resolved by the
+> server in **new processes** — no restart required. `policy list` marks them
+> with `(custom)`.
 
 ---
 
@@ -301,23 +314,27 @@ llm-router util translate \
   --accept-field text --accept-field title
 ```
 
-| Flag                   | Default  | Description                                                         |
-|------------------------|----------|---------------------------------------------------------------------|
-| `--llm-router-host`    | *(req)*  | Base URL of the LLM router service                                  |
-| `--model`              | *(req)*  | Model name used for translation                                     |
-| `--dataset-path`       | *(req)*  | Dataset file (JSON/JSONL); repeatable                               |
-| `--dataset-type`       | *(auto)* | Explicit `json` / `jsonl` (else inferred from extension)            |
-| `--accept-field`       | *(all)*  | Field to translate/retain; repeatable                               |
-| `--num-workers`        | `1`      | Translation worker threads                                          |
-| `--batch-size`         | `8`      | Texts per request                                                   |
-| `--llm-router-token`   | —        | Auth token                                                          |
-| `--llm-router-timeout` | `10`     | Per-request timeout (s)                                             |
-| `--verbose`            | `false`  | Enable verbose (DEBUG) logging of internal operations               |
-| `-o, --output`         | —        | Single output JSONL file (else `<stem>.translated.jsonl` per input) |
+| Flag                   | Default  | Description                                                                             |
+|------------------------|----------|-----------------------------------------------------------------------------------------|
+| `--llm-router-host`    | *(req)*  | Base URL of the LLM router service                                                      |
+| `--model`              | *(req)*  | Model name used for translation                                                         |
+| `--dataset-path`       | *(req)*  | Dataset file (JSON/JSONL); repeatable                                                   |
+| `--dataset-type`       | *(auto)* | Explicit `json` / `jsonl` (else inferred from extension)                                |
+| `--accept-field`       | *(all)*  | Fields to translate; repeatable. Omit to translate **all string fields** in each record |
+| `--num-workers`        | `1`      | Translation worker threads                                                              |
+| `--batch-size`         | `8`      | Texts per request                                                                       |
+| `--llm-router-token`   | —        | Auth token                                                                              |
+| `--llm-router-timeout` | `10`     | Per-request timeout (s)                                                                 |
+| `--verbose`            | `false`  | Enable verbose (DEBUG) logging of internal operations                                   |
+| `-o, --output`         | —        | Single output JSONL file (else `<stem>.translated.jsonl` per input)                     |
 
 > **Output:** without `-o`, each input `<stem>` writes `<stem>.translated.jsonl`
 > next to it; with `-o`, all records go to that one file. **Input files are
 > never overwritten.**
+>
+> **Default behavior:** without `--accept-field`, **all string-valued fields**
+> of each record are sent for translation; non-string values and other record
+> fields pass through unchanged.
 
 ### `genai-classifier` — Classify translated datasets (JSONL only)
 
@@ -394,7 +411,7 @@ file. The router reads this file on startup and after each request, so changes a
 |-------------------|---------------|-----------------------------------------------------------------|
 | `key_id`          | `str`         | Unique identifier for this key                                  |
 | `key_plain`       | `str`         | The plaintext API key                                           |
-| `key_prefix`      | `str`         | First 7 characters of the plaintext (auto-generated if omitted) |
+| `key_prefix`      | `str`         | First 12 characters of the plaintext (shows the full `sk-llmr-live` prefix) |
 | `policy_name`     | `str`         | Default policy name                                             |
 | `policy_override` | `dict`        | Inline override (e.g. `{"rate_limit": 300}`)                    |
 | `is_active`       | `bool`        | Whether the key is currently valid                              |
@@ -409,18 +426,18 @@ file. The router reads this file on startup and after each request, so changes a
 
 ## Key Format
 
-All generated keys follow the `sk-litm-<base62>` format:
+All generated keys follow the `sk-llmr-live-<base62>` format:
 
 ```
-sk-litm-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
+sk-llmr-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
 ```
 
-| Property     | Value                                                      |
-|--------------|------------------------------------------------------------|
-| Prefix       | `sk-litm-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`) |
-| Entropy      | 48 bytes cryptographically random (`secrets.token_bytes`)  |
-| Charset      | base62 (`a-zA-Z0-9`)                                       |
-| Total length | ≥55 chars (prefix + min 48 base62 characters)              |
+| Property     | Value                                                           |
+|--------------|-----------------------------------------------------------------|
+| Prefix       | `sk-llmr-live-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`) |
+| Entropy      | 48 bytes cryptographically random (`secrets.token_bytes`)       |
+| Charset      | base62 (`a-zA-Z0-9`)                                            |
+| Total length | ≥55 chars (prefix + min 48 base62 characters)                   |
 
 ---
 

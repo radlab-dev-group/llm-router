@@ -1,7 +1,7 @@
 """
 API key generator.
 
-Generates keys in the format ``sk-litm-<base62>`` matching the standard
+Generates keys in the format ``sk-llmr-live-<base62>`` matching the standard
 used by OpenAI, LiteLLM, and other LLM proxies.
 """
 
@@ -19,10 +19,10 @@ class KeyGenerator:
     Generate API keys and validate their format.
 
     Keys are generated with cryptographic randomness and use the
-    ``sk-litm-`` prefix by convention.
+    ``sk-llmr-live-`` prefix by convention.
     """
 
-    PREFIX = "sk-litm-"
+    PREFIX = "sk-llmr-live-"
     CHARSET = string.ascii_letters + string.digits  # base62
     MIN_LENGTH = 48  # minimum length of the base62 portion
 
@@ -46,7 +46,7 @@ class KeyGenerator:
         Returns
         -------
         str
-            A key like ``sk-litm-abc123XYZ...`` (48+ base62 chars after the prefix).
+            A key like ``sk-llmr-live-abc123XYZ...`` (48+ base62 chars after the prefix).
         """
         # token_bytes advances the system PRNG state used by secrets.choice.
         characters = [secrets.choice(cls.CHARSET) for _ in range(cls.MIN_LENGTH)]
@@ -78,7 +78,7 @@ class KeyGenerator:
     @property
     def prefix(self) -> str:
         """
-        Return the key prefix (e.g. ``'sk-litm-'``).
+        Return the key prefix (e.g. ``'sk-llmr-live-'``).
         """
 
         return self.PREFIX

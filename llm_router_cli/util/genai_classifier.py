@@ -147,6 +147,15 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
                 dataset_records = read_records(data_file, "jsonl")
                 columns = list(dataset_records[0].keys()) if dataset_records else []
                 effective_fields = fields or columns
+                if self.text_column_name not in columns:
+                    log.warning(
+                        "Text column '%s' not found in %s (columns: %s) — "
+                        "no tasks will be enqueued for this file unless "
+                        "--text-column-name matches a real column.",
+                        self.text_column_name,
+                        data_file.name,
+                        ", ".join(columns) or "<empty>",
+                    )
                 ds_name = data_file.stem
                 log.info(
                     "Loading dataset %s (from %s) with fields: %s",
@@ -423,6 +432,13 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
         rng = random.Random()
         for field in tqdm(fields, desc=f"{ds_name} fields", leave=False):
             values = [record[field] for record in dataset if field in record]
+            if not values:
+                log.warning(
+                    "Field '%s' has no values in dataset %s — nothing to "
+                    "classify for this field.",
+                    field,
+                    ds_name,
+                )
             rng.shuffle(values)
 
             if self.n_sample is None or self.n_sample <= 0:

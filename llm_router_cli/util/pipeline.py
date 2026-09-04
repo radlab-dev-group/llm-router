@@ -276,8 +276,10 @@ class ConcurrentLLMPipeline:
         """Execute the pipeline: validate, build the queue, run workers, flush."""
         self._validate()
         # Build a client eagerly so construction errors surface synchronously
-        # instead of inside (daemon) worker threads.
-        self._make_client()
+        # instead of inside (daemon) worker threads; close it right away —
+        # each worker owns its own client.
+        probe_client = self._make_client()
+        probe_client.close()
         task_queue = self._build_task_queue()
 
         if task_queue.qsize():

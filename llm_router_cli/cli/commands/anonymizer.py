@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+
 from pathlib import Path
 from typing import Any, ClassVar, List, Tuple
 
-from .base import BaseCommand
+from llm_router_cli.cli.commands.base import BaseCommand
 
 
 class AnonymizerCommand(BaseCommand):
