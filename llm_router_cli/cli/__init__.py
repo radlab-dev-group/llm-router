@@ -27,10 +27,10 @@ time and dispatches on the resulting namespace.
 # pylint: disable=wrong-import-position
 from __future__ import annotations
 
-import argparse
 import sys
-from typing import List, Optional, Tuple, Type
+import argparse
 
+from typing import List, Optional, Tuple, Type
 from importlib.metadata import version as _pkg_version
 
 # Mark this as a CLI run before any import from ``llm_router_api`` that could
@@ -56,7 +56,10 @@ COMMANDS: Tuple[Type[BaseCommand], ...] = (
 
 def _version() -> str:
     """Return the installed package version (e.g. ``0.6.0``)."""
-    return _pkg_version("llm-router")
+    try:
+        return _pkg_version("llm-router")
+    except Exception:  # PackageNotFoundError — e.g. run from a bare checkout
+        return "unknown"
 
 
 def main(argv: Optional[List[str]] = None) -> int:

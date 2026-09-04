@@ -458,17 +458,17 @@ class ConfigCommand(BaseCommand):
                 ConfigCommand._strip_debug_fields(item)
 
     @classmethod
-    def _scan_and_merge(
+    def _scan_provider(
         cls,
         host: str,
         explicit_port: int,
         protocol: str,
         prov: Dict[str, Any],
-        config: Dict[str, Any],
         collect_all: bool = False,
-    ) -> None:
+    ) -> List[Dict[str, Any]]:
         """
-        Discover one provider on one host and merge its config into *config*.
+        Discover one provider on one host and return the collected model
+        groups (thread‑safe: no shared state is touched).
 
         When *collect_all* is set, every healthy port is accumulated;
         otherwise the first healthy port with a non‑empty model group wins.
@@ -498,8 +498,79 @@ class ConfigCommand(BaseCommand):
                 groups.append(group)
             if groups and not collect_all:
                 break
-        for group in groups:
+        return groups
+
+    @classmethod
+    def _scan_and_merge(
+        cls,
+        host: str,
+        explicit_port: int,
+        protocol: str,
+        prov: Dict[str, Any],
+        config: Dict[str, Any],
+        collect_all: bool = False,
+    ) -> None:
+        """
+        Discover one provider on one host and merge its config into *config*.
+        """
+        for group in cls._scan_provider(
+            host, explicit_port, protocol, prov, collect_all=collect_all
+        ):
             cls._accumulate_group(config, prov["group_name"], group)
+
+    @classmethod
+    def _generate_config(
+        cls, hosts: List[Tuple[str, int, str]], all_ports: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Run discovery across all provider definitions for every host.
+
+        Host × provider pairs are probed concurrently (each probe can block
+        on network timeouts); results are merged sequentially in the
+        original order, so the output is deterministic.
+        """
+        tasks: List[Tuple[str, int, str, Dict[str, Any]]] = [
+            (host, explicit_port, protocol, prov)
+            for host, explicit_port, protocol in hosts
+            for prov in ConfigCommand.PROVIDER_DEFINITIONS
+        ]
+        results: List[List[Dict[str, Any]]]
+        if len(tasks) <= 1:
+            results = [
+                cls._scan_provider(
+                    host, explicit_port, protocol, prov, collect_all=all_ports
+                )
+                for host, explicit_port, protocol, prov in tasks
+            ]
+        else:
+            from concurrent.futures import ThreadPoolExecutor
+
+            max_workers = min(8, len(tasks))
+            log.debug(
+                "Probing %d host/provider pair(s) with %d worker(s)",
+                len(tasks),
+                max_workers,
+            )
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [
+                    executor.submit(
+                        cls._scan_provider,
+                        host,
+                        explicit_port,
+                        protocol,
+                        prov,
+                        all_ports,
+                    )
+                    for host, explicit_port, protocol, prov in tasks
+                ]
+                results = [future.result() for future in futures]
+
+        config: Dict[str, Any] = {}
+        for (host, _port, _protocol, prov), groups in zip(tasks, results):
+            for group in groups:
+                cls._accumulate_group(config, prov["group_name"], group)
+        ConfigCommand._strip_debug_fields(config)
+        return config
 
     @staticmethod
     def _accumulate_group(
@@ -531,27 +602,6 @@ class ConfigCommand(BaseCommand):
         new_host_port = new_provider.get("api_host", "")
         if not any(p.get("api_host") == new_host_port for p in existing_providers):
             existing_providers.append(new_provider)
-
-    @classmethod
-    def _generate_config(
-        cls, hosts: List[Tuple[str, int, str]], all_ports: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Run discovery across all provider definitions for every host.
-        """
-        config: Dict[str, Any] = {}
-        for host, explicit_port, protocol in hosts:
-            for prov in ConfigCommand.PROVIDER_DEFINITIONS:
-                cls._scan_and_merge(
-                    host,
-                    explicit_port,
-                    protocol,
-                    prov,
-                    config,
-                    collect_all=all_ports,
-                )
-        ConfigCommand._strip_debug_fields(config)
-        return config
 
     # ---- Merge subcommand helpers ------------------------------------------
 
