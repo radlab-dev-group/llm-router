@@ -21,7 +21,7 @@ Client Request → AuthMiddleware → Key Store Lookup → Permission Engine →
 | **Key Store**         | `core/auth/key_store/`         | Vault, Redis, or in-memory key storage      |
 | **Permission Engine** | `core/auth/policies/engine.py` | Resolve key → policy → endpoint permissions |
 | **Rate Limiter**      | `core/auth/rate_limiter.py`    | Redis-backed sliding window rate limiter    |
-| **Key Generator**     | `core/auth/key_generator.py`   | Generate keys in `sk-litm-` format          |
+| **Key Generator**     | `core/auth/key_generator.py`   | Generate keys in `sk-llmr-live-` format     |
 | **Audit Bridge**      | `core/auth/audit.py`           | Bridge auth events → AnyRequestAuditor      |
 | **Metrics**           | `core/auth/metrics.py`         | Prometheus counters & histograms for auth   |
 | **Middleware**        | `core/auth/middleware.py`      | Flask before_request hook                   |
@@ -123,7 +123,7 @@ which is **hashed at load time and never written back**. Plaintext keys are neve
     "key_id": "manual-key-001",
     "key_hash": "$2b$12$Kx7Q2m...bcrypt-hash.../",
     "key_index": "9f2c...sha256-hex...",
-    "key_prefix": "sk-litm",
+    "key_prefix": "sk-llmr-live",
     "policy_name": "developer",
     "is_active": true,
     "expires_at": null,
@@ -140,7 +140,7 @@ which is **hashed at load time and never written back**. Plaintext keys are neve
     "key_id": "manual-key-002",
     "key_hash": "$2b$12$Pq8W3n...bcrypt-hash.../",
     "key_index": "1a4d...sha256-hex...",
-    "key_prefix": "sk-litm",
+    "key_prefix": "sk-llmr-live",
     "policy_name": "chat",
     "is_active": true,
     "expires_at": 1750000000,
@@ -218,13 +218,13 @@ Auth metrics are registered when `LLM_ROUTER_USE_PROMETHEUS=true`:
 
 ## Key Format
 
-Generated keys follow the `sk-litm-<base62>` format:
+Generated keys follow the `sk-llmr-live-<base62>` format:
 
 ```
-sk-litm-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
+sk-llmr-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
 ```
 
-- **Prefix**: `sk-litm-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`)
+- **Prefix**: `sk-llmr-live-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`)
 - **Entropy**: 48 bytes cryptographically random (configurable via `LLM_ROUTER_AUTH_KEY_LENGTH`)
 - **Charset**: base62 (a-zA-Z0-9)
 
@@ -247,7 +247,7 @@ per-process — not multi-process safe even with seed file.
 mkdir -p ~/.llm-router/configs/auth
 cat > ~/.llm-router/configs/auth/memory-keys.json << 'EOF'
 [
-  { "key_plain": "sk-litm-my-dev-key", "policy_name": "developer" }
+  { "key_plain": "sk-llmr-live-my-dev-key", "policy_name": "developer" }
 ]
 EOF
 
@@ -265,7 +265,7 @@ llm-router auth key generate --policy readonly --store memory
 python -m llm_router_api.rest_api
 
 # 6. Use the key
-curl -H "x-api-key: sk-litm-my-dev-key" https://host/api/chat/completions
+curl -H "x-api-key: sk-llmr-live-my-dev-key" https://host/api/chat/completions
 ```
 
 | Variable                    | Value    |
@@ -310,7 +310,7 @@ llm-router auth key list --store redis
 python -m llm_router_api.rest_api
 
 # 5. Use the key
-curl -H "x-api-key: sk-litm-..." https://host/api/chat/completions
+curl -H "x-api-key: sk-llmr-live-..." https://host/api/chat/completions
 ```
 
 | Variable                         | Value                            |
@@ -355,7 +355,7 @@ export LLM_ROUTER_AUTH_VAULT_AUTH_METHOD=kubernetes
 # 2. Generate and use keys
 llm-router auth key generate --policy developer --store vault
 llm-router auth key list --store vault
-curl -H "x-api-key: sk-litm-..." https://host/api/chat/completions
+curl -H "x-api-key: sk-llmr-live-..." https://host/api/chat/completions
 ```
 
 | Variable                            | Value                                                         |

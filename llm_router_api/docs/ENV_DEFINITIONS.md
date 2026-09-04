@@ -140,8 +140,8 @@ Seed file path (hardcoded): `${HOME}/.llm-router/configs/auth/memory-keys.json`
 
 ### Custom policies
 
-| Variable                             | Default                                    | Description                                                                                     |
-|--------------------------------------|--------------------------------------------|-------------------------------------------------------------------------------------------------|
+| Variable                               | Default                                           | Description                                                                                                             |
+|----------------------------------------|---------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
 | `LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE` | `~/.llm-router/configs/auth/custom-policies.json` | JSON file with custom policies created via `llm-router auth policy create` (shared with the server at resolution time). |
 
 ### Vault settings
@@ -196,10 +196,10 @@ Rate limiting is always applied when authentication is enabled:
 
 ### Key generation
 
-| Variable                     | Default   | Description                                              |
-|------------------------------|-----------|----------------------------------------------------------|
-| `LLM_ROUTER_AUTH_KEY_PREFIX` | `sk-litm` | Key prefix (like LiteLLM/OpenAI format).                 |
-| `LLM_ROUTER_AUTH_KEY_LENGTH` | `48`      | Entropy bytes for key generation (produces 64-char key). |
+| Variable                     | Default        | Description                                              |
+|------------------------------|----------------|----------------------------------------------------------|
+| `LLM_ROUTER_AUTH_KEY_PREFIX` | `sk-llmr-live` | Key prefix (like LiteLLM/OpenAI format).                 |
+| `LLM_ROUTER_AUTH_KEY_LENGTH` | `48`           | Entropy bytes for key generation (produces 64-char key). |
 
 ### Key rotation
 

@@ -80,7 +80,7 @@ llm-router auth key generate \
 | `--expires` | `None`      | Expiry (Unix timestamp or `None`)                  |
 | `--output`  | *(stdout)*  | Output file path (created with `0600` permissions) |
 
-Output: `sk-litm-<base62>` key (plaintext shown **once** at creation) plus the generated `Key ID:` (e.g.
+Output: `sk-llmr-live-<base62>` key (plaintext shown **once** at creation) plus the generated `Key ID:` (e.g.
 `key-fe8fc388`) — use the ID with `list`/`delete`/
 `disable`/`enable`/`rotate`.
 
@@ -426,18 +426,18 @@ file. The router reads this file on startup and after each request, so changes a
 
 ## Key Format
 
-All generated keys follow the `sk-litm-<base62>` format:
+All generated keys follow the `sk-llmr-live-<base62>` format:
 
 ```
-sk-litm-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
+sk-llmr-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
 ```
 
-| Property     | Value                                                      |
-|--------------|------------------------------------------------------------|
-| Prefix       | `sk-litm-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`) |
-| Entropy      | 48 bytes cryptographically random (`secrets.token_bytes`)  |
-| Charset      | base62 (`a-zA-Z0-9`)                                       |
-| Total length | ≥55 chars (prefix + min 48 base62 characters)              |
+| Property     | Value                                                           |
+|--------------|-----------------------------------------------------------------|
+| Prefix       | `sk-llmr-live-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`) |
+| Entropy      | 48 bytes cryptographically random (`secrets.token_bytes`)       |
+| Charset      | base62 (`a-zA-Z0-9`)                                            |
+| Total length | ≥55 chars (prefix + min 48 base62 characters)                   |
 
 ---
 
