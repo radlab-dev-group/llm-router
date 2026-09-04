@@ -39,6 +39,7 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from .json_utils import loads_json
 from .loaders import read_records
+from .log_utils import shorten
 from .pipeline import ConcurrentLLMPipeline
 
 log = logging.getLogger(__name__)
@@ -193,6 +194,15 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
         if _ADDITIONAL_PROMPT_JSON and _ADDITIONAL_PROMPT_JSON.strip():
             prompt_str += f"\n{_ADDITIONAL_PROMPT_JSON}"
 
+        log.debug(
+            "Classifying (feature=%s, model=%s, temp=%.2f) text=%s prompt=%s",
+            feature_name,
+            self.model_name,
+            self.temperature,
+            shorten(text, 80),
+            shorten(prompt_str, 80),
+        )
+
         parsed: Optional[Dict[str, Any]] = None
         raw_json = ""
         for attempt in range(retry_when_invalid_json, 0, -1):
@@ -203,6 +213,11 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
                 temperature=self.temperature,
             )
             raw_json = (response.response or "").strip()
+            log.debug(
+                "LLM raw response (feature=%s): %s",
+                feature_name,
+                shorten(raw_json, 200),
+            )
             candidate = self._parse_llm_json(raw_json)
             if candidate is not None:
                 parsed = candidate
@@ -214,10 +229,19 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
                 feature_name,
                 attempt - 1,
             )
-            log.debug("Raw LLM response: %s", raw_json)
 
         if parsed is None:
+            log.debug(
+                "Giving up on feature %s for text %r (no valid JSON)",
+                feature_name,
+                text[:20],
+            )
             return {}
+        log.debug(
+            "Parsed response for feature=%s: %s",
+            feature_name,
+            shorten(str(parsed), 200),
+        )
         if self.verbose and parsed:
             parsed["_raw_response"] = raw_json
         return parsed
@@ -430,4 +454,7 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
             log.warning("Could not fetch LLMRouter version: %s", exc)
 
         if self.verbose:
-            log.debug("Full configuration: %s", self.__dict__)
+            config = dict(self.__dict__)
+            if config.get("llm_router_token"):
+                config["llm_router_token"] = "***"  # never log secrets
+            log.debug("Full configuration: %s", config)

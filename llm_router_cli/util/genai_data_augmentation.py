@@ -27,6 +27,7 @@ import json
 import logging
 import queue
 import random
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple
@@ -35,6 +36,7 @@ from llm_router_lib.client import LLMRouterClient
 
 from .json_utils import loads_json
 from .loaders import read_records
+from .log_utils import shorten
 from .pipeline import ConcurrentLLMPipeline
 from .retry import with_retries
 
@@ -241,6 +243,15 @@ class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
             "{CLASS_EXAMPLES_PLACEHOLDER}", all_samples_info
         )
 
+        log.debug(
+            "Augmenting (labels=%s, model=%s, temp=%.2f) text=%s prompt_len=%d",
+            labels,
+            self.model_name,
+            self.temperature,
+            shorten(text, 80),
+            len(final_prompt),
+        )
+        started = time.perf_counter()
         response = with_retries(
             lambda: llm_client.extended_conversation_with_model(
                 user_last_statement=text,
@@ -252,7 +263,13 @@ class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
             wait=self.retry_wait,
             name=f"augment({labels!r})",
         )
-        return (response.response or "").strip()
+        augmented_text = (response.response or "").strip()
+        log.debug(
+            "Augmentation returned %d char(s) in %.2fs",
+            len(augmented_text),
+            time.perf_counter() - started,
+        )
+        return augmented_text
 
     # ------------------------------------------------------------------ #
     # Pipeline hooks (implemented on top of ConcurrentLLMPipeline)

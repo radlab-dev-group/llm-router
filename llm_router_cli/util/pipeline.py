@@ -36,12 +36,14 @@ from __future__ import annotations
 import logging
 import queue
 import threading
-
-from tqdm import tqdm
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from llm_router_lib.client import LLMRouterClient
+from tqdm import tqdm
+
+from .log_utils import shorten
 
 log = logging.getLogger(__name__)
 
@@ -81,9 +83,6 @@ class ConcurrentLLMPipeline:
 
         #: Run‑wide progress bar; created in :meth:`run`, ``None`` outside it.
         self._progress: Optional[tqdm] = None
-
-        if verbose:
-            log.setLevel(logging.DEBUG)
 
     # ------------------------------------------------------------------ #
     # Lifecycle
@@ -215,15 +214,23 @@ class ConcurrentLLMPipeline:
             task = self._poll_task(task_queue)
             if task is self._IDLE:
                 break
+            started = time.perf_counter()
             try:
                 record = self._process(client, ctx, *task)
                 if record is not None:
                     self._buffer_result(task, record)
             except Exception as exc:  # keep the pool alive on a bad task
-                log.exception("Failed to process task %r: %s", task, exc)
+                log.exception(
+                    "Failed to process task %s: %s", shorten(repr(task)), exc
+                )
             finally:
                 task_queue.task_done()
                 self._progress_bump()
+                log.debug(
+                    "Task done in %.3fs: %s",
+                    time.perf_counter() - started,
+                    shorten(repr(task)),
+                )
 
     def _progress_bump(self) -> None:
         """Advance the run‑wide progress bar (thread‑safe; no‑op when idle)."""
@@ -243,6 +250,11 @@ class ConcurrentLLMPipeline:
     def _worker(self, task_queue: queue.Queue[Any]) -> None:
         """Thread target: own one client and process tasks until drained."""
         client = self._make_client()
+        log.debug(
+            "Worker %s ready (router: %s)",
+            threading.current_thread().name,
+            self.llm_router_url,
+        )
         try:
             ctx: Any = self._make_context()  # base hook may return None
             self._process_loop(client, ctx, task_queue)

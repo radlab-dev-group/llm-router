@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -30,6 +31,7 @@ from tqdm import tqdm
 from llm_router_lib.client import LLMRouterClient
 
 from .loaders import read_records
+from .log_utils import shorten
 
 log = logging.getLogger(__name__)
 
@@ -143,28 +145,50 @@ class TranslateApp:
     # ------------------------------------------------------------------ #
     def _translate_batches(self, batches: List[List[str]]) -> List[str]:
         """Translate every batch and return a flat, order‑preserving list."""
+        total = len(batches)
         if self.num_workers <= 1:
-            ordered: List[List[str]] = [
-                self.service.translate(batch)
-                for batch in tqdm(
-                    batches, desc="Translating (single thread)", unit="batch"
+            ordered: List[List[str]] = []
+            for idx, batch in enumerate(
+                tqdm(batches, desc="Translating (single thread)", unit="batch")
+            ):
+                started = time.perf_counter()
+                translated = self.service.translate(batch)
+                ordered.append(translated)
+                log.debug(
+                    "Batch %d/%d done in %.2fs (%d text(s), first: %s)",
+                    idx + 1,
+                    total,
+                    time.perf_counter() - started,
+                    len(batch),
+                    shorten(batch[0], 60) if batch else "-",
                 )
-            ]
         else:
             ordered = [[] for _ in batches]
             with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                future_to_idx = {
-                    executor.submit(self.service.translate, batch): idx
-                    for idx, batch in enumerate(batches)
-                }
+                started_at: Dict[Any, float] = {}
+                future_to_idx = {}
+                for idx, batch in enumerate(batches):
+                    future_to_idx[executor.submit(self.service.translate, batch)] = (
+                        idx
+                    )
+                    started_at[future_to_idx] = time.perf_counter()
                 pbar = tqdm(
-                    total=len(batches),
+                    total=total,
                     desc="Translating (multi thread)",
                     unit="batch",
                 )
                 for future in as_completed(future_to_idx):
-                    ordered[future_to_idx[future]] = future.result()
+                    idx = future_to_idx[future]
+                    ordered[idx] = future.result()
                     pbar.update(1)
+                    log.debug(
+                        "Batch %d/%d done in %.2fs (%d text(s), first: %s)",
+                        idx + 1,
+                        total,
+                        time.perf_counter() - started_at[future],
+                        len(batches[idx]),
+                        shorten(batches[idx][0], 60) if batches[idx] else "-",
+                    )
                 pbar.close()
         return [text for batch in ordered for text in batch]
 
