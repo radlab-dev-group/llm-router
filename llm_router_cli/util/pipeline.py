@@ -13,8 +13,20 @@ share the same infrastructure:
 
 :class:`ConcurrentLLMPipeline` owns that machinery once.  Concrete apps only
 supply the app‑specific pieces: input validation, task‑queue construction,
-how to process a single task, and (optionally) how to render an auxiliary file.
-Every record produced by an app must expose a ``to_json() -> str`` method.
+how to process a single task, and (optionally) how to render an auxiliary
+file.  Every record produced by an app must expose a ``to_json() -> str``
+method.
+
+Concurrency notes
+-----------------
+* Buffers and their locks live behind a single ``_buffers_lock``; a flush
+  takes an **atomic snapshot** of the buffer (and clears it) under that lock,
+  so records appended by other workers are never lost or duplicated.
+* Per‑file writes are serialized with a per‑path lock, keeping JSONL lines of
+  concurrent flushes in a consistent order.
+* If a worker thread dies unexpectedly, it drains the queue (marking the
+  remaining tasks as done) before propagating, so ``run()`` can never hang on
+  ``queue.join()``.
 """
 
 from __future__ import annotations
@@ -32,6 +44,9 @@ log = logging.getLogger(__name__)
 
 class ConcurrentLLMPipeline:
     """Threaded, buffered JSONL pipeline shared by the GenAI ``util`` apps."""
+
+    #: Sentinel returned by :meth:`_poll_task` when the task queue is idle.
+    _IDLE = object()
 
     # ------------------------------------------------------------------ #
     # Configuration
@@ -67,8 +82,7 @@ class ConcurrentLLMPipeline:
     # Lifecycle
     # ------------------------------------------------------------------ #
     def close(self) -> None:
-        """Release any shared resources (no‑op; each worker owns its client)."""
-        return None
+        """Release shared resources (each worker owns its own client)."""
 
     # ------------------------------------------------------------------ #
     # Hooks implemented by concrete apps
@@ -82,7 +96,7 @@ class ConcurrentLLMPipeline:
         )
 
     def _make_context(self) -> Any:
-        """Build the per-worker context handed to :meth:`_process`.
+        """Build the per‑worker context handed to :meth:`_process`.
 
         Returns ``None`` by default; apps override to supply their context.
         """
@@ -91,11 +105,10 @@ class ConcurrentLLMPipeline:
     def _validate(self) -> None:
         """Validate inputs, raising ``ValueError`` on a fatal problem.
 
-        No-op by default; apps override to check their preconditions.
+        No‑op by default; apps override to check their preconditions.
         """
-        return None
 
-    def _build_task_queue(self) -> "queue.Queue":
+    def _build_task_queue(self) -> queue.Queue[Any]:
         """Populate and return the task queue for the workers to consume."""
         raise NotImplementedError
 
@@ -106,8 +119,7 @@ class ConcurrentLLMPipeline:
         raise NotImplementedError
 
     def _flush_aux(self, path: Path, records: List[Any]) -> None:
-        """Write an auxiliary file for *records* (no auxiliary output by default)."""
-        return None
+        """Write an auxiliary file for *records* (none by default)."""
 
     # ------------------------------------------------------------------ #
     # Shared machinery
@@ -119,88 +131,140 @@ class ConcurrentLLMPipeline:
             self._file_locks.setdefault(path, threading.Lock())
 
     def _flush_buffer(self, path: Path) -> None:
-        """Write the buffered records for *path* to disk (thread‑safe)."""
+        """Write the buffered records for *path* to disk (thread‑safe).
+
+        The buffer snapshot is taken (and cleared) atomically under
+        ``_buffers_lock``, so records appended by other workers in between
+        are never lost; the actual write is serialized per file.
+        """
         with self._buffers_lock:
             buffer = self._buffers.get(path, [])
+            if not buffer:
+                return
+            records, buffer[:] = list(buffer), []
             lock = self._file_locks.setdefault(path, threading.Lock())
 
-        if not buffer or self.dry_run:
-            buffer.clear()
+        if self.dry_run:
+            log.debug(
+                "Dry run: skipped flush of %d record(s) for %s",
+                len(records),
+                path.name,
+            )
             return
 
-        count = len(buffer)
         with lock:
             path.parent.mkdir(parents=True, exist_ok=True)
-            with path.open("a", encoding="utf-8") as f:
-                for rec in buffer:
-                    f.write(rec.to_json() + "\n")
-            self._flush_aux(path, buffer)
-            buffer.clear()
-        log.debug("Flushed %d record(s) to %s", count, path.name)
+            with path.open("a", encoding="utf-8") as handle:
+                for record in records:
+                    handle.write(record.to_json() + "\n")
+            self._flush_aux(path, records)
+        log.debug("Flushed %d record(s) to %s", len(records), path.name)
 
-    _IDLE = object()  # sentinel returned by :meth:`_poll_task` when the queue is idle
-
-    _IDLE = object()  # sentinel returned by :meth:`_poll_task` when the queue is idle
+    def _flush_all(self) -> None:
+        """Flush every buffered file (final end‑of‑run flush)."""
+        with self._buffers_lock:
+            paths = list(self._buffers)
+        for path in paths:
+            self._flush_buffer(path)
 
     @staticmethod
-    def _poll_task(task_queue: "queue.Queue") -> Any:
+    def _poll_task(task_queue: queue.Queue[Any]) -> Any:
         """Return the next task, or the :data:`_IDLE` sentinel when idle.
 
-        A 1 s bounded wait lets workers exit promptly once the queue is drained
-        without spinning on ``get()``.
+        A 1 s bounded wait lets workers exit promptly once the queue is
+        drained, without spinning on ``get()``.
         """
         try:
-            return task_queue.get(timeout=1)  # pylint: disable=assignment-from-none
+            return task_queue.get(timeout=1)
         except queue.Empty:
             return ConcurrentLLMPipeline._IDLE
 
-    def _worker(self, task_queue: "queue.Queue") -> None:
-        """Thread target: consume tasks, process them and buffer the results."""
+    def _buffer_result(self, task: Any, record: Any) -> None:
+        """Append *record* to the task's output buffer, flushing if full."""
+        output_path = Path(task[0])
+        self._ensure_buffer(output_path)
+        with self._buffers_lock:
+            buf = self._buffers[output_path]
+            buf.append(record)
+            need_flush = len(buf) >= self.batch_save_size
+        if need_flush:
+            self._flush_buffer(output_path)
+
+    # ------------------------------------------------------------------ #
+    # Workers
+    # ------------------------------------------------------------------ #
+    def _process_loop(
+        self,
+        client: LLMRouterClient,
+        ctx: Any,
+        task_queue: queue.Queue[Any],
+    ) -> None:
+        """Consume tasks, process them and buffer the results."""
+        while True:
+            task = self._poll_task(task_queue)
+            if task is self._IDLE:
+                break
+            try:
+                record = self._process(client, ctx, *task)
+                if record is not None:
+                    self._buffer_result(task, record)
+            except Exception as exc:  # keep the pool alive on a bad task
+                log.exception("Failed to process task %r: %s", task, exc)
+            finally:
+                task_queue.task_done()
+
+    @staticmethod
+    def _drain(task_queue: queue.Queue[Any]) -> None:
+        """Mark every pending task as done (so ``join()`` cannot hang)."""
+        while not task_queue.empty():
+            try:
+                task_queue.get_nowait()
+                task_queue.task_done()
+            except queue.Empty:  # pragma: no cover - another worker got it
+                break
+
+    def _worker(self, task_queue: queue.Queue[Any]) -> None:
+        """Thread target: own one client and process tasks until drained."""
         client = self._make_client()
-        ctx = self._make_context()
         try:
-            while True:
-                task = self._poll_task(task_queue)
-                if task is self._IDLE:
-                    break
-                try:
-                    record = self._process(client, ctx, *task)
-                    if record is not None:
-                        output_path = Path(task[0])
-                        self._ensure_buffer(output_path)
-                        need_flush = False
-                        with self._buffers_lock:
-                            buf = self._buffers[output_path]
-                            buf.append(record)
-                            if len(buf) >= self.batch_save_size:
-                                need_flush = True
-                        if need_flush:
-                            self._flush_buffer(output_path)
-                except Exception as exc:  # keep the pool alive on a bad task
-                    log.exception("Failed to process task %r: %s", task, exc)
-                finally:
-                    task_queue.task_done()
+            ctx = self._make_context()
+            self._process_loop(client, ctx, task_queue)
+        except Exception:
+            # A crashed worker must not leave tasks unprocessed — otherwise
+            # ``task_queue.join()`` in :meth:`run` would hang forever.
+            log.exception(
+                "Worker crashed; draining %d pending task(s)", task_queue.qsize()
+            )
+            self._drain(task_queue)
+            raise
         finally:
             client.close()
 
+    # ------------------------------------------------------------------ #
+    # Entry point
+    # ------------------------------------------------------------------ #
     def run(self) -> None:
         """Execute the pipeline: validate, build the queue, run workers, flush."""
         self._validate()
+        # Build a client eagerly so construction errors surface synchronously
+        # instead of inside (daemon) worker threads.
+        self._make_client()
         task_queue = self._build_task_queue()
 
         threads = [
-            threading.Thread(target=self._worker, args=(task_queue,), daemon=True)
-            for _ in range(self.num_workers)
+            threading.Thread(
+                target=self._worker,
+                args=(task_queue,),
+                name=f"llm-pipeline-worker-{index}",
+                daemon=True,
+            )
+            for index in range(self.num_workers)
         ]
         for thread in threads:
             thread.start()
-
         task_queue.join()
         for thread in threads:
             thread.join()
 
-        with self._buffers_lock:
-            paths_to_flush = list(self._buffers.keys())
-        for path in paths_to_flush:
-            self._flush_buffer(path)
+        self._flush_all()
         log.info("Processing finished.")

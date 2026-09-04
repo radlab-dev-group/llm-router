@@ -19,10 +19,9 @@ from __future__ import annotations
 
 __all__ = [
     "loaders",
+    "pipeline",
     "retry",
     "translate",
     "genai_classifier",
     "genai_data_augmentation",
 ]
-
-__version__ = "1.0.0"

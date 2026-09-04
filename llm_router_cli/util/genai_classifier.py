@@ -11,12 +11,12 @@ JSON object; the answer is stored per record.
 Upstream differences (this port):
 
 * No HuggingFace ``datasets`` (``_load_datasets`` / ``HfDatasetHandler``
-  removed) and no XLSX branch (``pandas`` / ``openpyxl`` / ``convert_jsonl_to_xlsx``
-  removed). Only local ``*.jsonl`` files are read, through
-  :func:`llm_router_cli.util.loaders.read_records`.
+  removed) and no XLSX branch (``pandas`` / ``openpyxl`` /
+  ``convert_jsonl_to_xlsx`` removed). Only local ``*.jsonl`` files are read,
+  through :func:`llm_router_cli.util.loaders.read_records`.
 * The ``tenacity`` ``@retry`` decorator is gone; the invalid‑JSON retry loop
-  that already existed is kept, and network retries are handled by the
-  built‑in ``retries`` of :class:`LLMRouterClient`.
+  is kept, and network retries are handled by the built‑in ``retries`` of
+  :class:`LLMRouterClient`.
 * ``dataset`` items are plain ``List[Dict]`` instead of a HuggingFace dataset
   or a ``pandas.DataFrame``.
 * The hard‑coded default router URL is ``http://localhost:8080``.
@@ -30,13 +30,14 @@ import queue
 import random
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
-import tqdm
+from tqdm import tqdm
 
 from llm_router_lib.client import LLMRouterClient
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
+from .json_utils import loads_json
 from .loaders import read_records
 from .pipeline import ConcurrentLLMPipeline
 
@@ -121,7 +122,7 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
     # Loading
     # ------------------------------------------------------------------ #
     def _load_local_datasets(
-        self, df_fields: Optional[List[str]] = None
+        self, fields: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         Load every ``*.jsonl`` file in ``dataset_dir`` (plus any explicit
@@ -144,18 +145,18 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
             try:
                 dataset_records = read_records(data_file, "jsonl")
                 columns = list(dataset_records[0].keys()) if dataset_records else []
-                fields = df_fields or columns
+                effective_fields = fields or columns
                 ds_name = data_file.stem
                 log.info(
                     "Loading dataset %s (from %s) with fields: %s",
                     ds_name,
                     data_file.suffix,
-                    fields,
+                    effective_fields,
                 )
                 loaded.append(
                     {
                         "name": ds_name,
-                        "fields": fields,
+                        "fields": effective_fields,
                         "dataset": dataset_records,
                     }
                 )
@@ -166,6 +167,15 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
     # ------------------------------------------------------------------ #
     # Classification
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _parse_llm_json(raw: str) -> Optional[Dict[str, Any]]:
+        """Parse an LLM answer as a JSON object (``None`` when not possible)."""
+        try:
+            obj = loads_json(raw)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return None
+        return obj if isinstance(obj, dict) else None
+
     def _classify_text(
         self,
         llm_client: LLMRouterClient,
@@ -185,116 +195,104 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
 
         parsed: Optional[Dict[str, Any]] = None
         raw_json = ""
-        while retry_when_invalid_json > 0:
+        for attempt in range(retry_when_invalid_json, 0, -1):
             response = llm_client.extended_conversation_with_model(
                 user_last_statement=text,
                 system_prompt=prompt_str,
                 model=self.model_name,
                 temperature=self.temperature,
             )
-            raw_json = response.response or "{}"
-            try:
-                raw_json = raw_json.replace("json\n", "")
-                raw_json = raw_json.replace("```", "")
-                parsed = json.loads(raw_json)
+            raw_json = (response.response or "").strip()
+            candidate = self._parse_llm_json(raw_json)
+            if candidate is not None:
+                parsed = candidate
                 break
-            except json.JSONDecodeError:
-                log.warning(
-                    "Invalid JSON from LLM for text %r... (feature %s) – retrying %d",
-                    text[:20],
-                    feature_name,
-                    retry_when_invalid_json,
-                )
-                log.error(raw_json)
-                retry_when_invalid_json -= 1
+            log.warning(
+                "Invalid JSON from LLM for text %r... (feature %s), "
+                "%d attempt(s) left",
+                text[:20],
+                feature_name,
+                attempt - 1,
+            )
+            log.debug("Raw LLM response: %s", raw_json)
 
-        if parsed and len(parsed) and self.verbose:
+        if parsed is None:
+            return {}
+        if self.verbose and parsed:
             parsed["_raw_response"] = raw_json
-
-        if not parsed:
-            parsed = {}
         return parsed
 
     # ------------------------------------------------------------------ #
     # Resume support
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _iter_jsonl(path: Path) -> Iterator[Dict[str, Any]]:
+        """Yield the JSON objects stored in *path* (malformed lines skipped)."""
+        with path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    log.debug("Skipping malformed line in %s", path)
+                    continue
+                if isinstance(obj, dict):
+                    yield obj
+
     def _load_existing_texts(self, path: Path) -> Set[Tuple[str, str]]:
         """
-        Return a set of ``(field, text)`` already present in *path*, and make
-        sure the augmentation file contains every record from the main file.
+        Return the set of ``(field, text)`` already present in *path*, and make
+        sure the companion labels file contains every record from the main
+        file (backfilling any that are missing).
         """
         seen: Set[Tuple[str, str]] = set()
         if not path.is_file():
             return seen
 
         main_records: List[Dict[str, Any]] = []
-        with path.open("r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    obj = json.loads(line)
-                    txt = obj.get("text")
-                    fld = obj.get("field")
-                    if isinstance(txt, str) and isinstance(fld, str):
-                        seen.add((fld, txt))
-                        main_records.append(obj)
-                except json.JSONDecodeError:
-                    log.debug("Skipping malformed line in %s", path)
+        for obj in self._iter_jsonl(path):
+            txt = obj.get("text")
+            fld = obj.get("field")
+            if isinstance(txt, str) and isinstance(fld, str):
+                seen.add((fld, txt))
+                main_records.append(obj)
 
         aug_path = path.with_name(f"{path.stem}_clean_labels.jsonl")
         seen_aug: Set[Tuple[str, str]] = set()
         if aug_path.is_file():
-            with aug_path.open("r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        obj = json.loads(line)
-                        txt = obj.get("text")
-                        fld = obj.get("original_field")
-                        if isinstance(txt, str) and isinstance(fld, str):
-                            seen_aug.add((fld, txt))
-                    except json.JSONDecodeError:
-                        log.debug("Skipping malformed line in %s", aug_path)
+            for obj in self._iter_jsonl(aug_path):
+                txt = obj.get("text")
+                fld = obj.get("original_field")
+                if isinstance(txt, str) and isinstance(fld, str):
+                    seen_aug.add((fld, txt))
 
-        missing_records = [
+        missing = [
             rec
             for rec in main_records
             if (rec.get("field"), rec.get("text")) not in seen_aug
         ]
-        if missing_records:
+        if missing:
             log.info(
                 "Converting %d missing records to augmentation format in %s",
-                len(missing_records),
+                len(missing),
                 aug_path.name,
             )
-            with aug_path.open("a", encoding="utf-8") as f:
-                for rec in missing_records:
-                    labels = []
-                    for feat in rec.get("features", []):
-                        resp = feat.get("response", {})
-                        if "class" in resp:
-                            labels.append(resp["class"])
-                        elif resp.get("exists") is True:
-                            labels.append(feat["name"])
+            with aug_path.open("a", encoding="utf-8") as handle:
+                for rec in missing:
                     aug_rec = {
                         "text": rec.get("text"),
-                        "labels": labels,
+                        "labels": self._extract_labels(rec.get("features", [])),
                         "original_field": rec.get("field"),
                     }
-                    f.write(json.dumps(aug_rec, ensure_ascii=False) + "\n")
+                    handle.write(json.dumps(aug_rec, ensure_ascii=False) + "\n")
 
         log.info(
             "Loaded %d previously processed records from %s", len(seen), path.name
         )
         return seen
 
-    # ------------------------------------------------------------------ #
-    # Buffering / flushing
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _extract_labels(features: List[Dict[str, Any]]) -> List[Any]:
         """Collect the labels (classes) produced for a record's features."""
@@ -331,10 +329,10 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
         """One shared :class:`PromptHandler` per worker."""
         return PromptHandler(str(self.prompts_dir))
 
-    def _build_task_queue(self) -> "queue.Queue":
+    def _build_task_queue(self) -> queue.Queue[Any]:
         """Load every local dataset and enqueue its unprocessed (field, text)."""
-        all_datasets = self._load_local_datasets(df_fields=[self.text_column_name])
-        task_q: "queue.Queue" = queue.Queue()
+        all_datasets = self._load_local_datasets(fields=[self.text_column_name])
+        task_q: queue.Queue[Any] = queue.Queue()
         for ds_item in all_datasets:
             self._process_dataset(ds_item, task_q)
         return task_q
@@ -378,7 +376,7 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
     # Task preparation
     # ------------------------------------------------------------------ #
     def _process_dataset(
-        self, ds_item: Dict[str, Any], task_queue: "queue.Queue"
+        self, ds_item: Dict[str, Any], task_queue: queue.Queue[Any]
     ) -> None:
         """Scan a dataset (``List[Dict]``) and enqueue unprocessed (field, text)."""
         ds_name = ds_item["name"]
@@ -395,7 +393,7 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
         self._ensure_buffer(output_path)
 
         rng = random.Random()
-        for field in tqdm.tqdm(fields, desc=f"{ds_name} fields", leave=False):
+        for field in tqdm(fields, desc=f"{ds_name} fields", leave=False):
             values = [record[field] for record in dataset if field in record]
             rng.shuffle(values)
 
