@@ -62,12 +62,18 @@ llm-router auth key rotate key-id --grace 3600
 ### Policy Management
 
 ```bash
-# List builtin policies
+# List builtin policies (custom ones are marked with "(custom)")
 llm-router auth policy list
 
-# Create a new policy
+# Create a new policy — inline JSON, from a file, or from stdin (-)
 llm-router auth policy create my-team '{"can_access": true, "rate_limit": 120}'
+llm-router auth policy create my-team --file my-team.json
+cat my-team.json | llm-router auth policy create my-team --file -
 ```
+
+> Custom policies are persisted to `$LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE`
+> (default: `~/.llm-router/configs/auth/custom-policies.json`) and resolved by
+> the server without a restart.
 
 ### Rate Limit
 

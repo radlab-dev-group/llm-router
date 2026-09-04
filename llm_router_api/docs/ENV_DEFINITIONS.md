@@ -138,6 +138,12 @@ configuration documented above.
 
 Seed file path (hardcoded): `${HOME}/.llm-router/configs/auth/memory-keys.json`
 
+### Custom policies
+
+| Variable                             | Default                                    | Description                                                                                     |
+|--------------------------------------|--------------------------------------------|-------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE` | `~/.llm-router/configs/auth/custom-policies.json` | JSON file with custom policies created via `llm-router auth policy create` (shared with the server at resolution time). |
+
 ### Vault settings
 
 | Variable                            | Default                           | Description                                                    |
