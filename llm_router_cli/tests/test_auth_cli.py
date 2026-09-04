@@ -400,4 +400,4 @@ def test_key_rotate_verbose_logs_key_id_not_key_material(auth_home, caplog):
     assert f"Rotating key {kid}" in log_text
     assert f"rotate_key('{kid}', 3600)" in log_text
     # key material (plaintext / rotated keys) must never appear in the logs
-    assert "sk-litm" not in log_text
+    assert "sk-llmr-live" not in log_text
