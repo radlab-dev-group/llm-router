@@ -196,7 +196,7 @@ def test_translate_empty_file_no_error(tmp_path, fake_translate):
 
     out_file = tmp_path / "empty.translated.jsonl"
     assert out_file.is_file()
-    assert _read_jsonl(out_file) == []
+    assert not _read_jsonl(out_file)
 
 
 # --------------------------------------------------------------------- #

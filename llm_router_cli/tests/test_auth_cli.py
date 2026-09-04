@@ -8,11 +8,8 @@ apply / remove across the store backends, and the Vault kwargs wiring.
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
-
-import pytest
 
 from llm_router_cli.cli.commands.auth import AuthCommand
 
