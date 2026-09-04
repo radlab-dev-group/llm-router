@@ -51,7 +51,9 @@ class BaseCommand:
         cls, subparsers: argparse._SubParsersAction[Any]
     ) -> argparse.ArgumentParser:
         """Add the command (and its children) under *subparsers*."""
-        parser = subparsers.add_parser(cls.NAME, help=cls.HELP)
+        parser: argparse.ArgumentParser = subparsers.add_parser(
+            cls.NAME, help=cls.HELP
+        )
         cls._attach_children(parser)
         return parser
 

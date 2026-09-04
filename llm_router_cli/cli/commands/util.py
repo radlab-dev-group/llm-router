@@ -18,7 +18,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Callable, ClassVar, Optional
+from typing import Any, ClassVar, Dict, Optional
 
 from .base import BaseCommand
 
@@ -307,6 +307,9 @@ class UtilCommand(BaseCommand):
     def dispatch(cls, args: argparse.Namespace) -> int:
         """Route on the parsed namespace (no re-parsing of ``argv``)."""
         action = getattr(args, cls.SUBPARSER_DEST, None)
+        if action is None:
+            cls.build_parser().print_help()
+            return 0
         handler = {
             cls.TRANSLATE: cls._run_translate,
             cls.CLASSIFIER: cls._run_classifier,
@@ -314,18 +317,15 @@ class UtilCommand(BaseCommand):
         }.get(action)
         if handler is None:
             cls.build_parser().print_help()
-            return 0 if action is None else 1
+            return 1
         return handler(args)
 
     # ------------------------------------------------------------------ #
     # Sub-command handlers
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _run_app(
-        args: argparse.Namespace, app_factory: Callable[[Any], Any], label: str
-    ) -> int:
-        """Build, run and close an app, normalising errors to an exit code."""
-        app = app_factory(args)
+    def _run_app(app: Any, label: str) -> int:
+        """Run and close *app*, normalising errors to an exit code."""
         try:
             app.run()
         except Exception as exc:
@@ -337,37 +337,42 @@ class UtilCommand(BaseCommand):
                 close()
         return 0
 
+    @staticmethod
+    def _common_genai_kwargs(args: argparse.Namespace) -> Dict[str, Any]:
+        """Extract the kwargs shared by the two GenAI app constructors."""
+        return {
+            "llm_router_url": args.llm_router_url,
+            "model_name": args.model_name,
+            "temperature": args.temperature,
+            "llm_router_token": args.llm_router_token,
+            "llm_router_timeout": args.llm_router_timeout,
+            "batch_save_size": args.batch_save_size,
+            "dry_run": args.dry_run,
+            "output_dir": args.output_dir,
+            "verbose": args.verbose,
+            "num_workers": args.num_workers,
+        }
+
     @classmethod
     def _run_translate(cls, args: argparse.Namespace) -> int:
         from llm_router_cli.util.translate import TranslateApp
 
-        return cls._run_app(args, TranslateApp, "translate")
+        return cls._run_app(TranslateApp(args), "translate")
 
     @classmethod
     def _run_classifier(cls, args: argparse.Namespace) -> int:
         from llm_router_cli.util.genai_classifier import GenAIClassifierApp
 
-        def build(a: argparse.Namespace) -> GenAIClassifierApp:
-            n_sample = a.n_sample if a.n_sample and a.n_sample > 0 else None
-            return GenAIClassifierApp(
-                dataset_dir=a.dataset_dir,
-                prompts_dir=a.prompts_dir,
-                llm_router_url=a.llm_router_url,
-                model_name=a.model_name,
-                temperature=a.temperature,
-                llm_router_token=a.llm_router_token,
-                llm_router_timeout=a.llm_router_timeout,
-                batch_save_size=a.batch_save_size,
-                dry_run=a.dry_run,
-                output_dir=a.output_dir,
-                verbose=a.verbose,
-                num_workers=a.num_workers,
-                n_sample=n_sample,
-                dataset_paths=a.dataset_path,
-                text_column_name=a.text_column_name,
-            )
-
-        return cls._run_app(args, build, "genai-classifier")
+        n_sample = args.n_sample if args.n_sample and args.n_sample > 0 else None
+        app = GenAIClassifierApp(
+            dataset_dir=args.dataset_dir,
+            prompts_dir=args.prompts_dir,
+            **cls._common_genai_kwargs(args),
+            n_sample=n_sample,
+            dataset_paths=args.dataset_path,
+            text_column_name=args.text_column_name,
+        )
+        return cls._run_app(app, "genai-classifier")
 
     @classmethod
     def _run_augmentation(cls, args: argparse.Namespace) -> int:
@@ -375,27 +380,18 @@ class UtilCommand(BaseCommand):
             GenAIDataAugmentationApp,
         )
 
-        def build(a: argparse.Namespace) -> GenAIDataAugmentationApp:
-            labels = [part for part in (a.labels or "").split(",") if part.strip()]
-            return GenAIDataAugmentationApp(
-                dataset_path=a.dataset_path,
-                prompt_path=a.prompt_file,
-                labels=labels,
-                llm_router_url=a.llm_router_url,
-                model_name=a.model_name,
-                llm_router_token=a.llm_router_token,
-                llm_router_timeout=a.llm_router_timeout,
-                temperature=a.temperature,
-                n_samples=a.n_samples,
-                n_examples=a.n_examples,
-                samples_as_examples=a.samples_as_examples,
-                batch_save_size=a.batch_save_size,
-                dry_run=a.dry_run,
-                output_dir=a.output_dir,
-                verbose=a.verbose,
-                num_workers=a.num_workers,
-                text_column_name=a.text_column_name,
-                label_column_name=a.label_column_name,
-            )
-
-        return cls._run_app(args, build, "genai-data-augmentation")
+        labels = [
+            part.strip() for part in (args.labels or "").split(",") if part.strip()
+        ]
+        app = GenAIDataAugmentationApp(
+            dataset_path=args.dataset_path,
+            prompt_path=args.prompt_file,
+            labels=labels,
+            **cls._common_genai_kwargs(args),
+            n_samples=args.n_samples,
+            n_examples=args.n_examples,
+            samples_as_examples=args.samples_as_examples,
+            text_column_name=args.text_column_name,
+            label_column_name=args.label_column_name,
+        )
+        return cls._run_app(app, "genai-data-augmentation")

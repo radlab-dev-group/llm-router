@@ -18,16 +18,17 @@ Usage::
 
 from __future__ import annotations
 
+import argparse
+import asyncio
+import json
 import os
 import sys
-import json
-import asyncio
-import argparse
-
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .base import BaseCommand
+
+__all__ = ["AuthCommand"]
 
 
 class AuthCommand(BaseCommand):
@@ -42,13 +43,17 @@ class AuthCommand(BaseCommand):
     NAME = "auth"
     SUBPARSER_DEST = "auth_command"
     HELP = "Manage API keys and authentication"
+
     KEY_NAME = "key"
     POLICY_NAME = "policy"
     RATE_LIMIT_NAME = "rate-limit"
-    STORE_BACKENDS = ["memory", "redis", "vault"]
+    STORE_BACKENDS = ("memory", "redis", "vault")
+    KEY_COMMANDS = ("generate", "list", "delete", "disable", "enable", "rotate")
+    KEY_MUTATE_ACTIONS = ("delete", "disable", "enable")
 
     SEED_DIR = Path.home() / ".llm-router"
     DEFAULT_SEED_FILE = str(SEED_DIR / "configs" / "auth" / "memory-keys.json")
+    PRESET_FILE_NAME = "rate_limiting-policies.json"
 
     # ---- Built-in rate-limit presets (class-level constant) ---------------
 
@@ -59,13 +64,54 @@ class AuthCommand(BaseCommand):
         {"name": "enterprise", "rpm": 500, "description": "High throughput"},
     ]
 
-    # ---- Key command definitions (class-level constants) -------------------
+    # ------------------------------------------------------------------ #
+    # Error / table helpers
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _fail(message: str) -> int:
+        """Print ``Error: message`` to stderr and return a failure exit code."""
+        print(f"Error: {message}", file=sys.stderr)
+        return 1
 
-    _KEY_COMMANDS = ["generate", "list", "delete", "disable", "enable", "rotate"]
-    _KEY_MUTATE_ACTIONS = {"delete", "disable", "enable"}
+    @staticmethod
+    def _render_table(
+        headers: Sequence[str],
+        rows: Sequence[Sequence[str]],
+        *,
+        aligns: Optional[Sequence[str]] = None,
+        min_widths: Optional[Sequence[int]] = None,
+        gap: str = "  ",
+    ) -> str:
+        """Render *headers* and *rows* as an aligned plain-text table."""
+        n_cols = len(headers)
+        aligns = tuple(aligns or ("l" * n_cols))
+        min_widths = min_widths or ()
 
-    # ---- Argument-adding helpers -------------------------------------------
+        def width(col: int) -> int:
+            widest = len(headers[col])
+            for row in rows:
+                widest = max(widest, len(str(row[col])))
+            if col < len(min_widths):
+                widest = max(widest, min_widths[col])
+            return widest
 
+        def format_row(cells: Sequence[str]) -> str:
+            parts = []
+            for i, cell in enumerate(cells):
+                text = str(cell)
+                if aligns[i] == "r":
+                    parts.append(f"{text:>{width(i)}}")
+                else:
+                    parts.append(f"{text:<{width(i)}}")
+            return gap.join(parts)
+
+        separator = gap.join("-" * width(i) for i in range(n_cols))
+        lines = [format_row(headers), separator, *(format_row(r) for r in rows)]
+        return "\n".join(lines)
+
+    # ------------------------------------------------------------------ #
+    # Argument-adding helpers
+    # ------------------------------------------------------------------ #
     @staticmethod
     def _add_store_and_redis_args(p: argparse.ArgumentParser) -> None:
         """
@@ -116,73 +162,51 @@ class AuthCommand(BaseCommand):
         """
         p.add_argument("key_id", help="Key ID to operate on")
 
-    # ---- Seed / store setup -----------------------------------------------
-
+    # ------------------------------------------------------------------ #
+    # Seed / store setup
+    # ------------------------------------------------------------------ #
     @classmethod
-    def _ensure_seed_env(cls) -> str:
+    def _ensure_seed_env(cls) -> None:
         """
-        Ensure seed directory structure and return the seed file path.
+        Ensure the seed directory structure and the shipped presets exist.
         """
-        cls.SEED_DIR.mkdir(exist_ok=True)
-        auth_dir = cls.SEED_DIR / "configs" / "auth"
-        auth_dir.mkdir(parents=True, exist_ok=True)
+        cls.SEED_DIR.mkdir(parents=True, exist_ok=True)
+        (cls.SEED_DIR / "configs" / "auth").mkdir(parents=True, exist_ok=True)
         cls._seed_policies(cls.SEED_DIR / "configs")
-        return cls.DEFAULT_SEED_FILE
-
-    @classmethod
-    def _seed_policies(cls, config_dir: Path) -> None:
-        """
-        Copy the shipped policies JSON into *config_dir* when it does not
-        exist yet.
-        """
-        dest = config_dir / "rate_limiting-policies.json"
-        if dest.exists():
-            return
-        try:
-            from importlib import resources as pkg_resources
-
-            src_data = (
-                pkg_resources.files("llm_router_cli.resources.configs")
-                .joinpath("rate_limiting-policies.json")
-                .read_bytes()
-            )
-            dest.write_bytes(src_data)
-            return
-        except (ImportError, OSError):
-            # intentional: packaged preset missing/unreadable — try the
-            # filesystem fallback next.
-            pass
-        fallback = Path("resources/configs/rate_limiting-policies.json")
-        if fallback.is_file():
-            dest.write_text(fallback.read_text(encoding="utf-8"))
-
-    # ---- Key-store kwargs / factory -----------------------------------------
 
     @staticmethod
-    def _auth_redis_kwargs(args: Any) -> Dict[str, Any]:
+    def _cli_or_env(args: Any, attr: str, env_name: str, default: Any = None) -> Any:
+        """
+        Resolve a value from the CLI arg *attr*, falling back to the
+        environment variable *env_name*, then to *default*.
+
+        An explicit ``None`` CLI value falls through (the argparse default
+        when the flag is omitted); any other value — including ``0`` — wins.
+        """
+        value = getattr(args, attr, None)
+        if value is not None:
+            return value
+        env_value = os.environ.get(env_name)
+        return default if env_value is None else env_value
+
+    @classmethod
+    def _auth_redis_kwargs(cls, args: Any) -> Dict[str, Any]:
         """
         Build redis kwargs for the auth key store (CLI args → env vars).
         """
+        prefix = "LLM_ROUTER_AUTH_REDIS_"
+
+        def _int(attr: str, env_suffix: str, default: int) -> int:
+            return int(cls._cli_or_env(args, attr, prefix + env_suffix, default))
+
         return {
-            "redis_host": getattr(args, "auth_redis_host", None)
-            or os.environ.get("LLM_ROUTER_AUTH_REDIS_HOST"),
-            "redis_port": int(
-                getattr(args, "auth_redis_port", 0)
-                or os.environ.get("LLM_ROUTER_AUTH_REDIS_PORT", 6379)
+            "redis_host": cls._cli_or_env(args, "auth_redis_host", prefix + "HOST"),
+            "redis_port": _int("auth_redis_port", "PORT", 6379),
+            "redis_db": _int("auth_redis_db", "DB", 0),
+            "redis_password": cls._cli_or_env(
+                args, "auth_redis_password", prefix + "PASSWORD"
             ),
-            "redis_db": int(
-                getattr(args, "auth_redis_db", -1)
-                or os.environ.get("LLM_ROUTER_AUTH_REDIS_DB", 0)
-            ),
-            "redis_password": (
-                getattr(args, "auth_redis_password", None)
-                or os.environ.get("LLM_ROUTER_AUTH_REDIS_PASSWORD")
-            )
-            or None,
-            "redis_protocol": int(
-                getattr(args, "auth_redis_protocol", 2)
-                or os.environ.get("LLM_ROUTER_AUTH_REDIS_PROTOCOL", 2)
-            ),
+            "redis_protocol": _int("auth_redis_protocol", "PROTOCOL", 2),
         }
 
     @staticmethod
@@ -192,22 +216,20 @@ class AuthCommand(BaseCommand):
         ``LLM_ROUTER_AUTH_VAULT_*`` environment variables (same source the
         server engine uses — see ``core/engine.py``).
         """
+
+        def _get(name: str, default: str = "") -> str:
+            return os.environ.get(name, default).strip()
+
         return {
-            "addr": os.environ.get("LLM_ROUTER_AUTH_VAULT_ADDR", "").strip(),
-            "mount_path": (
-                os.environ.get("LLM_ROUTER_AUTH_VAULT_PATH", "").strip()
-                or "secret/data/llm-router/api-keys"
-            ),
+            "addr": _get("LLM_ROUTER_AUTH_VAULT_ADDR"),
+            "mount_path": _get("LLM_ROUTER_AUTH_VAULT_PATH")
+            or "secret/data/llm-router/api-keys",
             "auth_method": (
-                os.environ.get("LLM_ROUTER_AUTH_VAULT_AUTH_METHOD", "kubernetes")
-                .strip()
-                .lower()
+                _get("LLM_ROUTER_AUTH_VAULT_AUTH_METHOD", "kubernetes").lower()
                 or "kubernetes"
             ),
-            "role_id": os.environ.get("LLM_ROUTER_AUTH_VAULT_ROLE_ID", "").strip(),
-            "secret_id": os.environ.get(
-                "LLM_ROUTER_AUTH_VAULT_SECRET_ID", ""
-            ).strip(),
+            "role_id": _get("LLM_ROUTER_AUTH_VAULT_ROLE_ID"),
+            "secret_id": _get("LLM_ROUTER_AUTH_VAULT_SECRET_ID"),
         }
 
     def _make_store(self, args: Any) -> Any:
@@ -229,103 +251,128 @@ class AuthCommand(BaseCommand):
         store, _shared = create_key_store(store_type=args.store, **kwargs)
         return store
 
-    # ---- Rate-limit preset loading -----------------------------------------
+    def _store_call(
+        self, args: Any, method_name: str, *call_args: Any
+    ) -> Tuple[Optional[Any], Optional[Any], Optional[str]]:
+        """
+        Create the store and run one async method against it.
+
+        Returns ``(store, result, error)`` — on success *error* is ``None``,
+        on failure *store*/*result* are ``None`` and *error* carries the
+        user-facing message.
+        """
+        try:
+            store = self._make_store(args)
+            result = asyncio.run(getattr(store, method_name)(*call_args))
+            return store, result, None
+        except (ValueError, RuntimeError, OSError) as exc:
+            return None, None, str(exc)
+
+    @staticmethod
+    def _persist_seeds(store: Any) -> None:
+        """Persist the seed file when the store supports it (memory backend)."""
+        if store is not None and hasattr(store, "_persist_seeds"):
+            seed_file = getattr(store, "_seed_file", None)
+            if seed_file:
+                store._persist_seeds(seed_file)
+
+    # ------------------------------------------------------------------ #
+    # Rate-limit preset loading
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _parse_presets(raw: Any) -> Optional[List[Dict[str, Any]]]:
+        """
+        Parse raw preset JSON, returning ``None`` when it is invalid, not a
+        list, or contains no usable presets.
+        """
+        try:
+            presets = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, OSError):
+            return None
+        if not isinstance(presets, list):
+            return None
+        valid = [p for p in presets if isinstance(p, dict) and "name" in p]
+        return valid or None
+
+    @classmethod
+    def _read_presets_file(cls, path: Path) -> Optional[List[Dict[str, Any]]]:
+        """Load presets from *path*, or ``None`` when unreadable/invalid."""
+        try:
+            return cls._parse_presets(path.read_bytes())
+        except OSError:
+            return None
+
+    @classmethod
+    def _package_presets(cls) -> Optional[bytes]:
+        """Return the packaged preset JSON bytes, or ``None`` if unavailable."""
+        try:
+            from importlib import resources as pkg_resources
+
+            return (
+                pkg_resources.files("llm_router_cli.resources.configs")
+                .joinpath(cls.PRESET_FILE_NAME)
+                .read_bytes()
+            )
+        except (ImportError, OSError, AttributeError):
+            # intentional: packaged preset missing/unreadable — the callers
+            # fall back to the next candidate in their chain.
+            return None
+
+    @classmethod
+    def _seed_policies(cls, config_dir: Path) -> None:
+        """
+        Copy the shipped presets into *config_dir* when they do not exist yet.
+        """
+        dest = config_dir / cls.PRESET_FILE_NAME
+        if dest.exists():
+            return
+        data = cls._package_presets()
+        if data is None:
+            fallback = Path("resources/configs") / cls.PRESET_FILE_NAME
+            if fallback.is_file():
+                data = fallback.read_bytes()
+        if data is not None:
+            dest.write_bytes(data)
 
     @classmethod
     def _load_rate_limit_presets(cls) -> List[Dict[str, Any]]:
         """
-        Load predefined rate-limit presets
-        (env var → user config → package resource → builtin).
+        Load predefined rate-limit presets.
+
+        Resolution order: the ``LLM_ROUTER_RATE_LIMITING_CONFIG`` path (file
+        or directory), the user config file, the packaged resource, and
+        finally the builtin presets.
         """
+        candidates: List[Path] = []
         env_path = os.environ.get("LLM_ROUTER_RATE_LIMITING_CONFIG", "").strip()
-
-        def _try_load(path: Path) -> Optional[List[Dict[str, Any]]]:
-            if not path.exists():
-                return None
-            try:
-                presets = json.loads(path.read_text(encoding="utf-8"))
-                result = [p for p in presets if isinstance(p, dict) and "name" in p]
-                return result if result else None
-            except (json.JSONDecodeError, OSError):
-                return None
-
-        def _try_load_bytes(data: bytes) -> Optional[List[Dict[str, Any]]]:
-            try:
-                presets = json.loads(data)
-                result = [p for p in presets if isinstance(p, dict) and "name" in p]
-                return result if result else None
-            except (json.JSONDecodeError, OSError):
-                return None
-
         if env_path:
-            candidate = Path(env_path)
-            loaded = _try_load(candidate)
-            if loaded is not None:
-                return loaded
-            loaded = _try_load(candidate / "rate_limiting-policies.json")
-            if loaded is not None:
-                return loaded
-
-        user_config = (
-            Path.home() / ".llm-router" / "configs" / "rate_limiting-policies.json"
+            env_dir = Path(env_path)
+            candidates.append(env_dir)
+            candidates.append(env_dir / cls.PRESET_FILE_NAME)
+        candidates.append(
+            Path.home() / ".llm-router" / "configs" / cls.PRESET_FILE_NAME
         )
-        loaded = _try_load(user_config)
-        if loaded is not None:
-            return loaded
 
-        try:
-            from importlib import resources as pkg_resources
+        for path in candidates:
+            presets = cls._read_presets_file(path)
+            if presets is not None:
+                return presets
 
-            _PACKAGE_RES = (
-                pkg_resources.files("llm_router_cli.resources.configs")
-                / "rate_limiting-policies.json"
-            )
-            if hasattr(_PACKAGE_RES, "read_bytes"):
-                loaded = _try_load_bytes(_PACKAGE_RES.read_bytes())
-            else:
-                loaded = _try_load(Path(str(_PACKAGE_RES)))
-            if loaded is not None:
-                return loaded
-        except (ImportError, OSError):
-            # intentional: packaged preset missing/unreadable — fall back to
-            # the builtin presets below.
-            pass
+        package_bytes = cls._package_presets()
+        if package_bytes is not None:
+            presets = cls._parse_presets(package_bytes)
+            if presets is not None:
+                return presets
 
         return cls._BUILTIN_RATE_LIMIT_PRESETS
 
-    # ---- Subparser registration -------------------------------------------
-
+    # ------------------------------------------------------------------ #
+    # Subparser registration
+    # ------------------------------------------------------------------ #
     @classmethod
-    def register_rate_limit_subparser(cls, parser: argparse.ArgumentParser) -> None:
-        """
-        Register the ``rate-limit`` sub-subcommands under *parser*.
-        """
-        rl_parser = parser.add_parser(
-            cls.RATE_LIMIT_NAME,
-            help="Manage rate limiting presets and per-key overrides",
-        )
-        rl_sub = rl_parser.add_subparsers(dest="rate_limit_command")
-        rl_sub.add_parser("list", help="List available rate-limit presets")
-        rl_apply = rl_sub.add_parser(
-            "apply", help="Apply a rate-limit preset to an existing key"
-        )
-        cls._add_key_id_arg(rl_apply)
-        rl_apply.add_argument("--preset", required=True, help="Preset name")
-        cls._add_store_and_redis_args(rl_apply)
-        rl_remove = rl_sub.add_parser(
-            "remove",
-            help="Remove rate-limit override from a key (revert to global default)",
-        )
-        cls._add_key_id_arg(rl_remove)
-        cls._add_store_and_redis_args(rl_remove)
-
-    @classmethod
-    def register_children(
-        cls, subparsers: "argparse._SubParsersAction[Any]"
-    ) -> None:
-        """Register the ``auth`` leaf sub‑commands (key / policy / rate-limit)."""
-        auth_sub = subparsers
-        key_parser = auth_sub.add_parser(cls.KEY_NAME, help="Manage API keys")
+    def _register_key(cls, subparsers: "argparse._SubParsersAction[Any]") -> None:
+        """Register the ``key`` sub-subcommands under *subparsers*."""
+        key_parser = subparsers.add_parser(cls.KEY_NAME, help="Manage API keys")
         key_sub = key_parser.add_subparsers(dest="key_command")
 
         generate_p = key_sub.add_parser("generate", help="Generate a new API key")
@@ -357,11 +404,11 @@ class AuthCommand(BaseCommand):
             help="Output in JSON format",
         )
 
-        for name, help_text in [
+        for name, help_text in (
             ("delete", "Delete an API key"),
             ("disable", "Disable an API key (deactivate without deleting)"),
             ("enable", "Re-enable a previously disabled API key"),
-        ]:
+        ):
             sub = key_sub.add_parser(name, help=help_text)
             cls._add_key_id_arg(sub)
             cls._add_store_and_redis_args(sub)
@@ -376,7 +423,12 @@ class AuthCommand(BaseCommand):
             help="Grace period in seconds (default: 3600)",
         )
 
-        policy_parser = auth_sub.add_parser(cls.POLICY_NAME, help="Manage policies")
+    @classmethod
+    def _register_policy(cls, subparsers: "argparse._SubParsersAction[Any]") -> None:
+        """Register the ``policy`` sub-subcommands under *subparsers*."""
+        policy_parser = subparsers.add_parser(
+            cls.POLICY_NAME, help="Manage policies"
+        )
         policy_sub = policy_parser.add_subparsers(dest="policy_command")
         policy_sub.add_parser("list", help="List available policies")
         policy_create = policy_sub.add_parser("create", help="Create a new policy")
@@ -384,10 +436,44 @@ class AuthCommand(BaseCommand):
         policy_create.add_argument("policy_json", help="JSON policy definition")
         cls._add_store_and_redis_args(policy_create)
 
-        cls.register_rate_limit_subparser(auth_sub)
+    @classmethod
+    def register_rate_limit_subparser(
+        cls, subparsers: "argparse._SubParsersAction[Any]"
+    ) -> None:
+        """
+        Register the ``rate-limit`` sub-subcommands under *subparsers*.
+        """
+        rl_parser = subparsers.add_parser(
+            cls.RATE_LIMIT_NAME,
+            help="Manage rate limiting presets and per-key overrides",
+        )
+        rl_sub = rl_parser.add_subparsers(dest="rate_limit_command")
+        rl_sub.add_parser("list", help="List available rate-limit presets")
+        rl_apply = rl_sub.add_parser(
+            "apply", help="Apply a rate-limit preset to an existing key"
+        )
+        cls._add_key_id_arg(rl_apply)
+        rl_apply.add_argument("--preset", required=True, help="Preset name")
+        cls._add_store_and_redis_args(rl_apply)
+        rl_remove = rl_sub.add_parser(
+            "remove",
+            help="Remove rate-limit override from a key (revert to global default)",
+        )
+        cls._add_key_id_arg(rl_remove)
+        cls._add_store_and_redis_args(rl_remove)
 
-    # ---- Dispatch ----------------------------------------------------------
+    @classmethod
+    def register_children(
+        cls, subparsers: "argparse._SubParsersAction[Any]"
+    ) -> None:
+        """Register the ``auth`` leaf sub‑commands (key / policy / rate-limit)."""
+        cls._register_key(subparsers)
+        cls._register_policy(subparsers)
+        cls.register_rate_limit_subparser(subparsers)
 
+    # ------------------------------------------------------------------ #
+    # Dispatch
+    # ------------------------------------------------------------------ #
     @classmethod
     def dispatch(cls, args: argparse.Namespace) -> int:
         """Dispatch an already-parsed *args* namespace (no re-parsing)."""
@@ -408,19 +494,18 @@ class AuthCommand(BaseCommand):
             return 1
         return handler(args)
 
-    # ---- Key handler commands (all private methods on the class) ----------
-
+    # ------------------------------------------------------------------ #
+    # Key handlers
+    # ------------------------------------------------------------------ #
     def _handle_key(self, args: Any) -> int:
         """Route key subcommands to their handlers (mutations share one path)."""
         cmd = getattr(args, "key_command", None)
         if cmd is None:
-            print(
-                f"Usage: llm-router auth key <{'|'.join(self._KEY_COMMANDS)}>",
-                file=sys.stderr,
+            return self._fail(
+                f"Usage: llm-router auth key <{'|'.join(self.KEY_COMMANDS)}>"
             )
-            return 1
 
-        if cmd in self._KEY_MUTATE_ACTIONS:
+        if cmd in self.KEY_MUTATE_ACTIONS:
             return self._key_mutate(args, cmd)
 
         handler = {
@@ -429,77 +514,59 @@ class AuthCommand(BaseCommand):
             "rotate": self._key_rotate,
         }.get(cmd)
         if handler is None:
-            print(f"Unknown key command: {cmd}", file=sys.stderr)
-            return 1
+            return self._fail(f"Unknown key command: {cmd}")
         return handler(args)
 
     def _key_generate(self, args: Any) -> int:
         """
-        Handle the 'generate' subcommand.
+        Handle the ``generate`` subcommand.
         """
         from llm_router_api.core.auth.key_generator import KeyGenerator
         from llm_router_api.core.auth.policies.builtin import get_builtin_policy
 
         policy = args.policy
-        policy_obj = get_builtin_policy(policy)
-        if policy_obj is None:
-            print(f"Error: Policy '{policy}' does not exist.", file=sys.stderr)
-            return 1
+        if get_builtin_policy(policy) is None:
+            return self._fail(f"Policy '{policy}' does not exist.")
 
-        expires: Optional[float]
-        if args.expires in (None, ""):
-            expires = None
-        else:
+        expires: Optional[float] = None
+        if args.expires not in (None, ""):
             try:
                 expires = float(args.expires)
             except ValueError:
-                print(
-                    f"Error: --expires must be a Unix timestamp "
-                    f"(got '{args.expires}').",
-                    file=sys.stderr,
+                return self._fail(
+                    f"--expires must be a Unix timestamp (got '{args.expires}')."
                 )
-                return 1
 
-        try:
-            key_store = self._make_store(args)
-            plaintext_key = asyncio.run(
-                key_store.create_key(
-                    {
-                        "key_plain": KeyGenerator().generate(),
-                        "policy_name": policy,
-                        "expires_at": expires,
-                        "metadata": {},
-                    }
-                )
-            )
-        except (ValueError, RuntimeError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        record = {
+            "key_plain": KeyGenerator().generate(),
+            "policy_name": policy,
+            "expires_at": expires,
+            "metadata": {},
+        }
+        _store, plaintext_key, error = self._store_call(args, "create_key", record)
+        if error is not None or plaintext_key is None:
+            return self._fail(error or "key generation failed")
 
         if args.output:
             out_path = Path(args.output).expanduser()
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(plaintext_key + "\n", encoding="utf-8")
             print(f"Generated key for policy '{policy}' written to {out_path}")
-            print("⚠️  This key is displayed ONCE. Store it securely!")
         else:
             print(f"Generated key for policy '{policy}':")
             print(plaintext_key)
-            print("\n⚠️  This key is displayed ONCE. Store it securely!")
+        print("⚠️  This key is displayed ONCE. Store it securely!")
         print(f"Expires at: {expires}")
         print(f"Policy: {policy}")
         return 0
 
     def _key_list(self, args: Any) -> int:
         """
-        Handle the 'list' subcommand.
+        Handle the ``list`` subcommand.
         """
-        try:
-            key_store = self._make_store(args)
-            keys = asyncio.run(key_store.list_keys())
-        except (ValueError, RuntimeError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        _store, keys, error = self._store_call(args, "list_keys")
+        if error is not None:
+            return self._fail(error)
 
         if not keys:
             print("No API keys found.")
@@ -509,111 +576,66 @@ class AuthCommand(BaseCommand):
             print(json.dumps(keys, indent=2))
             return 0
 
-        max_w: Dict[str, int] = {
-            "KEY_ID": 8,
-            "PREFIX": 8,
-            "POLICY": 8,
-            "ACTIVE": 7,
-            "EXPIRES": 10,
-        }
-        for k in keys:
-            max_w["KEY_ID"] = max(max_w["KEY_ID"], len(k["key_id"]) + 1)
-            max_w["PREFIX"] = max(max_w["PREFIX"], len(k.get("key_prefix", "")) + 1)
-            max_w["POLICY"] = max(max_w["POLICY"], len(k.get("policy_name", "")) + 1)
-
-        w = (
-            max_w["KEY_ID"],
-            max_w["PREFIX"],
-            max_w["POLICY"],
-            max_w["ACTIVE"],
-            max_w["EXPIRES"],
-        )
-        hdr = (
-            f"{'KEY_ID':<{w[0]}} {'PREFIX':<{w[1]}} {'POLICY':<{w[2]}} "
-            f"{'ACTIVE':<{w[3]}} {'EXPIRES':<{w[4]}}"
-        )
-        print(hdr)
-        print("-" * len(hdr))
-
-        for k in keys:
-            exp_str = (
-                f"{k.get('expires_at', 'none'):.0f}"
-                if k.get("expires_at")
-                else "none"
+        rows = [
+            (
+                k["key_id"],
+                k.get("key_prefix", ""),
+                k.get("policy_name", ""),
+                "yes" if k.get("is_active") else "no",
+                f"{k['expires_at']:.0f}" if k.get("expires_at") else "none",
             )
-            line = (
-                f"{k['key_id']:<{w[0]}} {k['key_prefix']:<{w[1]}} "
-                f"{k['policy_name']:<{w[2]}} "
-                f"{'yes' if k.get('is_active') else 'no':<{w[3]}} {exp_str:<{w[4]}}"
+            for k in keys
+        ]
+        print(
+            self._render_table(
+                ("KEY_ID", "PREFIX", "POLICY", "ACTIVE", "EXPIRES"),
+                rows,
+                min_widths=(8, 8, 8, 7, 10),
+                gap=" ",
             )
-            print(line)
-        return 0
-
-    def _key_action(self, key_store: Any, key_id: str, action: str) -> int:
-        """
-        Handle delete / disable / enable — they share the same flow.
-        """
-        method_name = f"{action}_key"
-        success_msg = (
-            f"Key {key_id} {'deleted' if action == 'delete' else action + 'd'}."
         )
-        try:
-            method = getattr(key_store, method_name)
-            asyncio.run(method(key_id))
-        except ValueError as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
-
-        if hasattr(key_store, "_persist_seeds"):
-            target = getattr(key_store, "_seed_file", None)
-            if target:
-                key_store._persist_seeds(target)
-
-        print(success_msg)
         return 0
 
     def _key_mutate(self, args: Any, action: str) -> int:
         """
-        Shared dispatcher for delete / disable / enable.
+        Shared handler for the ``delete`` / ``disable`` / ``enable``
+        subcommands — they share the same flow.
         """
-        try:
-            key_store = self._make_store(args)
-        except (ValueError, RuntimeError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
-        return self._key_action(key_store, args.key_id, action)
+        store, _result, error = self._store_call(args, f"{action}_key", args.key_id)
+        if error is not None:
+            return self._fail(error)
+
+        self._persist_seeds(store)
+        past_tense = "deleted" if action == "delete" else f"{action}d"
+        print(f"Key {args.key_id} {past_tense}.")
+        return 0
 
     def _key_rotate(self, args: Any) -> int:
         """
-        Handle the 'rotate' subcommand.
+        Handle the ``rotate`` subcommand.
         """
-        try:
-            key_store = self._make_store(args)
-            new_key = asyncio.run(key_store.rotate_key(args.key_id, args.grace))
-        except (ValueError, RuntimeError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        store, new_key, error = self._store_call(
+            args, "rotate_key", args.key_id, args.grace
+        )
+        if error is not None:
+            return self._fail(error)
 
-        if hasattr(key_store, "_persist_seeds"):
-            seed_file = getattr(key_store, "_seed_file", None)
-            if seed_file:
-                key_store._persist_seeds(seed_file)
-
+        self._persist_seeds(store)
         print(f"Rotated key {args.key_id} -> new key:")
         print(new_key)
         print("\n⚠️  This key is displayed ONCE. Store it securely!")
         return 0
 
-    # ---- Policy handler ---------------------------------------------------
-
+    # ------------------------------------------------------------------ #
+    # Policy handlers
+    # ------------------------------------------------------------------ #
     def _handle_policy(self, args: Any) -> int:
         """
         Handle policy subcommands.
         """
         cmd = getattr(args, "policy_command", None)
         if cmd is None:
-            print("Usage: llm-router auth policy <list|create> ...", file=sys.stderr)
-            return 1
+            return self._fail("Usage: llm-router auth policy <list|create> ...")
 
         if cmd == "list":
             from llm_router_api.core.auth.policies.builtin import (
@@ -631,42 +653,44 @@ class AuthCommand(BaseCommand):
 
             try:
                 policy_dict = json.loads(args.policy_json)
-            except json.JSONDecodeError as e:
-                print(f"Error: Invalid JSON: {e}", file=sys.stderr)
-                return 1
+            except json.JSONDecodeError as exc:
+                return self._fail(f"Invalid JSON: {exc}")
             try:
                 register_policy(args.name, EndpointPolicy(**policy_dict))
-            except (TypeError, ValueError) as e:
-                print(f"Error: Invalid policy definition: {e}", file=sys.stderr)
-                return 1
+            except (TypeError, ValueError) as exc:
+                return self._fail(f"Invalid policy definition: {exc}")
             print(f"Policy '{args.name}' created.")
             return 0
 
-        print(f"Unknown policy command: {cmd}", file=sys.stderr)
-        return 1
+        return self._fail(f"Unknown policy command: {cmd}")
 
-    # ---- Rate-limit handler -----------------------------------------------
-
+    # ------------------------------------------------------------------ #
+    # Rate-limit handlers
+    # ------------------------------------------------------------------ #
     def _handle_rate_limit(self, args: Any) -> int:
         """
         Handle rate-limit subcommands.
         """
         cmd = getattr(args, "rate_limit_command", None)
         if cmd is None:
-            print(
-                "Usage: llm-router auth rate-limit <list|apply|remove> ...",
-                file=sys.stderr,
+            return self._fail(
+                "Usage: llm-router auth rate-limit <list|apply|remove> ..."
             )
-            return 1
         handler = {
             "list": self._rl_list,
             "apply": self._rl_apply,
             "remove": self._rl_remove,
         }.get(cmd)
         if handler is None:
-            print(f"Unknown rate-limit command: {cmd}", file=sys.stderr)
-            return 1
+            return self._fail(f"Unknown rate-limit command: {cmd}")
         return handler(args)
+
+    @staticmethod
+    def _preset_rpm(preset: Dict[str, Any]) -> str:
+        """Human-readable rate-limit cell for *preset* (per-minute or per-day)."""
+        if preset.get("rpm"):
+            return str(preset["rpm"])
+        return f"{preset.get('daily_limit', 'N/A')}/day"
 
     def _rl_list(self, args: Any) -> int:
         """
@@ -677,19 +701,16 @@ class AuthCommand(BaseCommand):
             print("No presets found.")
             return 1
 
-        max_name = max(len(p["name"]) for p in presets)
-        max_rpm = max(len(str(p.get("rpm", "-"))) for p in presets)
-
+        rows = [
+            (p["name"], self._preset_rpm(p), p.get("description", ""))
+            for p in presets
+        ]
         print("Available rate-limit presets:")
-        print(f"  {'NAME':<{max_name}}  {'RPM':>{max_rpm}}  DESCRIPTION")
-        print(f"  {'-' * max_name}  {'-' * max_rpm}  {'-----------'}")
-        for p in presets:
-            rpm = (
-                str(p.get("rpm", "-"))
-                if p.get("rpm")
-                else f"{p.get('daily_limit', 'N/A')}/day"
+        print(
+            self._render_table(
+                ("NAME", "RPM", "DESCRIPTION"), rows, aligns=("l", "r", "l")
             )
-            print(f"  {p['name']:<{max_name}}  {rpm:>{max_rpm}}  {p['description']}")
+        )
         return 0
 
     def _resolve_rate_limit_preset(self, preset_name: str) -> Optional[int]:
@@ -698,7 +719,7 @@ class AuthCommand(BaseCommand):
         """
         presets = self._load_rate_limit_presets()
         preset = next((p for p in presets if p["name"] == preset_name), None)
-        if not preset:
+        if preset is None:
             return None
         rate_limit = preset.get("rpm")
         daily_limit = preset.get("daily_limit")
@@ -713,18 +734,13 @@ class AuthCommand(BaseCommand):
         rate_limit = self._resolve_rate_limit_preset(args.preset)
         if rate_limit is None:
             names = ", ".join(p["name"] for p in self._load_rate_limit_presets())
-            print(
-                f"Error: Unknown preset '{args.preset}'. Available: {names}",
-                file=sys.stderr,
-            )
-            return 1
+            return self._fail(f"Unknown preset '{args.preset}'. Available: {names}")
 
-        try:
-            key_store = self._make_store(args)
-            asyncio.run(key_store.update_policy_override(args.key_id, rate_limit))
-        except (ValueError, RuntimeError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        _store, _result, error = self._store_call(
+            args, "update_policy_override", args.key_id, rate_limit
+        )
+        if error is not None:
+            return self._fail(error)
 
         print(
             f"Applied preset '{args.preset}' "
@@ -736,12 +752,11 @@ class AuthCommand(BaseCommand):
         """
         Remove the rate-limit override from a key (any store backend).
         """
-        try:
-            key_store = self._make_store(args)
-            asyncio.run(key_store.update_policy_override(args.key_id, None))
-        except (ValueError, RuntimeError, OSError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 1
+        _store, _result, error = self._store_call(
+            args, "update_policy_override", args.key_id, None
+        )
+        if error is not None:
+            return self._fail(error)
 
         print(
             f"Removed rate-limit override for key {args.key_id} "

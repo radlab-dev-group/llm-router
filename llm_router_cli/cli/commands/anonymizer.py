@@ -20,7 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import ClassVar, List, Tuple
+from typing import Any, ClassVar, List, Tuple
 
 from .base import BaseCommand
 
@@ -75,7 +75,9 @@ class AnonymizerCommand(BaseCommand):
 
     # ---- Registration ---------------------------------------------------- #
     @classmethod
-    def register_children(cls, subparsers: argparse._SubParsersAction) -> None:
+    def register_children(
+        cls, subparsers: "argparse._SubParsersAction[Any]"
+    ) -> None:
         """Register the *run* sub-subcommand under *subparsers*."""
         run_parser = subparsers.add_parser(cls.RUN_NAME, help=cls.RUN_HELP)
         cls._add_run_args(run_parser)

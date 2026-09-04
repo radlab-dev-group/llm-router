@@ -237,54 +237,64 @@ class ConfigCommand(BaseCommand):
             return False
 
     @staticmethod
+    def _get_json(url: str, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
+        """
+        Fetch *url* and decode it as a JSON object, or ``None`` on any
+        network/parse failure.
+        """
+        try:
+            resp = requests.get(url, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.RequestException, OSError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    @classmethod
     def _fetch_ollama_models(
-        host: str, port: int, protocol: str = "http"
+        cls, host: str, port: int, protocol: str = "http"
     ) -> List[Dict[str, Any]]:
         """
         Fetch Ollama model info via ``GET /api/tags``.
         """
-        url = f"{protocol}://{host}:{port}/api/tags"
-        try:
-            resp = requests.get(url, timeout=2)
-            resp.raise_for_status()
-            data = resp.json()
-            models: List[Dict[str, Any]] = []
-            for m in data.get("models", []):
-                detail = m.get("details", {})
-                top_caps = set(m.get("capabilities") or [])
-                det_caps = set(detail.get("capabilities") or []) | set(
-                    detail.get("families") or []
-                )
-                all_caps = top_caps | det_caps
-                models.append(
-                    {
-                        "id": m["name"],
-                        "context_length": detail.get("context_length"),
-                        "tool_calling": any(
-                            kw in all_caps
-                            for kw in ("tools", "tool_use", "function_call")
-                        ),
-                    }
-                )
-            return models
-        except (requests.RequestException, OSError, KeyError, ValueError):
+        data = cls._get_json(f"{protocol}://{host}:{port}/api/tags")
+        if data is None:
             return []
+        models: List[Dict[str, Any]] = []
+        for m in data.get("models", []):
+            name = m.get("name")
+            if not name:
+                continue
+            detail = m.get("details", {})
+            top_caps = set(m.get("capabilities") or [])
+            det_caps = set(detail.get("capabilities") or []) | set(
+                detail.get("families") or []
+            )
+            all_caps = top_caps | det_caps
+            models.append(
+                {
+                    "id": name,
+                    "context_length": detail.get("context_length"),
+                    "tool_calling": any(
+                        kw in all_caps
+                        for kw in ("tools", "tool_use", "function_call")
+                    ),
+                }
+            )
+        return models
 
-    @staticmethod
+    @classmethod
     def _fetch_openai_style_models(
-        host: str, port: int, protocol: str = "http"
+        cls, host: str, port: int, protocol: str = "http"
     ) -> List[Dict[str, Any]]:
         """
         Fetch models via ``GET /v1/models`` (OpenAI-compatible format).
         """
-        url = f"{protocol}://{host}:{port}/v1/models"
-        try:
-            resp = requests.get(url, timeout=2)
-            resp.raise_for_status()
-            data = resp.json().get("data", [])
-        except (requests.RequestException, OSError, ValueError):
+        data = cls._get_json(f"{protocol}://{host}:{port}/v1/models")
+        if data is None:
             return []
-        return data if isinstance(data, list) else []
+        models = data.get("data", [])
+        return models if isinstance(models, list) else []
 
     # ---- Config builder helpers ---------------------------------------------
 
@@ -415,50 +425,23 @@ class ConfigCommand(BaseCommand):
     ) -> None:
         """
         Discover one provider on one host and merge its config into *config*.
-        """
-        if explicit_port != 0:
-            ports_to_scan = [explicit_port]
-        else:
-            ports_to_scan = list(prov["ports"])
 
-        best_port = None
-        first_group = None
+        When *collect_all* is set, every healthy port is accumulated;
+        otherwise the first healthy port with a non‑empty model group wins.
+        """
+        ports_to_scan = [explicit_port] if explicit_port else list(prov["ports"])
+        groups: List[Dict[str, Any]] = []
         for port in ports_to_scan:
-            if cls._health_check(
+            if not cls._health_check(
                 host, port, path=prov["health_path"], protocol=protocol
             ):
-                _, group = ConfigCommand._build_config_for_provider(
-                    prov, host, port, protocol
-                )
-                if group and "models_raw" not in group:
-                    best_port = port
-                    if first_group is None:
-                        first_group = group
-                    if not collect_all:
-                        break
-
-        if best_port is None:
-            return
-
-        if collect_all:
-            for port in ports_to_scan:
-                if not cls._health_check(
-                    host, port, path=prov["health_path"], protocol=protocol
-                ):
-                    continue
-                group_name, group = ConfigCommand._build_config_for_provider(
-                    prov, host, port, protocol
-                )
-                if group and "models_raw" not in group:
-                    cls._accumulate_group(config, group_name, group)
-        else:
-            if first_group is not None:
-                group = first_group
-            else:
-                # Fallback for collect_all=True edge case
-                _, group = ConfigCommand._build_config_for_provider(
-                    prov, host, best_port, protocol
-                )
+                continue
+            _, group = cls._build_config_for_provider(prov, host, port, protocol)
+            if group and "models_raw" not in group:
+                groups.append(group)
+            if groups and not collect_all:
+                break
+        for group in groups:
             cls._accumulate_group(config, prov["group_name"], group)
 
     @staticmethod
