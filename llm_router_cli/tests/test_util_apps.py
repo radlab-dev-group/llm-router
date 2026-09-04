@@ -187,6 +187,21 @@ def test_translate_accept_field_filters(tmp_path, fake_translate):
     assert set(records[0].keys()) == {"text"}
 
 
+def test_translate_no_accept_field_translates_all_string_fields(
+    tmp_path, fake_translate
+):
+    data_file = tmp_path / "data.jsonl"
+    _write_jsonl(data_file, [{"text": "hello", "title": "world", "n": 42}])
+
+    app = TranslateApp(_translate_args([data_file]))  # no accept_field
+    app.run()
+    app.close()
+
+    records = _read_jsonl(tmp_path / "data.translated.jsonl")
+    # both string fields are translated; non-string values pass through
+    assert records == [{"text": "TR:hello", "title": "TR:world", "n": 42}]
+
+
 def test_translate_empty_file_no_error(tmp_path, fake_translate):
     data_file = tmp_path / "empty.jsonl"
     data_file.write_text("", encoding="utf-8")

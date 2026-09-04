@@ -8,7 +8,9 @@ apply / remove across the store backends, and the Vault kwargs wiring.
 
 from __future__ import annotations
 
+import io
 import json
+import os
 from pathlib import Path
 
 from llm_router_cli.cli.commands.auth import AuthCommand
@@ -83,6 +85,9 @@ def test_generate_output_file(auth_home, tmp_path, capsys):
     captured = capsys.readouterr().out
     assert str(out) in captured
     assert key not in captured, "full key must not be echoed to stdout with --output"
+    # key material: file must not be world-readable
+    mode = out.stat().st_mode & 0o777
+    assert mode == 0o600, f"expected 0o600, got {oct(mode)}"
 
 
 # ---- key list -----------------------------------------------------------
@@ -199,9 +204,87 @@ def test_policy_create_valid(auth_home, capsys):
         ]
     )
     assert rc == 0
-    assert "created" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "created" in out
+    # the policy must be visible to this process ...
+    assert builtin.get_builtin_policy("myteam") is not None
+    # ... and persisted to the custom-policies file.
+    policy_file = Path(os.environ["LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE"])
+    assert policy_file.is_file()
+    assert "myteam" in json.loads(policy_file.read_text(encoding="utf-8"))
     # do not leak the custom policy into other tests
     builtin._builtin_policies.pop("myteam", None)
+
+
+def test_policy_create_persists_across_processes(auth_home, capsys):
+    """A policy created in one process must be resolvable by a later one."""
+    from llm_router_api.core.auth.policies import builtin
+
+    policy_file = Path(os.environ["LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE"])
+
+    assert (
+        AuthCommand.run(
+            [
+                "policy",
+                "create",
+                "persisted",
+                json.dumps({"can_access": True, "allowed_types": ["chat"]}),
+            ]
+        )
+        == 0
+    )
+    # simulate a fresh process: drop in-process state, keep the file
+    builtin._builtin_policies.pop("persisted", None)
+    builtin._cache = None
+
+    policy = builtin.get_builtin_policy("persisted")
+    assert policy is not None
+    assert policy.grants_type("chat")
+    assert not policy.grants_type("embedding")
+
+    # and it must show up in ``auth policy list`` as custom
+    assert AuthCommand.run(["policy", "list"]) == 0
+    out = capsys.readouterr().out
+    assert "persisted (custom)" in out
+    policy_file.unlink(missing_ok=True)
+
+
+def test_policy_create_from_file(tmp_path, auth_home, capsys):
+    policy_file = Path(os.environ["LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE"])
+    policy_json = tmp_path / "policy.json"
+    policy_json.write_text(
+        json.dumps({"can_access": True, "allowed_types": ["chat"]}), encoding="utf-8"
+    )
+
+    assert (
+        AuthCommand.run(["policy", "create", "fromfile", "--file", str(policy_json)])
+        == 0
+    )
+    assert "fromfile" in json.loads(policy_file.read_text(encoding="utf-8"))
+
+    # missing --file target is a clean error, not a traceback
+    assert (
+        AuthCommand.run(["policy", "create", "nope", "--file", str(tmp_path / "x.json")])
+        == 1
+    )
+    assert "Cannot read policy file" in capsys.readouterr().err
+    policy_file.unlink(missing_ok=True)
+
+
+def test_policy_create_from_stdin(tmp_path, auth_home, capsys, monkeypatch):
+    payload = json.dumps({"can_access": True, "allowed_types": ["embedding"]})
+    monkeypatch.setattr("sys.stdin", io.StringIO(payload))
+    assert (
+        AuthCommand.run(["policy", "create", "fromstdin", "--file", "-"]) == 0
+    )
+    policy_file = Path(os.environ["LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE"])
+    assert "fromstdin" in json.loads(policy_file.read_text(encoding="utf-8"))
+    policy_file.unlink(missing_ok=True)
+
+
+def test_policy_create_without_definition_fails(auth_home, capsys):
+    assert AuthCommand.run(["policy", "create", "empty"]) == 1
+    assert "No policy definition given" in capsys.readouterr().err
 
 
 def test_policy_create_bad_json_fails(auth_home, capsys):

@@ -43,4 +43,8 @@ def auth_home(tmp_path, monkeypatch):
     monkeypatch.setattr(AuthCommand, "SEED_DIR", tmp_path)
     monkeypatch.setattr(AuthCommand, "DEFAULT_SEED_FILE", seed_file)
     monkeypatch.setattr(constants, "LLM_ROUTER_AUTH_MEMORY_SEED_FILE", seed_file)
+    monkeypatch.setenv(
+        "LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE",
+        str(tmp_path / "configs" / "auth" / "custom-policies.json"),
+    )
     return seed_file
