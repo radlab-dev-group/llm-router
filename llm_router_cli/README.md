@@ -411,7 +411,7 @@ file. The router reads this file on startup and after each request, so changes a
 |-------------------|---------------|-----------------------------------------------------------------|
 | `key_id`          | `str`         | Unique identifier for this key                                  |
 | `key_plain`       | `str`         | The plaintext API key                                           |
-| `key_prefix`      | `str`         | First 7 characters of the plaintext (auto-generated if omitted) |
+| `key_prefix`      | `str`         | First 12 characters of the plaintext (shows the full `sk-llmr-live` prefix) |
 | `policy_name`     | `str`         | Default policy name                                             |
 | `policy_override` | `dict`        | Inline override (e.g. `{"rate_limit": 300}`)                    |
 | `is_active`       | `bool`        | Whether the key is currently valid                              |

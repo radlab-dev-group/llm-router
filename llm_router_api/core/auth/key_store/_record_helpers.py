@@ -12,13 +12,23 @@ import hashlib
 
 from typing import Any, Dict
 
+# How many leading characters of a key to keep as the human-readable prefix
+# shown in listings. 12 covers the full default key prefix "sk-llmr-live".
+KEY_PREFIX_VISIBLE_LEN = 12
+
 
 def gen_key_prefix(key_plain: str) -> str:
     """
-    Return the first 7 characters of *key_plain*, or the whole string if shorter.
+    Return the first ``KEY_PREFIX_VISIBLE_LEN`` characters of *key_plain*, or
+    the whole string if shorter.
+
+    The length is chosen so the full default key prefix (``sk-llmr-live``)
+    is visible to the user.
     """
 
-    return key_plain[:7] if len(key_plain) > 6 else key_plain
+    if len(key_plain) <= KEY_PREFIX_VISIBLE_LEN:
+        return key_plain
+    return key_plain[:KEY_PREFIX_VISIBLE_LEN]
 
 
 def gen_sha256_index(key_plain: str) -> str:

@@ -106,7 +106,7 @@ which is **hashed at load time and never written back**. Plaintext keys are neve
 | `key_id`          | `str`   | Unique identifier for this key                                  |
 | `key_hash`        | `str`   | bcrypt hash of the plaintext key (the verifiable credential)    |
 | `key_index`       | `str`   | SHA-256 of the plaintext key — O(1) lookup index (locator only) |
-| `key_prefix`      | `str`   | First 7 characters of the plaintext key (for display only)      |
+| `key_prefix`      | `str`   | First 12 characters of the plaintext key (shows the full `sk-llmr-live` prefix) |
 | `policy_name`     | `str`   | Name of the default policy to apply                             |
 | `policy_override` | `dict`  | Inline policy override (takes precedence over the named policy) |
 | `is_active`       | `bool`  | Whether the key is currently valid                              |
