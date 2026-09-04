@@ -16,16 +16,16 @@ import requests
 
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+from .base import BaseCommand
 
-class ConfigCommand:
-    """Encapsulates the ``config`` CLI subcommand and all its children.
 
-    Public API (exactly two methods):
-      - :meth:`register_parser`  – register *config* under a parent argparse parser.
-      - :meth:`run`             – standalone entry point; parse + dispatch.
-    """
+class ConfigCommand(BaseCommand):
+    """Encapsulates the ``config`` CLI subcommand and all its children."""
 
     NAME = "config"
+    HELP = "Auto-discover local providers and generate/merge models-config.json"
+    SUBPARSER_DEST = "config_command"
+
     DISCOVER_HELP = (
         "Scan one or more hosts for local LLM servers and generate config"
     )
@@ -186,43 +186,28 @@ class ConfigCommand:
     # ---- Registration ------------------------------------------------------
 
     @classmethod
-    def register_parser(cls, subparsers: argparse._SubParsersAction) -> None:
-        """
-        Register the ``config`` subparser with its child commands.
-        """
+    def register_children(
+        cls, subparsers: "argparse._SubParsersAction[Any]"
+    ) -> None:
+        """Register the ``config`` leaf subcommands (discover / merge)."""
         discover_p = subparsers.add_parser("discover", help=cls.DISCOVER_HELP)
         cls._add_discover_args(discover_p)
 
         merge_p = subparsers.add_parser("merge", help=cls.MERGE_HELP)
         cls._add_merge_args(merge_p)
 
-    # ---- Public run() entry point ------------------------------------------
+    # ---- Dispatch ----------------------------------------------------------
 
     @classmethod
-    def run(cls, argv: Optional[List[str]] = None) -> int:
-        """
-        Standalone entry point: parse args and dispatch.
-        """
-        if argv is None:
-            argv = sys.argv[1:]
-
-        parser = argparse.ArgumentParser(
-            prog="llm-router config",
-            description=(
-                "Auto-discover local LLM providers "
-                "(Ollama, vLLM, LM Studio) on a given host, "
-                "fetch their available models, and produce "
-                "a models-config.json ready for the router."
-            ),
-        )
-        subparsers = parser.add_subparsers(dest="config_action")
-        cls.register_parser(subparsers)  # type: ignore[arg-type]
-        args = parser.parse_args(argv)
-
-        action = getattr(args, "config_action", None)
+    def dispatch(cls, args: argparse.Namespace) -> int:
+        """Route on the parsed namespace (no re-parsing of ``argv``)."""
+        action = getattr(args, cls.SUBPARSER_DEST, None)
         if action == "merge":
             return cls._do_merge(args)
-        return cls._do_discover(args)
+        if action == "discover":
+            return cls._do_discover(args)
+        cls.build_parser().print_help()
+        return 0
 
     @staticmethod
     def _get_flag(args: argparse.Namespace, name: str, default: bool) -> bool:
@@ -296,9 +281,10 @@ class ConfigCommand:
         try:
             resp = requests.get(url, timeout=2)
             resp.raise_for_status()
-            return resp.json().get("data", [])
+            data = resp.json().get("data", [])
         except (requests.RequestException, OSError, ValueError):
             return []
+        return data if isinstance(data, list) else []
 
     # ---- Config builder helpers ---------------------------------------------
 
@@ -536,10 +522,14 @@ class ConfigCommand:
         """
         try:
             with open(path, "r", encoding="utf-8") as fh:
-                return json.load(fh)
+                data = json.load(fh)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             print(f"Error reading {path}: {exc}", file=sys.stderr)
             return {}
+        if not isinstance(data, dict):
+            print(f"Error reading {path}: expected a JSON object.", file=sys.stderr)
+            return {}
+        return data
 
     @staticmethod
     def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
@@ -592,7 +582,40 @@ class ConfigCommand:
                     active[group] = []
                 active[group].extend(models)
 
-    # ---- Dispatch helpers (used by run()) ----------------------------------
+    # ---- Output / active-models helpers -----------------------------------
+
+    @staticmethod
+    def _active_models_from(config: Dict[str, Any]) -> Dict[str, List[str]]:
+        """Derive the ``active_models`` mapping (group -> ordered model names)."""
+        active: Dict[str, List[str]] = {}
+        for group_name, models in config.items():
+            if not isinstance(models, dict):
+                continue
+            if any(
+                isinstance(v, dict) and "providers" in v for v in models.values()
+            ):
+                active[group_name] = list(models.keys())
+        return active
+
+    @staticmethod
+    def _write_output(
+        data: Dict[str, Any], output_file: Optional[str], label: str
+    ) -> int:
+        """Serialize *data* (JSON) and write it to *output_file* or stdout."""
+        output_json = json.dumps(data, indent=2) + "\n"
+        if output_file and output_file != "-":
+            try:
+                with open(output_file, "w", encoding="utf-8") as fh:
+                    fh.write(output_json)
+                print(f"{label} written to {output_file}")
+            except OSError as exc:
+                print(f"Error writing {output_file}: {exc}", file=sys.stderr)
+                return 1
+        else:
+            sys.stdout.write(output_json)
+        return 0
+
+    # ---- Dispatch helpers ---------------------------------------------------
 
     @classmethod
     def _do_discover(cls, args: argparse.Namespace) -> int:
@@ -610,31 +633,13 @@ class ConfigCommand:
                 f"Warning: no local providers found at {', '.join(raw_hosts)}",
                 file=sys.stderr,
             )
-            config = {}
 
-        if not ConfigCommand._get_flag(args, "no_active", False):
-            active: Dict[str, List[str]] = {}
-            for group_name, models in config.items():
-                if isinstance(models, dict) and "providers" in next(
-                    iter(models.values()), {}
-                ):
-                    active[group_name] = list(models.keys())
-            config["active_models"] = active
+        if not cls._get_flag(args, "no_active", False):
+            config["active_models"] = cls._active_models_from(config)
 
-        output_json = json.dumps(config, indent=2) + "\n"
-        output_config_file: Optional[str] = getattr(args, "output_config_file", None)
-        if output_config_file and output_config_file != "-":
-            try:
-                with open(output_config_file, "w", encoding="utf-8") as fh:
-                    fh.write(output_json)
-                print(f"Config written to {output_config_file}")
-            except OSError as exc:
-                print(f"Error writing {output_config_file}: {exc}", file=sys.stderr)
-                return 1
-        else:
-            sys.stdout.write(output_json)
-
-        return 0
+        return cls._write_output(
+            config, getattr(args, "output_config_file", None), "Config"
+        )
 
     @classmethod
     def _do_merge(cls, args: argparse.Namespace) -> int:
@@ -666,19 +671,7 @@ class ConfigCommand:
             if isinstance(_group, dict):
                 ConfigCommand._dedup_providers(_group)
 
-        active_models: Dict[str, List[str]] = {}
-        for group_name, models in merged.items():
-            if isinstance(models, dict) and any(
-                isinstance(v, dict) and "providers" in v for v in models.values()
-            ):
-                seen: Set[str] = set(active_models.get(group_name, []))
-                all_models: List[str] = []
-                for name in models.keys():
-                    if name not in seen:
-                        seen.add(name)
-                        all_models.append(name)
-                active_models[group_name] = all_models
-
+        active_models = ConfigCommand._active_models_from(merged)
         for group, models in active.items():
             existing = set(active_models.get(group, []))
             for m in models:
@@ -687,18 +680,7 @@ class ConfigCommand:
             active_models[group] = list(existing)
 
         merged["active_models"] = active_models
-        output_json = json.dumps(merged, indent=2) + "\n"
 
-        out_config_file: Optional[str] = getattr(args, "output_config_file", None)
-        if out_config_file and out_config_file != "-":
-            try:
-                with open(out_config_file, "w", encoding="utf-8") as fh:
-                    fh.write(output_json)
-                print(f"Merged config written to {out_config_file}")
-            except OSError as exc:
-                print(f"Error writing {out_config_file}: {exc}", file=sys.stderr)
-                return 1
-        else:
-            sys.stdout.write(output_json)
-
-        return 0
+        return ConfigCommand._write_output(
+            merged, getattr(args, "output_config_file", None), "Merged config"
+        )

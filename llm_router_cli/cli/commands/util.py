@@ -8,10 +8,9 @@ dependency‑free sub‑subcommands:
 * ``llm-router util genai-classifier``
 * ``llm-router util genai-data-augmentation``
 
-Public API (exactly two methods, mirroring :class:`ConfigCommand`):
-
-- :meth:`register_parser` – register the three sub‑subparsers under a parent.
-- :meth:`run`             – standalone entry point; parse + dispatch.
+The command is a :class:`~llm_router_cli.cli.commands.base.BaseCommand`: the
+parser is built once (single source of truth) and dispatching happens on the
+parsed namespace.
 """
 
 from __future__ import annotations
@@ -19,19 +18,20 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Callable, ClassVar, Optional
+
+from .base import BaseCommand
 
 
-class UtilCommand:
-    """
-    Encapsulates the ``util`` CLI subcommand group and its three children.
+class UtilCommand(BaseCommand):
+    """Encapsulates the ``util`` CLI subcommand group and its three children."""
 
-    Public API (exactly two methods):
-      - :meth:`register_parser` – register the *util* sub‑subcommands under a parent.
-      - :meth:`run`            – standalone entry point; parse + dispatch.
-    """
+    NAME: ClassVar[str] = "util"
+    SUBPARSER_DEST: ClassVar[str] = "util_command"
+    HELP: ClassVar[str] = (
+        "Utility commands: translate, genai-classifier, genai-data-augmentation"
+    )
 
-    NAME = "util"
     TRANSLATE = "translate"
     CLASSIFIER = "genai-classifier"
     AUGMENTATION = "genai-data-augmentation"
@@ -41,17 +41,25 @@ class UtilCommand:
     AUGMENTATION_HELP = "Augment a local JSONL dataset via the LLMRouter"
 
     DEFAULT_ROUTER_URL = "http://localhost:8080"
+    DEFAULT_MODEL_NAME = "gpt-oss:120b"
 
     # ------------------------------------------------------------------ #
-    # Shared router-flag helpers
+    # Shared argument helpers
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _add_router_host_args(p: argparse.ArgumentParser) -> None:
-        """Add the ``--llm-router-host/token/timeout`` flags (translate)."""
+    def _add_router_args(
+        p: argparse.ArgumentParser,
+        host_option: str,
+        host_default: Optional[str],
+        host_required: bool,
+        host_help: str,
+    ) -> None:
+        """Add ``--llm-router-host/url`` + ``--llm-router-token/timeout`` flags."""
         p.add_argument(
-            "--llm-router-host",
-            required=True,
-            help="Base URL of the LLM router service (e.g., http://localhost:8080)",
+            host_option,
+            required=host_required,
+            default=host_default,
+            help=host_help,
         )
         p.add_argument(
             "--llm-router-token",
@@ -66,25 +74,47 @@ class UtilCommand:
             help="Per-request timeout in seconds for LLMRouter calls (default: 10).",
         )
 
-    @staticmethod
-    def _add_router_url_args(p: argparse.ArgumentParser) -> None:
-        """Add the ``--llm-router-url/token/timeout`` flags (classifier/aug)."""
+    @classmethod
+    def _add_shared_genai_args(
+        cls, p: argparse.ArgumentParser, temperature_default: float
+    ) -> None:
+        """Add the flags shared by the classifier and augmentation commands."""
         p.add_argument(
-            "--llm-router-url",
-            default=UtilCommand.DEFAULT_ROUTER_URL,
-            help="Base URL of the LLMRouter service (default: http://localhost:8080).",
+            "--model-name",
+            default=cls.DEFAULT_MODEL_NAME,
+            help="Model identifier passed to the router "
+            f"(default: {cls.DEFAULT_MODEL_NAME}).",
         )
         p.add_argument(
-            "--llm-router-token",
-            required=False,
-            default=None,
-            help="Authentication token for the LLMRouter service.",
+            "--temperature",
+            type=float,
+            default=temperature_default,
+            help="Sampling temperature for the model.",
         )
         p.add_argument(
-            "--llm-router-timeout",
+            "--batch-save-size",
             type=int,
-            default=10,
-            help="Per-request timeout in seconds for LLMRouter calls (default: 10).",
+            default=5,
+            help="How many records are written to disk at once.",
+        )
+        p.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Process data but do not write output files.",
+        )
+        p.add_argument(
+            "--verbose", action="store_true", help="Enable DEBUG level logging."
+        )
+        p.add_argument(
+            "--num-workers",
+            type=int,
+            default=2,
+            help="Number of parallel worker threads (default: 2).",
+        )
+        p.add_argument(
+            "--text-column-name",
+            default="Tekst",
+            help="Name of the column containing the text (default: 'Tekst').",
         )
 
     # ------------------------------------------------------------------ #
@@ -92,7 +122,13 @@ class UtilCommand:
     # ------------------------------------------------------------------ #
     @classmethod
     def _add_translate_args(cls, p: argparse.ArgumentParser) -> None:
-        cls._add_router_host_args(p)
+        cls._add_router_args(
+            p,
+            "--llm-router-host",
+            None,
+            True,
+            "Base URL of the LLM router service (e.g., http://localhost:8080)",
+        )
         p.add_argument(
             "--model",
             required=True,
@@ -144,7 +180,14 @@ class UtilCommand:
 
     @classmethod
     def _add_classifier_args(cls, p: argparse.ArgumentParser) -> None:
-        cls._add_router_url_args(p)
+        cls._add_router_args(
+            p,
+            "--llm-router-url",
+            cls.DEFAULT_ROUTER_URL,
+            False,
+            f"Base URL of the LLMRouter service (default: {cls.DEFAULT_ROUTER_URL}).",
+        )
+        cls._add_shared_genai_args(p, temperature_default=0.0)
         p.add_argument(
             "--dataset-dir",
             type=Path,
@@ -171,54 +214,23 @@ class UtilCommand:
             help="Directory where the result .jsonl files are stored.",
         )
         p.add_argument(
-            "--model-name",
-            default="gpt-oss:120b",
-            help="Model identifier passed to the router (default: gpt-oss:120b).",
-        )
-        p.add_argument(
-            "--temperature",
-            type=float,
-            default=0.0,
-            help="Sampling temperature for the model (default: 0.0).",
-        )
-        p.add_argument(
-            "--batch-save-size",
-            type=int,
-            default=5,
-            help="How many aggregated records are written to disk at once.",
-        )
-        p.add_argument(
-            "--dry-run",
-            action="store_true",
-            help="Process data but do not write output files.",
-        )
-        p.add_argument(
-            "--verbose",
-            action="store_true",
-            help="Enable DEBUG level logging.",
-        )
-        p.add_argument(
-            "--num-workers",
-            type=int,
-            default=2,
-            help="Number of parallel worker threads (default: 2).",
-        )
-        p.add_argument(
             "--n-sample",
             type=int,
             default=50,
             help="Number of samples per field (default: 50). "
             "Zero or negative processes all examples.",
         )
-        p.add_argument(
-            "--text-column-name",
-            default="Tekst",
-            help="Name of the column containing the text (default: 'Tekst').",
-        )
 
     @classmethod
     def _add_augmentation_args(cls, p: argparse.ArgumentParser) -> None:
-        cls._add_router_url_args(p)
+        cls._add_router_args(
+            p,
+            "--llm-router-url",
+            cls.DEFAULT_ROUTER_URL,
+            False,
+            f"Base URL of the LLMRouter service (default: {cls.DEFAULT_ROUTER_URL}).",
+        )
+        cls._add_shared_genai_args(p, temperature_default=0.7)
         p.add_argument(
             "--dataset-path",
             type=Path,
@@ -256,48 +268,10 @@ class UtilCommand:
             help="Number of random samples per class included in the prompt context.",
         )
         p.add_argument(
-            "--model-name",
-            default="gpt-oss:120b",
-            help="Model identifier passed to the router (default: gpt-oss:120b).",
-        )
-        p.add_argument(
-            "--temperature",
-            type=float,
-            default=0.7,
-            help="Sampling temperature for the model (default: 0.7).",
-        )
-        p.add_argument(
-            "--batch-save-size",
-            type=int,
-            default=5,
-            help="How many records are written to disk at once.",
-        )
-        p.add_argument(
-            "--dry-run",
-            action="store_true",
-            help="Process data but do not write output files.",
-        )
-        p.add_argument(
             "--output-dir",
             type=Path,
             default=None,
             help="Override directory where result files are stored.",
-        )
-        p.add_argument(
-            "--verbose",
-            action="store_true",
-            help="Enable DEBUG level logging.",
-        )
-        p.add_argument(
-            "--num-workers",
-            type=int,
-            default=2,
-            help="Number of parallel worker threads (default: 2).",
-        )
-        p.add_argument(
-            "--text-column-name",
-            default="Tekst",
-            help="Name of the column containing the text (default: 'Tekst').",
         )
         p.add_argument(
             "--label-column-name",
@@ -309,8 +283,10 @@ class UtilCommand:
     # Registration
     # ------------------------------------------------------------------ #
     @classmethod
-    def register_parser(cls, subparsers: argparse._SubParsersAction) -> None:
-        """Register the three ``util`` sub‑subparsers under *subparsers*."""
+    def register_children(
+        cls, subparsers: "argparse._SubParsersAction[Any]"
+    ) -> None:
+        """Register the three ``util`` leaf sub‑subcommands under *subparsers*."""
         translate_p = subparsers.add_parser(cls.TRANSLATE, help=cls.TRANSLATE_HELP)
         cls._add_translate_args(translate_p)
 
@@ -325,114 +301,73 @@ class UtilCommand:
         cls._add_augmentation_args(augmentation_p)
 
     # ------------------------------------------------------------------ #
-    # Parser builder / entry point
+    # Dispatch
     # ------------------------------------------------------------------ #
     @classmethod
-    def build_parser(cls) -> argparse.ArgumentParser:
-        """Build the standalone ``util`` parser (single source of the tree)."""
-        parser = argparse.ArgumentParser(
-            prog="llm-router util",
-            description=(
-                "Utility subcommands: translate, genai-classifier, "
-                "genai-data-augmentation."
-            ),
-        )
-        subparsers = parser.add_subparsers(dest="util_command")
-        cls.register_parser(subparsers)  # type: ignore[arg-type]
-        return parser
-
-    @staticmethod
-    def _exit_code(exc: SystemExit) -> int:
-        """Normalize a ``SystemExit`` (from ``--help`` / argparse errors) to an int."""
-        code = exc.code
-        if code is None:
-            return 0
-        if isinstance(code, int):
-            return code
-        return 1
-
-    @classmethod
-    def run(cls, argv: Optional[List[str]] = None) -> int:
-        """
-        Standalone entry point: parse args and dispatch to a sub‑command.
-
-        ``argv`` is expected to be the arguments *after* ``util`` (i.e. it may
-        start with one of ``translate`` / ``genai-classifier`` /
-        ``genai-data-augmentation``). A redundant leading ``util`` token is
-        tolerated.
-        """
-        if argv is None:
-            argv = sys.argv[1:]
-        if argv and argv[0] == cls.NAME:
-            argv = argv[1:]
-
-        parser = cls.build_parser()
-        try:
-            args = parser.parse_args(argv)
-        except SystemExit as exc:  # pragma: no cover - only on --help / errors
-            return cls._exit_code(exc)
-
-        action = getattr(args, "util_command", None)
-        if action is None:
-            parser.print_help()
-            return 0
-
-        handlers = {
+    def dispatch(cls, args: argparse.Namespace) -> int:
+        """Route on the parsed namespace (no re-parsing of ``argv``)."""
+        action = getattr(args, cls.SUBPARSER_DEST, None)
+        handler = {
             cls.TRANSLATE: cls._run_translate,
             cls.CLASSIFIER: cls._run_classifier,
             cls.AUGMENTATION: cls._run_augmentation,
-        }
-        handler = handlers.get(action)
+        }.get(action)
         if handler is None:
-            parser.print_help()
-            return 1
+            cls.build_parser().print_help()
+            return 0 if action is None else 1
         return handler(args)
 
     # ------------------------------------------------------------------ #
     # Sub-command handlers
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _run_app(
+        args: argparse.Namespace, app_factory: Callable[[Any], Any], label: str
+    ) -> int:
+        """Build, run and close an app, normalising errors to an exit code."""
+        app = app_factory(args)
+        try:
+            app.run()
+        except Exception as exc:
+            print(f"Error running {label}: {exc}", file=sys.stderr)
+            return 1
+        finally:
+            close = getattr(app, "close", None)
+            if close is not None:
+                close()
+        return 0
+
     @classmethod
     def _run_translate(cls, args: argparse.Namespace) -> int:
         from llm_router_cli.util.translate import TranslateApp
 
-        app = TranslateApp(args)
-        try:
-            app.run()
-        except Exception as exc:
-            print(f"Error running translate: {exc}", file=sys.stderr)
-            return 1
-        finally:
-            app.close()
-        return 0
+        return cls._run_app(args, TranslateApp, "translate")
 
     @classmethod
     def _run_classifier(cls, args: argparse.Namespace) -> int:
         from llm_router_cli.util.genai_classifier import GenAIClassifierApp
 
-        n_sample = args.n_sample if args.n_sample and args.n_sample > 0 else None
-        app = GenAIClassifierApp(
-            dataset_dir=args.dataset_dir,
-            prompts_dir=args.prompts_dir,
-            llm_router_url=args.llm_router_url,
-            model_name=args.model_name,
-            temperature=args.temperature,
-            llm_router_token=args.llm_router_token,
-            llm_router_timeout=args.llm_router_timeout,
-            batch_save_size=args.batch_save_size,
-            dry_run=args.dry_run,
-            output_dir=args.output_dir,
-            verbose=args.verbose,
-            num_workers=args.num_workers,
-            n_sample=n_sample,
-            dataset_paths=args.dataset_path,
-            text_column_name=args.text_column_name,
-        )
-        try:
-            app.run()
-        except Exception as exc:
-            print(f"Error running genai-classifier: {exc}", file=sys.stderr)
-            return 1
-        return 0
+        def build(a: argparse.Namespace) -> GenAIClassifierApp:
+            n_sample = a.n_sample if a.n_sample and a.n_sample > 0 else None
+            return GenAIClassifierApp(
+                dataset_dir=a.dataset_dir,
+                prompts_dir=a.prompts_dir,
+                llm_router_url=a.llm_router_url,
+                model_name=a.model_name,
+                temperature=a.temperature,
+                llm_router_token=a.llm_router_token,
+                llm_router_timeout=a.llm_router_timeout,
+                batch_save_size=a.batch_save_size,
+                dry_run=a.dry_run,
+                output_dir=a.output_dir,
+                verbose=a.verbose,
+                num_workers=a.num_workers,
+                n_sample=n_sample,
+                dataset_paths=a.dataset_path,
+                text_column_name=a.text_column_name,
+            )
+
+        return cls._run_app(args, build, "genai-classifier")
 
     @classmethod
     def _run_augmentation(cls, args: argparse.Namespace) -> int:
@@ -440,30 +375,27 @@ class UtilCommand:
             GenAIDataAugmentationApp,
         )
 
-        labels = [part for part in (args.labels or "").split(",") if part.strip()]
-        app = GenAIDataAugmentationApp(
-            dataset_path=args.dataset_path,
-            prompt_path=args.prompt_file,
-            labels=labels,
-            llm_router_url=args.llm_router_url,
-            model_name=args.model_name,
-            llm_router_token=args.llm_router_token,
-            llm_router_timeout=args.llm_router_timeout,
-            temperature=args.temperature,
-            n_samples=args.n_samples,
-            n_examples=args.n_examples,
-            samples_as_examples=args.samples_as_examples,
-            batch_save_size=args.batch_save_size,
-            dry_run=args.dry_run,
-            output_dir=args.output_dir,
-            verbose=args.verbose,
-            num_workers=args.num_workers,
-            text_column_name=args.text_column_name,
-            label_column_name=args.label_column_name,
-        )
-        try:
-            app.run()
-        except Exception as exc:
-            print(f"Error running genai-data-augmentation: {exc}", file=sys.stderr)
-            return 1
-        return 0
+        def build(a: argparse.Namespace) -> GenAIDataAugmentationApp:
+            labels = [part for part in (a.labels or "").split(",") if part.strip()]
+            return GenAIDataAugmentationApp(
+                dataset_path=a.dataset_path,
+                prompt_path=a.prompt_file,
+                labels=labels,
+                llm_router_url=a.llm_router_url,
+                model_name=a.model_name,
+                llm_router_token=a.llm_router_token,
+                llm_router_timeout=a.llm_router_timeout,
+                temperature=a.temperature,
+                n_samples=a.n_samples,
+                n_examples=a.n_examples,
+                samples_as_examples=a.samples_as_examples,
+                batch_save_size=a.batch_save_size,
+                dry_run=a.dry_run,
+                output_dir=a.output_dir,
+                verbose=a.verbose,
+                num_workers=a.num_workers,
+                text_column_name=a.text_column_name,
+                label_column_name=a.label_column_name,
+            )
+
+        return cls._run_app(args, build, "genai-data-augmentation")

@@ -25,24 +25,23 @@ import asyncio
 import argparse
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
+
+from .base import BaseCommand
 
 
-class AuthCommand:
+class AuthCommand(BaseCommand):
     """
     Encapsulates the ``auth`` CLI subcommand and all its children.
 
-    A single argparse tree is built once (see :meth:`register_parser` /
-    :meth:`build_parser`) and dispatching happens **exclusively on the
-    parsed namespace** — the raw argv is never re-scanned.
-
-    Public API:
-      - :meth:`register_parser` – register *auth* under a parent parser.
-      - :meth:`run`             – standalone entry point (parse + dispatch).
-      - :meth:`dispatch`        – dispatch an already-parsed namespace.
+    A single argparse tree is built once (see :meth:`register_children`) and
+    dispatching happens **exclusively on the parsed namespace** — the raw
+    argv is never re-scanned.
     """
 
     NAME = "auth"
+    SUBPARSER_DEST = "auth_command"
+    HELP = "Manage API keys and authentication"
     KEY_NAME = "key"
     POLICY_NAME = "policy"
     RATE_LIMIT_NAME = "rate-limit"
@@ -53,23 +52,17 @@ class AuthCommand:
 
     # ---- Built-in rate-limit presets (class-level constant) ---------------
 
-    _BUILTIN_RATE_LIMIT_PRESETS: List[dict] = [
+    _BUILTIN_RATE_LIMIT_PRESETS: List[Dict[str, Any]] = [
         {"name": "free", "rpm": 10, "description": "Free tier — limited usage"},
         {"name": "basic", "rpm": 60, "description": "Standard (1/s)"},
         {"name": "pro", "rpm": 120, "description": "Pro tier (2/s)"},
         {"name": "enterprise", "rpm": 500, "description": "High throughput"},
     ]
 
-    # ---- Key command dispatch table (class-level constant) -----------------
+    # ---- Key command definitions (class-level constants) -------------------
 
-    _KEY_COMMANDS: Dict[str, str] = {
-        "generate": "_key_generate",
-        "list": "_key_list",
-        "delete": "_key_mutate_delete",
-        "disable": "_key_mutate_disable",
-        "enable": "_key_mutate_enable",
-        "rotate": "_key_rotate",
-    }
+    _KEY_COMMANDS = ["generate", "list", "delete", "disable", "enable", "rotate"]
+    _KEY_MUTATE_ACTIONS = {"delete", "disable", "enable"}
 
     # ---- Argument-adding helpers -------------------------------------------
 
@@ -239,14 +232,14 @@ class AuthCommand:
     # ---- Rate-limit preset loading -----------------------------------------
 
     @classmethod
-    def _load_rate_limit_presets(cls) -> List[dict]:
+    def _load_rate_limit_presets(cls) -> List[Dict[str, Any]]:
         """
         Load predefined rate-limit presets
         (env var → user config → package resource → builtin).
         """
         env_path = os.environ.get("LLM_ROUTER_RATE_LIMITING_CONFIG", "").strip()
 
-        def _try_load(path: Path) -> Optional[List[dict]]:
+        def _try_load(path: Path) -> Optional[List[Dict[str, Any]]]:
             if not path.exists():
                 return None
             try:
@@ -256,7 +249,7 @@ class AuthCommand:
             except (json.JSONDecodeError, OSError):
                 return None
 
-        def _try_load_bytes(data: bytes) -> Optional[List[dict]]:
+        def _try_load_bytes(data: bytes) -> Optional[List[Dict[str, Any]]]:
             try:
                 presets = json.loads(data)
                 result = [p for p in presets if isinstance(p, dict) and "name" in p]
@@ -289,8 +282,8 @@ class AuthCommand:
             )
             if hasattr(_PACKAGE_RES, "read_bytes"):
                 loaded = _try_load_bytes(_PACKAGE_RES.read_bytes())
-            elif hasattr(_PACKAGE_RES, "joinpath"):
-                loaded = _try_load(Path(_PACKAGE_RES))
+            else:
+                loaded = _try_load(Path(str(_PACKAGE_RES)))
             if loaded is not None:
                 return loaded
         except (ImportError, OSError):
@@ -327,22 +320,11 @@ class AuthCommand:
         cls._add_store_and_redis_args(rl_remove)
 
     @classmethod
-    def register_parser(
-        cls,
-        parser: Union[argparse.ArgumentParser, argparse._SubParsersAction],
-        nest_auth: bool = True,
+    def register_children(
+        cls, subparsers: "argparse._SubParsersAction[Any]"
     ) -> None:
-        """
-        Register the ``auth`` subparser with its child commands.
-        """
-        if nest_auth:
-            auth_parser = parser.add_parser(
-                cls.NAME, help="Manage API keys and authentication"
-            )
-            auth_sub = auth_parser.add_subparsers(dest="auth_command")
-        else:
-            auth_sub = parser
-
+        """Register the ``auth`` leaf sub‑commands (key / policy / rate-limit)."""
+        auth_sub = subparsers
         key_parser = auth_sub.add_parser(cls.KEY_NAME, help="Manage API keys")
         key_sub = key_parser.add_subparsers(dest="key_command")
 
@@ -404,27 +386,12 @@ class AuthCommand:
 
         cls.register_rate_limit_subparser(auth_sub)
 
-    # ---- Public entry points -----------------------------------------------
-
-    @classmethod
-    def build_parser(cls) -> argparse.ArgumentParser:
-        """
-        Build the standalone ``auth`` parser (single source of the tree).
-        """
-        parser = argparse.ArgumentParser(
-            prog="llm-router auth",
-            description="Manage API keys and authentication",
-        )
-        auth_sub = parser.add_subparsers(dest="auth_command")
-        cls.register_parser(auth_sub, nest_auth=False)  # type: ignore[arg-type]
-        return parser
+    # ---- Dispatch ----------------------------------------------------------
 
     @classmethod
     def dispatch(cls, args: argparse.Namespace) -> int:
-        """
-        Dispatch an already-parsed *args* namespace (no re-parsing).
-        """
-        auth_command = getattr(args, "auth_command", None)
+        """Dispatch an already-parsed *args* namespace (no re-parsing)."""
+        auth_command = getattr(args, cls.SUBPARSER_DEST, None)
         if auth_command is None:
             cls.build_parser().print_help()
             return 0
@@ -441,25 +408,10 @@ class AuthCommand:
             return 1
         return handler(args)
 
-    @classmethod
-    def run(cls, argv: Optional[List[str]] = None) -> int:
-        """
-        Standalone entry point: parse once, then dispatch on the namespace.
-        """
-        if argv is None:
-            argv = sys.argv[1:]
-        if not argv:
-            cls.build_parser().print_help()
-            return 0
-        args = cls.build_parser().parse_args(argv)
-        return cls.dispatch(args)
-
     # ---- Key handler commands (all private methods on the class) ----------
 
     def _handle_key(self, args: Any) -> int:
-        """
-        Route key subcommands via the dispatch table.
-        """
+        """Route key subcommands to their handlers (mutations share one path)."""
         cmd = getattr(args, "key_command", None)
         if cmd is None:
             print(
@@ -468,11 +420,18 @@ class AuthCommand:
             )
             return 1
 
-        handler_method_name = self._KEY_COMMANDS.get(cmd)
-        if handler_method_name is None:
+        if cmd in self._KEY_MUTATE_ACTIONS:
+            return self._key_mutate(args, cmd)
+
+        handler = {
+            "generate": self._key_generate,
+            "list": self._key_list,
+            "rotate": self._key_rotate,
+        }.get(cmd)
+        if handler is None:
             print(f"Unknown key command: {cmd}", file=sys.stderr)
             return 1
-        return getattr(self, handler_method_name)(args)
+        return handler(args)
 
     def _key_generate(self, args: Any) -> int:
         """
@@ -624,24 +583,6 @@ class AuthCommand:
             return 1
         return self._key_action(key_store, args.key_id, action)
 
-    def _key_mutate_delete(self, args: Any) -> int:
-        """
-        dispatch → _key_mutate with action='delete'.
-        """
-        return self._key_mutate(args, "delete")
-
-    def _key_mutate_disable(self, args: Any) -> int:
-        """
-        dispatch → _key_mutate with action='disable'.
-        """
-        return self._key_mutate(args, "disable")
-
-    def _key_mutate_enable(self, args: Any) -> int:
-        """
-        dispatch → _key_mutate with action='enable'.
-        """
-        return self._key_mutate(args, "enable")
-
     def _key_rotate(self, args: Any) -> int:
         """
         Handle the 'rotate' subcommand.
@@ -685,7 +626,7 @@ class AuthCommand:
             return 0
 
         if cmd == "create":
-            from llm_router_api.core.auth.policies.engine import EndpointPolicy
+            from llm_router_api.core.auth.policies.model import EndpointPolicy
             from llm_router_api.core.auth.policies.builtin import register_policy
 
             try:
