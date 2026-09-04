@@ -261,3 +261,46 @@ def test_main_dispatches_auth(auth_home, capsys):
     assert main(["auth", "key", "list"]) == 0
     assert main(["auth", "rate-limit", "list"]) == 0
     assert main([]) == 0
+
+
+# ---- --verbose ----------------------------------------------------------
+
+
+def test_key_generate_help_has_verbose(capsys):
+    assert AuthCommand.run(["key", "generate", "--help"]) == 0
+    assert "--verbose" in capsys.readouterr().out
+
+
+def test_key_list_help_has_verbose(capsys):
+    assert AuthCommand.run(["key", "list", "--help"]) == 0
+    assert "--verbose" in capsys.readouterr().out
+
+
+def test_generate_verbose_logs_store_but_never_the_key(auth_home, capsys, caplog):
+    assert AuthCommand.run(["key", "generate", "--verbose"]) == 0
+    out_lines = capsys.readouterr().out.splitlines()
+    # stdout: the generated key is on the line after the "Generated key ..." header
+    key_line = next(
+        i for i, line in enumerate(out_lines) if line.startswith("Generated key")
+    )
+    plaintext_key = out_lines[key_line + 1].strip()
+    assert plaintext_key, "expected a generated key on stdout"
+
+    log_text = "\n".join(r.getMessage() for r in caplog.records)
+    # diagnostics: store backend + the (masked) store call are visible
+    assert "Key store backend: memory" in log_text
+    assert "create_key" in log_text and "***" in log_text
+    # ... but the secret key must never appear in the logs
+    assert plaintext_key not in log_text
+
+
+def test_key_rotate_verbose_logs_key_id_not_key_material(auth_home, caplog):
+    """rotate logs the key *id* (identifier); no key material may reach logs."""
+    assert AuthCommand.run(["key", "generate"]) == 0
+    kid = _active_key_id(auth_home)
+    assert AuthCommand.run(["key", "rotate", kid, "--verbose"]) == 0
+    log_text = "\n".join(r.getMessage() for r in caplog.records)
+    assert f"Rotating key {kid}" in log_text
+    assert f"rotate_key('{kid}', 3600)" in log_text
+    # key material (plaintext / rotated keys) must never appear in the logs
+    assert "sk-litm" not in log_text

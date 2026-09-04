@@ -47,15 +47,6 @@ class UtilCommand(BaseCommand):
     # Shared argument helpers
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _add_verbose(p: argparse.ArgumentParser) -> None:
-        """Add the ``--verbose`` flag (DEBUG logging of pipeline + LLM calls)."""
-        p.add_argument(
-            "--verbose",
-            action="store_true",
-            help="Enable verbose (DEBUG) logging: per-task and per-LLM-call detail.",
-        )
-
-    @staticmethod
     def _add_router_args(
         p: argparse.ArgumentParser,
         host_option: str,
@@ -111,7 +102,7 @@ class UtilCommand(BaseCommand):
             action="store_true",
             help="Process data but do not write output files.",
         )
-        cls._add_verbose(p)
+        cls.add_verbose(p)
         p.add_argument(
             "--num-workers",
             type=int,
@@ -156,7 +147,7 @@ class UtilCommand(BaseCommand):
             help="Explicit type of dataset files (json or jsonl). "
             "If omitted, inferred from each file's extension.",
         )
-        cls._add_verbose(p)
+        cls.add_verbose(p)
         p.add_argument(
             "--accept-field",
             action="append",
@@ -328,7 +319,7 @@ class UtilCommand(BaseCommand):
             return 1
 
         # One predictable meaning of --verbose: INFO by default, DEBUG when set.
-        from llm_router_cli.util.log_utils import setup_logging
+        from llm_router_cli.log_utils import setup_logging
 
         setup_logging(verbose=bool(getattr(args, "verbose", False)))
         return handler(args)

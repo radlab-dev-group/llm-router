@@ -389,7 +389,7 @@ def test_with_retries_invalid_attempts():
 # --verbose / logging
 # --------------------------------------------------------------------- #
 def test_setup_logging_levels_and_idempotency():
-    from llm_router_cli.util.log_utils import setup_logging
+    from llm_router_cli.log_utils import setup_logging
 
     root = logging.getLogger()
     original = (root.level, list(root.handlers))
@@ -415,7 +415,7 @@ def test_setup_logging_levels_and_idempotency():
 
 
 def test_shorten_collapses_lines_and_truncates():
-    from llm_router_cli.util.log_utils import shorten
+    from llm_router_cli.log_utils import shorten
 
     assert shorten("hello") == "hello"
     assert shorten("a" * 300, 20).endswith("…")

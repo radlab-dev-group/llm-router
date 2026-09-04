@@ -43,7 +43,7 @@ from typing import Any, Dict, List, Optional
 from llm_router_lib.client import LLMRouterClient
 from tqdm import tqdm
 
-from .log_utils import shorten
+from ..log_utils import shorten
 
 log = logging.getLogger(__name__)
 

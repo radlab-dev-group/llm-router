@@ -36,7 +36,7 @@ from llm_router_lib.client import LLMRouterClient
 
 from .json_utils import loads_json
 from .loaders import read_records
-from .log_utils import shorten
+from ..log_utils import shorten
 from .pipeline import ConcurrentLLMPipeline
 from .retry import with_retries
 

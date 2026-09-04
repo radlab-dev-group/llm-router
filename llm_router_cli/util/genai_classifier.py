@@ -39,7 +39,7 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from .json_utils import loads_json
 from .loaders import read_records
-from .log_utils import shorten
+from ..log_utils import shorten
 from .pipeline import ConcurrentLLMPipeline
 
 log = logging.getLogger(__name__)

@@ -21,12 +21,18 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from llm_router_cli.log_utils import setup_logging
+
 from .base import BaseCommand
+
+log = logging.getLogger(__name__)
 
 __all__ = ["AuthCommand"]
 
@@ -112,8 +118,8 @@ class AuthCommand(BaseCommand):
     # ------------------------------------------------------------------ #
     # Argument-adding helpers
     # ------------------------------------------------------------------ #
-    @staticmethod
-    def _add_store_and_redis_args(p: argparse.ArgumentParser) -> None:
+    @classmethod
+    def _add_store_and_redis_args(cls, p: argparse.ArgumentParser) -> None:
         """
         Add ``--store`` and all ``--auth-redis-*`` flags to *p*.
         """
@@ -154,6 +160,8 @@ class AuthCommand(BaseCommand):
             help="Redis protocol version for auth key store: "
             "2 (RESP2) or 3 (RESP3), default 2",
         )
+        # Store-touching commands get --verbose (local-only commands don't).
+        cls.add_verbose(p)
 
     @staticmethod
     def _add_key_id_arg(p: argparse.ArgumentParser) -> None:
@@ -239,6 +247,7 @@ class AuthCommand(BaseCommand):
         """
         from llm_router_api.core.auth.key_store import create_key_store
 
+        log.debug("Key store backend: %s", args.store)
         if args.store == "vault":
             kwargs = self._vault_kwargs()
             if not kwargs["addr"]:
@@ -246,8 +255,22 @@ class AuthCommand(BaseCommand):
                     "LLM_ROUTER_AUTH_VAULT_ADDR is required for "
                     "--store vault (vault address, e.g. http://127.0.0.1:8200)"
                 )
+            log.debug(
+                "Vault: addr=%s mount=%s auth=%s",
+                kwargs["addr"],
+                kwargs["mount_path"],
+                kwargs["auth_method"],
+            )
         else:
             kwargs = self._auth_redis_kwargs(args)
+            if args.store == "redis":
+                # host/port/db are safe to log; the password never is.
+                log.debug(
+                    "Redis: %s:%s (db=%s)",
+                    kwargs["redis_host"],
+                    kwargs["redis_port"],
+                    kwargs["redis_db"],
+                )
         store, _shared = create_key_store(store_type=args.store, **kwargs)
         return store
 
@@ -261,12 +284,45 @@ class AuthCommand(BaseCommand):
         on failure *store*/*result* are ``None`` and *error* carries the
         user-facing message.
         """
+        started = time.perf_counter()
         try:
             store = self._make_store(args)
+            log.debug("Store call: %s", self._describe_call(method_name, call_args))
             result = asyncio.run(getattr(store, method_name)(*call_args))
+            log.debug(
+                "Store call %s ok in %.3fs",
+                method_name,
+                time.perf_counter() - started,
+            )
             return store, result, None
         except (ValueError, RuntimeError, OSError) as exc:
+            log.debug(
+                "Store call %s failed after %.3fs: %s",
+                method_name,
+                time.perf_counter() - started,
+                exc,
+            )
             return None, None, str(exc)
+
+    #: Arg-dict keys that are secrets and must never appear in logs.
+    _SECRET_ARG_KEYS = frozenset(
+        {"key_plain", "key", "secret", "secret_id", "token", "password"}
+    )
+
+    @classmethod
+    def _describe_call(cls, method_name: str, call_args: Sequence[Any]) -> str:
+        """A log-friendly, secret-safe description of a store call."""
+        rendered = []
+        for arg in call_args:
+            if isinstance(arg, dict):
+                safe = {
+                    k: ("***" if k in cls._SECRET_ARG_KEYS else v)
+                    for k, v in arg.items()
+                }
+                rendered.append(repr(safe))
+            else:
+                rendered.append(repr(arg))
+        return f"{method_name}({', '.join(rendered)})"
 
     @staticmethod
     def _persist_seeds(store: Any) -> None:
@@ -492,6 +548,7 @@ class AuthCommand(BaseCommand):
         if handler is None:
             cls.build_parser().print_help()
             return 1
+        setup_logging(verbose=bool(getattr(args, "verbose", False)))
         return handler(args)
 
     # ------------------------------------------------------------------ #
@@ -537,6 +594,7 @@ class AuthCommand(BaseCommand):
                     f"--expires must be a Unix timestamp (got '{args.expires}')."
                 )
 
+        log.debug("Generating key (policy=%s, expires=%s)", policy, expires)
         record = {
             "key_plain": KeyGenerator().generate(),
             "policy_name": policy,
@@ -568,6 +626,7 @@ class AuthCommand(BaseCommand):
         if error is not None:
             return self._fail(error)
 
+        log.debug("Listed %d key(s)", len(keys or []))
         if not keys:
             print("No API keys found.")
             return 0
@@ -614,6 +673,7 @@ class AuthCommand(BaseCommand):
         """
         Handle the ``rotate`` subcommand.
         """
+        log.debug("Rotating key %s (grace=%ss)", args.key_id, args.grace)
         store, new_key, error = self._store_call(
             args, "rotate_key", args.key_id, args.grace
         )

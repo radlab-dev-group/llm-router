@@ -9,14 +9,21 @@ Usage::
 
 from __future__ import annotations
 
-import sys
-import json
 import argparse
+import json
+import logging
+import sys
+import time
+
 import requests
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+
+from llm_router_cli.log_utils import setup_logging
 
 from .base import BaseCommand
+
+log = logging.getLogger(__name__)
 
 
 class ConfigCommand(BaseCommand):
@@ -98,8 +105,8 @@ class ConfigCommand(BaseCommand):
 
     # ---- Argument-adding helpers -------------------------------------------
 
-    @staticmethod
-    def _add_discover_args(p: argparse.ArgumentParser) -> None:
+    @classmethod
+    def _add_discover_args(cls, p: argparse.ArgumentParser) -> None:
         """
         Add the shared arguments for the ``discover`` subcommand.
         """
@@ -127,9 +134,10 @@ class ConfigCommand(BaseCommand):
             help="Skip writing the active_models section "
             "(produce provider entries only).",
         )
+        cls.add_verbose(p)
 
-    @staticmethod
-    def _add_merge_args(p: argparse.ArgumentParser) -> None:
+    @classmethod
+    def _add_merge_args(cls, p: argparse.ArgumentParser) -> None:
         """
         Add the shared arguments for the ``merge`` subcommand.
         """
@@ -146,6 +154,7 @@ class ConfigCommand(BaseCommand):
             help="Output path for the merged config file. "
             "When omitted (or ``-``), write to stdout.",
         )
+        cls.add_verbose(p)
 
     # ---- Host parsing / utilities ------------------------------------------
 
@@ -202,12 +211,19 @@ class ConfigCommand(BaseCommand):
     def dispatch(cls, args: argparse.Namespace) -> int:
         """Route on the parsed namespace (no re-parsing of ``argv``)."""
         action = getattr(args, cls.SUBPARSER_DEST, None)
-        if action == "merge":
-            return cls._do_merge(args)
-        if action == "discover":
-            return cls._do_discover(args)
-        cls.build_parser().print_help()
-        return 0
+        handlers: Dict[str, Callable[[argparse.Namespace], int]] = {
+            "merge": cls._do_merge,
+            "discover": cls._do_discover,
+        }
+        handler = handlers.get(action) if isinstance(action, str) else None
+        if handler is None:
+            cls.build_parser().print_help()
+            return 0
+
+        # Opt-in diagnostics: the config UX is print-based, so logging is
+        # only configured when the user asks for it.
+        setup_logging(verbose=bool(getattr(args, "verbose", False)))
+        return handler(args)
 
     @staticmethod
     def _get_flag(args: argparse.Namespace, name: str, default: bool) -> bool:
@@ -230,10 +246,25 @@ class ConfigCommand(BaseCommand):
         Return True when a HTTP service responds on
         ``{protocol}://{host}:{port}{path}``.
         """
+        url = f"{protocol}://{host}:{port}{path}"
+        started = time.perf_counter()
         try:
-            resp = requests.get(f"{protocol}://{host}:{port}{path}", timeout=timeout)
-            return resp.status_code < 500
-        except (requests.RequestException, OSError):
+            resp = requests.get(url, timeout=timeout)
+            ok = resp.status_code < 500
+            log.debug(
+                "Probe %s -> HTTP %d (%.0f ms)",
+                url,
+                resp.status_code,
+                (time.perf_counter() - started) * 1000,
+            )
+            return ok
+        except (requests.RequestException, OSError) as exc:
+            log.debug(
+                "Probe %s failed: %s (%.0f ms)",
+                url,
+                exc.__class__.__name__,
+                (time.perf_counter() - started) * 1000,
+            )
             return False
 
     @staticmethod
@@ -242,11 +273,24 @@ class ConfigCommand(BaseCommand):
         Fetch *url* and decode it as a JSON object, or ``None`` on any
         network/parse failure.
         """
+        started = time.perf_counter()
         try:
             resp = requests.get(url, timeout=timeout)
             resp.raise_for_status()
             data = resp.json()
-        except (requests.RequestException, OSError, ValueError):
+            log.debug(
+                "GET %s -> %s (%.0f ms)",
+                url,
+                "ok" if isinstance(data, dict) else "not-a-dict",
+                (time.perf_counter() - started) * 1000,
+            )
+        except (requests.RequestException, OSError, ValueError) as exc:
+            log.debug(
+                "GET %s failed: %s (%.0f ms)",
+                url,
+                exc.__class__.__name__,
+                (time.perf_counter() - started) * 1000,
+            )
             return None
         return data if isinstance(data, dict) else None
 
@@ -435,9 +479,22 @@ class ConfigCommand(BaseCommand):
             if not cls._health_check(
                 host, port, path=prov["health_path"], protocol=protocol
             ):
+                log.debug(
+                    "Host %s:%d unhealthy for %s; skipping",
+                    host,
+                    port,
+                    prov["api_type"],
+                )
                 continue
             _, group = cls._build_config_for_provider(prov, host, port, protocol)
             if group and "models_raw" not in group:
+                log.debug(
+                    "Host %s:%d (%s): %d model(s)",
+                    host,
+                    port,
+                    prov["api_type"],
+                    len(group),
+                )
                 groups.append(group)
             if groups and not collect_all:
                 break
@@ -607,9 +664,12 @@ class ConfigCommand(BaseCommand):
         """
         raw_hosts = getattr(args, "hosts", ["localhost"])
         hosts: List[Tuple[str, int, str]] = [cls._parse_host(h) for h in raw_hosts]
+        log.debug("Discovering on %d host(s): %s", len(hosts), ", ".join(raw_hosts))
         config = cls._generate_config(
             hosts, all_ports=ConfigCommand._get_flag(args, "all_ports", False)
         )
+        n_groups = len([k for k, v in config.items() if isinstance(v, dict)])
+        log.debug("Discover complete: %d model group(s)", n_groups)
 
         if not config:
             print(
@@ -639,7 +699,9 @@ class ConfigCommand(BaseCommand):
             cfg = ConfigCommand._load_config(cfg_path)
             if not cfg:
                 failures.append(cfg_path)
+                log.debug("Merge: skipping %s (unreadable or invalid)", cfg_path)
                 continue
+            log.debug("Merge: loaded %s (%d top-level key(s))", cfg_path, len(cfg))
             for key, val in cfg.items():
                 if key == "active_models":
                     ConfigCommand._merge_active_models(val, active)
@@ -663,6 +725,18 @@ class ConfigCommand(BaseCommand):
             active_models[group] = list(existing)
 
         merged["active_models"] = active_models
+        log.debug(
+            "Merge complete: %d group(s) from %d file(s), %d skipped",
+            len(
+                [
+                    k
+                    for k, v in merged.items()
+                    if k != "active_models" and isinstance(v, dict)
+                ]
+            ),
+            len(configs_arg),
+            len(failures),
+        )
 
         return ConfigCommand._write_output(
             merged, getattr(args, "output_config_file", None), "Merged config"

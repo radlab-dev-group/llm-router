@@ -31,7 +31,7 @@ from tqdm import tqdm
 from llm_router_lib.client import LLMRouterClient
 
 from .loaders import read_records
-from .log_utils import shorten
+from ..log_utils import shorten
 
 log = logging.getLogger(__name__)
 

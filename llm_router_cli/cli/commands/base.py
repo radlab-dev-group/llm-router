@@ -44,6 +44,18 @@ class BaseCommand:
     SUBPARSER_DEST: ClassVar[str] = "command"
 
     # ------------------------------------------------------------------ #
+    # Shared argument helpers
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def add_verbose(p: argparse.ArgumentParser) -> None:
+        """Add the ``--verbose`` flag (DEBUG logging) to *p*."""
+        p.add_argument(
+            "--verbose",
+            action="store_true",
+            help="Enable verbose (DEBUG) logging of internal operations.",
+        )
+
+    # ------------------------------------------------------------------ #
     # Registration (single source of truth)
     # ------------------------------------------------------------------ #
     @classmethod
