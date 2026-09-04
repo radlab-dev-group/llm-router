@@ -74,11 +74,11 @@ llm-router auth key generate \
   --store memory
 ```
 
-| Flag        | Default     | Description                       |
-|-------------|-------------|-----------------------------------|
-| `--policy`  | `developer` | Policy name to assign             |
-| `--expires` | `None`      | Expiry (Unix timestamp or `None`) |
-| `--output`  | *(stdout)*  | Output file path                  |
+| Flag        | Default     | Description                                        |
+|-------------|-------------|----------------------------------------------------|
+| `--policy`  | `developer` | Policy name to assign                              |
+| `--expires` | `None`      | Expiry (Unix timestamp or `None`)                  |
+| `--output`  | *(stdout)*  | Output file path (created with `0600` permissions) |
 
 Output: `sk-litm-<base62>` key (plaintext shown **once** at creation).
 
@@ -142,15 +142,26 @@ llm-router auth policy list
 | `ollama`    | Ollama      | Ollama endpoints                     |
 | `builtin`   | All builtin | Built-in endpoints (translate, etc.) |
 
-#### `create <name> <json-policy>` — Register a custom policy
+#### `create <name> [<json-policy>]` — Create a custom policy
 
 ```bash
+# inline JSON
 llm-router auth policy create my-team '{
   "can_access": true,
   "rate_limit": 120,
   "model_whitelist": ["gpt-4", "llama-3"]
 }' --store memory
+
+# from a file, or from stdin (-) — avoids leaking policy JSON into shell history
+llm-router auth policy create my-team --file my-team.json
+cat my-team.json | llm-router auth policy create my-team --file -
 ```
+
+> **Persistence:** custom policies are saved to
+> `$LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE` (default:
+> `~/.llm-router/configs/auth/custom-policies.json`) and are resolved by the
+> server in **new processes** — no restart required. `policy list` marks them
+> with `(custom)`.
 
 ---
 
@@ -301,23 +312,27 @@ llm-router util translate \
   --accept-field text --accept-field title
 ```
 
-| Flag                   | Default  | Description                                                         |
-|------------------------|----------|---------------------------------------------------------------------|
-| `--llm-router-host`    | *(req)*  | Base URL of the LLM router service                                  |
-| `--model`              | *(req)*  | Model name used for translation                                     |
-| `--dataset-path`       | *(req)*  | Dataset file (JSON/JSONL); repeatable                               |
-| `--dataset-type`       | *(auto)* | Explicit `json` / `jsonl` (else inferred from extension)            |
-| `--accept-field`       | *(all)*  | Field to translate/retain; repeatable                               |
-| `--num-workers`        | `1`      | Translation worker threads                                          |
-| `--batch-size`         | `8`      | Texts per request                                                   |
-| `--llm-router-token`   | —        | Auth token                                                          |
-| `--llm-router-timeout` | `10`     | Per-request timeout (s)                                             |
-| `--verbose`            | `false`  | Enable verbose (DEBUG) logging of internal operations               |
-| `-o, --output`         | —        | Single output JSONL file (else `<stem>.translated.jsonl` per input) |
+| Flag                   | Default  | Description                                                                             |
+|------------------------|----------|-----------------------------------------------------------------------------------------|
+| `--llm-router-host`    | *(req)*  | Base URL of the LLM router service                                                      |
+| `--model`              | *(req)*  | Model name used for translation                                                         |
+| `--dataset-path`       | *(req)*  | Dataset file (JSON/JSONL); repeatable                                                   |
+| `--dataset-type`       | *(auto)* | Explicit `json` / `jsonl` (else inferred from extension)                                |
+| `--accept-field`       | *(all)*  | Fields to translate; repeatable. Omit to translate **all string fields** in each record |
+| `--num-workers`        | `1`      | Translation worker threads                                                              |
+| `--batch-size`         | `8`      | Texts per request                                                                       |
+| `--llm-router-token`   | —        | Auth token                                                                              |
+| `--llm-router-timeout` | `10`     | Per-request timeout (s)                                                                 |
+| `--verbose`            | `false`  | Enable verbose (DEBUG) logging of internal operations                                   |
+| `-o, --output`         | —        | Single output JSONL file (else `<stem>.translated.jsonl` per input)                     |
 
 > **Output:** without `-o`, each input `<stem>` writes `<stem>.translated.jsonl`
 > next to it; with `-o`, all records go to that one file. **Input files are
 > never overwritten.**
+>
+> **Default behavior:** without `--accept-field`, **all string-valued fields**
+> of each record are sent for translation; non-string values and other record
+> fields pass through unchanged.
 
 ### `genai-classifier` — Classify translated datasets (JSONL only)
 
