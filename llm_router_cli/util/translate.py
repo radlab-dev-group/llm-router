@@ -144,39 +144,29 @@ class TranslateApp:
     def _translate_batches(self, batches: List[List[str]]) -> List[str]:
         """Translate every batch and return a flat, order‑preserving list."""
         if self.num_workers <= 1:
-            flat_results: List[str] = []
-            for batch in tqdm(
-                batches, desc="Translating (single thread)", unit="batch"
-            ):
-                response = self.service.translate(batch)
-                if isinstance(response, list):
-                    flat_results.extend(response)
-                else:
-                    flat_results.append(response)
-            return flat_results
-
-        with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-            future_to_idx = {
-                executor.submit(self.service.translate, batch): idx
-                for idx, batch in enumerate(batches)
-            }
-            pbar = tqdm(
-                total=len(batches), desc="Translating (multi thread)", unit="batch"
-            )
-            ordered_results: List[Any] = [None] * len(batches)
-            for future in as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                ordered_results[idx] = future.result()
-                pbar.update(1)
-            pbar.close()
-
-        flat_results: List[str] = []
-        for res in ordered_results:
-            if isinstance(res, list):
-                flat_results.extend(res)
-            else:
-                flat_results.append(res)
-        return flat_results
+            ordered: List[List[str]] = [
+                self.service.translate(batch)
+                for batch in tqdm(
+                    batches, desc="Translating (single thread)", unit="batch"
+                )
+            ]
+        else:
+            ordered = [[] for _ in batches]
+            with ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                future_to_idx = {
+                    executor.submit(self.service.translate, batch): idx
+                    for idx, batch in enumerate(batches)
+                }
+                pbar = tqdm(
+                    total=len(batches),
+                    desc="Translating (multi thread)",
+                    unit="batch",
+                )
+                for future in as_completed(future_to_idx):
+                    ordered[future_to_idx[future]] = future.result()
+                    pbar.update(1)
+                pbar.close()
+        return [text for batch in ordered for text in batch]
 
     def _translate_records(
         self, records: List[Dict[str, Any]]

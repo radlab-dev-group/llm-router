@@ -28,7 +28,6 @@ import json
 import logging
 import queue
 import random
-import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -39,6 +38,7 @@ from llm_router_lib.client import LLMRouterClient
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
 from .loaders import read_records
+from .pipeline import ConcurrentLLMPipeline
 
 log = logging.getLogger(__name__)
 
@@ -64,9 +64,13 @@ class AggregatedRecord:
         )
 
 
-class GenAIClassifierApp:
+class GenAIClassifierApp(ConcurrentLLMPipeline):
     """
     High‑level orchestrator for the GenAI classification pipeline.
+
+    Built on the shared :class:`~llm_router_cli.util.pipeline.ConcurrentLLMPipeline`
+    (worker pool, buffering, flushing, lifecycle); this class only supplies the
+    classification‑specific pieces.
 
     - Generates a main ``<name>.jsonl`` file with all LLM responses.
     - Generates a ``<name>_clean_labels.jsonl`` file with simplified labels
@@ -94,30 +98,24 @@ class GenAIClassifierApp:
         dataset_paths: Optional[List[Path]] = None,
         text_column_name: str = "Tekst",
     ) -> None:
+        super().__init__(
+            llm_router_url=llm_router_url,
+            llm_router_token=llm_router_token,
+            llm_router_timeout=llm_router_timeout,
+            batch_save_size=batch_save_size,
+            dry_run=dry_run,
+            verbose=verbose,
+            num_workers=num_workers,
+        )
         self.dataset_dir = Path(dataset_dir)
         self.prompts_dir = Path(prompts_dir)
-        self.llm_router_url = llm_router_url
-        self.llm_router_token = llm_router_token
-        self.llm_router_timeout = llm_router_timeout
         self.model_name = model_name
         self.temperature = temperature
         self.prompts_list = list(prompts_list or [])
-        self.batch_save_size = batch_save_size
-        self.dry_run = dry_run
         self.output_dir = Path(output_dir) if output_dir else None
-        self.verbose = verbose
-        self.num_workers = max(1, int(num_workers))
         self.n_sample = n_sample
         self.dataset_paths = [Path(p) for p in (dataset_paths or [])]
         self.text_column_name = text_column_name
-
-        # Shared, thread‑safe buffering structures.
-        self._buffers: Dict[Path, List[AggregatedRecord]] = {}
-        self._file_locks: Dict[Path, threading.Lock] = {}
-        self._buffers_lock = threading.Lock()
-
-        if self.verbose:
-            log.setLevel(logging.DEBUG)
 
     # ------------------------------------------------------------------ #
     # Loading
@@ -309,85 +307,72 @@ class GenAIClassifierApp:
                 labels.append(feat["name"])
         return labels
 
-    def _flush_buffer(self, path: Path) -> None:
-        """Write the accumulated records for *path* to disk (thread‑safe)."""
-        with self._buffers_lock:
-            buffer = self._buffers.get(path, [])
-            lock = self._file_locks.setdefault(path, threading.Lock())
-
-        if not buffer or self.dry_run:
-            buffer.clear()
-            return
-
-        with lock:
-            with path.open("a", encoding="utf-8") as f:
-                for rec in buffer:
-                    f.write(rec.to_json() + "\n")
-
-            aug_path = path.with_name(f"{path.stem}_clean_labels.jsonl")
-            with aug_path.open("a", encoding="utf-8") as f:
-                for rec in buffer:
-                    aug_rec = {
-                        "text": rec.text,
-                        "labels": self._extract_labels(rec.features),
-                        "original_field": rec.field,
-                    }
-                    f.write(json.dumps(aug_rec, ensure_ascii=False) + "\n")
-
-        log.debug("Flushed %d records to %s", len(buffer), path.name)
-        buffer.clear()
-
     # ------------------------------------------------------------------ #
-    # Worker
+    # Pipeline hooks (implemented on top of ConcurrentLLMPipeline)
     # ------------------------------------------------------------------ #
-    def _worker(self, task_queue: "queue.Queue", prompts_dir: Path) -> None:
-        """Thread target – consumes tasks and classifies texts."""
-        prompt_handler = PromptHandler(str(prompts_dir))
-        llm_client = LLMRouterClient(
-            self.llm_router_url,
-            token=self.llm_router_token,
-            timeout=self.llm_router_timeout,
-        )
+    def _validate(self) -> None:
+        """Validate inputs, resolve the prompt list and log startup info."""
+        if not self.dataset_dir.is_dir():
+            raise ValueError(f"Dataset directory does not exist: {self.dataset_dir}")
+        if not self.prompts_dir.is_dir():
+            raise ValueError(f"Prompts directory does not exist: {self.prompts_dir}")
+        if not self.output_dir:
+            raise ValueError("Output directory is not given.")
+        if not self.output_dir.is_dir():
+            raise ValueError(f"Output directory does not exist: {self.output_dir}")
 
-        self.prompts_list = list(prompt_handler.list_prompts().keys())
+        # Validate the prompts directory early (raises on unreadable prompts).
+        handler = PromptHandler(str(self.prompts_dir))
+        self.prompts_list = list(handler.list_prompts().keys())
 
-        try:
-            while True:
-                try:
-                    output_path, field, text = task_queue.get(timeout=1)
-                except queue.Empty:
-                    break
+        self._log_startup_info()
 
-                feature_responses: List[Dict[str, Any]] = []
-                for feature_name in self.prompts_list:
-                    llm_response = self._classify_text(
-                        llm_client,
-                        prompt_handler,
-                        text,
-                        feature_name,
-                        retry_when_invalid_json=5,
-                    )
-                    feature_responses.append(
-                        {"name": feature_name, "response": llm_response}
-                    )
+    def _make_context(self) -> PromptHandler:
+        """One shared :class:`PromptHandler` per worker."""
+        return PromptHandler(str(self.prompts_dir))
 
-                aggregated = AggregatedRecord(
-                    text=text, field=field, features=feature_responses
-                )
+    def _build_task_queue(self) -> "queue.Queue":
+        """Load every local dataset and enqueue its unprocessed (field, text)."""
+        all_datasets = self._load_local_datasets(df_fields=[self.text_column_name])
+        task_q: "queue.Queue" = queue.Queue()
+        for ds_item in all_datasets:
+            self._process_dataset(ds_item, task_q)
+        return task_q
 
-                need_flush = False
-                with self._buffers_lock:
-                    buf = self._buffers.setdefault(output_path, [])
-                    buf.append(aggregated)
-                    if len(buf) >= self.batch_save_size:
-                        need_flush = True
+    def _process(
+        self,
+        client: LLMRouterClient,
+        ctx: PromptHandler,
+        output_path: Path,
+        field: str,
+        text: str,
+    ) -> AggregatedRecord:
+        """Classify a single text against every configured feature (prompt)."""
+        feature_responses: List[Dict[str, Any]] = []
+        for feature_name in self.prompts_list:
+            llm_response = self._classify_text(
+                client,
+                ctx,
+                text,
+                feature_name,
+                retry_when_invalid_json=5,
+            )
+            feature_responses.append(
+                {"name": feature_name, "response": llm_response}
+            )
+        return AggregatedRecord(text=text, field=field, features=feature_responses)
 
-                if need_flush:
-                    self._flush_buffer(output_path)
-
-                task_queue.task_done()
-        finally:
-            llm_client.close()
+    def _flush_aux(self, path: Path, records: List[AggregatedRecord]) -> None:
+        """Write the simplified ``<stem>_clean_labels.jsonl`` companion file."""
+        aug_path = path.with_name(f"{path.stem}_clean_labels.jsonl")
+        with aug_path.open("a", encoding="utf-8") as f:
+            for rec in records:
+                aug_rec = {
+                    "text": rec.text,
+                    "labels": self._extract_labels(rec.features),
+                    "original_field": rec.field,
+                }
+                f.write(json.dumps(aug_rec, ensure_ascii=False) + "\n")
 
     # ------------------------------------------------------------------ #
     # Task preparation
@@ -407,10 +392,7 @@ class GenAIClassifierApp:
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         already_done = self._load_existing_texts(output_path)
-
-        with self._buffers_lock:
-            self._buffers.setdefault(output_path, [])
-            self._file_locks.setdefault(output_path, threading.Lock())
+        self._ensure_buffer(output_path)
 
         rng = random.Random()
         for field in tqdm.tqdm(fields, desc=f"{ds_name} fields", leave=False):
@@ -447,47 +429,3 @@ class GenAIClassifierApp:
 
         if self.verbose:
             log.debug("Full configuration: %s", self.__dict__)
-
-    # ------------------------------------------------------------------ #
-    # Main workflow
-    # ------------------------------------------------------------------ #
-    def run(self) -> None:
-        """Execute the classification pipeline."""
-        if not self.dataset_dir.is_dir():
-            raise ValueError(f"Dataset directory does not exist: {self.dataset_dir}")
-        if not self.prompts_dir.is_dir():
-            raise ValueError(f"Prompts directory does not exist: {self.prompts_dir}")
-        if not self.output_dir:
-            raise ValueError("Output directory is not given.")
-        if not self.output_dir.is_dir():
-            raise ValueError(f"Output directory does not exist: {self.output_dir}")
-
-        # Validate the prompts directory early (raises on unreadable prompts).
-        PromptHandler(str(self.prompts_dir))
-
-        self._log_startup_info()
-
-        all_datasets = self._load_local_datasets(df_fields=[self.text_column_name])
-
-        task_q: "queue.Queue" = queue.Queue()
-        for ds_item in all_datasets:
-            self._process_dataset(ds_item, task_q)
-
-        workers: List[threading.Thread] = []
-        for _ in range(self.num_workers):
-            t = threading.Thread(
-                target=self._worker, args=(task_q, self.prompts_dir), daemon=True
-            )
-            t.start()
-            workers.append(t)
-
-        task_q.join()
-        for w in workers:
-            w.join()
-
-        with self._buffers_lock:
-            paths_to_flush = list(self._buffers.keys())
-        for path in paths_to_flush:
-            self._flush_buffer(path)
-
-        log.info("Processing finished.")

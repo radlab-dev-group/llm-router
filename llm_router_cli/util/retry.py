@@ -9,9 +9,10 @@ This replaces the ``tenacity`` decorator that the original
 * returns the first successful result, or
 * re‑raises the last exception once all attempts are exhausted.
 
-Network‑level retries are still handled by :class:`llm_router_lib.client.LLMRouterClient`
-(it accepts a ``retries`` argument); this helper is used for *application*
-level retries, e.g. re‑issuing an LLM call that returned an unusable payload.
+Network‑level retries are still handled by
+:class:`llm_router_lib.client.LLMRouterClient` (it accepts a ``retries``
+argument); this helper is used for *application* level retries, e.g.
+re‑issuing an LLM call that returned an unusable payload.
 """
 
 from __future__ import annotations

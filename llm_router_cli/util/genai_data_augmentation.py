@@ -27,14 +27,14 @@ import json
 import logging
 import queue
 import random
-import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from llm_router_lib.client import LLMRouterClient
 
 from .loaders import read_records
+from .pipeline import ConcurrentLLMPipeline
 from .retry import with_retries
 
 log = logging.getLogger(__name__)
@@ -86,17 +86,25 @@ class AugmentedRecord:
         return json.dumps(self.to_dict(), ensure_ascii=False)
 
 
-class GenAIDataAugmentationApp:
+class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
     """
     High‑level orchestrator for the GenAI data augmentation pipeline.
+
+    Built on the shared :class:`~llm_router_cli.util.pipeline.ConcurrentLLMPipeline`
+    (worker pool, buffering, flushing, lifecycle); this class only supplies the
+    augmentation‑specific pieces.
 
     - Loads a local JSONL dataset.
     - Samples original data for the given labels.
     - Uses the LLM to generate augmented versions of the samples.
     - Saves the results as JSONL (no XLSX in this port).
+
+    The constructor is intentionally wide: each argument maps 1:1 to a CLI
+    flag (see :mod:`llm_router_cli.cli.commands.util`), so a self-documenting
+    explicit signature is preferable to a packed config object.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         dataset_path: Path,
         prompt_path: Path,
@@ -119,33 +127,28 @@ class GenAIDataAugmentationApp:
         retry_attempts: int = 5,
         retry_wait: float = 0.0,
     ) -> None:
+        super().__init__(
+            llm_router_url=llm_router_url,
+            llm_router_token=llm_router_token,
+            llm_router_timeout=llm_router_timeout,
+            batch_save_size=batch_save_size,
+            dry_run=dry_run,
+            verbose=verbose,
+            num_workers=num_workers,
+        )
         self.dataset_path = Path(dataset_path)
         self.prompt_path = Path(prompt_path)
         self.labels = [L.strip() for L in labels if L and L.strip()]
-        self.llm_router_url = llm_router_url
-        self.llm_router_token = llm_router_token
-        self.llm_router_timeout = llm_router_timeout
         self.model_name = model_name
         self.temperature = temperature
         self.n_samples = n_samples
         self.n_examples = n_examples
         self.samples_as_examples = samples_as_examples
-        self.batch_save_size = batch_save_size
-        self.dry_run = dry_run
         self.output_dir = Path(output_dir) if output_dir else None
-        self.verbose = verbose
-        self.num_workers = max(1, int(num_workers))
         self.text_column_name = text_column_name
         self.label_column_name = label_column_name
         self.retry_attempts = max(1, int(retry_attempts))
         self.retry_wait = float(retry_wait)
-
-        self._buffers: Dict[Path, List[AugmentedRecord]] = {}
-        self._file_locks: Dict[Path, threading.Lock] = {}
-        self._buffers_lock = threading.Lock()
-
-        if self.verbose:
-            log.setLevel(logging.DEBUG)
 
     # ------------------------------------------------------------------ #
     # Loading
@@ -244,119 +247,30 @@ class GenAIDataAugmentationApp:
         return (response.response or "").strip()
 
     # ------------------------------------------------------------------ #
-    # Buffering / flushing
+    # Pipeline hooks (implemented on top of ConcurrentLLMPipeline)
     # ------------------------------------------------------------------ #
-    def _flush_buffer(self, path: Path) -> None:
-        """Write buffered records to disk and to the ``-train`` file."""
-        train_path = path.with_name(f"{path.stem}-train.jsonl")
+    def _validate(self) -> None:
+        """Validate the dataset and prompt files exist before running."""
+        if not self.dataset_path.is_file():
+            raise ValueError(f"Dataset file does not exist: {self.dataset_path}")
+        if not self.prompt_path.is_file():
+            raise ValueError(f"Prompt file does not exist: {self.prompt_path}")
 
-        with self._file_locks[path]:
-            with self._buffers_lock:
-                records = self._buffers.get(path, [])
-                if not records:
-                    return
-                self._buffers[path] = []
+    def _make_context(self) -> Tuple[str, str]:
+        """Per-worker context: the resolved prompt and the sample examples."""
+        return self._prompt_content, self._all_samples_info
 
-            if self.dry_run:
-                return
-
-            log.debug("Flushing %d records to %s", len(records), path)
-            with (
-                path.open("a", encoding="utf-8") as f,
-                train_path.open("a", encoding="utf-8") as f_train,
-            ):
-                for rec in records:
-                    f.write(rec.to_json() + "\n")
-
-                    rec_dict = rec.to_dict()
-                    examples = rec_dict.get("augmented_examples", [])
-                    if isinstance(examples, list):
-                        for ex in examples:
-                            if isinstance(ex, str):
-                                train_rec = {"text": ex, "labels": rec.labels}
-                                f_train.write(
-                                    json.dumps(train_rec, ensure_ascii=False) + "\n"
-                                )
-                            elif isinstance(ex, dict) and "text" in ex:
-                                train_rec = {
-                                    "text": ex["text"],
-                                    "labels": ex.get("labels", rec.labels),
-                                }
-                                f_train.write(
-                                    json.dumps(train_rec, ensure_ascii=False) + "\n"
-                                )
-
-    # ------------------------------------------------------------------ #
-    # Worker
-    # ------------------------------------------------------------------ #
-    def _worker(
-        self, task_queue: "queue.Queue", prompt: str, all_samples_info: str
-    ) -> None:
-        """Worker thread for processing augmentation tasks."""
-        llm_client = LLMRouterClient(
-            self.llm_router_url,
-            token=self.llm_router_token,
-            timeout=self.llm_router_timeout,
-        )
-
-        try:
-            while True:
-                try:
-                    task = task_queue.get(timeout=1)
-                except queue.Empty:
-                    break
-
-                output_path, labels, text = task
-
-                try:
-                    augmented_text = self._augment_text(
-                        llm_client, prompt, text, labels, all_samples_info
-                    )
-                    record = AugmentedRecord(
-                        original_text=text,
-                        labels=labels,
-                        augmented_text=augmented_text,
-                        metadata={
-                            "model": self.model_name,
-                            "temperature": self.temperature,
-                        },
-                    )
-
-                    need_flush = False
-                    with self._buffers_lock:
-                        self._buffers[output_path].append(record)
-                        if len(self._buffers[output_path]) >= self.batch_save_size:
-                            need_flush = True
-
-                    if need_flush:
-                        self._flush_buffer(output_path)
-
-                except Exception as exc:
-                    log.exception(
-                        "Failed to augment text for labels %s: %s", labels, exc
-                    )
-                finally:
-                    task_queue.task_done()
-        finally:
-            llm_client.close()
-
-    # ------------------------------------------------------------------ #
-    # Main workflow
-    # ------------------------------------------------------------------ #
-    def run(self) -> None:
-        """Run the augmentation pipeline."""
+    def _build_task_queue(self) -> "queue.Queue":
+        """Load the dataset, build the sample context and enqueue the tasks."""
         records = self._load_dataset()
 
         with open(self.prompt_path, "r", encoding="utf-8") as f:
-            prompt_content = f.read()
+            self._prompt_content = f.read()
 
         out_dir = self.output_dir or self.dataset_path.parent
         out_dir.mkdir(parents=True, exist_ok=True)
         output_path = out_dir / f"{self.dataset_path.stem}_augmented.jsonl"
-
-        with self._buffers_lock:
-            self._buffers[output_path] = []
-            self._file_locks[output_path] = threading.Lock()
+        self._ensure_buffer(output_path)
 
         task_queue: "queue.Queue" = queue.Queue()
         example_samples: List[Dict[str, Any]] = []
@@ -403,27 +317,61 @@ class GenAIDataAugmentationApp:
 
         if task_queue.empty():
             log.warning("No tasks to process.")
-            return
 
-        all_samples_info = ""
-        for i, sample in enumerate(example_samples, 1):
-            all_samples_info += (
-                f"Przykład {i}:\nTekst: {sample['text']}\n"
-                f"Klasy: {', '.join(sample['labels'])}\n\n"
+        self._all_samples_info = "".join(
+            f"Przyk\u0142ad {i}:\nTekst: {sample['text']}\n"
+            f"Klasy: {', '.join(sample['labels'])}\n\n"
+            for i, sample in enumerate(example_samples, 1)
+        )
+        return task_queue
+
+    def _process(
+        self,
+        client: LLMRouterClient,
+        ctx: Tuple[str, str],
+        output_path: Path,
+        labels: List[str],
+        text: str,
+    ) -> Optional[AugmentedRecord]:
+        """Augment a single text and wrap the result in a record."""
+        prompt, all_samples_info = ctx
+        try:
+            augmented_text = self._augment_text(
+                client, prompt, text, labels, all_samples_info
             )
+        except Exception as exc:
+            log.exception("Failed to augment text for labels %s: %s", labels, exc)
+            return None
+        return AugmentedRecord(
+            original_text=text,
+            labels=labels,
+            augmented_text=augmented_text,
+            metadata={
+                "model": self.model_name,
+                "temperature": self.temperature,
+            },
+        )
 
-        threads: List[threading.Thread] = []
-        for _ in range(self.num_workers):
-            t = threading.Thread(
-                target=self._worker,
-                args=(task_queue, prompt_content, all_samples_info),
-            )
-            t.start()
-            threads.append(t)
-
-        task_queue.join()
-        for t in threads:
-            t.join()
-
-        self._flush_buffer(output_path)
-        log.info("Augmentation finished. Output saved to %s", output_path)
+    def _flush_aux(self, path: Path, records: List[AugmentedRecord]) -> None:
+        """Write the ``<stem>-train.jsonl`` convenience file for *records*."""
+        train_path = path.with_name(f"{path.stem}-train.jsonl")
+        with train_path.open("a", encoding="utf-8") as f_train:
+            for rec in records:
+                rec_dict = rec.to_dict()
+                examples = rec_dict.get("augmented_examples", [])
+                if not isinstance(examples, list):
+                    continue
+                for ex in examples:
+                    if isinstance(ex, str):
+                        train_rec = {"text": ex, "labels": rec.labels}
+                        f_train.write(
+                            json.dumps(train_rec, ensure_ascii=False) + "\n"
+                        )
+                    elif isinstance(ex, dict) and "text" in ex:
+                        train_rec = {
+                            "text": ex["text"],
+                            "labels": ex.get("labels", rec.labels),
+                        }
+                        f_train.write(
+                            json.dumps(train_rec, ensure_ascii=False) + "\n"
+                        )
