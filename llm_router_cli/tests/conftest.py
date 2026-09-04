@@ -7,10 +7,19 @@ per-test temporary directory so tests never touch ``~/.llm-router``.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
+import logging
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logger():
+    """Keep tests independent of root-logging state (setup_logging side effects)."""
+    root = logging.getLogger()
+    original = (root.level, list(root.handlers))
+    yield
+    root.setLevel(original[0])
+    root.handlers[:] = original[1]
 
 
 @pytest.fixture

@@ -3,7 +3,7 @@
 **Package:** `llm-router`
 **Entry points:**
 
-- `llm-router` — main CLI tool (auth, anonymizer)
+- `llm-router` — main CLI tool (auth, anonymizer, config, util)
 
 ---
 
@@ -19,11 +19,12 @@ llm-router --version
 
 ## Top-Level Commands
 
-| Command          | Description                                   |
-|------------------|-----------------------------------------------|
-| `auth`           | Manage API keys, policies, and rate limiting  |
-| `config`         | Auto-discover local providers & merge configs |
-| `anonymizer run` | Anonymize text using a selectable algorithm   |
+| Command          | Description                                                              |
+|------------------|--------------------------------------------------------------------------|
+| `auth`           | Manage API keys, policies, and rate limiting                             |
+| `config`         | Auto-discover local providers & merge configs                            |
+| `anonymizer run` | Anonymize text using a selectable algorithm                              |
+| `util`           | Utility apps: `translate`, `genai-classifier`, `genai-data-augmentation` |
 
 ---
 
@@ -37,18 +38,28 @@ llm-router auth policy <command>       # Policy management
 llm-router auth rate-limit <command>   # Per-key rate limit overrides
 ```
 
-### Shared Flags (all subcommands)
+### Shared Flags (store-backed subcommands)
 
-| Flag                    | Default   | Description                              |
-|-------------------------|-----------|------------------------------------------|
-| `--store <backend>`     | `memory`  | Key store: `memory`, `redis`, or `vault` |
-| `--auth-redis-host`     | *(empty)* | Auth Redis host                          |
-| `--auth-redis-port`     | `6379`    | Auth Redis port                          |
-| `--auth-redis-db`       | `0`       | Auth Redis database number               |
-| `--auth-redis-password` | —         | Auth Redis password                      |
-| `--auth-redis-protocol` | `2`       | Auth Redis protocol: `2` (RESP2) or `3` (RESP3) |
+| Flag                    | Default   | Description                                           |
+|-------------------------|-----------|-------------------------------------------------------|
+| `--store <backend>`     | `memory`  | Key store: `memory`, `redis`, or `vault`              |
+| `--auth-redis-host`     | *(empty)* | Auth Redis host                                       |
+| `--auth-redis-port`     | `6379`    | Auth Redis port                                       |
+| `--auth-redis-db`       | `0`       | Auth Redis database number                            |
+| `--auth-redis-password` | —         | Auth Redis password                                   |
+| `--auth-redis-protocol` | `2`       | Auth Redis protocol: `2` (RESP2) or `3` (RESP3)       |
+| `--verbose`             | `false`   | Enable verbose (DEBUG) logging of internal operations |
 
-> **Note:** These auth-specific Redis flags are separate from general `LLM_ROUTER_REDIS_*` env vars.
+> **Note:** These flags are shared by all **store-backed** subcommands —
+> `key generate`, `key list`, `key delete`, `key disable`, `key enable`,
+> `key rotate`, `policy create`, `rate-limit apply`, and `rate-limit remove`.
+> They do **not** apply to the read-only `policy list` and `rate-limit list`
+> subcommands.
+
+> **Note:** Each `--auth-redis-*` flag falls back to a matching
+> `LLM_ROUTER_AUTH_REDIS_<HOST|PORT|DB|PASSWORD|PROTOCOL>` environment
+> variable before the built-in default is used. These auth-specific Redis
+> flags are separate from the general `LLM_ROUTER_REDIS_*` env vars.
 
 ---
 
@@ -74,13 +85,12 @@ Output: `sk-litm-<base62>` key (plaintext shown **once** at creation).
 #### `list` — List all API keys
 
 ```bash
-llm-router auth key list --store memory [--reveal] [--json]
+llm-router auth key list --store memory [--json]
 ```
 
-| Flag       | Default | Description                             |
-|------------|---------|-----------------------------------------|
-| `--json`   | `false` | Output in JSON format                   |
-| `--reveal` | `false` | Show plaintext keys (memory store only) |
+| Flag     | Default | Description           |
+|----------|---------|-----------------------|
+| `--json` | `false` | Output in JSON format |
 
 #### `delete <key-id>` — Delete a key permanently
 
@@ -109,14 +119,6 @@ llm-router auth key rotate <key-id> --grace 3600 [--store memory]
 | Flag      | Default | Description                                   |
 |-----------|---------|-----------------------------------------------|
 | `--grace` | `3600`  | Grace period in seconds (old key stays valid) |
-
-#### `reveal <key-id>` — Show plaintext key
-
-```bash
-llm-router auth key reveal <key-id> [--store memory]
-```
-
-Only available for the **memory** store.
 
 ---
 
@@ -212,12 +214,13 @@ llm-router config discover localhost 192.168.1.50 --all-ports
 llm-router config discover "10.0.0.1:8080" "ollama.local:11434"
 ```
 
-| Flag                       | Default      | Description                                          |
-|----------------------------|--------------|------------------------------------------------------|
-| `<hosts>`                  | *(required)* | One or more hosts to scan (supports `host:port`)     |
-| `-o, --output-config-file` | *(stdout)*   | Output path for generated config                     |
-| `--all-ports`              | `false`      | Check all known ports even if first one is reachable |
-| `--no-active`              | `false`      | Skip writing the active_models section               |
+| Flag                       | Default      | Description                                           |
+|----------------------------|--------------|-------------------------------------------------------|
+| `<hosts>`                  | *(required)* | One or more hosts to scan (supports `host:port`)      |
+| `-o, --output-config-file` | *(stdout)*   | Output path for generated config                      |
+| `--all-ports`              | `false`      | Check all known ports even if first one is reachable  |
+| `--no-active`              | `false`      | Skip writing the active_models section                |
+| `--verbose`                | `false`      | Enable verbose (DEBUG) logging of internal operations |
 
 > **Note on port scanning:** When you pass `host:port` (e.g. `"192.168.100.66:9090"`), the scanner checks that exact
 > port first for each provider type (Ollama, vLLM, LM Studio, llama.cpp, KoboldCpp, TabbyAPI). If no models are found on
@@ -245,10 +248,11 @@ llm-router config merge base.json override.json -o merged-config.json
 Merges provider entries recursively (overlay wins on conflict), unions `active_models`, and deduplicates providers by
 `api_host`.
 
-| Flag                       | Default      | Description                   |
-|----------------------------|--------------|-------------------------------|
-| `<configs>`                | *(required)* | Input config files to merge   |
-| `-o, --output-config-file` | *(stdout)*   | Output path for merged config |
+| Flag                       | Default      | Description                                           |
+|----------------------------|--------------|-------------------------------------------------------|
+| `<configs>`                | *(required)* | Input config files to merge                           |
+| `-o, --output-config-file` | *(stdout)*   | Output path for merged config                         |
+| `--verbose`                | `false`      | Enable verbose (DEBUG) logging of internal operations |
 
 ---
 
@@ -269,6 +273,107 @@ llm-router anonymizer run --algorithm fast_masker [input_file] -o output_file \
 | `--disable-ip`    | `false` | Skip IP address anonymization    |
 | `--disable-pesel` | `false` | Skip PESEL anonymization         |
 | `--disable-email` | `false` | Skip email anonymization         |
+
+---
+
+## `llm-router util` — Utility Apps (translate / genai-classifier / genai-data-augmentation)
+
+Light, dependency-free ports of the `llm-router-utils` applications. They read **local JSON/JSONL** files only (no
+HuggingFace `datasets`, no `pandas` /
+`openpyxl` / XLSX, no `tenacity`) and talk to the router through
+`LLMRouterClient`.
+
+### Command Tree
+
+```
+llm-router util translate --llm-router-host URL --model M --dataset-path d.jsonl [--accept-field f] [-o out.jsonl]
+llm-router util genai-classifier --dataset-dir DIR --prompts-dir P --output-dir O [--model-name M]
+llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P --labels a,b [--output-dir DIR]
+```
+
+### `translate` — Translate texts in JSON/JSONL datasets
+
+```bash
+llm-router util translate \
+  --llm-router-host http://localhost:8080 \
+  --model speakleash/Bielik-11B-v2.3-Instruct \
+  --dataset-path data.jsonl --dataset-path more.json \
+  --accept-field text --accept-field title
+```
+
+| Flag                   | Default  | Description                                                         |
+|------------------------|----------|---------------------------------------------------------------------|
+| `--llm-router-host`    | *(req)*  | Base URL of the LLM router service                                  |
+| `--model`              | *(req)*  | Model name used for translation                                     |
+| `--dataset-path`       | *(req)*  | Dataset file (JSON/JSONL); repeatable                               |
+| `--dataset-type`       | *(auto)* | Explicit `json` / `jsonl` (else inferred from extension)            |
+| `--accept-field`       | *(all)*  | Field to translate/retain; repeatable                               |
+| `--num-workers`        | `1`      | Translation worker threads                                          |
+| `--batch-size`         | `8`      | Texts per request                                                   |
+| `--llm-router-token`   | —        | Auth token                                                          |
+| `--llm-router-timeout` | `10`     | Per-request timeout (s)                                             |
+| `--verbose`            | `false`  | Enable verbose (DEBUG) logging of internal operations               |
+| `-o, --output`         | —        | Single output JSONL file (else `<stem>.translated.jsonl` per input) |
+
+> **Output:** without `-o`, each input `<stem>` writes `<stem>.translated.jsonl`
+> next to it; with `-o`, all records go to that one file. **Input files are
+> never overwritten.**
+
+### `genai-classifier` — Classify translated datasets (JSONL only)
+
+```bash
+llm-router util genai-classifier \
+  --dataset-dir ./data --prompts-dir ./prompts --output-dir ./out \
+  --model-name gpt-oss:120b --num-workers 2 --n-sample 50
+```
+
+| Flag                      | Default                 | Description                                 |
+|---------------------------|-------------------------|---------------------------------------------|
+| `--dataset-dir`           | *(req)*                 | Directory with the local `*.jsonl` datasets |
+| `--dataset-path`          | —                       | Explicit dataset file(s); repeatable        |
+| `--prompts-dir`           | *(req)*                 | Directory with `*.prompt` files             |
+| `--output-dir`            | *(req)*                 | Where the result `.jsonl` files are stored  |
+| `--model-name`            | `gpt-oss:120b`          | Model identifier passed to the router       |
+| `--temperature`           | `0.0`                   | Sampling temperature                        |
+| `--num-workers`           | `2`                     | Parallel worker threads                     |
+| `--n-sample`              | `50`                    | Samples per field (`<=0` = all)             |
+| `--batch-save-size`       | `5`                     | Records flushed to disk at once             |
+| `--text-column-name`      | `Tekst`                 | Column holding the text to classify         |
+| `--dry-run` / `--verbose` | `false`                 | Process without writing / DEBUG logging     |
+| `--llm-router-url`        | `http://localhost:8080` | Base URL of the router                      |
+| `--llm-router-token`      | —                       | Auth token                                  |
+| `--llm-router-timeout`    | `10`                    | Per-request timeout (s)                     |
+
+> Produces `<name>.jsonl` and `<name>_clean_labels.jsonl` (no XLSX).
+
+### `genai-data-augmentation` — Augment a local JSONL dataset
+
+```bash
+llm-router util genai-data-augmentation \
+  --dataset-path dataset.jsonl --prompt-file prompt.txt --labels cat,dog
+```
+
+| Flag                      | Default                 | Description                                      |
+|---------------------------|-------------------------|--------------------------------------------------|
+| `--dataset-path`          | *(req)*                 | Local JSONL dataset file                         |
+| `--prompt-file`           | *(req)*                 | Prompt file                                      |
+| `--labels`                | *(req)*                 | Comma-separated labels to augment                |
+| `--n-samples`             | `5`                     | Samples per class to augment (`0` = all)         |
+| `--n-examples`            | `3`                     | Augmented examples the LLM should generate       |
+| `--samples-as-examples`   | `5`                     | Samples per class included in the prompt context |
+| `--model-name`            | `gpt-oss:120b`          | Model identifier                                 |
+| `--temperature`           | `0.7`                   | Sampling temperature                             |
+| `--num-workers`           | `2`                     | Parallel worker threads                          |
+| `--text-column-name`      | `Tekst`                 | Column holding the text                          |
+| `--label-column-name`     | `label`                 | Column holding the label                         |
+| `--output-dir`            | —                       | Override output directory (else dataset dir)     |
+| `--batch-save-size`       | `5`                     | Records flushed to disk at once                  |
+| `--dry-run` / `--verbose` | `false`                 | Process without writing / DEBUG logging          |
+| `--llm-router-url`        | `http://localhost:8080` | Base URL of the router                           |
+| `--llm-router-token`      | —                       | Auth token                                       |
+| `--llm-router-timeout`    | `10`                    | Per-request timeout (s)                          |
+
+> Produces `<stem>_augmented.jsonl` and `<stem>_augmented-train.jsonl` (no XLSX).
 
 ---
 

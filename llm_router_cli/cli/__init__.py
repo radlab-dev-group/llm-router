@@ -12,27 +12,50 @@ Usage::
     llm-router config discover localhost 192.168.1.50 -o models-config.json
     llm-router config merge base.json override.json -o merged-config.json
     llm-router anonymizer run --algorithm fast_masker [input_file]
+    llm-router util translate --llm-router-host URL --model M --dataset-path d.jsonl
+    llm-router util genai-classifier --dataset-dir DIR --prompts-dir P --output-dir O
+    llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P \
+        --labels a,b
+
+The dispatcher builds a single top‑level parser, registers every command once
+(see :mod:`llm_router_cli.cli.commands.base`), parses the arguments a single
+time and dispatches on the resulting namespace.
 """
 
+# The command modules must be imported *after* ``IS_CLI_COMMAND`` is set below,
+# so those imports are intentionally not at the top of the module.
+# pylint: disable=wrong-import-position
 from __future__ import annotations
 
-import sys
 import argparse
+import sys
+from typing import List, Optional, Tuple, Type
 
 from importlib.metadata import version as _pkg_version
 
 # Mark this as a CLI run before any import from ``llm_router_api`` that could
 # trigger the startup configuration validation (in ``constants.py``).
 import llm_router_api.base.const_global as _cg
-from typing import List, Optional
 
 _cg.IS_CLI_COMMAND = True
 
+from .commands.anonymizer import AnonymizerCommand  # noqa: E402
+from .commands.auth import AuthCommand  # noqa: E402
+from .commands.base import BaseCommand  # noqa: E402
+from .commands.config import ConfigCommand  # noqa: E402
+from .commands.util import UtilCommand  # noqa: E402
+
+#: All top‑level commands, in the order they appear in the help text.
+COMMANDS: Tuple[Type[BaseCommand], ...] = (
+    AuthCommand,
+    AnonymizerCommand,
+    ConfigCommand,
+    UtilCommand,
+)
+
 
 def _version() -> str:
-    """
-    Return the installed package version (e.g. ``0.6.0``).
-    """
+    """Return the installed package version (e.g. ``0.6.0``)."""
     return _pkg_version("llm-router")
 
 
@@ -52,7 +75,6 @@ def main(argv: Optional[List[str]] = None) -> int:
     """
     argv = argv if argv is not None else sys.argv[1:]
 
-    # Version-only parser — all subcommands are delegated to auth / config / anonymizer.
     parser = argparse.ArgumentParser(
         prog="llm-router",
         description="LLM Router CLI — manage API keys, policies, and more",
@@ -64,34 +86,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Show program version and exit",
     )
     subparsers = parser.add_subparsers(dest="command")
-
-    # Lazily import command classes — avoid hard module dep at package-level.
-    from .commands.auth import AuthCommand  # noqa: E402
-
-    auth_parser = subparsers.add_parser(
-        "auth",
-        help="Manage API keys and authentication",
-    )
-    auth_sub = auth_parser.add_subparsers(dest="auth_command")
-    AuthCommand.register_parser(auth_sub, nest_auth=False)  # type: ignore[arg-type]
-
-    from .commands.anonymizer import AnonymizerCommand as _AnonCmdReg  # noqa: E402
-
-    anon_parser = subparsers.add_parser(
-        "anonymizer",
-        help="Anonymise text using a selectable algorithm",
-    )
-    anon_sub = anon_parser.add_subparsers(dest="anonymizer_command")
-    _AnonCmdReg.register_parser(anon_sub)  # type: ignore[arg-type]
-
-    from .commands.config import ConfigCommand as _CfgCmdReg  # noqa: E402
-
-    config_parser = subparsers.add_parser(
-        "config",
-        help="Auto-discover local providers and generate/merge models-config.json",
-    )
-    config_sub = config_parser.add_subparsers(dest="config_command")
-    _CfgCmdReg.register_parser(config_sub)  # type: ignore[arg-type]
+    for command in COMMANDS:
+        command.register(subparsers)
 
     args = parser.parse_args(argv)
 
@@ -99,15 +95,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         parser.print_help()
         return 0
 
-    if args.command == AuthCommand.NAME:
-        return AuthCommand.dispatch(args)
+    by_name = {command.NAME: command for command in COMMANDS}
+    command_cls = by_name.get(args.command)
+    if command_cls is None:  # pragma: no cover - parser guarantees a known name
+        parser.print_help()
+        return 1
 
-    if args.command == _CfgCmdReg.NAME:
-        return _CfgCmdReg.run(argv[1:])
-
-    if args.command == _AnonCmdReg.NAME:
-        return _AnonCmdReg.run(argv[1:])
-
-    # Unknown command
-    parser.print_help()
-    return 1
+    return command_cls.dispatch(args)

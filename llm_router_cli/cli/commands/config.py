@@ -9,23 +9,30 @@ Usage::
 
 from __future__ import annotations
 
-import sys
-import json
 import argparse
+import json
+import logging
+import sys
+import time
+
 import requests
 
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
+
+from llm_router_cli.log_utils import setup_logging
+
+from .base import BaseCommand
+
+log = logging.getLogger(__name__)
 
 
-class ConfigCommand:
-    """Encapsulates the ``config`` CLI subcommand and all its children.
-
-    Public API (exactly two methods):
-      - :meth:`register_parser`  – register *config* under a parent argparse parser.
-      - :meth:`run`             – standalone entry point; parse + dispatch.
-    """
+class ConfigCommand(BaseCommand):
+    """Encapsulates the ``config`` CLI subcommand and all its children."""
 
     NAME = "config"
+    HELP = "Auto-discover local providers and generate/merge models-config.json"
+    SUBPARSER_DEST = "config_command"
+
     DISCOVER_HELP = (
         "Scan one or more hosts for local LLM servers and generate config"
     )
@@ -98,8 +105,8 @@ class ConfigCommand:
 
     # ---- Argument-adding helpers -------------------------------------------
 
-    @staticmethod
-    def _add_discover_args(p: argparse.ArgumentParser) -> None:
+    @classmethod
+    def _add_discover_args(cls, p: argparse.ArgumentParser) -> None:
         """
         Add the shared arguments for the ``discover`` subcommand.
         """
@@ -127,9 +134,10 @@ class ConfigCommand:
             help="Skip writing the active_models section "
             "(produce provider entries only).",
         )
+        cls.add_verbose(p)
 
-    @staticmethod
-    def _add_merge_args(p: argparse.ArgumentParser) -> None:
+    @classmethod
+    def _add_merge_args(cls, p: argparse.ArgumentParser) -> None:
         """
         Add the shared arguments for the ``merge`` subcommand.
         """
@@ -146,6 +154,7 @@ class ConfigCommand:
             help="Output path for the merged config file. "
             "When omitted (or ``-``), write to stdout.",
         )
+        cls.add_verbose(p)
 
     # ---- Host parsing / utilities ------------------------------------------
 
@@ -186,43 +195,35 @@ class ConfigCommand:
     # ---- Registration ------------------------------------------------------
 
     @classmethod
-    def register_parser(cls, subparsers: argparse._SubParsersAction) -> None:
-        """
-        Register the ``config`` subparser with its child commands.
-        """
+    def register_children(
+        cls, subparsers: "argparse._SubParsersAction[Any]"
+    ) -> None:
+        """Register the ``config`` leaf subcommands (discover / merge)."""
         discover_p = subparsers.add_parser("discover", help=cls.DISCOVER_HELP)
         cls._add_discover_args(discover_p)
 
         merge_p = subparsers.add_parser("merge", help=cls.MERGE_HELP)
         cls._add_merge_args(merge_p)
 
-    # ---- Public run() entry point ------------------------------------------
+    # ---- Dispatch ----------------------------------------------------------
 
     @classmethod
-    def run(cls, argv: Optional[List[str]] = None) -> int:
-        """
-        Standalone entry point: parse args and dispatch.
-        """
-        if argv is None:
-            argv = sys.argv[1:]
+    def dispatch(cls, args: argparse.Namespace) -> int:
+        """Route on the parsed namespace (no re-parsing of ``argv``)."""
+        action = getattr(args, cls.SUBPARSER_DEST, None)
+        handlers: Dict[str, Callable[[argparse.Namespace], int]] = {
+            "merge": cls._do_merge,
+            "discover": cls._do_discover,
+        }
+        handler = handlers.get(action) if isinstance(action, str) else None
+        if handler is None:
+            cls.build_parser().print_help()
+            return 0
 
-        parser = argparse.ArgumentParser(
-            prog="llm-router config",
-            description=(
-                "Auto-discover local LLM providers "
-                "(Ollama, vLLM, LM Studio) on a given host, "
-                "fetch their available models, and produce "
-                "a models-config.json ready for the router."
-            ),
-        )
-        subparsers = parser.add_subparsers(dest="config_action")
-        cls.register_parser(subparsers)  # type: ignore[arg-type]
-        args = parser.parse_args(argv)
-
-        action = getattr(args, "config_action", None)
-        if action == "merge":
-            return cls._do_merge(args)
-        return cls._do_discover(args)
+        # Opt-in diagnostics: the config UX is print-based, so logging is
+        # only configured when the user asks for it.
+        setup_logging(verbose=bool(getattr(args, "verbose", False)))
+        return handler(args)
 
     @staticmethod
     def _get_flag(args: argparse.Namespace, name: str, default: bool) -> bool:
@@ -245,60 +246,99 @@ class ConfigCommand:
         Return True when a HTTP service responds on
         ``{protocol}://{host}:{port}{path}``.
         """
+        url = f"{protocol}://{host}:{port}{path}"
+        started = time.perf_counter()
         try:
-            resp = requests.get(f"{protocol}://{host}:{port}{path}", timeout=timeout)
-            return resp.status_code < 500
-        except (requests.RequestException, OSError):
+            resp = requests.get(url, timeout=timeout)
+            ok = resp.status_code < 500
+            log.debug(
+                "Probe %s -> HTTP %d (%.0f ms)",
+                url,
+                resp.status_code,
+                (time.perf_counter() - started) * 1000,
+            )
+            return ok
+        except (requests.RequestException, OSError) as exc:
+            log.debug(
+                "Probe %s failed: %s (%.0f ms)",
+                url,
+                exc.__class__.__name__,
+                (time.perf_counter() - started) * 1000,
+            )
             return False
 
     @staticmethod
+    def _get_json(url: str, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
+        """
+        Fetch *url* and decode it as a JSON object, or ``None`` on any
+        network/parse failure.
+        """
+        started = time.perf_counter()
+        try:
+            resp = requests.get(url, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            log.debug(
+                "GET %s -> %s (%.0f ms)",
+                url,
+                "ok" if isinstance(data, dict) else "not-a-dict",
+                (time.perf_counter() - started) * 1000,
+            )
+        except (requests.RequestException, OSError, ValueError) as exc:
+            log.debug(
+                "GET %s failed: %s (%.0f ms)",
+                url,
+                exc.__class__.__name__,
+                (time.perf_counter() - started) * 1000,
+            )
+            return None
+        return data if isinstance(data, dict) else None
+
+    @classmethod
     def _fetch_ollama_models(
-        host: str, port: int, protocol: str = "http"
+        cls, host: str, port: int, protocol: str = "http"
     ) -> List[Dict[str, Any]]:
         """
         Fetch Ollama model info via ``GET /api/tags``.
         """
-        url = f"{protocol}://{host}:{port}/api/tags"
-        try:
-            resp = requests.get(url, timeout=2)
-            resp.raise_for_status()
-            data = resp.json()
-            models: List[Dict[str, Any]] = []
-            for m in data.get("models", []):
-                detail = m.get("details", {})
-                top_caps = set(m.get("capabilities") or [])
-                det_caps = set(detail.get("capabilities") or []) | set(
-                    detail.get("families") or []
-                )
-                all_caps = top_caps | det_caps
-                models.append(
-                    {
-                        "id": m["name"],
-                        "context_length": detail.get("context_length"),
-                        "tool_calling": any(
-                            kw in all_caps
-                            for kw in ("tools", "tool_use", "function_call")
-                        ),
-                    }
-                )
-            return models
-        except (requests.RequestException, OSError, KeyError, ValueError):
+        data = cls._get_json(f"{protocol}://{host}:{port}/api/tags")
+        if data is None:
             return []
+        models: List[Dict[str, Any]] = []
+        for m in data.get("models", []):
+            name = m.get("name")
+            if not name:
+                continue
+            detail = m.get("details", {})
+            top_caps = set(m.get("capabilities") or [])
+            det_caps = set(detail.get("capabilities") or []) | set(
+                detail.get("families") or []
+            )
+            all_caps = top_caps | det_caps
+            models.append(
+                {
+                    "id": name,
+                    "context_length": detail.get("context_length"),
+                    "tool_calling": any(
+                        kw in all_caps
+                        for kw in ("tools", "tool_use", "function_call")
+                    ),
+                }
+            )
+        return models
 
-    @staticmethod
+    @classmethod
     def _fetch_openai_style_models(
-        host: str, port: int, protocol: str = "http"
+        cls, host: str, port: int, protocol: str = "http"
     ) -> List[Dict[str, Any]]:
         """
         Fetch models via ``GET /v1/models`` (OpenAI-compatible format).
         """
-        url = f"{protocol}://{host}:{port}/v1/models"
-        try:
-            resp = requests.get(url, timeout=2)
-            resp.raise_for_status()
-            return resp.json().get("data", [])
-        except (requests.RequestException, OSError, ValueError):
+        data = cls._get_json(f"{protocol}://{host}:{port}/v1/models")
+        if data is None:
             return []
+        models = data.get("data", [])
+        return models if isinstance(models, list) else []
 
     # ---- Config builder helpers ---------------------------------------------
 
@@ -429,50 +469,36 @@ class ConfigCommand:
     ) -> None:
         """
         Discover one provider on one host and merge its config into *config*.
-        """
-        if explicit_port != 0:
-            ports_to_scan = [explicit_port]
-        else:
-            ports_to_scan = list(prov["ports"])
 
-        best_port = None
-        first_group = None
+        When *collect_all* is set, every healthy port is accumulated;
+        otherwise the first healthy port with a non‑empty model group wins.
+        """
+        ports_to_scan = [explicit_port] if explicit_port else list(prov["ports"])
+        groups: List[Dict[str, Any]] = []
         for port in ports_to_scan:
-            if cls._health_check(
+            if not cls._health_check(
                 host, port, path=prov["health_path"], protocol=protocol
             ):
-                _, group = ConfigCommand._build_config_for_provider(
-                    prov, host, port, protocol
+                log.debug(
+                    "Host %s:%d unhealthy for %s; skipping",
+                    host,
+                    port,
+                    prov["api_type"],
                 )
-                if group and "models_raw" not in group:
-                    best_port = port
-                    if first_group is None:
-                        first_group = group
-                    if not collect_all:
-                        break
-
-        if best_port is None:
-            return
-
-        if collect_all:
-            for port in ports_to_scan:
-                if not cls._health_check(
-                    host, port, path=prov["health_path"], protocol=protocol
-                ):
-                    continue
-                group_name, group = ConfigCommand._build_config_for_provider(
-                    prov, host, port, protocol
+                continue
+            _, group = cls._build_config_for_provider(prov, host, port, protocol)
+            if group and "models_raw" not in group:
+                log.debug(
+                    "Host %s:%d (%s): %d model(s)",
+                    host,
+                    port,
+                    prov["api_type"],
+                    len(group),
                 )
-                if group and "models_raw" not in group:
-                    cls._accumulate_group(config, group_name, group)
-        else:
-            if first_group is not None:
-                group = first_group
-            else:
-                # Fallback for collect_all=True edge case
-                _, group = ConfigCommand._build_config_for_provider(
-                    prov, host, best_port, protocol
-                )
+                groups.append(group)
+            if groups and not collect_all:
+                break
+        for group in groups:
             cls._accumulate_group(config, prov["group_name"], group)
 
     @staticmethod
@@ -536,10 +562,14 @@ class ConfigCommand:
         """
         try:
             with open(path, "r", encoding="utf-8") as fh:
-                return json.load(fh)
+                data = json.load(fh)
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             print(f"Error reading {path}: {exc}", file=sys.stderr)
             return {}
+        if not isinstance(data, dict):
+            print(f"Error reading {path}: expected a JSON object.", file=sys.stderr)
+            return {}
+        return data
 
     @staticmethod
     def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> Dict[str, Any]:
@@ -592,7 +622,40 @@ class ConfigCommand:
                     active[group] = []
                 active[group].extend(models)
 
-    # ---- Dispatch helpers (used by run()) ----------------------------------
+    # ---- Output / active-models helpers -----------------------------------
+
+    @staticmethod
+    def _active_models_from(config: Dict[str, Any]) -> Dict[str, List[str]]:
+        """Derive the ``active_models`` mapping (group -> ordered model names)."""
+        active: Dict[str, List[str]] = {}
+        for group_name, models in config.items():
+            if not isinstance(models, dict):
+                continue
+            if any(
+                isinstance(v, dict) and "providers" in v for v in models.values()
+            ):
+                active[group_name] = list(models.keys())
+        return active
+
+    @staticmethod
+    def _write_output(
+        data: Dict[str, Any], output_file: Optional[str], label: str
+    ) -> int:
+        """Serialize *data* (JSON) and write it to *output_file* or stdout."""
+        output_json = json.dumps(data, indent=2) + "\n"
+        if output_file and output_file != "-":
+            try:
+                with open(output_file, "w", encoding="utf-8") as fh:
+                    fh.write(output_json)
+                print(f"{label} written to {output_file}")
+            except OSError as exc:
+                print(f"Error writing {output_file}: {exc}", file=sys.stderr)
+                return 1
+        else:
+            sys.stdout.write(output_json)
+        return 0
+
+    # ---- Dispatch helpers ---------------------------------------------------
 
     @classmethod
     def _do_discover(cls, args: argparse.Namespace) -> int:
@@ -601,40 +664,25 @@ class ConfigCommand:
         """
         raw_hosts = getattr(args, "hosts", ["localhost"])
         hosts: List[Tuple[str, int, str]] = [cls._parse_host(h) for h in raw_hosts]
+        log.debug("Discovering on %d host(s): %s", len(hosts), ", ".join(raw_hosts))
         config = cls._generate_config(
             hosts, all_ports=ConfigCommand._get_flag(args, "all_ports", False)
         )
+        n_groups = len([k for k, v in config.items() if isinstance(v, dict)])
+        log.debug("Discover complete: %d model group(s)", n_groups)
 
         if not config:
             print(
                 f"Warning: no local providers found at {', '.join(raw_hosts)}",
                 file=sys.stderr,
             )
-            config = {}
 
-        if not ConfigCommand._get_flag(args, "no_active", False):
-            active: Dict[str, List[str]] = {}
-            for group_name, models in config.items():
-                if isinstance(models, dict) and "providers" in next(
-                    iter(models.values()), {}
-                ):
-                    active[group_name] = list(models.keys())
-            config["active_models"] = active
+        if not cls._get_flag(args, "no_active", False):
+            config["active_models"] = cls._active_models_from(config)
 
-        output_json = json.dumps(config, indent=2) + "\n"
-        output_config_file: Optional[str] = getattr(args, "output_config_file", None)
-        if output_config_file and output_config_file != "-":
-            try:
-                with open(output_config_file, "w", encoding="utf-8") as fh:
-                    fh.write(output_json)
-                print(f"Config written to {output_config_file}")
-            except OSError as exc:
-                print(f"Error writing {output_config_file}: {exc}", file=sys.stderr)
-                return 1
-        else:
-            sys.stdout.write(output_json)
-
-        return 0
+        return cls._write_output(
+            config, getattr(args, "output_config_file", None), "Config"
+        )
 
     @classmethod
     def _do_merge(cls, args: argparse.Namespace) -> int:
@@ -651,7 +699,9 @@ class ConfigCommand:
             cfg = ConfigCommand._load_config(cfg_path)
             if not cfg:
                 failures.append(cfg_path)
+                log.debug("Merge: skipping %s (unreadable or invalid)", cfg_path)
                 continue
+            log.debug("Merge: loaded %s (%d top-level key(s))", cfg_path, len(cfg))
             for key, val in cfg.items():
                 if key == "active_models":
                     ConfigCommand._merge_active_models(val, active)
@@ -666,19 +716,7 @@ class ConfigCommand:
             if isinstance(_group, dict):
                 ConfigCommand._dedup_providers(_group)
 
-        active_models: Dict[str, List[str]] = {}
-        for group_name, models in merged.items():
-            if isinstance(models, dict) and any(
-                isinstance(v, dict) and "providers" in v for v in models.values()
-            ):
-                seen: Set[str] = set(active_models.get(group_name, []))
-                all_models: List[str] = []
-                for name in models.keys():
-                    if name not in seen:
-                        seen.add(name)
-                        all_models.append(name)
-                active_models[group_name] = all_models
-
+        active_models = ConfigCommand._active_models_from(merged)
         for group, models in active.items():
             existing = set(active_models.get(group, []))
             for m in models:
@@ -687,18 +725,19 @@ class ConfigCommand:
             active_models[group] = list(existing)
 
         merged["active_models"] = active_models
-        output_json = json.dumps(merged, indent=2) + "\n"
+        log.debug(
+            "Merge complete: %d group(s) from %d file(s), %d skipped",
+            len(
+                [
+                    k
+                    for k, v in merged.items()
+                    if k != "active_models" and isinstance(v, dict)
+                ]
+            ),
+            len(configs_arg),
+            len(failures),
+        )
 
-        out_config_file: Optional[str] = getattr(args, "output_config_file", None)
-        if out_config_file and out_config_file != "-":
-            try:
-                with open(out_config_file, "w", encoding="utf-8") as fh:
-                    fh.write(output_json)
-                print(f"Merged config written to {out_config_file}")
-            except OSError as exc:
-                print(f"Error writing {out_config_file}: {exc}", file=sys.stderr)
-                return 1
-        else:
-            sys.stdout.write(output_json)
-
-        return 0
+        return ConfigCommand._write_output(
+            merged, getattr(args, "output_config_file", None), "Merged config"
+        )

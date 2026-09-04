@@ -19,8 +19,9 @@ flake8
 pylint
 mypy
 bandit[toml]
-## type stubs for setuptools (type-checking only, not a runtime dep)
+## type stubs (type-checking only, not a runtime dep)
 types-setuptools
+types-tqdm
 ## Test runner + test-only runtime deps
 pytest
 openai
