@@ -150,7 +150,9 @@ class AuthCommand(BaseCommand):
         p.add_argument(
             "--auth-redis-password",
             default=None,
-            help="Redis password for auth key store (default: env)",
+            help="Redis password for auth key store (prefer the "
+            "LLM_ROUTER_AUTH_REDIS_PASSWORD env var to avoid leaking it "
+            "into shell history; default: env)",
         )
         p.add_argument(
             "--auth-redis-protocol",
@@ -295,14 +297,15 @@ class AuthCommand(BaseCommand):
                 time.perf_counter() - started,
             )
             return store, result, None
-        except (ValueError, RuntimeError, OSError) as exc:
+        except Exception as exc:  # redis/vault/network errors must not traceback
             log.debug(
                 "Store call %s failed after %.3fs: %s",
                 method_name,
                 time.perf_counter() - started,
-                exc,
+                repr(exc),
             )
-            return None, None, str(exc)
+            message = str(exc) or exc.__class__.__name__
+            return None, None, message
 
     #: Arg-dict keys that are secrets and must never appear in logs.
     _SECRET_ARG_KEYS = frozenset(
@@ -327,10 +330,17 @@ class AuthCommand(BaseCommand):
     @staticmethod
     def _persist_seeds(store: Any) -> None:
         """Persist the seed file when the store supports it (memory backend)."""
-        if store is not None and hasattr(store, "_persist_seeds"):
-            seed_file = getattr(store, "_seed_file", None)
-            if seed_file:
-                store._persist_seeds(seed_file)
+        if store is None:
+            return
+        # Tolerate both a public and a private hook on the store.
+        persist = getattr(store, "persist_seeds", None) or getattr(
+            store, "_persist_seeds", None
+        )
+        seed_file = getattr(store, "seed_file", None) or getattr(
+            store, "_seed_file", None
+        )
+        if persist is not None and seed_file:
+            persist(seed_file)
 
     # ------------------------------------------------------------------ #
     # Rate-limit preset loading
@@ -489,7 +499,18 @@ class AuthCommand(BaseCommand):
         policy_sub.add_parser("list", help="List available policies")
         policy_create = policy_sub.add_parser("create", help="Create a new policy")
         policy_create.add_argument("name", help="Policy name")
-        policy_create.add_argument("policy_json", help="JSON policy definition")
+        policy_create.add_argument(
+            "policy_json",
+            nargs="?",
+            default=None,
+            help="JSON policy definition (omit when using --file)",
+        )
+        policy_create.add_argument(
+            "--file",
+            default=None,
+            help="Read the JSON policy from a file (or '-' for stdin) "
+            "instead of the positional argument.",
+        )
         cls._add_store_and_redis_args(policy_create)
 
     @classmethod
@@ -609,6 +630,10 @@ class AuthCommand(BaseCommand):
             out_path = Path(args.output).expanduser()
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(plaintext_key + "\n", encoding="utf-8")
+            try:
+                out_path.chmod(0o600)  # key material: owner read/write only
+            except OSError:
+                pass
             print(f"Generated key for policy '{policy}' written to {out_path}")
         else:
             print(f"Generated key for policy '{policy}':")
@@ -698,31 +723,62 @@ class AuthCommand(BaseCommand):
             return self._fail("Usage: llm-router auth policy <list|create> ...")
 
         if cmd == "list":
+            from llm_router_api.core.auth.policies import builtin as builtin_mod
             from llm_router_api.core.auth.policies.builtin import (
                 list_builtin_policies,
             )
 
+            builtin_names = set(builtin_mod._builtin_policies)
             print("Builtin policies:")
             for name in list_builtin_policies():
-                print(f"  {name}")
+                marker = " (custom)" if name not in builtin_names else ""
+                print(f"  {name}{marker}")
             return 0
 
         if cmd == "create":
             from llm_router_api.core.auth.policies.model import EndpointPolicy
-            from llm_router_api.core.auth.policies.builtin import register_policy
+            from llm_router_api.core.auth.policies import builtin as builtin_mod
 
             try:
-                policy_dict = json.loads(args.policy_json)
+                raw = self._resolve_policy_json(args)
+            except ValueError as exc:
+                return self._fail(str(exc))
+            if raw is None:
+                return self._fail(
+                    "No policy definition given — pass the JSON as an argument "
+                    "or use --file (or '-' for stdin)."
+                )
+            try:
+                policy_dict = json.loads(raw)
             except json.JSONDecodeError as exc:
                 return self._fail(f"Invalid JSON: {exc}")
             try:
-                register_policy(args.name, EndpointPolicy(**policy_dict))
+                policy = EndpointPolicy(**policy_dict)
             except (TypeError, ValueError) as exc:
                 return self._fail(f"Invalid policy definition: {exc}")
-            print(f"Policy '{args.name}' created.")
+            path = builtin_mod.save_policy(args.name, policy)
+            print(f"Policy '{args.name}' created (saved to {path}).")
             return 0
 
         return self._fail(f"Unknown policy command: {cmd}")
+
+    @staticmethod
+    def _resolve_policy_json(args: Any) -> Optional[str]:
+        """
+        Resolve the raw policy JSON from the positional argument, ``--file``,
+        or stdin (``--file -``).
+        """
+        if args.policy_json:
+            return args.policy_json
+        if args.file == "-":
+            return sys.stdin.read()
+        if args.file:
+            path = Path(args.file).expanduser()
+            try:
+                return path.read_text(encoding="utf-8")
+            except OSError as exc:
+                raise ValueError(f"Cannot read policy file {path}: {exc}")
+        return None
 
     # ------------------------------------------------------------------ #
     # Rate-limit handlers
