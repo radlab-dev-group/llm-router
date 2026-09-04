@@ -29,10 +29,11 @@ import queue
 import random
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Set, Tuple
 
 from llm_router_lib.client import LLMRouterClient
 
+from .json_utils import loads_json
 from .loaders import read_records
 from .pipeline import ConcurrentLLMPipeline
 from .retry import with_retries
@@ -49,6 +50,20 @@ class AugmentedRecord:
     augmented_text: str
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    #: Keys that a merged LLM payload must never overwrite.
+    RESERVED_KEYS: ClassVar[Tuple[str, ...]] = (
+        "original_text",
+        "labels",
+        "metadata",
+    )
+
+    def _parsed_augmented(self) -> Any:
+        """Parse ``augmented_text`` as JSON (code‑fence tolerant), or ``None``."""
+        try:
+            return loads_json(self.augmented_text or "")
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return None
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert to a dict for serialization, merging a parsed
@@ -60,24 +75,14 @@ class AugmentedRecord:
             "metadata": self.metadata,
         }
 
-        try:
-            clean_text = self.augmented_text.strip()
-            if clean_text.startswith("```json"):
-                clean_text = clean_text[7:]
-            if clean_text.startswith("```"):
-                clean_text = clean_text[3:]
-            if clean_text.endswith("```"):
-                clean_text = clean_text[:-3]
-            clean_text = clean_text.strip()
-
-            parsed_augmented = json.loads(clean_text)
-            if isinstance(parsed_augmented, dict):
-                data.update(parsed_augmented)
-            elif isinstance(parsed_augmented, list):
-                data["augmented_results"] = parsed_augmented
-            else:
-                data["augmented_text"] = self.augmented_text
-        except (json.JSONDecodeError, TypeError):
+        parsed = self._parsed_augmented()
+        if isinstance(parsed, dict):
+            for key, value in parsed.items():
+                if key not in self.RESERVED_KEYS:
+                    data[key] = value
+        elif isinstance(parsed, list):
+            data["augmented_results"] = parsed
+        else:
             data["augmented_text"] = self.augmented_text
         return data
 
@@ -150,6 +155,10 @@ class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
         self.retry_attempts = max(1, int(retry_attempts))
         self.retry_wait = float(retry_wait)
 
+        # Per‑worker context, resolved in :meth:`_build_task_queue`.
+        self._prompt_content = ""
+        self._all_samples_info = ""
+
     # ------------------------------------------------------------------ #
     # Loading
     # ------------------------------------------------------------------ #
@@ -158,7 +167,7 @@ class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
         log.info("Loading dataset from %s", self.dataset_path)
         records = read_records(self.dataset_path)
 
-        present_keys: set = set()
+        present_keys: Set[str] = set()
         for rec in records:
             present_keys.update(rec.keys())
 
@@ -232,10 +241,9 @@ class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
             "{CLASS_EXAMPLES_PLACEHOLDER}", all_samples_info
         )
 
-        user_input = text
         response = with_retries(
             lambda: llm_client.extended_conversation_with_model(
-                user_last_statement=user_input,
+                user_last_statement=text,
                 system_prompt=final_prompt,
                 model=self.model_name,
                 temperature=self.temperature,
@@ -260,19 +268,17 @@ class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
         """Per-worker context: the resolved prompt and the sample examples."""
         return self._prompt_content, self._all_samples_info
 
-    def _build_task_queue(self) -> "queue.Queue":
+    def _build_task_queue(self) -> queue.Queue[Any]:
         """Load the dataset, build the sample context and enqueue the tasks."""
         records = self._load_dataset()
-
-        with open(self.prompt_path, "r", encoding="utf-8") as f:
-            self._prompt_content = f.read()
+        self._prompt_content = self.prompt_path.read_text(encoding="utf-8")
 
         out_dir = self.output_dir or self.dataset_path.parent
         out_dir.mkdir(parents=True, exist_ok=True)
         output_path = out_dir / f"{self.dataset_path.stem}_augmented.jsonl"
         self._ensure_buffer(output_path)
 
-        task_queue: "queue.Queue" = queue.Queue()
+        task_queue: queue.Queue[Any] = queue.Queue()
         example_samples: List[Dict[str, Any]] = []
 
         for label in self.labels:
