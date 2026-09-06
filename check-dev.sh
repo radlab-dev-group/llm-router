@@ -13,3 +13,5 @@ mypy ./llm_router_cli
 mypy ./llm_router_lib
 
 bandit -r .
+
+pytest llm_router_api/tests --cov=llm_router_api -q
