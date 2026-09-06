@@ -24,3 +24,11 @@ exclude = '''
 
 [tool.bandit]
 skips = ["B101", "B110", "B112"]
+
+[tool.coverage.run]
+source = ["llm_router_api"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

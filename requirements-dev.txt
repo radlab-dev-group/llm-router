@@ -24,5 +24,10 @@ types-setuptools
 types-tqdm
 ## Test runner + test-only runtime deps
 pytest
+pytest-cov
 openai
 nest_asyncio
+
+## fake redis
+fakeredis
+
