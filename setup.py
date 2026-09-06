@@ -45,7 +45,7 @@ extras = {
 
 # ----------------------------------------------------------------------
 setup(
-    name="llm-router",
+    name="radlab-llm-router",
     version=version,
     description="LLM Router – core library with optional API and metrics",
     long_description=long_description,
@@ -81,7 +81,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "radlab-ml-utils>=1.0.0",
-        "llm-router-plugins>=0.1.0",
+        "radlab-llm-router-plugins>=0.1.0",
     ],
     extras_require=extras,
     entry_points={
