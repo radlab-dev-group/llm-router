@@ -69,13 +69,11 @@ class TestParseArgs:
 class TestMainDispatch:
     def test_gunicorn_dispatch(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["rest_api", "--gunicorn"])
-        with mock.patch.object(
-            rest_api_module, "run_gunicorn_server"
-        ) as gunicorn, mock.patch.object(
-            rest_api_module, "run_waitress_server"
-        ) as waitress, mock.patch.object(
-            rest_api_module, "run_flask_server"
-        ) as flask:
+        with (
+            mock.patch.object(rest_api_module, "run_gunicorn_server") as gunicorn,
+            mock.patch.object(rest_api_module, "run_waitress_server") as waitress,
+            mock.patch.object(rest_api_module, "run_flask_server") as flask,
+        ):
             rest_api_module.main()
         gunicorn.assert_called_once_with(
             host=SERVER_HOST,
@@ -90,13 +88,11 @@ class TestMainDispatch:
 
     def test_waitress_dispatch(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["rest_api", "--waitress"])
-        with mock.patch.object(
-            rest_api_module, "run_gunicorn_server"
-        ) as gunicorn, mock.patch.object(
-            rest_api_module, "run_waitress_server"
-        ) as waitress, mock.patch.object(
-            rest_api_module, "run_flask_server"
-        ) as flask:
+        with (
+            mock.patch.object(rest_api_module, "run_gunicorn_server") as gunicorn,
+            mock.patch.object(rest_api_module, "run_waitress_server") as waitress,
+            mock.patch.object(rest_api_module, "run_flask_server") as flask,
+        ):
             rest_api_module.main()
         waitress.assert_called_once_with(
             host=SERVER_HOST, port=SERVER_PORT, threads=SERVER_WORKERS_COUNT
@@ -107,13 +103,11 @@ class TestMainDispatch:
     def test_default_flask_dispatch(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["rest_api"])
         monkeypatch.setattr(rest_api_module, "SERVER_TYPE", "flask")
-        with mock.patch.object(
-            rest_api_module, "run_gunicorn_server"
-        ) as gunicorn, mock.patch.object(
-            rest_api_module, "run_waitress_server"
-        ) as waitress, mock.patch.object(
-            rest_api_module, "run_flask_server"
-        ) as flask:
+        with (
+            mock.patch.object(rest_api_module, "run_gunicorn_server") as gunicorn,
+            mock.patch.object(rest_api_module, "run_waitress_server") as waitress,
+            mock.patch.object(rest_api_module, "run_flask_server") as flask,
+        ):
             rest_api_module.main()
         flask.assert_called_once_with(
             host=SERVER_HOST, port=SERVER_PORT, debug=False

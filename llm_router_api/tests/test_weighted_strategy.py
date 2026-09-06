@@ -18,7 +18,9 @@ os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 
 import pytest  # noqa: E402
 
-from llm_router_api.core.lb.strategies import weighted as weighted_module  # noqa: E402
+from llm_router_api.core.lb.strategies import (
+    weighted as weighted_module,
+)  # noqa: E402
 from llm_router_api.core.lb.strategies.weighted import (  # noqa: E402
     DynamicWeightedStrategy,
     WeightedStrategy,
@@ -56,9 +58,8 @@ class TestClampWeight:
 
 class TestStableUnit:
     def test_deterministic(self):
-        assert (
-            weighted_module._stable_unit("m", 5)
-            == weighted_module._stable_unit("m", 5)
+        assert weighted_module._stable_unit("m", 5) == weighted_module._stable_unit(
+            "m", 5
         )
 
     def test_range(self):
@@ -91,8 +92,11 @@ class TestNormalizedWeights:
     def test_zero_total_falls_back_uniform(self, tmp_path):
         strategy = WeightedStrategy(_write_config(tmp_path))
         weights = strategy._normalized_weights(_providers([0, 0, 0]))
-        assert weights == [pytest.approx(1 / 3), pytest.approx(1 / 3),
-                           pytest.approx(1 / 3)]
+        assert weights == [
+            pytest.approx(1 / 3),
+            pytest.approx(1 / 3),
+            pytest.approx(1 / 3),
+        ]
 
     def test_missing_weight_defaults_to_one(self, tmp_path):
         strategy = WeightedStrategy(_write_config(tmp_path))
@@ -179,9 +183,7 @@ class TestDynamicWeightedStrategy:
         assert history[0] >= 0.0
 
     def test_latency_history_maxlen(self, tmp_path):
-        strategy = DynamicWeightedStrategy(
-            _write_config(tmp_path), history_size=3
-        )
+        strategy = DynamicWeightedStrategy(_write_config(tmp_path), history_size=3)
         providers = _providers([0, 1])
         for _ in range(6):
             strategy.get_provider("m", providers)

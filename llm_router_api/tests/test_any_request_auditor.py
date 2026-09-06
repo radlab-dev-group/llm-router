@@ -60,9 +60,7 @@ class TestAnyRequestAuditor:
         with pytest.raises(KeyError):
             auditor.add_log({"something": "else"})
 
-    def test_storage_instance_created_from_default_class(
-        self, monkeypatch
-    ):
+    def test_storage_instance_created_from_default_class(self, monkeypatch):
         created = []
 
         def _factory():

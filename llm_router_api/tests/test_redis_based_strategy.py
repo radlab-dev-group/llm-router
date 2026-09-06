@@ -33,7 +33,9 @@ class _ConcreteRedisStrategy(RedisBasedStrategy):
         return providers[0] if providers else None
 
 
-def _make(acquire_result: int = 1, acquire_side_effect=None) -> _ConcreteRedisStrategy:
+def _make(
+    acquire_result: int = 1, acquire_side_effect=None
+) -> _ConcreteRedisStrategy:
     strategy = _ConcreteRedisStrategy.__new__(_ConcreteRedisStrategy)
     strategy.redis_client = fakeredis.FakeRedis(decode_responses=True)
     strategy.logger = mock.Mock()
@@ -132,9 +134,7 @@ class TestTryAcquireRandomProvider:
     def test_all_locked_returns_none(self):
         strategy = _make(acquire_result=0)
         providers = _providers()
-        assert (
-            strategy._try_acquire_random_provider("model:m", providers) is None
-        )
+        assert strategy._try_acquire_random_provider("model:m", providers) is None
 
     def test_script_exception_skips_provider(self):
         def side_effect(keys=None, args=None):
@@ -199,8 +199,7 @@ class TestClearBuffers:
         strategy._clear_buffers()
         # key is derived from the model_path
         assert (
-            strategy.redis_client.hget("model:_models_x", "p1:is_chosen")
-            == "false"
+            strategy.redis_client.hget("model:_models_x", "p1:is_chosen") == "false"
         )
 
 

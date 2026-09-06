@@ -22,12 +22,16 @@ import pytest  # noqa: E402
 
 import llm_router_api.base.constants as constants  # noqa: E402
 from llm_router_api.base.constants_base import BalanceStrategies  # noqa: E402
-from llm_router_api.core.lb import provider_strategy_facade as facade_module  # noqa: E402
+from llm_router_api.core.lb import (
+    provider_strategy_facade as facade_module,
+)  # noqa: E402
 from llm_router_api.core.lb.provider_strategy_facade import (  # noqa: E402
     ProviderStrategyFacade,
     STRATEGIES,
 )
-from llm_router_api.core.lb.strategies.balanced import LoadBalancedStrategy  # noqa: E402
+from llm_router_api.core.lb.strategies.balanced import (
+    LoadBalancedStrategy,
+)  # noqa: E402
 from llm_router_api.core.lb.strategies.first_available import (  # noqa: E402
     FirstAvailableStrategy,
 )
@@ -38,7 +42,9 @@ from llm_router_api.core.lb.strategies.weighted import (  # noqa: E402
     DynamicWeightedStrategy,
     WeightedStrategy,
 )
-from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI  # noqa: E402
+from llm_router_api.core.lb.strategy_interface import (
+    ChooseProviderStrategyI,
+)  # noqa: E402
 
 
 def _write_config(tmp_path) -> str:
@@ -58,12 +64,10 @@ class TestStrategiesRegistry:
         assert STRATEGIES[BalanceStrategies.BALANCED] is LoadBalancedStrategy
         assert STRATEGIES[BalanceStrategies.WEIGHTED] is WeightedStrategy
         assert (
-            STRATEGIES[BalanceStrategies.DYNAMIC_WEIGHTED]
-            is DynamicWeightedStrategy
+            STRATEGIES[BalanceStrategies.DYNAMIC_WEIGHTED] is DynamicWeightedStrategy
         )
         assert (
-            STRATEGIES[BalanceStrategies.FIRST_AVAILABLE]
-            is FirstAvailableStrategy
+            STRATEGIES[BalanceStrategies.FIRST_AVAILABLE] is FirstAvailableStrategy
         )
         assert (
             STRATEGIES[BalanceStrategies.FIRST_AVAILABLE_OPTIM]
@@ -177,18 +181,14 @@ class TestProviderKey:
         assert provider_key == "my_id"
 
     def test_api_host_fallback(self):
-        provider_key = self._instance()._provider_key(
-            {"api_host": "host-1"}
-        )
+        provider_key = self._instance()._provider_key({"api_host": "host-1"})
         assert provider_key == "host_1"
 
     def test_unknown_fallback(self):
         assert self._instance()._provider_key({}) == "unknown"
 
     def test_special_chars_sanitized(self):
-        provider_key = self._instance()._provider_key(
-            {"id": "a/b:c.d,e;f\ng"}
-        )
+        provider_key = self._instance()._provider_key({"id": "a/b:c.d,e;f\ng"})
         for ch in ChooseProviderStrategyI.REPLACE_PROVIDER_KEY:
             assert ch not in provider_key
         assert provider_key == "a_b_c_d_e_f_g"

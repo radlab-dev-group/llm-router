@@ -168,7 +168,9 @@ class TestForceIterOllama:
 class TestOllamaChunk:
     def test_not_done(self):
         obj = json.loads(
-            StreamHandler._ollama_chunk("abc", done=False, api_model_provider=_model("mp", "nm")).decode()
+            StreamHandler._ollama_chunk(
+                "abc", done=False, api_model_provider=_model("mp", "nm")
+            ).decode()
         )
         assert obj["done"] is False
         assert obj["message"] == {"role": "assistant", "content": "abc"}
@@ -195,9 +197,8 @@ class TestParseOllamaStream:
 
     def test_sse_data_lines(self):
         lines = [
-            b'data: ' + json.dumps(
-                {"choices": [{"delta": {"content": "foo"}}]}
-            ).encode(),
+            b"data: "
+            + json.dumps({"choices": [{"delta": {"content": "foo"}}]}).encode(),
             b"data: [DONE]",
         ]
         out = _consume(
@@ -213,22 +214,24 @@ class TestParseOllamaStream:
     def test_finish_reason_emits_done(self):
         lines = [
             (
-                b'data: '
+                b"data: "
                 + json.dumps(
-                    {
-                        "choices": [
-                            {"delta": {"content": "a"}, "finish_reason": None}
-                        ]
-                    }
+                    {"choices": [{"delta": {"content": "a"}, "finish_reason": None}]}
                 ).encode()
             ),
             (
-                b'data: '
+                b"data: "
                 + json.dumps(
                     {
                         "choices": [
-                            {"delta": {}, "finish_reason": "stop",
-                             "usage": {"prompt_tokens": 2, "completion_tokens": 1}}
+                            {
+                                "delta": {},
+                                "finish_reason": "stop",
+                                "usage": {
+                                    "prompt_tokens": 2,
+                                    "completion_tokens": 1,
+                                },
+                            }
                         ]
                     }
                 ).encode()
@@ -270,9 +273,10 @@ class TestParseOllamaStream:
 
     def test_stream_end_emits_final_done(self):
         lines = [
-            (b'data: ' + json.dumps(
-                {"choices": [{"delta": {"content": "only"}}]}
-            ).encode())
+            (
+                b"data: "
+                + json.dumps({"choices": [{"delta": {"content": "only"}}]}).encode()
+            )
         ]
         out = _consume(
             self._handler()._parse_ollama_stream(
@@ -331,9 +335,10 @@ class TestStreamOpenAItoOllama:
     def test_post_uses_json_and_unset_model_once(self, monkeypatch):
         resp = _FakeResp(
             lines=[
-                (b'data: ' + json.dumps(
-                    {"choices": [{"delta": {"content": "z"}}]}
-                ).encode()),
+                (
+                    b"data: "
+                    + json.dumps({"choices": [{"delta": {"content": "z"}}]}).encode()
+                ),
                 b"data: [DONE]",
             ]
         )
@@ -367,7 +372,13 @@ class TestStreamOpenAItoOllama:
         handler = StreamHandler()
         out = _consume(
             handler.stream_openai_to_ollama(
-                "http://u", {}, "POST", {}, None, ep, _model("mp", "nm"),
+                "http://u",
+                {},
+                "POST",
+                {},
+                None,
+                ep,
+                _model("mp", "nm"),
                 force_text="forced",
             )
         )
@@ -414,7 +425,9 @@ class TestStreamOllamaToOpenAI:
         ep.unset_model.assert_called_once()
 
     def test_non_json_line_forwarded(self, monkeypatch):
-        resp = _FakeResp(lines=[b"garbage-line", json.dumps({"done": True}).encode()])
+        resp = _FakeResp(
+            lines=[b"garbage-line", json.dumps({"done": True}).encode()]
+        )
         _ReqPatch(monkeypatch, response=resp)
         handler = StreamHandler()
         out = _consume(
@@ -465,9 +478,7 @@ class TestStreamAnthropicToOpenAI:
         assert headers["anthropic-version"] == "2023-06-01"
         assert b"data: [DONE]\n\n" in out
         content = [
-            json.loads(x[5:].decode())
-            for x in out
-            if x.startswith(b"data: {")
+            json.loads(x[5:].decode()) for x in out if x.startswith(b"data: {")
         ]
         assert content[0]["choices"][0]["delta"]["content"] == "hi"
         patch.request.assert_called_once()
@@ -511,3 +522,342 @@ class TestPassthroughGenerator:
         )
         assert headers["anthropic-version"] == "2023-06-01"
         assert headers["Accept"] == "text/event-stream"
+
+
+class TestStreamOpenAitoLMStudio:
+    def test_normalizes_sse_to_lmstudio_shape(self, monkeypatch):
+        first = {
+            "id": "abc-1",
+            "created": 123,
+            "model": "gpt-x",
+            "object": "chat.completion.chunk",
+            "choices": [
+                {"index": 0, "delta": {"content": "he"}, "finish_reason": None}
+            ],
+        }
+        second = {
+            "id": "abc-1",
+            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        }
+        resp = _FakeResp(
+            lines=[
+                b"data: " + json.dumps(first).encode(),
+                b"data: " + json.dumps(second).encode(),
+                b"data: [DONE]",
+            ]
+        )
+        _ReqPatch(monkeypatch, response=resp)
+        ep = _endpoint()
+        headers = {}
+        out = _consume(
+            StreamHandler().stream_openai_to_lmstudio(
+                "http://u", {"p": 1}, "POST", headers, None, ep, _model("mp", "nm")
+            )
+        )
+        # request headers are normalised for SSE
+        assert headers["Accept"] == "text/event-stream"
+        assert headers["Cache-Control"] == "no-cache"
+        assert headers["Connection"] == "keep-alive"
+
+        def _sse_obj(chunk: bytes):
+            text = chunk.decode()
+            assert text.startswith("data: ")
+            return json.loads(text[6:].strip())
+
+        first_obj = _sse_obj(out[0])
+        second_obj = _sse_obj(out[1])
+        # stable metadata is captured from the first parsable chunk
+        assert first_obj["id"] == "abc-1"
+        assert first_obj["created"] == 123
+        assert first_obj["model"] == "gpt-x"
+        assert first_obj["system_fingerprint"] == "mp"
+        # LM Studio expects a role on the first emitted delta
+        assert first_obj["choices"][0]["delta"] == {
+            "role": "assistant",
+            "content": "he",
+        }
+        # role is not re-sent afterwards
+        assert second_obj["choices"][0]["delta"] == {}
+        assert second_obj["choices"][0]["finish_reason"] == "stop"
+        assert out[2] == b"data: [DONE]\n\n"
+        ep.unset_model.assert_called_once()
+
+    def test_delta_restricted_to_role_and_content(self, monkeypatch):
+        event = {
+            "id": "i-1",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"tool_calls": [1], "role": "assistant"},
+                    "finish_reason": None,
+                }
+            ],
+        }
+        resp = _FakeResp(lines=[b"data: " + json.dumps(event).encode()])
+        _ReqPatch(monkeypatch, response=resp)
+        out = _consume(
+            StreamHandler().stream_openai_to_lmstudio(
+                "http://u", {}, "POST", {}, None, _endpoint(), _model("", "nm")
+            )
+        )
+        obj = json.loads(out[0].decode()[6:].strip())
+        # tool_calls are stripped; only role/content survive
+        assert obj["choices"][0]["delta"] == {"role": "assistant"}
+        # model_path empty -> name is used
+        assert obj["model"] == "nm"
+
+    def test_non_data_line_and_bad_json_passthrough(self, monkeypatch):
+        resp = _FakeResp(
+            lines=[
+                b"event: something",
+                b"data: {not-json",
+                b"data: [DONE]",
+            ]
+        )
+        _ReqPatch(monkeypatch, response=resp)
+        out = _consume(
+            StreamHandler().stream_openai_to_lmstudio(
+                "http://u", {}, "GET", {}, None, _endpoint(), _model()
+            )
+        )
+        assert out[0] == b"data: event: something\n\n"
+        assert out[1] == b"data: {not-json\n\n"
+        assert out[2] == b"data: [DONE]\n\n"
+
+    def test_empty_and_non_dict_choices_get_default_chunk(self, monkeypatch):
+        resp = _FakeResp(
+            lines=[
+                b"data: " + json.dumps({"id": "i-1", "choices": []}).encode(),
+                b"data: " + json.dumps({"choices": [42]}).encode(),
+            ]
+        )
+        _ReqPatch(monkeypatch, response=resp)
+        out = _consume(
+            StreamHandler().stream_openai_to_lmstudio(
+                "http://u", {}, "POST", {}, None, _endpoint(), _model()
+            )
+        )
+        first = json.loads(out[0].decode()[6:].strip())
+        second = json.loads(out[1].decode()[6:].strip())
+        # the empty-choices fallback keeps an empty delta
+        assert first["choices"][0]["delta"] == {}
+        # the invalid-choices fallback injects the role (not sent yet)
+        assert second["choices"][0]["delta"] == {"role": "assistant"}
+
+    def test_get_uses_params(self, monkeypatch):
+        resp = _FakeResp(lines=[b"data: [DONE]"])
+        patch = _ReqPatch(monkeypatch, response=resp)
+        _consume(
+            StreamHandler().stream_openai_to_lmstudio(
+                "http://u", {"q": 1}, "GET", {}, None, _endpoint(), _model()
+            )
+        )
+        assert patch.get.call_args.kwargs["params"] == {"q": 1}
+
+    def test_force_text_branch(self, monkeypatch):
+        ep = _endpoint()
+        out = _consume(
+            StreamHandler().stream_openai_to_lmstudio(
+                "http://u",
+                {},
+                "POST",
+                {},
+                None,
+                ep,
+                _model("mp", "nm"),
+                force_text="forced",
+            )
+        )
+        # force-text reuses the OpenAI-shaped generator
+        assert any(b"forced" in x for x in out)
+        ep.unset_model.assert_called_once()
+
+    def test_request_exception_yields_error(self, monkeypatch):
+        _ReqPatch(monkeypatch, side_effect=requests.RequestException("down"))
+        out = _consume(
+            StreamHandler().stream_openai_to_lmstudio(
+                "http://u", {}, "POST", {}, None, _endpoint(), _model()
+            )
+        )
+        assert len(out) == 1
+        assert b'"error"' in out[0]
+
+
+class TestStreamOllamaToLMStudio:
+    def test_converts_ndjson_to_lmstudio_sse(self, monkeypatch):
+        resp = _FakeResp(
+            lines=[
+                json.dumps({"message": {"content": "He"}, "done": False}).encode(),
+                json.dumps({"message": {"content": "llo"}, "done": False}).encode(),
+                json.dumps({"done": True}).encode(),
+            ]
+        )
+        _ReqPatch(monkeypatch, response=resp)
+        ep = _endpoint()
+        out = _consume(
+            StreamHandler().stream_ollama_to_lmstudio(
+                "http://u", {"m": 1}, "POST", {}, None, ep, _model("mp", "nm")
+            )
+        )
+        # two content events + finish event + [DONE]
+        assert len(out) == 4
+        first = json.loads(out[0][5:].decode())
+        assert first["id"].startswith("chatcmpl-")
+        assert first["object"] == "chat.completion.chunk"
+        assert first["system_fingerprint"] == "mp"
+        assert first["choices"][0]["delta"] == {"role": "assistant", "content": "He"}
+        second = json.loads(out[1][5:].decode())
+        # role is not repeated on subsequent chunks
+        assert second["choices"][0]["delta"] == {"content": "llo"}
+        finish = json.loads(out[2][5:].decode())
+        assert finish["choices"][0]["finish_reason"] == "stop"
+        assert out[3] == b"data: [DONE]\n\n"
+        ep.unset_model.assert_called_once()
+
+    def test_empty_content_is_skipped(self, monkeypatch):
+        resp = _FakeResp(
+            lines=[
+                json.dumps({"message": {"content": ""}, "done": False}).encode(),
+                json.dumps({"done": True}).encode(),
+            ]
+        )
+        _ReqPatch(monkeypatch, response=resp)
+        out = _consume(
+            StreamHandler().stream_ollama_to_lmstudio(
+                "http://u", {}, "POST", {}, None, _endpoint(), _model()
+            )
+        )
+        # only the finish event and [DONE] are emitted
+        assert len(out) == 2
+        assert out[1] == b"data: [DONE]\n\n"
+
+    def test_non_json_line_forwarded(self, monkeypatch):
+        resp = _FakeResp(
+            lines=[b"garbage-line", json.dumps({"done": True}).encode()]
+        )
+        _ReqPatch(monkeypatch, response=resp)
+        out = _consume(
+            StreamHandler().stream_ollama_to_lmstudio(
+                "http://u", {}, "POST", {}, None, _endpoint(), _model()
+            )
+        )
+        assert any(b"garbage-line" in x for x in out)
+
+    def test_get_uses_params(self, monkeypatch):
+        resp = _FakeResp(lines=[json.dumps({"done": True}).encode()])
+        patch = _ReqPatch(monkeypatch, response=resp)
+        _consume(
+            StreamHandler().stream_ollama_to_lmstudio(
+                "http://u", {"q": 2}, "GET", {}, None, _endpoint(), _model()
+            )
+        )
+        assert patch.get.call_args.kwargs["params"] == {"q": 2}
+
+    def test_force_text_branch(self, monkeypatch):
+        ep = _endpoint()
+        out = _consume(
+            StreamHandler().stream_ollama_to_lmstudio(
+                "http://u",
+                {},
+                "POST",
+                {},
+                None,
+                ep,
+                _model("mp", "nm"),
+                force_text="forced",
+            )
+        )
+        assert any(b"forced" in x for x in out)
+        ep.unset_model.assert_called_once()
+
+    def test_request_exception_yields_error(self, monkeypatch):
+        _ReqPatch(monkeypatch, side_effect=requests.RequestException("nope"))
+        out = _consume(
+            StreamHandler().stream_ollama_to_lmstudio(
+                "http://u", {}, "POST", {}, None, _endpoint(), _model()
+            )
+        )
+        assert len(out) == 1
+        assert b'"error"' in out[0]
+
+
+class TestLogRequestError:
+    def test_no_logger_is_noop(self):
+        ep = _endpoint()
+        ep.logger = None
+        # must not raise
+        StreamHandler._log_request_error(ep, ValueError("boom"))
+
+    def test_logs_status_when_available(self):
+        ep = _endpoint()
+        ep.logger = mock.Mock()
+        exc = requests.RequestException("bad")
+        exc.response = mock.Mock(status_code=503, text="upstream says no")
+        StreamHandler._log_request_error(ep, exc)
+        ep.logger.error.assert_called_once()
+        args = ep.logger.error.call_args[0]
+        assert "HTTP %s" in args[0]
+        assert 503 in args[1:]
+
+    def test_logs_message_without_status(self):
+        ep = _endpoint()
+        ep.logger = mock.Mock()
+        StreamHandler._log_request_error(ep, ValueError("boom"))
+        ep.logger.error.assert_called_once()
+        args = ep.logger.error.call_args[0]
+        assert "boom" in args[1:]
+
+
+class TestForceTextEntryPoints:
+    def test_stream_openai_force_text(self, monkeypatch):
+        ep = _endpoint()
+        out = _consume(
+            StreamHandler().stream_openai(
+                "http://u",
+                {},
+                "POST",
+                {},
+                None,
+                ep,
+                _model("mp", "nm"),
+                force_text="hi there",
+            )
+        )
+        assert any(b"hi there" in x for x in out)
+        ep.unset_model.assert_called_once()
+
+    def test_stream_ollama_force_text(self, monkeypatch):
+        ep = _endpoint()
+        out = _consume(
+            StreamHandler().stream_ollama(
+                "http://u",
+                {},
+                "POST",
+                {},
+                None,
+                ep,
+                _model("mp", "nm"),
+                force_text="hi there",
+            )
+        )
+        # Ollama-shaped NDJSON force-text chunk
+        first = json.loads(out[0].decode())
+        assert first["message"]["content"] == "hi there"
+        ep.unset_model.assert_called_once()
+
+
+class TestStreamOpenAitoAnthropic:
+    def test_sets_accept_and_passthrough(self, monkeypatch):
+        resp = _FakeResp(content=[b"pass-1"])
+        patch = _ReqPatch(monkeypatch, response=resp)
+        headers = {}
+        ep = _endpoint()
+        out = _consume(
+            StreamHandler().stream_openai_to_anthropic(
+                "http://u", {"s": 1}, "POST", headers, None, ep, _model()
+            )
+        )
+        assert headers["Accept"] == "text/event-stream"
+        assert out == [b"pass-1"]
+        assert patch.post.call_args.kwargs["json"] == {"s": 1}
+        ep.unset_model.assert_called_once()

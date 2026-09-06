@@ -17,6 +17,7 @@ os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 
 import logging  # noqa: E402
 import signal  # noqa: E402
+import uuid  # noqa: E402
 from unittest import mock  # noqa: E402
 
 import pytest  # noqa: E402
@@ -31,43 +32,48 @@ from llm_router_api.core.server import (  # noqa: E402
 )
 
 
+def _fresh_app() -> Flask:
+    """
+    Build a Flask app with a unique logger name.
+
+    ``Flask(__name__)`` would share the module-global logger across tests
+    (and with other test modules), leaking handlers between tests.  A unique
+    name guarantees an isolated logger per app.
+    """
+
+    return Flask(f"llm_router_api.tests.server_helpers_{uuid.uuid4().hex}")
+
+
 class TestEnsureFlaskLoggerHandlers:
     def test_adds_one_file_handler(self, tmp_path, monkeypatch):
         log_file = tmp_path / "test-app.log"
-        monkeypatch.setattr(
-            server_module, "REST_API_LOG_FILE_NAME", str(log_file)
-        )
-        app = Flask(__name__)
+        monkeypatch.setattr(server_module, "REST_API_LOG_FILE_NAME", str(log_file))
+        app = _fresh_app()
         _ensure_flask_logger_handlers(app)
         file_handlers = [
-            h for h in app.logger.handlers
-            if isinstance(h, logging.FileHandler)
+            h for h in app.logger.handlers if isinstance(h, logging.FileHandler)
         ]
         assert len(file_handlers) == 1
         assert log_file.exists()
 
     def test_second_call_is_idempotent(self, tmp_path, monkeypatch):
         log_file = tmp_path / "test-app.log"
-        monkeypatch.setattr(
-            server_module, "REST_API_LOG_FILE_NAME", str(log_file)
-        )
-        app = Flask(__name__)
+        monkeypatch.setattr(server_module, "REST_API_LOG_FILE_NAME", str(log_file))
+        app = _fresh_app()
         _ensure_flask_logger_handlers(app)
         _ensure_flask_logger_handlers(app)
         file_handlers = [
-            h for h in app.logger.handlers
-            if isinstance(h, logging.FileHandler)
+            h for h in app.logger.handlers if isinstance(h, logging.FileHandler)
         ]
         assert len(file_handlers) == 1
 
     def test_existing_file_handler_not_duplicated(self):
-        app = Flask(__name__)
+        app = _fresh_app()
         existing = logging.FileHandler(os.devnull)
         app.logger.addHandler(existing)
         _ensure_flask_logger_handlers(app)
         file_handlers = [
-            h for h in app.logger.handlers
-            if isinstance(h, logging.FileHandler)
+            h for h in app.logger.handlers if isinstance(h, logging.FileHandler)
         ]
         assert len(file_handlers) == 1
         assert existing in file_handlers
