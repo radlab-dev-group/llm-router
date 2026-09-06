@@ -26,3 +26,7 @@ types-tqdm
 pytest
 openai
 nest_asyncio
+
+## fake redis
+fakeredis
+
