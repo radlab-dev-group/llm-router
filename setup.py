@@ -51,6 +51,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="RadLab.dev Team",
+    author_email="hello@radlab.dev",
     url="https://github.com/radlab-dev-group/llm-router",
     license="Apache-2.0",
     packages=find_packages(
