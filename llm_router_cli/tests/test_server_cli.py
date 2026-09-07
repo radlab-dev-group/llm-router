@@ -289,7 +289,9 @@ def test_build_env_overrides_only_includes_given_flags():
 
 def test_start_auth_zero_maps_to_false():
     args = ServerCommand.build_parser().parse_args(["start", "--auth", "0"])
-    assert ServerCommand.build_env_overrides(args) == {"LLM_ROUTER_AUTH_ENABLED": "false"}
+    assert ServerCommand.build_env_overrides(args) == {
+        "LLM_ROUTER_AUTH_ENABLED": "false"
+    }
 
 
 def test_start_applies_overrides_beating_shell_env(monkeypatch, tmp_path, capsys):
@@ -366,7 +368,9 @@ def test_stop_stale_pid_file_cleans_and_fails(pid_file, capsys):
 
 def test_stop_force_sigkills_uncooperative_process(pid_file, tmp_path):
     # Ignore SIGTERM, so the default (graceful) stop would time out.
-    pid = _spawn_detached(["bash", "-c", "trap '' TERM; sleep 300"], tmp_path / "d.pid")
+    pid = _spawn_detached(
+        ["bash", "-c", "trap '' TERM; sleep 300"], tmp_path / "d.pid"
+    )
     write_pid_file(pid_file, pid)
 
     try:
@@ -388,7 +392,9 @@ def test_stop_force_sigkills_uncooperative_process(pid_file, tmp_path):
 
 def test_reload_sends_sighup_but_process_survives(pid_file, tmp_path, capsys):
     # HUP-tolerant dummy stands in for the Gunicorn master.
-    pid = _spawn_detached(["bash", "-c", "trap '' HUP; sleep 300"], tmp_path / "d.pid")
+    pid = _spawn_detached(
+        ["bash", "-c", "trap '' HUP; sleep 300"], tmp_path / "d.pid"
+    )
     write_pid_file(pid_file, pid)
 
     try:
@@ -435,6 +441,97 @@ def test_status_cleans_stale_pid_file(pid_file, capsys):
     assert "NOT running" in capsys.readouterr().out
 
 
+# ---- run record (``<pidfile>.run`` launch parameters) -----------------------
+
+
+def test_run_file_for_appends_suffix(pid_file):
+    assert server_module.run_file_for(pid_file) == pid_file.parent / (
+        pid_file.name + ".run"
+    )
+
+
+def test_run_file_roundtrip(tmp_path):
+    path = tmp_path / "server.pid.run"
+    record = {"command": ["a", "b"], "env_overrides": {"X": "1"}}
+    server_module.write_run_file(path, record)
+    assert server_module.read_run_file(path) == record
+    assert server_module.read_run_file(tmp_path / "missing.run") is None
+    path.write_text("not json", encoding="utf-8")
+    assert server_module.read_run_file(path) is None
+
+
+def test_build_run_record_captures_params():
+    import argparse
+
+    args = argparse.Namespace(models_config="/tmp/custom.json", debug=1, auth=1)
+    record = ServerCommand.build_run_record(
+        Path("/p/server.pid"),
+        Path("/p/server.log"),
+        ["python3", "-m", "llm_router_api.rest_api", "--port", "8080"],
+        args,
+    )
+    assert record["command"] == [
+        "python3",
+        "-m",
+        "llm_router_api.rest_api",
+        "--port",
+        "8080",
+    ]
+    assert record["log_file"] == "/p/server.log"
+    assert record["server"] in ("gunicorn", "waitress", "flask")
+    assert record["env_overrides"] == {
+        "LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json",
+        "LLM_ROUTER_IN_DEBUG": "1",
+        "LLM_ROUTER_AUTH_ENABLED": "true",
+    }
+
+
+def test_status_shows_run_record(pid_file, tmp_path, capsys):
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "started_at": "2026-01-01T00:00:00",
+            "server": "gunicorn",
+            "command": [
+                "python3",
+                "-m",
+                "llm_router_api.rest_api",
+                "--port",
+                "8080",
+            ],
+            "log_file": str(tmp_path / "srv.log"),
+            "env_overrides": {"LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json"},
+        },
+    )
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+
+    try:
+        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        out = capsys.readouterr().out
+        assert "gunicorn" in out
+        assert "--port 8080" in out
+        assert "LLM_ROUTER_MODELS_CONFIG=/tmp/custom.json" in out
+        assert str(tmp_path / "srv.log") in out
+    finally:
+        _kill(pid)
+
+
+def test_stop_removes_run_record(pid_file, tmp_path):
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+    run_file = server_module.run_file_for(pid_file)
+    server_module.write_run_file(run_file, {"command": ["x"]})
+    assert run_file.exists()
+
+    try:
+        assert ServerCommand.run(["stop", "--pid-file", str(pid_file)]) == 0
+    finally:
+        if pid_alive(pid):  # pragma: no cover - safety net
+            _kill(pid)
+    assert not run_file.exists()
+
+
 def test_log_help_lists_flags(capsys):
     assert ServerCommand.run(["log", "--help"]) == 0
     out = capsys.readouterr().out
@@ -449,23 +546,36 @@ def test_colorize_line_wraps_known_levels():
     out = colorize_line("2026-01-01 INFO app: ok", "always")
     assert out.startswith("\033[32m") and out.endswith("\033[0m")
     assert colorize_line("2026-01-01 DEBUG app: d", "always").startswith("\033[36m")
-    assert colorize_line("2026-01-01 WARNING app: w", "always").startswith("\033[33m")
+    assert colorize_line("2026-01-01 WARNING app: w", "always").startswith(
+        "\033[33m"
+    )
     assert colorize_line("2026-01-01 WARN app: w", "always").startswith("\033[33m")
-    assert colorize_line("2026-01-01 ERROR app: boom", "always").startswith("\033[31m")
-    assert colorize_line("2026-01-01 CRITICAL app: dead", "always").startswith("\033[1;31m")
+    assert colorize_line("2026-01-01 ERROR app: boom", "always").startswith(
+        "\033[31m"
+    )
+    assert colorize_line("2026-01-01 CRITICAL app: dead", "always").startswith(
+        "\033[1;31m"
+    )
 
 
 def test_colorize_line_untouched_cases():
     plain = "2026-01-01 12:00:00 app started"
     assert colorize_line(plain, "always") == plain
-    assert colorize_line("2026-01-01 ERROR app: boom", "never") == "2026-01-01 ERROR app: boom"
+    assert (
+        colorize_line("2026-01-01 ERROR app: boom", "never")
+        == "2026-01-01 ERROR app: boom"
+    )
 
 
 def test_tail_lines_returns_last_n():
     import io
 
     fh = io.StringIO("\n".join(f"line {i}" for i in range(10)))
-    assert [l.rstrip("\n") for l in tail_lines(fh, 3)] == ["line 7", "line 8", "line 9"]
+    assert [l.rstrip("\n") for l in tail_lines(fh, 3)] == [
+        "line 7",
+        "line 8",
+        "line 9",
+    ]
     fh = io.StringIO("a\nb\n")
     assert tail_lines(fh, 0) == []
 
@@ -477,7 +587,16 @@ def test_log_tail_no_follow_shows_last_lines(tmp_path, capsys):
         encoding="utf-8",
     )
     rc = ServerCommand.run(
-        ["log", "--log-file", str(log), "--lines", "3", "--no-follow", "--color", "never"]
+        [
+            "log",
+            "--log-file",
+            str(log),
+            "--lines",
+            "3",
+            "--no-follow",
+            "--color",
+            "never",
+        ]
     )
     assert rc == 0
     out = capsys.readouterr().out.splitlines()
@@ -492,7 +611,16 @@ def test_log_color_always_colorizes_levels(tmp_path, capsys):
     log = tmp_path / "server.log"
     log.write_text("2026-01-01 ERROR app: boom\n", encoding="utf-8")
     rc = ServerCommand.run(
-        ["log", "--log-file", str(log), "--lines", "1", "--no-follow", "--color", "always"]
+        [
+            "log",
+            "--log-file",
+            str(log),
+            "--lines",
+            "1",
+            "--no-follow",
+            "--color",
+            "always",
+        ]
     )
     assert rc == 0
     out = capsys.readouterr().out
