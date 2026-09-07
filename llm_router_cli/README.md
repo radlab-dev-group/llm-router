@@ -25,6 +25,7 @@ llm-router --version
 | `config`         | Auto-discover local providers & merge configs                            |
 | `anonymizer run` | Anonymize text using a selectable algorithm                              |
 | `util`           | Utility apps: `translate`, `genai-classifier`, `genai-data-augmentation` |
+| `completion`     | Generate / install shell tab-completion (`bash` / `zsh`)                 |
 
 ---
 
@@ -391,6 +392,43 @@ llm-router util genai-data-augmentation \
 | `--llm-router-timeout`    | `10`                    | Per-request timeout (s)                          |
 
 > Produces `<stem>_augmented.jsonl` and `<stem>_augmented-train.jsonl` (no XLSX).
+
+---
+
+## `llm-router completion` — Shell Tab-Completion (bash / zsh)
+
+Generates a tab-completion script (commands, sub-commands and long options)
+from the live CLI tree.
+
+| Sub-command | Description                                       |
+|-------------|---------------------------------------------------|
+| `bash`      | Print a bash completion script to stdout          |
+| `zsh`       | Print a zsh completion script to stdout           |
+
+Manual installation:
+
+```bash
+eval "$(llm-router completion bash)"        # once per shell
+# or permanently:
+source <(llm-router completion zsh)
+```
+
+`--install` writes the script straight into the default rc file for the shell
+(`~/.bashrc` for bash, `~/.zshrc` for zsh; created if missing):
+
+```bash
+llm-router completion bash --install
+llm-router completion zsh --install
+```
+
+Re-running `--install` is idempotent: the script is wrapped in
+`# >>> llm-router completion (<shell>) >>>` markers and any previous block is
+replaced in place, so no duplicates accumulate in your rc file.
+
+| Flag        | Default             | Description                                  |
+|-------------|---------------------|----------------------------------------------|
+| `--install` | `false`             | Append to the default rc file instead of printing |
+| `--file`    | `~/.bashrc` / `~/.zshrc` | Target rc file for `--install`          |
 
 ---
 
