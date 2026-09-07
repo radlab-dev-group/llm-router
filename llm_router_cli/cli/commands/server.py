@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any, ClassVar, Dict, IO, List, Optional, Tuple
 
 from llm_router_cli.cli.commands.base import BaseCommand
+from llm_router_lib.core.constants import ENV_PREFIX
 
 #: Per-user state directory (same home location as ``memory-keys.json``).
 _STATE_DIR = Path.home() / ".llm-router"
@@ -145,6 +146,23 @@ def apply_default_env() -> None:
     """Apply :data:`DEFAULT_ENV` without overriding variables already set."""
     for key, value in DEFAULT_ENV.items():
         os.environ.setdefault(key, value)
+
+
+def collect_env() -> Dict[str, str]:
+    """
+    Snapshot every ``LLM_ROUTER_*`` variable currently set in the environment.
+
+    Uses the shared :data:`ENV_PREFIX` from ``llm_router_lib.core.constants``
+    so the run record always captures the full configuration the server was
+    launched with (defaults + shell env + CLI overrides), not just the flags.
+    Keys are returned sorted for stable, diffable records.
+    """
+    prefix = ENV_PREFIX
+    return {
+        key: value
+        for key, value in sorted(os.environ.items())
+        if key.startswith(prefix)
+    }
 
 
 # -------------------------------------------------------------------------- #
@@ -533,8 +551,20 @@ class ServerCommand(BaseCommand):
         log_file: Path,
         cmd: List[str],
         args: argparse.Namespace,
+        env: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
-        """Build the JSON record describing how the server was started."""
+        """Build the JSON record describing how the server was started.
+
+        ``env`` holds *every* ``LLM_ROUTER_*`` variable in effect when the
+        server was started (defaults + shell env + CLI overrides), i.e. the
+        full configuration it runs with. ``env_overrides`` keeps just the
+        CLI-flag-provided subset (see :meth:`build_env_overrides`).
+
+        If *env* is ``None`` a live snapshot is taken via
+        :func:`collect_env`; callers may pass an explicit mapping (e.g. tests).
+        """
+        if env is None:
+            env = collect_env()
         return {
             "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "executable": sys.executable,
@@ -542,6 +572,7 @@ class ServerCommand(BaseCommand):
             "server": os.environ.get("LLM_ROUTER_SERVER_TYPE", "gunicorn"),
             "log_file": str(log_file),
             "pid_file": str(pid_file),
+            "env": env,
             "env_overrides": cls.build_env_overrides(args),
         }
 
@@ -733,12 +764,17 @@ class ServerCommand(BaseCommand):
             lines.append(
                 f"  command:  {' '.join(str(part) for part in record['command'])}"
             )
-        overrides = record.get("env_overrides") or {}
-        if overrides:
-            lines.append("  overrides:")
-            lines.extend(f"    {key}={value}" for key, value in overrides.items())
+        # Full LLM_ROUTER_* env the server was started with (all vars, not
+        # just the CLI overrides). Old records predate ``env`` and only have
+        # ``env_overrides``, so fall back to that for display purposes.
+        env = record.get("env")
+        if env is None:
+            env = record.get("env_overrides")
+        if env:
+            lines.append("  env:")
+            lines.extend(f"    {key}={value}" for key, value in env.items())
         elif record:
-            lines.append("  overrides: (none — using shell env / script defaults)")
+            lines.append("  env: (none recorded)")
         print("\n".join(lines))
         return 0
 

@@ -535,11 +535,19 @@ def test_build_run_record_captures_params():
     import argparse
 
     args = argparse.Namespace(models_config="/tmp/custom.json", debug=1, auth=1)
+    full_env = {
+        "LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json",
+        "LLM_ROUTER_IN_DEBUG": "1",
+        "LLM_ROUTER_AUTH_ENABLED": "true",
+        "LLM_ROUTER_SERVER_TYPE": "gunicorn",
+        "LLM_ROUTER_LOG_LEVEL": "INFO",
+    }
     record = ServerCommand.build_run_record(
         Path("/p/server.pid"),
         Path("/p/server.log"),
         ["python3", "-m", "llm_router_api.rest_api", "--port", "8080"],
         args,
+        env=full_env,
     )
     assert record["command"] == [
         "python3",
@@ -550,6 +558,8 @@ def test_build_run_record_captures_params():
     ]
     assert record["log_file"] == "/p/server.log"
     assert record["server"] in ("gunicorn", "waitress", "flask")
+    # The full LLM_ROUTER_* env is recorded, not just the CLI overrides.
+    assert record["env"] == full_env
     assert record["env_overrides"] == {
         "LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json",
         "LLM_ROUTER_IN_DEBUG": "1",
@@ -557,7 +567,37 @@ def test_build_run_record_captures_params():
     }
 
 
+def test_collect_env_snapshots_all_prefixed_vars(monkeypatch):
+    from llm_router_lib.core.constants import ENV_PREFIX
+
+    monkeypatch.delenv("LLM_ROUTER_UNSET", raising=False)
+    # A non-prefixed var must be excluded from the snapshot.
+    monkeypatch.setenv("UNRELATED_VAR", "x")
+    monkeypatch.setenv(f"{ENV_PREFIX}ALPHA", "1")
+    monkeypatch.setenv(f"{ENV_PREFIX}BETA", "2")
+
+    env = server_module.collect_env()
+    assert env[f"{ENV_PREFIX}ALPHA"] == "1"
+    assert env[f"{ENV_PREFIX}BETA"] == "2"
+    assert "UNRELATED_VAR" not in env
+    assert all(key.startswith(ENV_PREFIX) for key in env)
+    # Sorted for stable, diffable records.
+    assert list(env) == sorted(env)
+
+
+def test_collect_env_uses_shared_prefix():
+    """The snapshot must be keyed off the library's ENV_PREFIX constant."""
+    from llm_router_lib.core.constants import ENV_PREFIX
+
+    assert ENV_PREFIX == "LLM_ROUTER_"
+
+
 def test_status_shows_run_record(pid_file, tmp_path, capsys):
+    env_snapshot = {
+        "LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json",
+        "LLM_ROUTER_SERVER_TYPE": "gunicorn",
+        "LLM_ROUTER_LOG_LEVEL": "INFO",
+    }
     server_module.write_run_file(
         server_module.run_file_for(pid_file),
         {
@@ -571,6 +611,8 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
                 "8080",
             ],
             "log_file": str(tmp_path / "srv.log"),
+            # Full snapshot is present; env_overrides is the CLI subset.
+            "env": env_snapshot,
             "env_overrides": {"LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json"},
         },
     )
@@ -582,8 +624,36 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
         out = capsys.readouterr().out
         assert "gunicorn" in out
         assert "--port 8080" in out
+        assert "  env:" in out
         assert "LLM_ROUTER_MODELS_CONFIG=/tmp/custom.json" in out
+        assert "LLM_ROUTER_LOG_LEVEL=INFO" in out
         assert str(tmp_path / "srv.log") in out
+    finally:
+        _kill(pid)
+
+
+def test_status_falls_back_to_env_overrides_for_old_records(
+    pid_file, tmp_path, capsys
+):
+    # Records written before the ``env`` field only carry ``env_overrides``.
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "started_at": "2026-01-01T00:00:00",
+            "server": "gunicorn",
+            "command": ["python3", "-m", "llm_router_api.rest_api"],
+            "log_file": str(tmp_path / "srv.log"),
+            "env_overrides": {"LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json"},
+        },
+    )
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+
+    try:
+        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        out = capsys.readouterr().out
+        assert "  env:" in out
+        assert "LLM_ROUTER_MODELS_CONFIG=/tmp/custom.json" in out
     finally:
         _kill(pid)
 
