@@ -23,22 +23,41 @@ def _script(shell: str, capsys) -> str:
 def test_completion_bash_lists_commands_subcommands_options(capsys):
     out = _script("bash", capsys)
     assert "complete -F _llm-router llm-router" in out
-    assert 'subs="auth anonymizer config completion server util"' in out
-    assert "start stop reload status log" in out
-    assert "bash zsh" in out
+    # Top-level commands.
+    assert "'auth' 'anonymizer' 'config' 'completion' 'server' 'util'" in out
+    # Second-level subcommands (server, auth).
+    assert "subs=( 'start' 'stop' 'reload' 'status' 'log' )" in out
+    assert "subs=( 'key' 'policy' 'rate-limit' )" in out
+    # Third-level subcommands are present as full paths in the tree.
+    assert "'auth key generate'" in out
+    assert "'auth key'" in out
+    assert "'anonymizer run'" in out
+    assert "'config discover'" in out
+    # Options at every level, including deep ones.
     assert "--redis-host" in out
     assert "--no-follow" in out
     assert "--models-config" in out
     assert "--lb-strategy" in out
+    assert "--show-env" in out
+    assert "'--auth-redis-host'" in out  # auth key * options (level 3)
+    assert "'--preset'" in out  # auth rate-limit apply (level 3)
+    assert "'--algorithm'" in out  # anonymizer run (level 2)
+    assert "'--output-config-file'" in out  # config discover/merge (level 2)
+    assert "'--install'" in out  # completion bash/zsh (level 2)
 
 
 def test_completion_zsh_lists_commands_subcommands_options(capsys):
     out = _script("zsh", capsys)
     assert out.splitlines()[0] == "#compdef llm-router"
-    assert "auth anonymizer config completion server util" in out
+    assert "'auth' 'anonymizer' 'config' 'completion' 'server' 'util'" in out
+    assert "'auth key generate'" in out
+    assert "'auth key'" in out
     assert "'start'" in out
     assert "'--redis-host'" in out
     assert "'--no-follow'" in out
+    assert "'--auth-redis-host'" in out
+    assert "'--preset'" in out
+    assert "'--algorithm'" in out
     assert "compdef _llm-router llm-router" in out
 
 
@@ -63,10 +82,25 @@ def test_command_tree_matches_registered_commands():
         "server",
         "util",
     }
-    assert set(tree["server"]) == {"start", "stop", "reload", "status", "log"}
-    assert "--force" in tree["server"]["stop"]
-    assert "--color" in tree["server"]["log"]
-    assert "--models-config" in tree["server"]["start"]
+    # Second level.
+    assert set(tree["server"]["subs"]) == {"start", "stop", "reload", "status", "log"}
+    assert "--force" in tree["server"]["subs"]["stop"]["options"]
+    assert "--color" in tree["server"]["subs"]["log"]["options"]
+    assert "--models-config" in tree["server"]["subs"]["start"]["options"]
+    # Third level: auth key *.
+    assert set(tree["auth"]["subs"]["key"]["subs"]) == {
+        "generate",
+        "list",
+        "delete",
+        "disable",
+        "enable",
+        "rotate",
+    }
+    assert "--policy" in tree["auth"]["subs"]["key"]["subs"]["generate"]["options"]
+    assert "--json" in tree["auth"]["subs"]["key"]["subs"]["list"]["options"]
+    # Second level with no third level.
+    assert tree["anonymizer"]["subs"]["run"]["subs"] == {}
+    assert "--algorithm" in tree["anonymizer"]["subs"]["run"]["options"]
 
 
 # --------------------------------------------------------------------------- #
