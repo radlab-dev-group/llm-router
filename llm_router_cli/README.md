@@ -549,4 +549,4 @@ sk-llmr-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
 
 - **[Authentication docs](../llm_router_api/docs/AUTHENTICATION.md)** — full auth architecture, seed files, deployment
   options
-- **[Rate Limiting docs
+- **[Rate Limiting docs](../llm_router_api/docs/RATE_LIMITING.md)** — sliding-window algorithm, monitoring, presets
