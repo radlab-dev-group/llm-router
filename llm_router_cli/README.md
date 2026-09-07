@@ -19,13 +19,14 @@ llm-router --version
 
 ## Top-Level Commands
 
-| Command          | Description                                                              |
-|------------------|--------------------------------------------------------------------------|
-| `auth`           | Manage API keys, policies, and rate limiting                             |
-| `config`         | Auto-discover local providers & merge configs                            |
-| `anonymizer run` | Anonymize text using a selectable algorithm                              |
-| `util`           | Utility apps: `translate`, `genai-classifier`, `genai-data-augmentation` |
-| `completion`     | Generate / install shell tab-completion (`bash` / `zsh`)                 |
+| Command          | Description                                                                |
+|------------------|----------------------------------------------------------------------------|
+| `auth`           | Manage API keys, policies, and rate limiting                               |
+| `config`         | Auto-discover local providers & merge configs                              |
+| `anonymizer run` | Anonymize text using a selectable algorithm                                |
+| `util`           | Utility apps: `translate`, `genai-classifier`, `genai-data-augmentation`   |
+| `server`         | Manage the REST API server: `start` / `stop` / `reload` / `status` / `log` |
+| `completion`     | Generate / install shell tab-completion (`bash` / `zsh`)                   |
 
 ---
 
@@ -395,15 +396,70 @@ llm-router util genai-data-augmentation \
 
 ---
 
+## `llm-router server` — REST API Server Lifecycle
+
+Start / stop / reload the REST API server (a managed daemon with a PID file), inspect its status, or follow its log.
+Unless your environment already sets them, `start` applies the same `LLM_ROUTER_*` defaults as
+`run-rest-api-gunicorn.sh`.
+
+| Sub-command | Description                                                      |
+|-------------|------------------------------------------------------------------|
+| `start`     | Start in the background (daemon) or `--foreground` for debugging |
+| `stop`      | SIGTERM (with a grace period), or SIGKILL with `--force`         |
+| `reload`    | Gracefully reload the running Gunicorn master (SIGHUP)           |
+| `status`    | Show whether it is running, with a colored status card           |
+| `log`       | Follow the server log (tail -f style, colorized levels)          |
+
+`start` accepts the usual tuning flags (`--host`, `--port`, `--server
+{gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--debug`,
+`--auth`, Redis / auth-Redis overrides, …). Every `LLM_ROUTER_*` variable in effect at launch — defaults + shell env +
+CLI overrides — is snapshotted into the run record (`<pid-file>.run`) so `status` can show exactly how the server was
+started.
+
+### `status` — colored status card
+
+`status` renders a compact, color-coded card instead of a flat list:
+
+```text
+  ✓ All good
+  ●  Server is running (pid 7400, gunicorn, port 8080)
+
+  Details
+    PID       7400
+    Log       ~/.llm-router/server.log
+    Started   2026-09-07T23:55:00+0200
+    Server    gunicorn
+    Command   /usr/bin/python3 -m llm_router_api.rest_api
+
+  Environment (5)
+    LLM_ROUTER_BALANCE_STRATEGY  weighted
+    LLM_ROUTER_REDIS_PASSWORD    ****
+    LLM_ROUTER_SERVER_PORT       8080
+```
+
+When the server is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
+
+Security: environment values whose key names a credential (`*PASSWORD*`,
+`*SECRET*`, `*TOKEN*`, `*API_KEY*`, `*CREDENTIAL*`) are **masked** as `****`
+so secrets are never echoed to the terminal.
+
+| Flag         | Default                    | Description                                              |
+|--------------|----------------------------|----------------------------------------------------------|
+| `--color`    | `auto`                     | Colorize output — `auto` (TTY only) / `always` / `never` |
+| `--no-env`   | `false`                    | Hide the `Environment` section for a compact view        |
+| `--pid-file` | `~/.llm-router/server.pid` | PID file location                                        |
+
+---
+
 ## `llm-router completion` — Shell Tab-Completion (bash / zsh)
 
 Generates a tab-completion script (commands, sub-commands and long options)
 from the live CLI tree.
 
-| Sub-command | Description                                       |
-|-------------|---------------------------------------------------|
-| `bash`      | Print a bash completion script to stdout          |
-| `zsh`       | Print a zsh completion script to stdout           |
+| Sub-command | Description                              |
+|-------------|------------------------------------------|
+| `bash`      | Print a bash completion script to stdout |
+| `zsh`       | Print a zsh completion script to stdout  |
 
 Manual installation:
 
@@ -413,8 +469,8 @@ eval "$(llm-router completion bash)"        # once per shell
 source <(llm-router completion zsh)
 ```
 
-`--install` writes the script straight into the default rc file for the shell
-(`~/.bashrc` for bash, `~/.zshrc` for zsh; created if missing):
+`--install` writes the script straight into the default rc file for the shell (`~/.bashrc` for bash, `~/.zshrc` for zsh;
+created if missing):
 
 ```bash
 llm-router completion bash --install
@@ -422,13 +478,13 @@ llm-router completion zsh --install
 ```
 
 Re-running `--install` is idempotent: the script is wrapped in
-`# >>> llm-router completion (<shell>) >>>` markers and any previous block is
-replaced in place, so no duplicates accumulate in your rc file.
+`# >>> llm-router completion (<shell>) >>>` markers and any previous block is replaced in place, so no duplicates
+accumulate in your rc file.
 
-| Flag        | Default             | Description                                  |
-|-------------|---------------------|----------------------------------------------|
-| `--install` | `false`             | Append to the default rc file instead of printing |
-| `--file`    | `~/.bashrc` / `~/.zshrc` | Target rc file for `--install`          |
+| Flag        | Default                  | Description                                       |
+|-------------|--------------------------|---------------------------------------------------|
+| `--install` | `false`                  | Append to the default rc file instead of printing |
+| `--file`    | `~/.bashrc` / `~/.zshrc` | Target rc file for `--install`                    |
 
 ---
 
@@ -445,20 +501,20 @@ file. The router reads this file on startup and after each request, so changes a
 
 ### Seed File Format (ApiKeyRecord fields)
 
-| Field             | Type          | Description                                                     |
-|-------------------|---------------|-----------------------------------------------------------------|
-| `key_id`          | `str`         | Unique identifier for this key                                  |
-| `key_plain`       | `str`         | The plaintext API key                                           |
+| Field             | Type          | Description                                                                 |
+|-------------------|---------------|-----------------------------------------------------------------------------|
+| `key_id`          | `str`         | Unique identifier for this key                                              |
+| `key_plain`       | `str`         | The plaintext API key                                                       |
 | `key_prefix`      | `str`         | First 12 characters of the plaintext (shows the full `sk-llmr-live` prefix) |
-| `policy_name`     | `str`         | Default policy name                                             |
-| `policy_override` | `dict`        | Inline override (e.g. `{"rate_limit": 300}`)                    |
-| `is_active`       | `bool`        | Whether the key is currently valid                              |
-| `expires_at`      | `float\|null` | Expiry timestamp                                                |
-| `created_at`      | `float`       | Unix creation timestamp                                         |
-| `last_used_at`    | `float\|null` | Last successful authentication time                             |
-| `rotate_at`       | `float\|null` | Scheduled rotation time                                         |
-| `grace_until`     | `float\|null` | Key remains valid until this time after rotation                |
-| `metadata`        | `dict`        | Arbitrary metadata                                              |
+| `policy_name`     | `str`         | Default policy name                                                         |
+| `policy_override` | `dict`        | Inline override (e.g. `{"rate_limit": 300}`)                                |
+| `is_active`       | `bool`        | Whether the key is currently valid                                          |
+| `expires_at`      | `float\|null` | Expiry timestamp                                                            |
+| `created_at`      | `float`       | Unix creation timestamp                                                     |
+| `last_used_at`    | `float\|null` | Last successful authentication time                                         |
+| `rotate_at`       | `float\|null` | Scheduled rotation time                                                     |
+| `grace_until`     | `float\|null` | Key remains valid until this time after rotation                            |
+| `metadata`        | `dict`        | Arbitrary metadata                                                          |
 
 ---
 
