@@ -832,6 +832,7 @@ class ServerCommand(BaseCommand):
     @classmethod
     def _detail_rows(cls, pid: int, pid_file: Path, record: Dict[str, Any]):
         """Key/value rows for the Details section (in display order)."""
+        env = cls._env_from_record(record)
         rows: List[Tuple[str, str]] = [
             ("PID", str(pid)),
             ("Log", str(record.get("log_file", DEFAULT_LOG_FILE))),
@@ -841,6 +842,12 @@ class ServerCommand(BaseCommand):
             rows.append(("Started", str(record["started_at"])))
         if record.get("server"):
             rows.append(("Server", str(record["server"])))
+        if env.get("LLM_ROUTER_SERVER_HOST"):
+            rows.append(("Host", str(env["LLM_ROUTER_SERVER_HOST"])))
+        if env.get("LLM_ROUTER_SERVER_PORT"):
+            rows.append(("Port", str(env["LLM_ROUTER_SERVER_PORT"])))
+        if env.get("LLM_ROUTER_MODELS_CONFIG"):
+            rows.append(("Models config", str(env["LLM_ROUTER_MODELS_CONFIG"])))
         if record.get("command"):
             rows.append(
                 ("Command", " ".join(str(part) for part in record["command"]))

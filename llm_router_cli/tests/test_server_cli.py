@@ -23,6 +23,9 @@ from llm_router_cli.cli.commands import server as server_module
 from llm_router_cli.cli.commands.server import (
     DEFAULT_ENV,
     ServerCommand,
+    _is_sensitive,
+    _paint,
+    _resolve_color,
     apply_default_env,
     colorize_line,
     get_alive_pid,
@@ -502,14 +505,14 @@ def test_status_reports_running_server(pid_file, tmp_path, capsys):
 
 def test_status_reports_not_running(pid_file, capsys):
     assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 1
-    assert "NOT running" in capsys.readouterr().out
+    assert "not running" in capsys.readouterr().out.lower()
 
 
 def test_status_cleans_stale_pid_file(pid_file, capsys):
     write_pid_file(pid_file, _spawn_dead_pid())
     assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 1
     assert not pid_file.exists()
-    assert "NOT running" in capsys.readouterr().out
+    assert "not running" in capsys.readouterr().out.lower()
 
 
 # ---- run record (``<pidfile>.run`` launch parameters) -----------------------
@@ -597,6 +600,8 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
         "LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json",
         "LLM_ROUTER_SERVER_TYPE": "gunicorn",
         "LLM_ROUTER_LOG_LEVEL": "INFO",
+        "LLM_ROUTER_SERVER_HOST": "0.0.0.0",
+        "LLM_ROUTER_SERVER_PORT": "8080",
     }
     server_module.write_run_file(
         server_module.run_file_for(pid_file),
@@ -622,11 +627,19 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
     try:
         assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
         out = capsys.readouterr().out
+        assert "All good" in out
         assert "gunicorn" in out
         assert "--port 8080" in out
-        assert "  env:" in out
-        assert "LLM_ROUTER_MODELS_CONFIG=/tmp/custom.json" in out
-        assert "LLM_ROUTER_LOG_LEVEL=INFO" in out
+        # Host / port / models-config are surfaced in the Details section.
+        assert "Host" in out
+        assert "Port" in out
+        assert "Models config" in out
+        assert "0.0.0.0" in out
+        assert "8080" in out
+        assert "Environment" in out
+        assert "LLM_ROUTER_MODELS_CONFIG" in out
+        assert "/tmp/custom.json" in out
+        assert "LLM_ROUTER_LOG_LEVEL" in out
         assert str(tmp_path / "srv.log") in out
     finally:
         _kill(pid)
@@ -652,8 +665,9 @@ def test_status_falls_back_to_env_overrides_for_old_records(
     try:
         assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
         out = capsys.readouterr().out
-        assert "  env:" in out
-        assert "LLM_ROUTER_MODELS_CONFIG=/tmp/custom.json" in out
+        assert "Environment" in out
+        assert "LLM_ROUTER_MODELS_CONFIG" in out
+        assert "/tmp/custom.json" in out
     finally:
         _kill(pid)
 
@@ -801,3 +815,142 @@ def test_start_refuses_when_server_already_running(pid_file, tmp_path, capsys):
         assert "server stop" in err
     finally:
         _kill(pid)
+
+
+# ---- status: colored card rendering ----------------------------------------
+
+
+def test_status_color_always_emits_ansi(pid_file, tmp_path, capsys):
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+    try:
+        assert (
+            ServerCommand.run(
+                ["status", "--pid-file", str(pid_file), "--color", "always"]
+            )
+            == 0
+        )
+        out = capsys.readouterr().out
+        assert "\033[1;32m" in out  # bold green "All good" header
+        assert "\033[32m" in out  # green status dot
+        assert "\033[0m" in out  # reset
+    finally:
+        _kill(pid)
+
+
+def test_status_color_never_has_no_ansi(pid_file, tmp_path, capsys):
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+    try:
+        assert (
+            ServerCommand.run(
+                ["status", "--pid-file", str(pid_file), "--color", "never"]
+            )
+            == 0
+        )
+        out = capsys.readouterr().out
+        assert "\033[" not in out
+        assert "All good" in out
+    finally:
+        _kill(pid)
+
+
+def test_status_down_state_color_always(pid_file, capsys):
+    # No live PID -> red "Not running" card, still colorized on demand.
+    assert ServerCommand.run(["status", "--pid-file", str(pid_file), "--color", "always"]) == 1
+    out = capsys.readouterr().out
+    assert "not running" in out.lower()
+    assert "\033[1;31m" in out  # bold red header
+    assert "\033[31m" in out  # red status dot
+
+
+def test_status_masks_sensitive_env(pid_file, tmp_path, capsys):
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "log_file": str(tmp_path / "srv.log"),
+            "env": {
+                "LLM_ROUTER_REDIS_PASSWORD": "hunter2-secret",
+                "LLM_ROUTER_AUTH_VAULT_SECRET_ID": "vault-secret",
+                "LLM_ROUTER_BALANCE_STRATEGY": "weighted",
+            },
+        },
+    )
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+    try:
+        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        out = capsys.readouterr().out
+        # Non-secret value is shown verbatim.
+        assert "weighted" in out
+        # Secret values are masked, never leaked.
+        assert "hunter2-secret" not in out
+        assert "vault-secret" not in out
+        # The sensitive keys are present but their values are the mask token.
+        assert "LLM_ROUTER_REDIS_PASSWORD" in out
+        line = next(l for l in out.splitlines() if "LLM_ROUTER_REDIS_PASSWORD" in l)
+        assert "****" in line
+    finally:
+        _kill(pid)
+
+
+def test_status_no_env_hides_environment_section(pid_file, tmp_path, capsys):
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "log_file": str(tmp_path / "srv.log"),
+            "server": "gunicorn",
+            # ``LLM_ROUTER_LOG_LEVEL`` is *only* in the Environment section;
+            # ``LLM_ROUTER_MODELS_CONFIG`` is also a first-class Details field.
+            "env": {
+                "LLM_ROUTER_MODELS_CONFIG": "/tmp/custom.json",
+                "LLM_ROUTER_LOG_LEVEL": "TRACE",
+            },
+        },
+    )
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+    try:
+        assert (
+            ServerCommand.run(
+                ["status", "--pid-file", str(pid_file), "--no-env"]
+            )
+            == 0
+        )
+        out = capsys.readouterr().out
+        # Details section is kept (incl. models-config), Environment is dropped.
+        assert "Details" in out
+        assert "Environment" not in out
+        assert "Models config" in out  # first-class Details field still shown
+        assert "/tmp/custom.json" in out
+        assert "TRACE" not in out  # Environment-only key is hidden
+    finally:
+        _kill(pid)
+
+
+# ---- status: rendering helpers (unit) --------------------------------------
+
+
+def test_is_sensitive_matches_credentials_only():
+    assert _is_sensitive("LLM_ROUTER_REDIS_PASSWORD")
+    assert _is_sensitive("LLM_ROUTER_AUTH_VAULT_SECRET_ID")
+    assert _is_sensitive("LLM_ROUTER_AUTH_VAULT_ROLE_ID") is False  # not a secret name
+    assert _is_sensitive("LLM_ROUTER_API_KEY")
+    assert _is_sensitive("LLM_ROUTER_BALANCE_STRATEGY") is False
+    # Key-prefix/length config is NOT a credential.
+    assert _is_sensitive("LLM_ROUTER_AUTH_KEY_PREFIX") is False
+    assert _is_sensitive("LLM_ROUTER_AUTH_KEY_LENGTH") is False
+
+
+def test_paint_toggles_ansi():
+    assert _paint(False, "32", "hi") == "hi"
+    assert _paint(True, "32", "hi") == "\033[32mhi\033[0m"
+
+
+def test_resolve_color_modes(monkeypatch):
+    assert _resolve_color("always") is True
+    assert _resolve_color("never") is False
+    monkeypatch.setattr(server_module.sys.stdout, "isatty", lambda: True)
+    assert _resolve_color("auto") is True
+    monkeypatch.setattr(server_module.sys.stdout, "isatty", lambda: False)
+    assert _resolve_color("auto") is False

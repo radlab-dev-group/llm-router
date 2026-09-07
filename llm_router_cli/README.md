@@ -425,11 +425,14 @@ started.
   ●  Server is running (pid 7400, gunicorn, port 8080)
 
   Details
-    PID       7400
-    Log       ~/.llm-router/server.log
-    Started   2026-09-07T23:55:00+0200
-    Server    gunicorn
-    Command   /usr/bin/python3 -m llm_router_api.rest_api
+    PID            7400
+    Log            ~/.llm-router/server.log
+    Started        2026-09-07T23:55:00+0200
+    Server         gunicorn
+    Host           0.0.0.0
+    Port           8080
+    Models config  resources/configs/models-config.json
+    Command        /usr/bin/python3 -m llm_router_api.rest_api
 
   Environment (5)
     LLM_ROUTER_BALANCE_STRATEGY  weighted
