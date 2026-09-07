@@ -42,137 +42,162 @@ def _long_options(parser: argparse.ArgumentParser) -> List[str]:
 
 def _command_tree(
     parser: argparse.ArgumentParser,
-) -> Dict[str, Dict[str, List[str]]]:
+) -> Dict[str, Dict[str, Any]]:
     """
-    Extract ``top command -> sub command -> long options`` from *parser*.
+    Recursively extract the command tree from *parser*.
 
-    Commands without sub-commands map to ``{"" : [opts]}`` so rendering
-    stays uniform.
+    Every node maps ``name -> {"options": [...], "subs": {name: node}}``
+    so any nesting depth (e.g. ``auth key generate``) is captured.
     """
-    tree: Dict[str, Dict[str, List[str]]] = {}
+    tree: Dict[str, Dict[str, Any]] = {}
     for action in parser._actions:
         if not isinstance(action, argparse._SubParsersAction):
             continue
         for name, sub in action.choices.items():
             if name == "help" or sub is None:
                 continue
-            subs: Dict[str, List[str]] = {}
-            for inner in sub._actions:
-                if isinstance(inner, argparse._SubParsersAction):
-                    for inner_name, inner_parser in inner.choices.items():
-                        if inner_name == "help" or inner_parser is None:
-                            continue
-                        subs[inner_name] = _long_options(inner_parser)
-            if not subs:  # command without sub-commands: its own options
-                subs = {"": _long_options(sub)}
-            tree[name] = subs
+            tree[name] = {
+                "options": _long_options(sub),
+                "subs": _command_tree(sub),
+            }
     return tree
 
 
-def _join_quoted_free(items: List[str]) -> str:
-    """Space-join shell-safe words (no quoting needed for names/options)."""
-    return " ".join(items)
+def _flatten_paths(
+    tree: Dict[str, Dict[str, Any]],
+) -> Dict[str, Tuple[List[str], List[str]]]:
+    """
+    Flatten *tree* into ``"cmd sub ..." -> (options, subcommands)``.
+
+    Ordered by path depth (parents before children) so the rendered case
+    statements read top-down.
+    """
+    paths: Dict[str, Tuple[List[str], List[str]]] = {}
+
+    def rec(node: Dict[str, Any], prefix: Tuple[str, ...]) -> None:
+        for name, info in node.items():
+            p = prefix + (name,)
+            paths[" ".join(p)] = (list(info["options"]), list(info["subs"]))
+            rec(info["subs"], p)
+
+    rec(tree, ())
+    return {
+        p: v
+        for p, v in sorted(paths.items(), key=lambda kv: (-len(kv[0].split()), kv[0]))
+    }
 
 
-def _render_bash(tree: Dict[str, Dict[str, List[str]]]) -> str:
-    """Render a bash completion function from *tree*."""
+def _path_case_lines(
+    paths: Dict[str, Tuple[List[str], List[str]]], indent: str
+) -> List[str]:
+    """Render the shared ``case "${matched}"`` clauses for one shell."""
+    lines: List[str] = [
+        indent + 'case "${matched}" in',
+    ]
+    for p, (opts, subs) in paths.items():
+        lines.append(f'{indent}    "{p}")')
+        if opts:
+            lines.append(
+                indent
+                + "        opts=( {} )".format(" ".join(f"'{o}'" for o in opts))
+            )
+        if subs:
+            lines.append(
+                indent
+                + "        subs=( {} )".format(" ".join(f"'{s}'" for s in subs))
+            )
+        lines.append(f"{indent}    ;;")
+    lines.append(f"{indent}    *)")
+    lines.append(f"{indent}        ;;")
+    lines.append(f"{indent}    esac")
+    return lines
+
+
+def _render_bash(tree: Dict[str, Dict[str, Any]]) -> str:
+    """Render a bash completion function from *tree* (any nesting depth)."""
+    paths = _flatten_paths(tree)
     lines: List[str] = [
         "# Tab completion for llm-router (bash).",
         '# Install: eval "$(llm-router completion bash)"   # or append to ~/.bashrc',
+        "_LR_PATHS=( {} )".format(" ".join(f"'{p}'" for p in paths)),
+        "_LR_ROOT=( {} )".format(" ".join(f"'{n}'" for n in tree)),
         "_llm-router() {",
         '    local cur="${COMP_WORDS[COMP_CWORD]}"',
-        '    local cmd="${COMP_WORDS[1]:-}"',
-        '    local subs="{}"'.format(" ".join(tree)),
-        "    if [[ ${COMP_CWORD} -eq 1 ]]; then",
-        '        COMPREPLY=($(compgen -W "$subs" -- "$cur"))',
-        "        return 0",
-        "    fi",
-        '    local name_subs="" opts=""',
-        '    case "$cmd" in',
+        "    local i p typed matched",
+        "    local -a c=() cands=() opts=() subs=()",
+        "    i=1",
+        "    while (( i < COMP_CWORD )); do",
+        '        c+=("${COMP_WORDS[i]}")',
+        "        i=$(( i + 1 ))",
+        "    done",
+        '    typed="${c[*]}"',
+        '    typed="${typed%"${typed##*[! ]}"}"',
+        '    if [[ -z "${typed}" ]]; then',
+        "        cands=( ${_LR_ROOT[@]} )",
+        "    else",
+        "        for p in \"${_LR_PATHS[@]}\"; do",
+        '            if [[ "${typed}" == "${p}" || "${typed}" == "${p} "* ]]; then',
+        '                matched="${p}"',
+        "                break",
+        "            fi",
+        "        done",
     ]
-    for name, subs in tree.items():
-        lines.append(f"        {name})")
-        lines.append(f'            name_subs="{_join_quoted_free(subs)}"')
-        lines.append("            if [[ ${COMP_CWORD} -eq 2 ]]; then")
-        lines.append(
-            '                COMPREPLY=($(compgen -W "$name_subs" -- "$cur"))'
-        )
-        lines.append("                return 0")
-        lines.append("            fi")
-        lines.append('            local sub="${COMP_WORDS[2]:-}"')
-        lines.append('            case "$sub" in')
-        for sub_name, opts in subs.items():
-            if sub_name:
-                lines.append(f"                {sub_name})")
-                lines.append(f'                    opts="{_join_quoted_free(opts)}"')
-                lines.append("                    ;;")
-        lines.append("            esac")
-        lines.append("            ;;")
-    lines.append("        *)")
-    lines.append("            ;;")
-    lines.append("    esac")
-    lines.append('    if [[ "$cur" == -* && -n "$opts" ]]; then')
-    lines.append('        COMPREPLY=($(compgen -W "$opts" -- "$cur"))')
-    lines.append("    fi")
-    lines.append("    return 0")
-    lines.append("}")
-    lines.append("")
-    lines.append("complete -F _llm-router llm-router")
+    lines.extend(_path_case_lines(paths, "        "))
+    lines += [
+        "        cands=( ${subs[@]} )",
+        '        if [[ -n "${matched}" && "${typed}" == "${matched}" ]]; then',
+        "            cands+=( ${opts[@]} )",
+        "        fi",
+        "    fi",
+        '    COMPREPLY=( $(compgen -W "${cands[*]}" -- "${cur}" || true) )',
+        "    return 0",
+        "}",
+        "",
+        "complete -F _llm-router llm-router",
+    ]
     return "\n".join(lines)
 
 
-def _render_zsh(tree: Dict[str, Dict[str, List[str]]]) -> str:
-    """Render a zsh completion function from *tree*."""
+def _render_zsh(tree: Dict[str, Dict[str, Any]]) -> str:
+    """Render a zsh completion function from *tree* (any nesting depth)."""
+    paths = _flatten_paths(tree)
     lines: List[str] = [
         "#compdef llm-router",
         "# Tab completion for llm-router (zsh).",
         "# Install: source <(llm-router completion zsh)   # or append to ~/.zshrc",
+        "_LR_PATHS=( {} )".format(" ".join(f"'{p}'" for p in paths)),
+        "_LR_ROOT=( {} )".format(" ".join(f"'{n}'" for n in tree)),
         "_llm-router() {",
-        '    local prev="${words[CURRENT-1]:-}"',
-        '    if [[ "$prev" == --* ]]; then',
-        "        return 0",
-        "    fi",
-        '    local cmd="${words[2]:-}"',
-        '    if [[ -z "$cmd" ]]; then',
-        "        local subs=({})".format(" ".join(tree)),
-        "        compadd -a subs",
-        "        return 0",
-        "    fi",
-        '    case "$cmd" in',
+        "    local typed matched",
+        "    local -a c=() cands=() opts=() subs=()",
+        "    c=( ${words[@]:2:CURRENT-2} )",
+        '    typed="${c[*]}"',
+        '    typed="${typed%"${typed##*[! ]}"}"',
+        '    if [[ -z "${typed}" ]]; then',
+        "        cands=( ${_LR_ROOT[@]} )",
+        "    else",
+        "        for p in ${_LR_PATHS[@]}; do",
+        '            if [[ "${typed}" == "${p}" || "${typed}" == "${p} "* ]]; then',
+        '                matched="${p}"',
+        "                break",
+        "            fi",
+        "        done",
     ]
-    for name, subs in tree.items():
-        lines.append(f"        {name})")
-        sub_names = " ".join(f"'{n}'" for n in subs if n)
-        lines.append(f"        local -a subs=({sub_names})")
-        lines.append('        local sub="${words[3]:-}"')
-        lines.append('        if [[ -z "$sub" || "$sub" == -* ]]; then')
-        lines.append("            compadd -a subs")
-        lines.append("            return 0")
-        lines.append("        fi")
-        lines.append('        case "$sub" in')
-        for sub_name, opts in subs.items():
-            if not sub_name or not opts:
-                continue
-            lines.append(f"            {sub_name})")
-            lines.append(
-                "            local -a opts=( {})".format(
-                    " ".join(f"'{o}'" for o in opts)
-                )
-            )
-            lines.append("            compadd -a opts")
-            lines.append("            ;;")
-        lines.append("        esac")
-        lines.append("        ;;")
-    lines.append("        *)")
-    lines.append("            ;;")
-    lines.append("    esac")
-    lines.append("}")
-    lines.append("")
-    lines.append("# Register when the completion system is available")
-    lines.append("if (( ${+functions[compdef]} )); then")
-    lines.append("    compdef _llm-router llm-router")
-    lines.append("fi")
+    lines.extend(_path_case_lines(paths, "        "))
+    lines += [
+        "        cands=( ${opts[@]} ${subs[@]} )",
+        "    fi",
+        "    if (( ${#cands[@]} > 0 )); then",
+        "        compadd -a cands",
+        "    fi",
+        "}",
+        "",
+        "if (( ${+functions[compdef]} )); then",
+        "    compdef _llm-router llm-router",
+        "fi",
+    ]
     return "\n".join(lines)
+
 
 
 def _begin_marker(shell: str) -> str:

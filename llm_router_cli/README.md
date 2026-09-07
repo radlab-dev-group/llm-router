@@ -3,7 +3,7 @@
 **Package:** `llm-router`
 **Entry points:**
 
-- `llm-router` — main CLI tool (auth, anonymizer, config, util)
+- `llm-router` — main CLI tool (auth, anonymizer, config, util, server, completion)
 
 ---
 
@@ -410,9 +410,11 @@ Unless your environment already sets them, `start` applies the same `LLM_ROUTER_
 | `status`    | Show whether it is running, with a colored status card           |
 | `log`       | Follow the server log (tail -f style, colorized levels)          |
 
-`start` accepts the usual tuning flags (`--host`, `--port`, `--server
-{gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--debug`,
-`--auth`, Redis / auth-Redis overrides, …). Every `LLM_ROUTER_*` variable in effect at launch — defaults + shell env +
+`start` accepts the usual tuning flags (`--foreground`, `--host`, `--port`, `--server
+{gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`,
+`--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
+`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`). Every `LLM_ROUTER_*` variable
+in effect at launch — defaults + shell env +
 CLI overrides — is snapshotted into the run record (`<pid-file>.run`) so `status` can show exactly how the server was
 started.
 
@@ -457,12 +459,35 @@ so secrets are never echoed to the terminal.
 | `--show-env` | `false`                    | Show the `Environment` section (hidden by default)       |
 | `--pid-file` | `~/.llm-router/server.pid` | PID file location                                        |
 
+### `log` — follow the server log
+
+`log` tails the daemon's captured stdout/stderr (the **Console log** file from
+`status`) with colorized log levels:
+
+```bash
+llm-router server log                # last 20 lines, then follow
+llm-router server log --lines 200    # more history
+llm-router server log --no-follow    # one-shot tail, then exit
+```
+
+| Flag         | Default                    | Description                                             |
+|--------------|----------------------------|---------------------------------------------------------|
+| `--log-file` | `~/.llm-router/server.log` | Log file to follow                                      |
+| `--lines`    | `20`                       | Initial lines to show (`0` for none)                    |
+| `--no-follow`| `false`                    | Show the tail and exit (no `-f` style following)        |
+| `--color`    | `auto`                     | Colorize output — `auto` (TTY only) / `always` / `never`|
+
+`stop`, `reload` and `status` additionally accept `--pid-file` (default
+`~/.llm-router/server.pid`), and `stop` accepts `--force` to skip the SIGTERM
+grace period and send SIGKILL.
+
 ---
 
 ## `llm-router completion` — Shell Tab-Completion (bash / zsh)
 
-Generates a tab-completion script (commands, sub-commands and long options)
-from the live CLI tree.
+Generates a tab-completion script from the live CLI tree — commands,
+sub-commands at **every nesting level** (e.g. `auth key generate`,
+`anonymizer run`, `config discover`) and all long options.
 
 | Sub-command | Description                              |
 |-------------|------------------------------------------|
