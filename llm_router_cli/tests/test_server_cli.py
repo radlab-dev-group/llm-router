@@ -297,12 +297,18 @@ def test_start_auth_zero_maps_to_false():
 def test_start_applies_overrides_beating_shell_env(monkeypatch, tmp_path, capsys):
     captured = {}
 
-    def fake_call(cmd, **kwargs):
+    class FakeProc:
+        pid = 4242
+
+        def wait(self):
+            return 0
+
+    def fake_popen(cmd, **kwargs):
         captured["cmd"] = cmd
         captured["env"] = dict(os.environ)
-        return 0
+        return FakeProc()
 
-    monkeypatch.setattr(server_module.subprocess, "call", fake_call)
+    monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
     # Shell env value that the CLI flag must beat.
     monkeypatch.setenv("LLM_ROUTER_DEFAULT_EP_LANGUAGE", "pl")
     monkeypatch.setenv("LLM_ROUTER_BALANCE_STRATEGY", "balanced")
@@ -332,6 +338,71 @@ def test_start_applies_overrides_beating_shell_env(monkeypatch, tmp_path, capsys
     # Mirrored defaults still fill the gaps for the spawned process.
     assert env["LLM_ROUTER_SERVER_TYPE"] == "gunicorn"
     assert "llm_router_api.rest_api" in " ".join(captured["cmd"])
+
+
+def test_start_foreground_writes_and_cleans_pid_file(monkeypatch, tmp_path, capsys):
+    """``--foreground`` keeps a live PID file + run record while running and
+    removes both when the child exits."""
+    pid_file = tmp_path / "server.pid"
+    observed = {}
+
+    class FakeProc:
+        pid = 7777
+
+        def wait(self):
+            # Simulate the server being up: PID file must be visible here.
+            observed["pid_file"] = pid_file.read_text(encoding="utf-8").strip()
+            observed["run_record_exists"] = (
+                server_module.run_file_for(pid_file).exists()
+            )
+            return 0
+
+    def fake_popen(cmd, **kwargs):
+        observed["cmd"] = cmd
+        return FakeProc()
+
+    monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
+    assert rc == 0
+    assert observed["pid_file"] == "7777"
+    assert observed["run_record_exists"] is True
+    # After the child exits, both must be cleaned up (no stale entries).
+    assert not pid_file.exists()
+    assert not server_module.run_file_for(pid_file).exists()
+    assert "Running in foreground (pid=7777)" in capsys.readouterr().out
+
+
+def test_start_foreground_propagates_exit_code_and_cleans_up(
+    monkeypatch, tmp_path, capsys
+):
+    pid_file = tmp_path / "server.pid"
+
+    class FakeProc:
+        pid = 8888
+
+        def wait(self):
+            return 3
+
+    monkeypatch.setattr(
+        server_module.subprocess,
+        "Popen",
+        lambda cmd, **kwargs: FakeProc(),
+    )
+    rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
+    assert rc == 3
+    assert not pid_file.exists()
+    assert not server_module.run_file_for(pid_file).exists()
+
+
+def test_start_foreground_refuses_when_server_already_running(
+    pid_file, capsys
+):
+    write_pid_file(pid_file, os.getpid())  # a live PID occupies the slot
+    rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
+    assert rc == 1
+    assert "already running" in capsys.readouterr().err
+    # The "existing" entry is untouched by the refused start.
+    assert pid_file.read_text(encoding="utf-8").strip() == str(os.getpid())
 
 
 # ---- stop -----------------------------------------------------------------

@@ -590,7 +590,29 @@ class ServerCommand(BaseCommand):
             cmd += ["--port", str(args.port)]
 
         if args.foreground:
-            return subprocess.call(cmd)
+            log_file = Path(args.log_file).expanduser()
+            # Keep the PID file and run record in sync in foreground mode too,
+            # so ``server status`` / ``server stop`` work exactly like for a
+            # daemonized server.
+            write_run_file(
+                run_file_for(pid_file),
+                cls.build_run_record(pid_file, log_file, cmd, args),
+            )
+            proc = subprocess.Popen(cmd)
+            write_pid_file(pid_file, proc.pid)
+            print(
+                f"Running in foreground (pid={proc.pid}).\n"
+                f"  stop: llm-router server stop  (or Ctrl-C)",
+                flush=True,
+            )
+            try:
+                return proc.wait()
+            finally:
+                remove_pid_file(pid_file)
+                try:
+                    run_file_for(pid_file).unlink()
+                except OSError:
+                    pass
 
         log_file = Path(args.log_file).expanduser()
         log_file.parent.mkdir(parents=True, exist_ok=True)
