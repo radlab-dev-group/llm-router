@@ -124,7 +124,7 @@ def test_run_no_subcommand_dispatches_default() -> None:
 
 def test_commands_registry_is_complete_and_ordered() -> None:
     names = [cmd.NAME for cmd in COMMANDS]
-    assert names == ["auth", "anonymizer", "config", "util"]
+    assert names == ["auth", "anonymizer", "config", "server", "util"]
     assert len(set(names)) == len(names)
     for cmd in COMMANDS:
         assert cmd.HELP
