@@ -625,7 +625,12 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
     write_pid_file(pid_file, pid)
 
     try:
-        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        assert (
+            ServerCommand.run(
+                ["status", "--pid-file", str(pid_file), "--show-env"]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "All good" in out
         assert "gunicorn" in out
@@ -640,6 +645,40 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
         assert "LLM_ROUTER_MODELS_CONFIG" in out
         assert "/tmp/custom.json" in out
         assert "LLM_ROUTER_LOG_LEVEL" in out
+        assert str(tmp_path / "srv.log") in out
+        # "Log" is the app's own file (no LLM_ROUTER_LOG_FILENAME in the env
+        # snapshot -> default fallback); the daemon's stdout capture shows up
+        # as its own "Console log" row.
+        assert "llm-router.log" in out
+        assert "Console log" in out
+    finally:
+        _kill(pid)
+
+
+def test_status_log_row_shows_app_log_from_env(pid_file, tmp_path, capsys):
+    """``Log`` must reflect the app's own file (``LLM_ROUTER_LOG_FILENAME``),
+    distinct from the daemon's stdout capture (``Console log``)."""
+    env_snapshot = {
+        "LLM_ROUTER_LOG_FILENAME": str(tmp_path / "app.log"),
+        "LLM_ROUTER_SERVER_PORT": "8080",
+    }
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "server": "gunicorn",
+            "log_file": str(tmp_path / "srv.log"),
+            "env": env_snapshot,
+        },
+    )
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+
+    try:
+        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        out = capsys.readouterr().out
+        assert "Log" in out
+        assert str(tmp_path / "app.log") in out
+        assert "Console log" in out
         assert str(tmp_path / "srv.log") in out
     finally:
         _kill(pid)
@@ -663,7 +702,12 @@ def test_status_falls_back_to_env_overrides_for_old_records(
     write_pid_file(pid_file, pid)
 
     try:
-        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        assert (
+            ServerCommand.run(
+                ["status", "--pid-file", str(pid_file), "--show-env"]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         assert "Environment" in out
         assert "LLM_ROUTER_MODELS_CONFIG" in out
@@ -879,7 +923,12 @@ def test_status_masks_sensitive_env(pid_file, tmp_path, capsys):
     pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
     write_pid_file(pid_file, pid)
     try:
-        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        assert (
+            ServerCommand.run(
+                ["status", "--pid-file", str(pid_file), "--show-env"]
+            )
+            == 0
+        )
         out = capsys.readouterr().out
         # Non-secret value is shown verbatim.
         assert "weighted" in out
@@ -894,7 +943,7 @@ def test_status_masks_sensitive_env(pid_file, tmp_path, capsys):
         _kill(pid)
 
 
-def test_status_no_env_hides_environment_section(pid_file, tmp_path, capsys):
+def test_status_env_hidden_by_default_shown_with_flag(pid_file, tmp_path, capsys):
     server_module.write_run_file(
         server_module.run_file_for(pid_file),
         {
@@ -911,19 +960,26 @@ def test_status_no_env_hides_environment_section(pid_file, tmp_path, capsys):
     pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
     write_pid_file(pid_file, pid)
     try:
-        assert (
-            ServerCommand.run(
-                ["status", "--pid-file", str(pid_file), "--no-env"]
-            )
-            == 0
-        )
+        # Default: the Environment section is hidden, Details is kept.
+        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
         out = capsys.readouterr().out
-        # Details section is kept (incl. models-config), Environment is dropped.
         assert "Details" in out
         assert "Environment" not in out
         assert "Models config" in out  # first-class Details field still shown
         assert "/tmp/custom.json" in out
         assert "TRACE" not in out  # Environment-only key is hidden
+
+        # Opt-in: --show-env reveals the section again.
+        assert (
+            ServerCommand.run(
+                ["status", "--pid-file", str(pid_file), "--show-env"]
+            )
+            == 0
+        )
+        out = capsys.readouterr().out
+        assert "Environment (2)" in out
+        assert "LLM_ROUTER_LOG_LEVEL" in out
+        assert "TRACE" in out
     finally:
         _kill(pid)
 

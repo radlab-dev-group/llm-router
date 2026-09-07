@@ -38,6 +38,11 @@ _STATE_DIR = Path.home() / ".llm-router"
 DEFAULT_PID_FILE = _STATE_DIR / "server.pid"
 DEFAULT_LOG_FILE = _STATE_DIR / "server.log"
 
+#: Default of ``LLM_ROUTER_LOG_FILENAME`` — the application's *own* (rotating)
+#: log file. It is a **relative** path, so it lands in the CWD (``./``), not in
+#: ``~/.llm-router`` (that only holds the daemon's captured stdout/stderr).
+DEFAULT_LOG_FILENAME = "llm-router.log"
+
 #: How long to wait for SIGTERM before telling the user to use ``--force``.
 _STOP_GRACE_SECONDS = 15
 _STOP_POLL_INTERVAL = 0.2
@@ -547,9 +552,9 @@ class ServerCommand(BaseCommand):
         cls._add_pid_file_arg(status)
         cls._add_color_arg(status)
         status.add_argument(
-            "--no-env",
+            "--show-env",
             action="store_true",
-            help="Hide the environment section (compact output).",
+            help="Show the environment section (hidden by default).",
         )
 
         log = subparsers.add_parser(cls.LOG_NAME, help=cls.LOG_HELP)
@@ -793,7 +798,7 @@ class ServerCommand(BaseCommand):
     def _status(cls, args: argparse.Namespace) -> int:
         """Report whether the server is running, with its launch parameters."""
         color = _resolve_color(getattr(args, "color", "auto"))
-        no_env = bool(getattr(args, "no_env", False))
+        show_env = bool(getattr(args, "show_env", False))
         pid_file = Path(args.pid_file).expanduser()
         pid = get_alive_pid(pid_file)
         if pid is None:
@@ -801,7 +806,7 @@ class ServerCommand(BaseCommand):
             return 1
 
         record = read_run_file(run_file_for(pid_file)) or {}
-        print(cls._render_status_up(color, pid, pid_file, record, no_env))
+        print(cls._render_status_up(color, pid, pid_file, record, show_env))
         return 0
 
     # ---- Status rendering ------------------------------------------------ #
@@ -835,7 +840,8 @@ class ServerCommand(BaseCommand):
         env = cls._env_from_record(record)
         rows: List[Tuple[str, str]] = [
             ("PID", str(pid)),
-            ("Log", str(record.get("log_file", DEFAULT_LOG_FILE))),
+            ("Log", env.get("LLM_ROUTER_LOG_FILENAME") or DEFAULT_LOG_FILENAME),
+            ("Console log", str(record.get("log_file", DEFAULT_LOG_FILE))),
             ("PID file", str(pid_file)),
         ]
         if record.get("started_at"):
@@ -879,7 +885,7 @@ class ServerCommand(BaseCommand):
         pid: int,
         pid_file: Path,
         record: Dict[str, Any],
-        no_env: bool,
+        show_env: bool,
     ) -> str:
         """Render the "running" card."""
         lines = [
@@ -891,23 +897,22 @@ class ServerCommand(BaseCommand):
             cls._kv_block(color, "Details", cls._detail_rows(pid, pid_file, record))
         )
 
-        env = cls._env_from_record(record)
-        if no_env:
-            pass
-        elif env:
-            env_rows = [
-                (key, _MASKED if _is_sensitive(key) else str(env[key]))
-                for key in sorted(env)
-            ]
-            lines.append("")
-            lines.extend(
-                cls._kv_block(color, f"Environment ({len(env_rows)})", env_rows)
-            )
-        else:
-            lines.append("")
-            lines.append(
-                "  " + _paint(color, "90", "Environment (none recorded)")
-            )
+        if show_env:
+            env = cls._env_from_record(record)
+            if env:
+                env_rows = [
+                    (key, _MASKED if _is_sensitive(key) else str(env[key]))
+                    for key in sorted(env)
+                ]
+                lines.append("")
+                lines.extend(
+                    cls._kv_block(color, f"Environment ({len(env_rows)})", env_rows)
+                )
+            else:
+                lines.append("")
+                lines.append(
+                    "  " + _paint(color, "90", "Environment (none recorded)")
+                )
         return "\n".join(lines)
 
     @classmethod

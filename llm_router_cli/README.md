@@ -418,7 +418,9 @@ started.
 
 ### `status` — colored status card
 
-`status` renders a compact, color-coded card instead of a flat list:
+`status` renders a compact, color-coded card instead of a flat list (the
+`Environment` section shown below is hidden by default — add `--show-env` to
+reveal it):
 
 ```text
   ✓ All good
@@ -426,7 +428,8 @@ started.
 
   Details
     PID            7400
-    Log            ~/.llm-router/server.log
+    Log            llm-router.log
+    Console log    ~/.llm-router/server.log
     Started        2026-09-07T23:55:00+0200
     Server         gunicorn
     Host           0.0.0.0
@@ -440,7 +443,11 @@ started.
     LLM_ROUTER_SERVER_PORT       8080
 ```
 
-When the server is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
+Two distinct log files are shown: **Log** is the application's own rotating log
+(`LLM_ROUTER_LOG_FILENAME`, default `llm-router.log` — a *relative* path, so it
+lands in the CWD, `./`), while **Console log** is the daemon's captured
+stdout/stderr. When the server is **not** running the header/dot turn red
+(`✗ Not running`), and `status` exits with code `1`.
 
 Security: environment values whose key names a credential (`*PASSWORD*`,
 `*SECRET*`, `*TOKEN*`, `*API_KEY*`, `*CREDENTIAL*`) are **masked** as `****`
@@ -449,7 +456,7 @@ so secrets are never echoed to the terminal.
 | Flag         | Default                    | Description                                              |
 |--------------|----------------------------|----------------------------------------------------------|
 | `--color`    | `auto`                     | Colorize output — `auto` (TTY only) / `always` / `never` |
-| `--no-env`   | `false`                    | Hide the `Environment` section for a compact view        |
+| `--show-env` | `false`                    | Show the `Environment` section (hidden by default)       |
 | `--pid-file` | `~/.llm-router/server.pid` | PID file location                                        |
 
 ---
@@ -542,4 +549,4 @@ sk-llmr-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
 
 - **[Authentication docs](../llm_router_api/docs/AUTHENTICATION.md)** — full auth architecture, seed files, deployment
   options
-- **[Rate Limiting docs](../llm_router_api/docs/RATE_LIMITING.md)** — sliding-window algorithm, monitoring, presets
+- **[Rate Limiting docs
