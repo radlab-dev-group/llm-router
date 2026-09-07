@@ -18,6 +18,7 @@ same ``LLM_ROUTER_*`` defaults as ``run-rest-api-gunicorn.sh``.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import signal
@@ -221,6 +222,31 @@ def _wait_gone(pid: int, timeout: float) -> bool:
 
 
 # -------------------------------------------------------------------------- #
+# Run-record helpers (``<pidfile>.run`` next to the PID file)
+# -------------------------------------------------------------------------- #
+def run_file_for(pid_file: Path) -> Path:
+    """Return the run-record path derived from *pid_file* (e.g. ``server.pid.run``)."""
+    pid_file = Path(pid_file)
+    return pid_file.parent / (pid_file.name + ".run")
+
+
+def write_run_file(path: Path, record: Dict[str, Any]) -> None:
+    """Write *record* as pretty-printed JSON to *path*."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+
+def read_run_file(path: Path) -> Optional[Dict[str, Any]]:
+    """Load the run record from *path*; ``None`` if missing or corrupt."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+# -------------------------------------------------------------------------- #
 # Daemonization
 # -------------------------------------------------------------------------- #
 def _redirect_stdio(log_file: Path) -> None:
@@ -292,7 +318,9 @@ class ServerCommand(BaseCommand):
     """Manage the LLM-Router REST API server (start / stop / reload / status / log)."""
 
     NAME: ClassVar[str] = "server"
-    HELP: ClassVar[str] = "Manage the LLM-Router REST API server (start/stop/reload/status/log)"
+    HELP: ClassVar[str] = (
+        "Manage the LLM-Router REST API server (start/stop/reload/status/log)"
+    )
     SUBPARSER_DEST: ClassVar[str] = "server_command"
 
     START_NAME = "start"
@@ -303,7 +331,7 @@ class ServerCommand(BaseCommand):
     START_HELP = "Start the REST API server in the background (daemon)"
     STOP_HELP = "Stop the running REST API server"
     RELOAD_HELP = "Gracefully reload the running Gunicorn master (SIGHUP)"
-    STATUS_HELP = "Show whether the server is running"
+    STATUS_HELP = "Show server status (pid, log, launch parameters)"
     LOG_HELP = "Follow the server log (tail -f style, colorized levels)"
 
     #: (namespace attribute, environment variable, value converter) pairs
@@ -324,7 +352,12 @@ class ServerCommand(BaseCommand):
         ("auth_redis_password", "LLM_ROUTER_AUTH_REDIS_PASSWORD", None),
     ]
 
-    _LB_STRATEGIES = ["balanced", "weighted", "first_available", "first_available_optim"]
+    _LB_STRATEGIES = [
+        "balanced",
+        "weighted",
+        "first_available",
+        "first_available_optim",
+    ]
 
     # ---- Registration ---------------------------------------------------- #
     @classmethod
@@ -390,18 +423,42 @@ class ServerCommand(BaseCommand):
             default=None,
             help="Enable (1) or disable (0) API-key auth (LLM_ROUTER_AUTH_ENABLED)",
         )
-        start.add_argument("--redis-host", default=None, help="Redis host (LLM_ROUTER_REDIS_HOST)")
-        start.add_argument("--redis-port", type=int, default=None, help="Redis port (LLM_ROUTER_REDIS_PORT)")
-        start.add_argument("--redis-db", type=int, default=None, help="Redis DB index (LLM_ROUTER_REDIS_DB)")
-        start.add_argument("--redis-password", default=None, help="Redis password (LLM_ROUTER_REDIS_PASSWORD)")
         start.add_argument(
-            "--auth-redis-host", default=None, help="Auth key-store Redis host (LLM_ROUTER_AUTH_REDIS_HOST)"
+            "--redis-host", default=None, help="Redis host (LLM_ROUTER_REDIS_HOST)"
         )
         start.add_argument(
-            "--auth-redis-port", type=int, default=None, help="Auth key-store Redis port (LLM_ROUTER_AUTH_REDIS_PORT)"
+            "--redis-port",
+            type=int,
+            default=None,
+            help="Redis port (LLM_ROUTER_REDIS_PORT)",
         )
         start.add_argument(
-            "--auth-redis-db", type=int, default=None, help="Auth key-store Redis DB (LLM_ROUTER_AUTH_REDIS_DB)"
+            "--redis-db",
+            type=int,
+            default=None,
+            help="Redis DB index (LLM_ROUTER_REDIS_DB)",
+        )
+        start.add_argument(
+            "--redis-password",
+            default=None,
+            help="Redis password (LLM_ROUTER_REDIS_PASSWORD)",
+        )
+        start.add_argument(
+            "--auth-redis-host",
+            default=None,
+            help="Auth key-store Redis host (LLM_ROUTER_AUTH_REDIS_HOST)",
+        )
+        start.add_argument(
+            "--auth-redis-port",
+            type=int,
+            default=None,
+            help="Auth key-store Redis port (LLM_ROUTER_AUTH_REDIS_PORT)",
+        )
+        start.add_argument(
+            "--auth-redis-db",
+            type=int,
+            default=None,
+            help="Auth key-store Redis DB (LLM_ROUTER_AUTH_REDIS_DB)",
         )
         start.add_argument(
             "--auth-redis-password",
@@ -470,6 +527,25 @@ class ServerCommand(BaseCommand):
         return overrides
 
     @classmethod
+    def build_run_record(
+        cls,
+        pid_file: Path,
+        log_file: Path,
+        cmd: List[str],
+        args: argparse.Namespace,
+    ) -> Dict[str, Any]:
+        """Build the JSON record describing how the server was started."""
+        return {
+            "started_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "executable": sys.executable,
+            "command": cmd,
+            "server": os.environ.get("LLM_ROUTER_SERVER_TYPE", "gunicorn"),
+            "log_file": str(log_file),
+            "pid_file": str(pid_file),
+            "env_overrides": cls.build_env_overrides(args),
+        }
+
+    @classmethod
     def dispatch(cls, args: argparse.Namespace) -> int:
         """Route on the parsed namespace (no re-parsing of ``argv``)."""
         action = getattr(args, cls.SUBPARSER_DEST, None)
@@ -518,6 +594,13 @@ class ServerCommand(BaseCommand):
 
         log_file = Path(args.log_file).expanduser()
         log_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Record the launch parameters next to the PID file so
+        # ``server status`` can show them later.
+        write_run_file(
+            run_file_for(pid_file),
+            cls.build_run_record(pid_file, log_file, cmd, args),
+        )
 
         # Daemon mode: classic double-fork. The parent (CLI) waits for the
         # daemon to publish its PID and reports it; the daemon then execs
@@ -579,6 +662,10 @@ class ServerCommand(BaseCommand):
             pass
 
         remove_pid_file(pid_file)
+        try:
+            run_file_for(pid_file).unlink()
+        except OSError:
+            pass
         print(f"Server stopped (pid={pid}).")
         return 0
 
@@ -603,17 +690,34 @@ class ServerCommand(BaseCommand):
 
     @classmethod
     def _status(cls, args: argparse.Namespace) -> int:
-        """Report whether the server recorded in the PID file is running."""
+        """Report whether the server is running, with its launch parameters."""
         pid_file = Path(args.pid_file).expanduser()
         pid = get_alive_pid(pid_file)
         if pid is None:
             print(f"Server is NOT running (pid file: {pid_file}).")
             return 1
-        print(
-            f"Server is running (pid={pid}).\n"
-            f"  pid file: {pid_file}\n"
-            f"  log:      {DEFAULT_LOG_FILE}"
-        )
+
+        record = read_run_file(run_file_for(pid_file)) or {}
+        lines = [
+            f"Server is running (pid={pid}).",
+            f"  pid file: {pid_file}",
+            f"  log:      {record.get('log_file', DEFAULT_LOG_FILE)}",
+        ]
+        if record.get("started_at"):
+            lines.append(f"  started:  {record['started_at']}")
+        if record.get("server"):
+            lines.append(f"  server:   {record['server']}")
+        if record.get("command"):
+            lines.append(
+                f"  command:  {' '.join(str(part) for part in record['command'])}"
+            )
+        overrides = record.get("env_overrides") or {}
+        if overrides:
+            lines.append("  overrides:")
+            lines.extend(f"    {key}={value}" for key, value in overrides.items())
+        elif record:
+            lines.append("  overrides: (none — using shell env / script defaults)")
+        print("\n".join(lines))
         return 0
 
     # ---- Log following --------------------------------------------------- #

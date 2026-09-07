@@ -17,10 +17,12 @@ Usage::
     llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P \
         --labels a,b
     llm-router server start        # start REST API in the background (daemon)
-    llm-router server status       # show whether the server is running
+    llm-router server status       # show status + launch parameters (.run record)
     llm-router server log          # follow the log (tail -f style, colored)
     llm-router server stop         # stop it (SIGTERM, or --force SIGKILL)
     llm-router server reload       # graceful reload (SIGHUP to Gunicorn master)
+    llm-router completion bash     # tab-completion script (eval into ~/.bashrc)
+    llm-router completion zsh      # tab-completion script (source into ~/.zshrc)
 
 The dispatcher builds a single top‑level parser, registers every command once
 (see :mod:`llm_router_cli.cli.commands.base`), parses the arguments a single
@@ -47,6 +49,7 @@ _cg.IS_CLI_COMMAND = True
 from llm_router_cli.cli.commands.anonymizer import AnonymizerCommand
 from llm_router_cli.cli.commands.auth import AuthCommand
 from llm_router_cli.cli.commands.base import BaseCommand
+from llm_router_cli.cli.commands.completion import CompletionCommand
 from llm_router_cli.cli.commands.config import ConfigCommand
 from llm_router_cli.cli.commands.server import ServerCommand
 from llm_router_cli.cli.commands.util import UtilCommand
@@ -56,6 +59,7 @@ COMMANDS: Tuple[Type[BaseCommand], ...] = (
     AuthCommand,
     AnonymizerCommand,
     ConfigCommand,
+    CompletionCommand,
     ServerCommand,
     UtilCommand,
 )
