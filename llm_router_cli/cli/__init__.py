@@ -18,6 +18,7 @@ Usage::
         --labels a,b
     llm-router server start        # start REST API in the background (daemon)
     llm-router server status       # show whether the server is running
+    llm-router server log          # follow the log (tail -f style, colored)
     llm-router server stop         # stop it (SIGTERM, or --force SIGKILL)
     llm-router server reload       # graceful reload (SIGHUP to Gunicorn master)
 

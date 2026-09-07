@@ -24,10 +24,12 @@ from llm_router_cli.cli.commands.server import (
     DEFAULT_ENV,
     ServerCommand,
     apply_default_env,
+    colorize_line,
     get_alive_pid,
     pid_alive,
     read_pid_file,
     remove_pid_file,
+    tail_lines,
     write_pid_file,
 )
 
@@ -84,7 +86,7 @@ def _spawn_dead_pid() -> int:
 def test_bare_server_shows_help(capsys):
     assert ServerCommand.run([]) == 0
     out = capsys.readouterr().out
-    for word in ("start", "stop", "reload", "status"):
+    for word in ("start", "stop", "reload", "status", "log"):
         assert word in out
 
 
@@ -431,6 +433,89 @@ def test_status_cleans_stale_pid_file(pid_file, capsys):
     assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 1
     assert not pid_file.exists()
     assert "NOT running" in capsys.readouterr().out
+
+
+def test_log_help_lists_flags(capsys):
+    assert ServerCommand.run(["log", "--help"]) == 0
+    out = capsys.readouterr().out
+    for flag in ("--log-file", "--lines", "--no-follow", "--color"):
+        assert flag in out
+
+
+# ---- log (tail -f, colored) -----------------------------------------------
+
+
+def test_colorize_line_wraps_known_levels():
+    out = colorize_line("2026-01-01 INFO app: ok", "always")
+    assert out.startswith("\033[32m") and out.endswith("\033[0m")
+    assert colorize_line("2026-01-01 DEBUG app: d", "always").startswith("\033[36m")
+    assert colorize_line("2026-01-01 WARNING app: w", "always").startswith("\033[33m")
+    assert colorize_line("2026-01-01 WARN app: w", "always").startswith("\033[33m")
+    assert colorize_line("2026-01-01 ERROR app: boom", "always").startswith("\033[31m")
+    assert colorize_line("2026-01-01 CRITICAL app: dead", "always").startswith("\033[1;31m")
+
+
+def test_colorize_line_untouched_cases():
+    plain = "2026-01-01 12:00:00 app started"
+    assert colorize_line(plain, "always") == plain
+    assert colorize_line("2026-01-01 ERROR app: boom", "never") == "2026-01-01 ERROR app: boom"
+
+
+def test_tail_lines_returns_last_n():
+    import io
+
+    fh = io.StringIO("\n".join(f"line {i}" for i in range(10)))
+    assert [l.rstrip("\n") for l in tail_lines(fh, 3)] == ["line 7", "line 8", "line 9"]
+    fh = io.StringIO("a\nb\n")
+    assert tail_lines(fh, 0) == []
+
+
+def test_log_tail_no_follow_shows_last_lines(tmp_path, capsys):
+    log = tmp_path / "server.log"
+    log.write_text(
+        "\n".join(f"2026-01-01 INFO app: line {i}" for i in range(10)) + "\n",
+        encoding="utf-8",
+    )
+    rc = ServerCommand.run(
+        ["log", "--log-file", str(log), "--lines", "3", "--no-follow", "--color", "never"]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out == [
+        "2026-01-01 INFO app: line 7",
+        "2026-01-01 INFO app: line 8",
+        "2026-01-01 INFO app: line 9",
+    ]
+
+
+def test_log_color_always_colorizes_levels(tmp_path, capsys):
+    log = tmp_path / "server.log"
+    log.write_text("2026-01-01 ERROR app: boom\n", encoding="utf-8")
+    rc = ServerCommand.run(
+        ["log", "--log-file", str(log), "--lines", "1", "--no-follow", "--color", "always"]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert out.startswith("\033[31m")
+    assert out.rstrip("\n").endswith("\033[0m")
+
+
+def test_log_lines_zero_prints_nothing(tmp_path, capsys):
+    log = tmp_path / "server.log"
+    log.write_text("2026-01-01 INFO app: x\n", encoding="utf-8")
+    rc = ServerCommand.run(
+        ["log", "--log-file", str(log), "--lines", "0", "--no-follow"]
+    )
+    assert rc == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_log_missing_file_fails(tmp_path, capsys):
+    rc = ServerCommand.run(["log", "--log-file", str(tmp_path / "nope.log")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "not found" in err
+    assert "server start" in err
 
 
 # ---- start: "already running" guard ----------------------------------------

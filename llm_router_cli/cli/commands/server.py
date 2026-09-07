@@ -7,6 +7,7 @@ managed background daemon with a PID file, so the same lifecycle operations
 
     llm-router server start    # start in the background (daemon, PID file)
     llm-router server status   # show whether the server is running
+    llm-router server log      # follow the log (tail -f style, colored levels)
     llm-router server stop    # SIGTERM (with grace period), or SIGKILL --force
     llm-router server reload  # graceful SIGHUP to the Gunicorn master
 
@@ -18,13 +19,15 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import signal
 import subprocess
 import sys
 import time
 
+from collections import deque
 from pathlib import Path
-from typing import Any, ClassVar, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, IO, List, Optional, Tuple
 
 from llm_router_cli.cli.commands.base import BaseCommand
 
@@ -237,23 +240,71 @@ def _redirect_stdio(log_file: Path) -> None:
 
 
 # -------------------------------------------------------------------------- #
+# Log tailing / colorization
+# -------------------------------------------------------------------------- #
+_LOG_LEVEL_RE = re.compile(
+    r"\b(TRACE|DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b"
+)
+
+_ANSI_COLORS = {
+    "TRACE": "\033[35m",
+    "DEBUG": "\033[36m",
+    "INFO": "\033[32m",
+    "WARNING": "\033[33m",
+    "WARN": "\033[33m",
+    "ERROR": "\033[31m",
+    "CRITICAL": "\033[1;31m",
+    "FATAL": "\033[1;31m",
+}
+_ANSI_RESET = "\033[0m"
+
+
+def colorize_line(line: str, color: str) -> str:
+    """
+    Wrap *line* in the ANSI color of its log level, if it has one.
+
+    ``color`` is ``"always"`` or ``"never"``; lines without a recognizable
+    level token are returned unchanged.
+    """
+    if color == "never":
+        return line
+    match = _LOG_LEVEL_RE.search(line)
+    if not match:
+        return line
+    code = _ANSI_COLORS.get(match.group(1))
+    if code is None:
+        return line
+    return f"{code}{line}{_ANSI_RESET}"
+
+
+def tail_lines(fh: IO[str], n: int) -> List[str]:
+    """Return the last *n* lines of *fh* (rewinds *fh* to the start)."""
+    if n <= 0:
+        fh.seek(0)
+        return []
+    return deque(fh, maxlen=n)
+
+
+# -------------------------------------------------------------------------- #
 # Command
 # -------------------------------------------------------------------------- #
 class ServerCommand(BaseCommand):
-    """Manage the LLM-Router REST API server (start / stop / reload / status)."""
+    """Manage the LLM-Router REST API server (start / stop / reload / status / log)."""
 
     NAME: ClassVar[str] = "server"
-    HELP: ClassVar[str] = "Manage the LLM-Router REST API server (start/stop/reload/status)"
+    HELP: ClassVar[str] = "Manage the LLM-Router REST API server (start/stop/reload/status/log)"
     SUBPARSER_DEST: ClassVar[str] = "server_command"
 
     START_NAME = "start"
     STOP_NAME = "stop"
     RELOAD_NAME = "reload"
     STATUS_NAME = "status"
+    LOG_NAME = "log"
     START_HELP = "Start the REST API server in the background (daemon)"
     STOP_HELP = "Stop the running REST API server"
     RELOAD_HELP = "Gracefully reload the running Gunicorn master (SIGHUP)"
     STATUS_HELP = "Show whether the server is running"
+    LOG_HELP = "Follow the server log (tail -f style, colorized levels)"
 
     #: (namespace attribute, environment variable, value converter) pairs
     #: applied when the corresponding flag is given to ``server start``.
@@ -373,6 +424,30 @@ class ServerCommand(BaseCommand):
         status = subparsers.add_parser(cls.STATUS_NAME, help=cls.STATUS_HELP)
         cls._add_pid_file_arg(status)
 
+        log = subparsers.add_parser(cls.LOG_NAME, help=cls.LOG_HELP)
+        log.add_argument(
+            "--log-file",
+            default=str(DEFAULT_LOG_FILE),
+            help="Server log file to follow (default: %(default)s)",
+        )
+        log.add_argument(
+            "--lines",
+            type=int,
+            default=20,
+            help="Number of initial lines to show, 0 for none (default: %(default)s)",
+        )
+        log.add_argument(
+            "--no-follow",
+            action="store_true",
+            help="Show the initial tail and exit (no -f style following).",
+        )
+        log.add_argument(
+            "--color",
+            choices=["auto", "always", "never"],
+            default="auto",
+            help="Colorize log levels (auto = only on a TTY, default: %(default)s)",
+        )
+
     # ---- Dispatch -------------------------------------------------------- #
     @classmethod
     def build_env_overrides(cls, args: argparse.Namespace) -> Dict[str, str]:
@@ -406,6 +481,8 @@ class ServerCommand(BaseCommand):
             return cls._reload(args)
         if action == cls.STATUS_NAME:
             return cls._status(args)
+        if action == cls.LOG_NAME:
+            return cls._log(args)
         cls.build_parser().print_help()
         return 0
 
@@ -538,3 +615,37 @@ class ServerCommand(BaseCommand):
             f"  log:      {DEFAULT_LOG_FILE}"
         )
         return 0
+
+    # ---- Log following --------------------------------------------------- #
+    @classmethod
+    def _log(cls, args: argparse.Namespace) -> int:
+        """Tail (and by default follow) the server log with colored levels."""
+        log_file = Path(args.log_file).expanduser()
+        if not log_file.exists():
+            print(
+                f"Log file not found: {log_file}\n"
+                "Start the server first: llm-router server start",
+                file=sys.stderr,
+            )
+            return 1
+
+        color = args.color
+        if color == "auto":
+            color = "always" if sys.stdout.isatty() else "never"
+
+        with open(log_file, "r", encoding="utf-8", errors="replace") as fh:
+            for line in tail_lines(fh, args.lines):
+                print(colorize_line(line.rstrip("\n"), color))
+
+            if args.no_follow:
+                return 0
+
+            try:
+                while True:
+                    chunk = fh.readline()
+                    if chunk:
+                        print(colorize_line(chunk.rstrip("\n"), color), flush=True)
+                    else:
+                        time.sleep(0.5)
+            except KeyboardInterrupt:
+                return 0
