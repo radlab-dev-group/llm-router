@@ -48,6 +48,7 @@ import llm_router_api.base.const_global as _cg
 
 _cg.IS_CLI_COMMAND = True
 
+from llm_router_lib.core.constants import PACKAGE_NAME
 from llm_router_cli.cli.commands.anonymizer import AnonymizerCommand
 from llm_router_cli.cli.commands.auth import AuthCommand
 from llm_router_cli.cli.commands.base import BaseCommand
@@ -70,7 +71,7 @@ COMMANDS: Tuple[Type[BaseCommand], ...] = (
 def _version() -> str:
     """Return the installed package version (e.g. ``0.6.0``)."""
     try:
-        return _pkg_version("llm-router")
+        return _pkg_version(PACKAGE_NAME)
     except Exception:  # PackageNotFoundError — e.g. run from a bare checkout
         return "unknown"
 
