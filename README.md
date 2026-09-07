@@ -160,7 +160,26 @@ https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plug
 ```shell
 python3 -m venv .venv
 source .venv/bin/activate
+```
 
+### 2️⃣ Install (recommended: from PyPI)
+
+The package is published on PyPI: [radlab-llm-router](https://pypi.org/project/radlab-llm-router/).
+
+```shell
+# Only the core library (llm-router-lib).
+pip install radlab-llm-router
+
+# Core library + API wrapper (llm-router-api).
+pip install radlab-llm-router[api]
+
+# Core library + API wrapper + Prometheus metrics.
+pip install radlab-llm-router[api,metrics]
+```
+
+#### Or install from source (GitHub)
+
+```shell
 # Only the core library (llm-router-lib).
 pip install .
 
@@ -170,6 +189,9 @@ pip install .[api]
 # Core library + API wrapper + Prometheus metrics.
 pip install .[api,metrics]
 ```
+
+> **Full installation guide (PIP / GitHub / Quay):**
+> **[INSTALLATION.md](llm_router_api/docs/INSTALLATION.md)**
 
 > **Note:** When Prometheus metrics are enabled, `LLM_ROUTER_USE_PROMETHEUS=1`
 > must be set and **Redis is required** (used for provider availability state).  
@@ -200,7 +222,7 @@ Import steps:
 3. Select the Prometheus data source that points to your LLM Router `/metrics` endpoint.
 4. Click **Import** — the dashboard will display request counts, latencies, error rates, and provider usage at a glance.
 
-### 2️⃣ Run the REST API
+### 3️⃣ Run the REST API
 
 ```shell
 ./run-rest-api.sh
@@ -208,12 +230,12 @@ Import steps:
 LLM_ROUTER_MINIMUM=1 python3 -m llm_router_api.rest_api
 ```
 
-### 3️⃣ Quick‑start guides for local models
+### 4️⃣ Quick‑start guides for local models
 
 - **Gemma 3 12B‑IT** – [README](examples/quickstart/google-gemma3-12b-it/README.md)
 - **Bielik 11B‑v2.3‑Instruct** – [README](examples/quickstart/speakleash-bielik-11b-v2_3-Instruct/README.md)
 
-### 4️⃣ Integration boilerplates
+### 5️⃣ Integration boilerplates
 
 Integration examples for popular LLM libraries (LlamaIndex, LangChain, OpenAI, LiteLLM, Haystack) are in the [
 `examples/`](examples/) directory. See [examples README](examples/README.md) for details.
