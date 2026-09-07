@@ -419,8 +419,7 @@ started.
 ### `status` — colored status card
 
 `status` renders a compact, color-coded card instead of a flat list (the
-`Environment` section shown below is hidden by default — add `--show-env` to
-reveal it):
+`Environment` section shown below is hidden by default — add `--show-env` to reveal it):
 
 ```text
   ✓ All good
@@ -443,11 +442,10 @@ reveal it):
     LLM_ROUTER_SERVER_PORT       8080
 ```
 
-Two distinct log files are shown: **Log** is the application's own rotating log
-(`LLM_ROUTER_LOG_FILENAME`, default `llm-router.log` — a *relative* path, so it
-lands in the CWD, `./`), while **Console log** is the daemon's captured
-stdout/stderr. When the server is **not** running the header/dot turn red
-(`✗ Not running`), and `status` exits with code `1`.
+Two distinct log files are shown: **Log** is the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
+`llm-router.log` — a *relative* path, so it lands in the CWD, `./`), while **Console log** is the daemon's captured
+stdout/stderr. When the server is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with
+code `1`.
 
 Security: environment values whose key names a credential (`*PASSWORD*`,
 `*SECRET*`, `*TOKEN*`, `*API_KEY*`, `*CREDENTIAL*`) are **masked** as `****`
