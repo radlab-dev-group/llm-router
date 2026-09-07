@@ -67,3 +67,81 @@ def test_command_tree_matches_registered_commands():
     assert "--force" in tree["server"]["stop"]
     assert "--color" in tree["server"]["log"]
     assert "--models-config" in tree["server"]["start"]
+
+
+# --------------------------------------------------------------------------- #
+# --install
+# --------------------------------------------------------------------------- #
+
+def test_install_bash_writes_default_rc(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["completion", "bash", "--install"]) == 0
+    out = capsys.readouterr().out
+    rc = tmp_path / ".bashrc"
+    assert rc.is_file()
+    content = rc.read_text()
+    assert "# >>> llm-router completion (bash) >>>" in content
+    assert "# <<< llm-router completion (bash) <<<" in content
+    assert "complete -F _llm-router llm-router" in content
+    assert str(rc) in out
+    assert "source" in out
+    # The script itself must not be dumped to stdout.
+    assert "compgen" not in out
+
+
+def test_install_is_idempotent(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    for _ in range(2):
+        assert main(["completion", "bash", "--install"]) == 0
+        capsys.readouterr()
+    content = (tmp_path / ".bashrc").read_text()
+    assert content.count("# >>> llm-router completion (bash) >>>") == 1
+    assert content.count("complete -F _llm-router llm-router") == 1
+
+
+def test_install_replaces_stale_block(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    rc = tmp_path / ".bashrc"
+    begin = "# >>> llm-router completion (bash) >>>"
+    end = "# <<< llm-router completion (bash) <<<"
+    rc.write_text("echo before\n{}\nSTALE-BLOCK\n{}\necho after\n".format(begin, end))
+    assert main(["completion", "bash", "--install"]) == 0
+    capsys.readouterr()
+    content = rc.read_text()
+    assert "STALE-BLOCK" not in content
+    assert content.count(begin) == 1
+    assert "echo before" in content
+    assert "echo after" in content
+    assert "complete -F _llm-router llm-router" in content
+
+
+def test_install_custom_file(tmp_path, capsys):
+    target = tmp_path / "custom-rc"
+    assert main(
+        ["completion", "bash", "--install", "--file", str(target)]
+    ) == 0
+    capsys.readouterr()
+    assert target.is_file()
+    assert "complete -F _llm-router llm-router" in target.read_text()
+
+
+def test_install_zsh_default(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert main(["completion", "zsh", "--install"]) == 0
+    capsys.readouterr()
+    rc = tmp_path / ".zshrc"
+    assert rc.is_file()
+    content = rc.read_text()
+    assert content.count("# >>> llm-router completion (zsh) >>>") == 1
+    assert "#compdef llm-router" in content
+    assert "compdef _llm-router llm-router" in content
+
+
+def test_install_write_failure_returns_error(tmp_path, capsys):
+    target = tmp_path / "no-such-dir" / "rc"
+    rc = main(["completion", "bash", "--install", "--file", str(target)])
+    out = capsys.readouterr()
+    assert rc != 0
+    assert "could not install" in out.err
+    assert str(target) in out.err
+    assert not target.exists()
