@@ -188,4 +188,4 @@ export TOKENIZERS_PARALLELISM=${TOKENIZERS_PARALLELISM:-true}
 # ==================================================================================
 # RUN MAIN APPLICATION
 # ==================================================================================
-llm-router server start
+llm-router server start --foreground
