@@ -23,6 +23,8 @@ Usage::
     llm-router server reload       # graceful reload (SIGHUP to Gunicorn master)
     llm-router completion bash     # tab-completion script (eval into ~/.bashrc)
     llm-router completion zsh      # tab-completion script (source into ~/.zshrc)
+    llm-router completion bash --install   # append the script to ~/.bashrc
+    llm-router completion zsh --install    # append the script to ~/.zshrc
 
 The dispatcher builds a single top‑level parser, registers every command once
 (see :mod:`llm_router_cli.cli.commands.base`), parses the arguments a single

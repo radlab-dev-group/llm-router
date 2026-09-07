@@ -9,12 +9,20 @@ always match the registered commands, sub-commands and long options::
 
     # zsh — append to ~/.zshrc:
     source <(llm-router completion zsh)
+
+Or install directly into the default rc file (``~/.bashrc`` / ``~/.zshrc``),
+replacing any previous install on re-run::
+
+    llm-router completion bash --install
+    llm-router completion zsh --install --file ~/.config/zsh/completion.zsh
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 
+from pathlib import Path
 from typing import Any, ClassVar, Dict, List, Tuple
 
 from llm_router_cli.cli.commands.base import BaseCommand
@@ -167,6 +175,57 @@ def _render_zsh(tree: Dict[str, Dict[str, List[str]]]) -> str:
     return "\n".join(lines)
 
 
+def _begin_marker(shell: str) -> str:
+    return "# >>> llm-router completion ({}) >>>".format(shell)
+
+
+def _end_marker(shell: str) -> str:
+    return "# <<< llm-router completion ({}) <<<".format(shell)
+
+
+def _default_rc_file(shell: str) -> Path:
+    """The default rc file for *shell* (``~/.bashrc`` / ``~/.zshrc``)."""
+    name = ".bashrc" if shell == "bash" else ".zshrc"
+    return Path.home() / name
+
+
+def _install_block(content: str, shell: str, script: str) -> str:
+    """
+    Return *content* with the *script* installed in a marked block.
+
+    An existing ``llm-router completion`` block for *shell* is replaced in
+    place (idempotent re-install); otherwise the block is appended.
+    """
+    begin = _begin_marker(shell)
+    end = _end_marker(shell)
+    block_lines = [begin, script, end]
+    lines = content.splitlines()
+    start_idx: int | None = None
+    end_idx: int | None = None
+    for i, line in enumerate(lines):
+        if start_idx is None and line.strip() == begin:
+            start_idx = i
+        elif start_idx is not None and line.strip() == end:
+            end_idx = i
+            break
+    if start_idx is not None and end_idx is not None:
+        return "\n".join(lines[:start_idx] + block_lines + lines[end_idx + 1:]) + "\n"
+    if content:
+        if not content.endswith("\n"):
+            content += "\n"
+        return content + "\n" + "\n".join(block_lines) + "\n"
+    return "\n".join(block_lines) + "\n"
+
+
+def _install(shell: str, script: str, target: Path) -> None:
+    """Write *script* into *target* (created if missing), replacing any
+    existing block for *shell*."""
+    content = ""
+    if target.exists():
+        content = target.read_text(encoding="utf-8")
+    target.write_text(_install_block(content, shell, script), encoding="utf-8")
+
+
 class CompletionCommand(BaseCommand):
     """Print a shell tab-completion script for ``llm-router``."""
 
@@ -185,8 +244,25 @@ class CompletionCommand(BaseCommand):
         cls, subparsers: "argparse._SubParsersAction[Any]"
     ) -> None:
         """Register the *bash* / *zsh* sub-commands."""
-        subparsers.add_parser(cls.BASH_NAME, help=cls.BASH_HELP)
-        subparsers.add_parser(cls.ZSH_NAME, help=cls.ZSH_HELP)
+        bash_parser = subparsers.add_parser(cls.BASH_NAME, help=cls.BASH_HELP)
+        zsh_parser = subparsers.add_parser(cls.ZSH_NAME, help=cls.ZSH_HELP)
+        for parser, shell in ((bash_parser, "bash"), (zsh_parser, "zsh")):
+            default_rc = "~/.bashrc" if shell == "bash" else "~/.zshrc"
+            parser.add_argument(
+                "--install",
+                action="store_true",
+                help=(
+                    "Append the script to {} (created if missing) instead of "
+                    "printing it; re-running replaces the existing block.".format(
+                        default_rc
+                    )
+                ),
+            )
+            parser.add_argument(
+                "--file",
+                metavar="PATH",
+                help="Target rc file for --install (default: {})".format(default_rc),
+            )
 
     # ---- Dispatch -------------------------------------------------------- #
     @classmethod
@@ -202,14 +278,30 @@ class CompletionCommand(BaseCommand):
 
     @classmethod
     def dispatch(cls, args: argparse.Namespace) -> int:
-        """Print the completion script for the requested shell."""
+        """Print (or install) the completion script for the requested shell."""
         action = getattr(args, cls.SUBPARSER_DEST, None)
         if action not in (cls.BASH_NAME, cls.ZSH_NAME):
             cls.build_parser().print_help()
             return 0
         tree = _command_tree(cls._top_parser())
-        if action == cls.BASH_NAME:
-            print(_render_bash(tree))
-        else:
-            print(_render_zsh(tree))
+        script = _render_bash(tree) if action == cls.BASH_NAME else _render_zsh(tree)
+        if not getattr(args, "install", False):
+            print(script)
+            return 0
+        file_arg = getattr(args, "file", None)
+        target = (
+            Path(file_arg).expanduser() if file_arg else _default_rc_file(action)
+        )
+        try:
+            _install(action, script, target)
+        except OSError as exc:
+            print(
+                "Error: could not install {} completion to {}: {}".format(
+                    action, target, exc
+                ),
+                file=sys.stderr,
+            )
+            return 1
+        print("Installed {} completion to {}".format(action, target))
+        print("Restart your shell or run: source {}".format(target))
         return 0
