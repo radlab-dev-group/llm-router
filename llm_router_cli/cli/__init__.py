@@ -17,7 +17,7 @@ Usage::
     llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P \
         --labels a,b
     llm-router server start        # start REST API in the background (daemon)
-    llm-router server status       # show status + launch parameters (.run record)
+    llm-router server status       # colored status card (running + launch params, secrets masked)
     llm-router server log          # follow the log (tail -f style, colored)
     llm-router server stop         # stop it (SIGTERM, or --force SIGKILL)
     llm-router server reload       # graceful reload (SIGHUP to Gunicorn master)

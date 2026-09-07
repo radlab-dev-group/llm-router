@@ -330,6 +330,44 @@ def tail_lines(fh: IO[str], n: int) -> List[str]:
 
 
 # -------------------------------------------------------------------------- #
+# Colored status rendering
+# -------------------------------------------------------------------------- #
+def _resolve_color(mode: str) -> bool:
+    """Decide whether to emit ANSI colors for a ``--color`` *mode* value.
+
+    ``auto`` (default) colors only when stdout is a TTY, so piped output stays
+    clean; ``always``/``never`` force the choice.
+    """
+    if mode == "always":
+        return True
+    if mode == "never":
+        return False
+    return sys.stdout.isatty()
+
+
+def _paint(enabled: bool, code: str, text: str) -> str:
+    """Wrap *text* in an ANSI *code* when *enabled* is true, else return as-is."""
+    if not enabled:
+        return text
+    return f"\033[{code}m{text}{_ANSI_RESET}"
+
+
+#: Env variable names whose *values* must never be echoed verbatim.
+_SENSITIVE_KEY_RE = re.compile(
+    r"(?i)(password|passwd|secret|token|credential|api[_-]?key)"
+)
+
+
+def _is_sensitive(key: str) -> bool:
+    """True if *key* names a credential whose value should be masked."""
+    return bool(_SENSITIVE_KEY_RE.search(key))
+
+
+#: Placeholder printed in place of a masked secret value.
+_MASKED = "****"
+
+
+# -------------------------------------------------------------------------- #
 # Command
 # -------------------------------------------------------------------------- #
 class ServerCommand(BaseCommand):
@@ -384,6 +422,15 @@ class ServerCommand(BaseCommand):
             "--pid-file",
             default=str(DEFAULT_PID_FILE),
             help="PID file location (default: %(default)s)",
+        )
+
+    @classmethod
+    def _add_color_arg(cls, p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "--color",
+            choices=["auto", "always", "never"],
+            default="auto",
+            help="Colorize output (auto = only on a TTY, default: %(default)s)",
         )
 
     @classmethod
@@ -498,6 +545,12 @@ class ServerCommand(BaseCommand):
 
         status = subparsers.add_parser(cls.STATUS_NAME, help=cls.STATUS_HELP)
         cls._add_pid_file_arg(status)
+        cls._add_color_arg(status)
+        status.add_argument(
+            "--no-env",
+            action="store_true",
+            help="Hide the environment section (compact output).",
+        )
 
         log = subparsers.add_parser(cls.LOG_NAME, help=cls.LOG_HELP)
         log.add_argument(
@@ -516,12 +569,7 @@ class ServerCommand(BaseCommand):
             action="store_true",
             help="Show the initial tail and exit (no -f style following).",
         )
-        log.add_argument(
-            "--color",
-            choices=["auto", "always", "never"],
-            default="auto",
-            help="Colorize log levels (auto = only on a TTY, default: %(default)s)",
-        )
+        cls._add_color_arg(log)
 
     # ---- Dispatch -------------------------------------------------------- #
     @classmethod
@@ -744,39 +792,129 @@ class ServerCommand(BaseCommand):
     @classmethod
     def _status(cls, args: argparse.Namespace) -> int:
         """Report whether the server is running, with its launch parameters."""
+        color = _resolve_color(getattr(args, "color", "auto"))
+        no_env = bool(getattr(args, "no_env", False))
         pid_file = Path(args.pid_file).expanduser()
         pid = get_alive_pid(pid_file)
         if pid is None:
-            print(f"Server is NOT running (pid file: {pid_file}).")
+            print(cls._render_status_down(color, pid_file))
             return 1
 
         record = read_run_file(run_file_for(pid_file)) or {}
-        lines = [
-            f"Server is running (pid={pid}).",
-            f"  pid file: {pid_file}",
-            f"  log:      {record.get('log_file', DEFAULT_LOG_FILE)}",
-        ]
-        if record.get("started_at"):
-            lines.append(f"  started:  {record['started_at']}")
-        if record.get("server"):
-            lines.append(f"  server:   {record['server']}")
-        if record.get("command"):
-            lines.append(
-                f"  command:  {' '.join(str(part) for part in record['command'])}"
-            )
-        # Full LLM_ROUTER_* env the server was started with (all vars, not
-        # just the CLI overrides). Old records predate ``env`` and only have
-        # ``env_overrides``, so fall back to that for display purposes.
+        print(cls._render_status_up(color, pid, pid_file, record, no_env))
+        return 0
+
+    # ---- Status rendering ------------------------------------------------ #
+    @classmethod
+    def _running_line(cls, pid: int, record: Dict[str, Any]) -> str:
+        """Build the one-line "Server is running (...)" summary."""
+        pieces = [f"pid {pid}"]
+        server = record.get("server")
+        if server:
+            pieces.append(str(server))
+        env = cls._env_from_record(record)
+        host = env.get("LLM_ROUTER_SERVER_HOST")
+        port = env.get("LLM_ROUTER_SERVER_PORT")
+        if host and host not in ("0.0.0.0", "127.0.0.1"):
+            pieces.append(f"host {host}" + (f":{port}" if port else ""))
+        elif port:
+            pieces.append(f"port {port}")
+        return "Server is running (" + ", ".join(pieces) + ")"
+
+    @classmethod
+    def _env_from_record(cls, record: Dict[str, Any]) -> Dict[str, Any]:
+        """Best-effort env mapping from *record* (``env`` else ``env_overrides``)."""
         env = record.get("env")
         if env is None:
             env = record.get("env_overrides")
-        if env:
-            lines.append("  env:")
-            lines.extend(f"    {key}={value}" for key, value in env.items())
-        elif record:
-            lines.append("  env: (none recorded)")
-        print("\n".join(lines))
-        return 0
+        return dict(env) if isinstance(env, dict) else {}
+
+    @classmethod
+    def _detail_rows(cls, pid: int, pid_file: Path, record: Dict[str, Any]):
+        """Key/value rows for the Details section (in display order)."""
+        rows: List[Tuple[str, str]] = [
+            ("PID", str(pid)),
+            ("Log", str(record.get("log_file", DEFAULT_LOG_FILE))),
+            ("PID file", str(pid_file)),
+        ]
+        if record.get("started_at"):
+            rows.append(("Started", str(record["started_at"])))
+        if record.get("server"):
+            rows.append(("Server", str(record["server"])))
+        if record.get("command"):
+            rows.append(
+                ("Command", " ".join(str(part) for part in record["command"]))
+            )
+        return rows
+
+    @classmethod
+    def _kv_block(
+        cls,
+        color: bool,
+        title: str,
+        rows: List[Tuple[str, str]],
+    ) -> List[str]:
+        """Render a two-column *rows* block (label padded to the widest key)."""
+        lines = ["  " + _paint(color, "1;90", title)]
+        if not rows:
+            return lines
+        width = max(len(key) for key, _ in rows)
+        for key, value in rows:
+            lines.append(
+                "    " + _paint(color, "90", f"{key:<{width}}") + "  " + value
+            )
+        return lines
+
+    @classmethod
+    def _render_status_up(
+        cls,
+        color: bool,
+        pid: int,
+        pid_file: Path,
+        record: Dict[str, Any],
+        no_env: bool,
+    ) -> str:
+        """Render the "running" card."""
+        lines = [
+            "  " + _paint(color, "1;32", "✓ All good"),
+            "  " + _paint(color, "32", "●") + "  " + cls._running_line(pid, record),
+            "",
+        ]
+        lines.extend(
+            cls._kv_block(color, "Details", cls._detail_rows(pid, pid_file, record))
+        )
+
+        env = cls._env_from_record(record)
+        if no_env:
+            pass
+        elif env:
+            env_rows = [
+                (key, _MASKED if _is_sensitive(key) else str(env[key]))
+                for key in sorted(env)
+            ]
+            lines.append("")
+            lines.extend(
+                cls._kv_block(color, f"Environment ({len(env_rows)})", env_rows)
+            )
+        else:
+            lines.append("")
+            lines.append(
+                "  " + _paint(color, "90", "Environment (none recorded)")
+            )
+        return "\n".join(lines)
+
+    @classmethod
+    def _render_status_down(cls, color: bool, pid_file: Path) -> str:
+        """Render the "not running" card."""
+        lines = [
+            "  " + _paint(color, "1;31", "✗ Not running"),
+            "  "
+            + _paint(color, "31", "●")
+            + "  Server is not running (no live process for this PID file).",
+            "",
+        ]
+        lines.extend(cls._kv_block(color, "Details", [("PID file", str(pid_file))]))
+        return "\n".join(lines)
 
     # ---- Log following --------------------------------------------------- #
     @classmethod
