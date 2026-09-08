@@ -413,8 +413,10 @@ Unless your environment already sets them, `start` applies the same `LLM_ROUTER_
 `start` accepts the usual tuning flags (`--foreground`, `--host`, `--port`, `--server
 {gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`,
 `--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
-`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`). Every `LLM_ROUTER_*` variable
-in effect at launch — defaults + shell env +
+`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`). The daemon log
+(`--log-file`) follows `LLM_ROUTER_LOG_FILENAME` when it is set in the shell — a bare file name is resolved against
+the launch CWD — and defaults to `~/.llm-router/server.log` only when the variable is unset. Every `LLM_ROUTER_*`
+variable in effect at launch — defaults + shell env +
 CLI overrides — is snapshotted into the run record (`<pid-file>.run`) so `status` can show exactly how the server was
 started.
 
@@ -447,9 +449,10 @@ started.
 Two distinct log files are shown: **Log** is the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
 `llm-router.log`). When that variable is a bare file name (no directory part) the server writes it to the CWD from
 which it was launched, so the run record stores the **absolute** path (`<launch-dir>/llm-router.log`) and `status`
-displays it as-is; while **Console log** is the daemon's captured
-stdout/stderr. When the server is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with
-code `1`.
+displays it as-is; while **Console log** is where the daemon captures its stdout/stderr. The console log
+(`start --log-file`) follows the user's `LLM_ROUTER_LOG_FILENAME` when it is set in the shell (a bare name resolved
+against the launch CWD) and only falls back to `~/.llm-router/server.log` when the variable is unset. When the server
+is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
 
 Security: environment values whose key names a credential (`*PASSWORD*`,
 `*SECRET*`, `*TOKEN*`, `*API_KEY*`, `*CREDENTIAL*`) are **masked** as `****`

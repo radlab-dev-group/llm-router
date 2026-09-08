@@ -290,6 +290,26 @@ def anchor_log_name(name: str) -> str:
     return str(path)
 
 
+def resolve_start_log_file(
+    cli_value: Optional[str], shell_log_filename: Optional[str]
+) -> Path:
+    """
+    Resolve the daemon log file for ``start``.
+
+    An explicit ``--log-file`` wins. Otherwise, if the user exported
+    ``LLM_ROUTER_LOG_FILENAME``, that path is used — a bare file name is
+    anchored to the CWD, where the server process actually writes its log.
+    Only when the variable is unset do we fall back to the per-user default
+    under ``~/.llm-router``. ``shell_log_filename`` must be captured *before*
+    :func:`apply_default_env` fills in the ``DEFAULT_ENV`` value.
+    """
+    if cli_value:
+        return Path(cli_value).expanduser()
+    if shell_log_filename:
+        return Path(anchor_log_name(shell_log_filename))
+    return DEFAULT_LOG_FILE
+
+
 # -------------------------------------------------------------------------- #
 # Daemonization
 # -------------------------------------------------------------------------- #
@@ -472,8 +492,12 @@ class ServerCommand(BaseCommand):
         )
         start.add_argument(
             "--log-file",
-            default=str(DEFAULT_LOG_FILE),
-            help="Server log file used in daemon mode (default: %(default)s)",
+            default=None,
+            help=(
+                "Server log file used in daemon mode (default: "
+                "LLM_ROUTER_LOG_FILENAME if set in the shell, else "
+                f"{DEFAULT_LOG_FILE})"
+            ),
         )
         start.add_argument(
             "--server",
@@ -689,6 +713,10 @@ class ServerCommand(BaseCommand):
             )
             return 1
 
+        # Snapshot the user's shell value *before* defaults are applied — the
+        # daemon log follows it, and only falls back to ~/.llm-router when it
+        # is unset.
+        shell_log_filename = os.environ.get("LLM_ROUTER_LOG_FILENAME")
         apply_default_env()
         if args.server:
             os.environ.setdefault("LLM_ROUTER_SERVER_TYPE", args.server)
@@ -702,7 +730,7 @@ class ServerCommand(BaseCommand):
             cmd += ["--port", str(args.port)]
 
         if args.foreground:
-            log_file = Path(args.log_file).expanduser()
+            log_file = resolve_start_log_file(args.log_file, shell_log_filename)
             # Keep the PID file and run record in sync in foreground mode too,
             # so ``server status`` / ``server stop`` work exactly like for a
             # daemonized server.
@@ -726,7 +754,7 @@ class ServerCommand(BaseCommand):
                 except OSError:
                     pass
 
-        log_file = Path(args.log_file).expanduser()
+        log_file = resolve_start_log_file(args.log_file, shell_log_filename)
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Record the launch parameters next to the PID file so

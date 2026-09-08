@@ -367,6 +367,9 @@ def test_start_foreground_writes_and_cleans_pid_file(monkeypatch, tmp_path, caps
         record = server_module.read_run_file(server_module.run_file_for(pid_file))
         assert record is not None
         assert record["app_log_file"] == str(Path.cwd() / "tutaj-llm-router.log")
+        # The daemon log follows LLM_ROUTER_LOG_FILENAME instead of the
+        # hardcoded ~/.llm-router/server.log fallback.
+        assert record["log_file"] == str(Path.cwd() / "tutaj-llm-router.log")
         return FakeProc()
 
     monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
@@ -379,6 +382,64 @@ def test_start_foreground_writes_and_cleans_pid_file(monkeypatch, tmp_path, caps
     assert not pid_file.exists()
     assert not server_module.run_file_for(pid_file).exists()
     assert "Running in foreground (pid=7777)" in capsys.readouterr().out
+
+
+def test_start_log_file_defaults_to_home_when_env_unset(
+    monkeypatch, tmp_path, capsys
+):
+    """Without ``LLM_ROUTER_LOG_FILENAME`` the daemon log falls back to
+    ``~/.llm-router/server.log`` (even though the CLI later fills the shell
+    env with its default ``llm-router.log``)."""
+    pid_file = tmp_path / "server.pid"
+
+    class FakeProc:
+        pid = 8888
+
+        def wait(self):
+            return 0
+
+    def fake_popen(cmd, **kwargs):
+        record = server_module.read_run_file(server_module.run_file_for(pid_file))
+        assert record is not None
+        assert record["log_file"] == str(server_module.DEFAULT_LOG_FILE)
+        return FakeProc()
+
+    monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.delenv("LLM_ROUTER_LOG_FILENAME", raising=False)
+    rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
+    assert rc == 0
+
+
+def test_start_explicit_log_file_beats_env(monkeypatch, tmp_path, capsys):
+    """``--log-file`` always wins over ``LLM_ROUTER_LOG_FILENAME``."""
+    pid_file = tmp_path / "server.pid"
+    log_file = tmp_path / "custom.log"
+
+    class FakeProc:
+        pid = 8889
+
+        def wait(self):
+            return 0
+
+    def fake_popen(cmd, **kwargs):
+        record = server_module.read_run_file(server_module.run_file_for(pid_file))
+        assert record is not None
+        assert record["log_file"] == str(log_file)
+        return FakeProc()
+
+    monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "tutaj-llm-router.log")
+    rc = ServerCommand.run(
+        [
+            "start",
+            "--foreground",
+            "--log-file",
+            str(log_file),
+            "--pid-file",
+            str(pid_file),
+        ]
+    )
+    assert rc == 0
 
 
 def test_start_foreground_propagates_exit_code_and_cleans_up(
