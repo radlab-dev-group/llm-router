@@ -81,10 +81,7 @@ def _flatten_paths(
             rec(info["subs"], p)
 
     rec(tree, ())
-    return {
-        p: v
-        for p, v in sorted(paths.items(), key=lambda kv: (-len(kv[0].split()), kv[0]))
-    }
+    return dict(sorted(paths.items(), key=lambda kv: (-len(kv[0].split()), kv[0])))
 
 
 def _path_case_lines(
@@ -135,7 +132,7 @@ def _render_bash(tree: Dict[str, Dict[str, Any]]) -> str:
         '    if [[ -z "${typed}" ]]; then',
         "        cands=( ${_LR_ROOT[@]} )",
         "    else",
-        "        for p in \"${_LR_PATHS[@]}\"; do",
+        '        for p in "${_LR_PATHS[@]}"; do',
         '            if [[ "${typed}" == "${p}" || "${typed}" == "${p} "* ]]; then',
         '                matched="${p}"',
         "                break",
@@ -199,13 +196,12 @@ def _render_zsh(tree: Dict[str, Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-
 def _begin_marker(shell: str) -> str:
-    return "# >>> llm-router completion ({}) >>>".format(shell)
+    return f"# >>> llm-router completion ({shell}) >>>"
 
 
 def _end_marker(shell: str) -> str:
-    return "# <<< llm-router completion ({}) <<<".format(shell)
+    return f"# <<< llm-router completion ({shell}) <<<"
 
 
 def _default_rc_file(shell: str) -> Path:
@@ -234,7 +230,9 @@ def _install_block(content: str, shell: str, script: str) -> str:
             end_idx = i
             break
     if start_idx is not None and end_idx is not None:
-        return "\n".join(lines[:start_idx] + block_lines + lines[end_idx + 1:]) + "\n"
+        return (
+            "\n".join(lines[:start_idx] + block_lines + lines[end_idx + 1 :]) + "\n"
+        )
     if content:
         if not content.endswith("\n"):
             content += "\n"
@@ -277,16 +275,15 @@ class CompletionCommand(BaseCommand):
                 "--install",
                 action="store_true",
                 help=(
-                    "Append the script to {} (created if missing) instead of "
-                    "printing it; re-running replaces the existing block.".format(
-                        default_rc
-                    )
+                    f"Append the script to {default_rc} (created if missing) "
+                    "instead of printing it; re-running replaces the existing "
+                    "block."
                 ),
             )
             parser.add_argument(
                 "--file",
                 metavar="PATH",
-                help="Target rc file for --install (default: {})".format(default_rc),
+                help=f"Target rc file for --install (default: {default_rc})",
             )
 
     # ---- Dispatch -------------------------------------------------------- #
@@ -306,8 +303,7 @@ class CompletionCommand(BaseCommand):
         """Print (or install) the completion script for the requested shell."""
         action = getattr(args, cls.SUBPARSER_DEST, None)
         if action not in (cls.BASH_NAME, cls.ZSH_NAME):
-            cls.build_parser().print_help()
-            return 0
+            return cls.show_help(0)
         tree = _command_tree(cls._top_parser())
         script = _render_bash(tree) if action == cls.BASH_NAME else _render_zsh(tree)
         if not getattr(args, "install", False):
@@ -321,12 +317,10 @@ class CompletionCommand(BaseCommand):
             _install(action, script, target)
         except OSError as exc:
             print(
-                "Error: could not install {} completion to {}: {}".format(
-                    action, target, exc
-                ),
+                f"Error: could not install {action} completion to {target}: {exc}",
                 file=sys.stderr,
             )
             return 1
-        print("Installed {} completion to {}".format(action, target))
-        print("Restart your shell or run: source {}".format(target))
+        print(f"Installed {action} completion to {target}")
+        print(f"Restart your shell or run: source {target}")
         return 0

@@ -29,7 +29,6 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from llm_router_cli.log_utils import setup_logging
 from llm_router_cli.cli.commands.base import BaseCommand
 
 log = logging.getLogger(__name__)
@@ -57,7 +56,7 @@ class AuthCommand(BaseCommand):
     KEY_COMMANDS = ("generate", "list", "delete", "disable", "enable", "rotate")
     KEY_MUTATE_ACTIONS = ("delete", "disable", "enable")
 
-    SEED_DIR = Path.home() / ".llm-router"
+    SEED_DIR = BaseCommand.STATE_DIR
     DEFAULT_SEED_FILE = str(SEED_DIR / "configs" / "auth" / "memory-keys.json")
     PRESET_FILE_NAME = "rate_limiting-policies.json"
 
@@ -73,12 +72,6 @@ class AuthCommand(BaseCommand):
     # ------------------------------------------------------------------ #
     # Error / table helpers
     # ------------------------------------------------------------------ #
-    @staticmethod
-    def _fail(message: str) -> int:
-        """Print ``Error: message`` to stderr and return a failure exit code."""
-        print(f"Error: {message}", file=sys.stderr)
-        return 1
-
     @staticmethod
     def _render_table(
         headers: Sequence[str],
@@ -415,9 +408,7 @@ class AuthCommand(BaseCommand):
             env_dir = Path(env_path)
             candidates.append(env_dir)
             candidates.append(env_dir / cls.PRESET_FILE_NAME)
-        candidates.append(
-            Path.home() / ".llm-router" / "configs" / cls.PRESET_FILE_NAME
-        )
+        candidates.append(cls.SEED_DIR / "configs" / cls.PRESET_FILE_NAME)
 
         for path in candidates:
             presets = cls._read_presets_file(path)
@@ -556,8 +547,7 @@ class AuthCommand(BaseCommand):
         """Dispatch an already-parsed *args* namespace (no re-parsing)."""
         auth_command = getattr(args, cls.SUBPARSER_DEST, None)
         if auth_command is None:
-            cls.build_parser().print_help()
-            return 0
+            return cls.show_help(0)
 
         cls._ensure_seed_env()
         self = cls()
@@ -567,9 +557,8 @@ class AuthCommand(BaseCommand):
             cls.RATE_LIMIT_NAME: self._handle_rate_limit,
         }.get(auth_command)
         if handler is None:
-            cls.build_parser().print_help()
-            return 1
-        setup_logging(verbose=bool(getattr(args, "verbose", False)))
+            return cls.show_help(1)
+        cls.apply_verbose(args)
         return handler(args)
 
     # ------------------------------------------------------------------ #
@@ -579,7 +568,7 @@ class AuthCommand(BaseCommand):
         """Route key subcommands to their handlers (mutations share one path)."""
         cmd = getattr(args, "key_command", None)
         if cmd is None:
-            return self._fail(
+            return self.fail(
                 f"Usage: llm-router auth key <{'|'.join(self.KEY_COMMANDS)}>"
             )
 
@@ -592,7 +581,7 @@ class AuthCommand(BaseCommand):
             "rotate": self._key_rotate,
         }.get(cmd)
         if handler is None:
-            return self._fail(f"Unknown key command: {cmd}")
+            return self.fail(f"Unknown key command: {cmd}")
         return handler(args)
 
     def _key_generate(self, args: Any) -> int:
@@ -607,14 +596,14 @@ class AuthCommand(BaseCommand):
 
         policy = args.policy
         if get_builtin_policy(policy) is None:
-            return self._fail(f"Policy '{policy}' does not exist.")
+            return self.fail(f"Policy '{policy}' does not exist.")
 
         expires: Optional[float] = None
         if args.expires not in (None, ""):
             try:
                 expires = float(args.expires)
             except ValueError:
-                return self._fail(
+                return self.fail(
                     f"--expires must be a Unix timestamp (got '{args.expires}')."
                 )
 
@@ -629,7 +618,7 @@ class AuthCommand(BaseCommand):
         }
         _store, plaintext_key, error = self._store_call(args, "create_key", record)
         if error is not None or plaintext_key is None:
-            return self._fail(error or "key generation failed")
+            return self.fail(error or "key generation failed")
 
         if args.output:
             out_path = Path(args.output).expanduser()
@@ -655,7 +644,7 @@ class AuthCommand(BaseCommand):
         """
         _store, keys, error = self._store_call(args, "list_keys")
         if error is not None:
-            return self._fail(error)
+            return self.fail(error)
 
         log.debug("Listed %d key(s)", len(keys or []))
         if not keys:
@@ -693,7 +682,7 @@ class AuthCommand(BaseCommand):
         """
         store, _result, error = self._store_call(args, f"{action}_key", args.key_id)
         if error is not None:
-            return self._fail(error)
+            return self.fail(error)
 
         self._persist_seeds(store)
         past_tense = "deleted" if action == "delete" else f"{action}d"
@@ -709,7 +698,7 @@ class AuthCommand(BaseCommand):
             args, "rotate_key", args.key_id, args.grace
         )
         if error is not None:
-            return self._fail(error)
+            return self.fail(error)
 
         self._persist_seeds(store)
         print(f"Rotated key {args.key_id} -> new key:")
@@ -726,7 +715,7 @@ class AuthCommand(BaseCommand):
         """
         cmd = getattr(args, "policy_command", None)
         if cmd is None:
-            return self._fail("Usage: llm-router auth policy <list|create> ...")
+            return self.fail("Usage: llm-router auth policy <list|create> ...")
 
         if cmd == "list":
             from llm_router_api.core.auth.policies import builtin as builtin_mod
@@ -748,25 +737,25 @@ class AuthCommand(BaseCommand):
             try:
                 raw = self._resolve_policy_json(args)
             except ValueError as exc:
-                return self._fail(str(exc))
+                return self.fail(str(exc))
             if raw is None:
-                return self._fail(
+                return self.fail(
                     "No policy definition given — pass the JSON as an argument "
                     "or use --file (or '-' for stdin)."
                 )
             try:
                 policy_dict = json.loads(raw)
             except json.JSONDecodeError as exc:
-                return self._fail(f"Invalid JSON: {exc}")
+                return self.fail(f"Invalid JSON: {exc}")
             try:
                 policy = EndpointPolicy(**policy_dict)
             except (TypeError, ValueError) as exc:
-                return self._fail(f"Invalid policy definition: {exc}")
+                return self.fail(f"Invalid policy definition: {exc}")
             path = builtin_mod.save_policy(args.name, policy)
             print(f"Policy '{args.name}' created (saved to {path}).")
             return 0
 
-        return self._fail(f"Unknown policy command: {cmd}")
+        return self.fail(f"Unknown policy command: {cmd}")
 
     @staticmethod
     def _resolve_policy_json(args: Any) -> Optional[str]:
@@ -775,7 +764,7 @@ class AuthCommand(BaseCommand):
         or stdin (``--file -``).
         """
         if args.policy_json:
-            return args.policy_json
+            return str(args.policy_json)
         if args.file == "-":
             return sys.stdin.read()
         if args.file:
@@ -783,7 +772,7 @@ class AuthCommand(BaseCommand):
             try:
                 return path.read_text(encoding="utf-8")
             except OSError as exc:
-                raise ValueError(f"Cannot read policy file {path}: {exc}")
+                raise ValueError(f"Cannot read policy file {path}: {exc}") from exc
         return None
 
     # ------------------------------------------------------------------ #
@@ -795,7 +784,7 @@ class AuthCommand(BaseCommand):
         """
         cmd = getattr(args, "rate_limit_command", None)
         if cmd is None:
-            return self._fail(
+            return self.fail(
                 "Usage: llm-router auth rate-limit <list|apply|remove> ..."
             )
         handler = {
@@ -804,7 +793,7 @@ class AuthCommand(BaseCommand):
             "remove": self._rl_remove,
         }.get(cmd)
         if handler is None:
-            return self._fail(f"Unknown rate-limit command: {cmd}")
+            return self.fail(f"Unknown rate-limit command: {cmd}")
         return handler(args)
 
     @staticmethod
@@ -856,13 +845,13 @@ class AuthCommand(BaseCommand):
         rate_limit = self._resolve_rate_limit_preset(args.preset)
         if rate_limit is None:
             names = ", ".join(p["name"] for p in self._load_rate_limit_presets())
-            return self._fail(f"Unknown preset '{args.preset}'. Available: {names}")
+            return self.fail(f"Unknown preset '{args.preset}'. Available: {names}")
 
         _store, _result, error = self._store_call(
             args, "update_policy_override", args.key_id, rate_limit
         )
         if error is not None:
-            return self._fail(error)
+            return self.fail(error)
 
         print(
             f"Applied preset '{args.preset}' "
@@ -878,7 +867,7 @@ class AuthCommand(BaseCommand):
             args, "update_policy_override", args.key_id, None
         )
         if error is not None:
-            return self._fail(error)
+            return self.fail(error)
 
         print(
             f"Removed rate-limit override for key {args.key_id} "

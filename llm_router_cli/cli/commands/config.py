@@ -18,7 +18,6 @@ import time
 
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from llm_router_cli.log_utils import setup_logging
 from llm_router_cli.cli.commands.base import BaseCommand
 
 log = logging.getLogger(__name__)
@@ -215,12 +214,11 @@ class ConfigCommand(BaseCommand):
         }
         handler = handlers.get(action) if isinstance(action, str) else None
         if handler is None:
-            cls.build_parser().print_help()
-            return 0
+            return cls.show_help(0)
 
         # Opt-in diagnostics: the config UX is print-based, so logging is
         # only configured when the user asks for it.
-        setup_logging(verbose=bool(getattr(args, "verbose", False)))
+        cls.apply_verbose(args)
         return handler(args)
 
     @staticmethod
@@ -497,24 +495,6 @@ class ConfigCommand(BaseCommand):
             if groups and not collect_all:
                 break
         return groups
-
-    @classmethod
-    def _scan_and_merge(
-        cls,
-        host: str,
-        explicit_port: int,
-        protocol: str,
-        prov: Dict[str, Any],
-        config: Dict[str, Any],
-        collect_all: bool = False,
-    ) -> None:
-        """
-        Discover one provider on one host and merge its config into *config*.
-        """
-        for group in cls._scan_provider(
-            host, explicit_port, protocol, prov, collect_all=collect_all
-        ):
-            cls._accumulate_group(config, prov["group_name"], group)
 
     @classmethod
     def _generate_config(

@@ -21,7 +21,10 @@ from __future__ import annotations
 import argparse
 import sys
 
+from pathlib import Path
 from typing import Any, ClassVar, List, Optional
+
+from llm_router_cli.log_utils import setup_logging
 
 
 def _exit_code(exc: SystemExit) -> int:
@@ -43,6 +46,8 @@ class BaseCommand:
     HELP: ClassVar[str] = ""
     #: ``dest`` for the command's own sub‑parsers (its namespace field).
     SUBPARSER_DEST: ClassVar[str] = "command"
+    #: Per‑user state directory shared by every command (``~/.llm-router``).
+    STATE_DIR: ClassVar[Path] = Path.home() / ".llm-router"
 
     # ------------------------------------------------------------------ #
     # Shared argument helpers
@@ -55,6 +60,26 @@ class BaseCommand:
             action="store_true",
             help="Enable verbose (DEBUG) logging of internal operations.",
         )
+
+    # ------------------------------------------------------------------ #
+    # Shared output / logging helpers
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def fail(message: str) -> int:
+        """Print ``Error: {message}`` to stderr and return a failure code."""
+        print(f"Error: {message}", file=sys.stderr)
+        return 1
+
+    @classmethod
+    def show_help(cls, code: int = 0) -> int:
+        """Print this command's help and return *code* as the exit status."""
+        cls.build_parser().print_help()
+        return code
+
+    @classmethod
+    def apply_verbose(cls, args: argparse.Namespace) -> None:
+        """Apply the shared ``--verbose`` semantics to the root logger."""
+        setup_logging(verbose=bool(getattr(args, "verbose", False)))
 
     # ------------------------------------------------------------------ #
     # Registration (single source of truth)
