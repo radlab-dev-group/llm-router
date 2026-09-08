@@ -290,6 +290,21 @@ def anchor_log_name(name: str) -> str:
     return str(path)
 
 
+def resolve_models_config_path(env: Dict[str, Any]) -> str:
+    """
+    Absolute path of the models configuration file.
+
+    ``LLM_ROUTER_MODELS_CONFIG`` is often a path relative to the launch CWD
+    (e.g. ``resources/configs/models-config.json``); the server loads it
+    from there, so the recorded path is anchored to :func:`Path.cwd`.
+    Empty string when the variable is unset.
+    """
+    name = env.get("LLM_ROUTER_MODELS_CONFIG") or ""
+    if not name:
+        return ""
+    return anchor_log_name(name)
+
+
 def resolve_start_log_file(
     cli_value: Optional[str], shell_log_filename: Optional[str]
 ) -> Path:
@@ -676,6 +691,7 @@ class ServerCommand(BaseCommand):
             "server": os.environ.get("LLM_ROUTER_SERVER_TYPE", "gunicorn"),
             "log_file": str(log_file),
             "app_log_file": resolve_app_log_path(env),
+            "models_config": resolve_models_config_path(env),
             "pid_file": str(pid_file),
             "env": env,
             "env_overrides": cls.build_env_overrides(args),
@@ -912,8 +928,16 @@ class ServerCommand(BaseCommand):
             rows.append(("Host", str(env["LLM_ROUTER_SERVER_HOST"])))
         if env.get("LLM_ROUTER_SERVER_PORT"):
             rows.append(("Port", str(env["LLM_ROUTER_SERVER_PORT"])))
-        if env.get("LLM_ROUTER_MODELS_CONFIG"):
-            rows.append(("Models config", str(env["LLM_ROUTER_MODELS_CONFIG"])))
+        if record.get("models_config") or env.get("LLM_ROUTER_MODELS_CONFIG"):
+            rows.append(
+                (
+                    "Models config",
+                    str(
+                        record.get("models_config")
+                        or env.get("LLM_ROUTER_MODELS_CONFIG")
+                    ),
+                )
+            )
         if record.get("command"):
             rows.append(
                 ("Command", " ".join(str(part) for part in record["command"]))

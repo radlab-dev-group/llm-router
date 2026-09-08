@@ -436,7 +436,7 @@ started.
     Server         gunicorn
     Host           0.0.0.0
     Port           8080
-    Models config  resources/configs/models-config.json
+    Models config  /home/user/project/resources/configs/models-config.json
     Command        /usr/bin/python3 -m llm_router_api.rest_api
 
   Environment (5)
@@ -451,6 +451,10 @@ which it was launched, so the run record stores the **absolute** path (`<launch-
 displays it as-is. In daemon mode the daemon's captured stdout/stderr are appended to the **same** file, so a single
 log row is enough (without the variable the daemon capture falls back to `~/.llm-router/server.log`). When the server
 is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
+
+The **Models config** row behaves the same way as **Log**: when the server was started with a *relative* path
+(e.g. `resources/configs/models-config.json`), the run record stores the **absolute** path anchored to the launch CWD,
+so `status` shows the real location of the file.
 
 Security: environment values whose key names a credential (`*PASSWORD*`,
 `*SECRET*`, `*TOKEN*`, `*API_KEY*`, `*CREDENTIAL*`) are **masked** as `****`
