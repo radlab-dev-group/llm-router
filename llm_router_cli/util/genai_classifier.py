@@ -374,7 +374,7 @@ class GenAIClassifierApp(ConcurrentLLMPipeline):
             self._process_dataset(ds_item, task_q)
         return task_q
 
-    def _process(
+    def _process(  # type: ignore[override]
         self,
         client: LLMRouterClient,
         ctx: PromptHandler,
