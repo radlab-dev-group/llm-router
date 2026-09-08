@@ -10,6 +10,7 @@ pin down the exact helper contract.
 
 from __future__ import annotations
 
+import argparse
 import json
 
 from pathlib import Path
@@ -632,8 +633,6 @@ def test_write_output_unwritable_path_returns_1(tmp_path: Path, capsys) -> None:
 
 
 def _namespace(**overrides) -> argparse.Namespace:
-    import argparse as ap
-
     base = dict(
         hosts=["h"],
         all_ports=False,
@@ -643,7 +642,7 @@ def _namespace(**overrides) -> argparse.Namespace:
         verbose=False,
     )
     base.update(overrides)
-    return ap.Namespace(**base)
+    return argparse.Namespace(**base)
 
 
 def test_do_discover_writes_active_models_by_default(tmp_path: Path) -> None:

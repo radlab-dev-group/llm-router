@@ -355,9 +355,9 @@ def test_start_foreground_writes_and_cleans_pid_file(monkeypatch, tmp_path, caps
         def wait(self):
             # Simulate the server being up: PID file must be visible here.
             observed["pid_file"] = pid_file.read_text(encoding="utf-8").strip()
-            observed["run_record_exists"] = (
-                server_module.run_file_for(pid_file).exists()
-            )
+            observed["run_record_exists"] = server_module.run_file_for(
+                pid_file
+            ).exists()
             return 0
 
     def fake_popen(cmd, **kwargs):
@@ -464,9 +464,7 @@ def test_start_foreground_propagates_exit_code_and_cleans_up(
     assert not server_module.run_file_for(pid_file).exists()
 
 
-def test_start_foreground_refuses_when_server_already_running(
-    pid_file, capsys
-):
+def test_start_foreground_refuses_when_server_already_running(pid_file, capsys):
     write_pid_file(pid_file, os.getpid())  # a live PID occupies the slot
     rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
     assert rc == 1
@@ -769,9 +767,7 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
 
     try:
         assert (
-            ServerCommand.run(
-                ["status", "--pid-file", str(pid_file), "--show-env"]
-            )
+            ServerCommand.run(["status", "--pid-file", str(pid_file), "--show-env"])
             == 0
         )
         out = capsys.readouterr().out
@@ -890,9 +886,7 @@ def test_status_falls_back_to_env_overrides_for_old_records(
 
     try:
         assert (
-            ServerCommand.run(
-                ["status", "--pid-file", str(pid_file), "--show-env"]
-            )
+            ServerCommand.run(["status", "--pid-file", str(pid_file), "--show-env"])
             == 0
         )
         out = capsys.readouterr().out
@@ -1089,9 +1083,7 @@ def test_log_resolves_env_log_filename_when_no_record(
     assert str(tmp_path / "env-app.log") in err
 
 
-def test_log_explicit_log_file_overrides_record(
-    pid_file, tmp_path, capsys
-):
+def test_log_explicit_log_file_overrides_record(pid_file, tmp_path, capsys):
     explicit = tmp_path / "console.log"
     explicit.write_text("2026-01-01 INFO console: hello\n", encoding="utf-8")
     server_module.write_run_file(
@@ -1170,7 +1162,12 @@ def test_status_color_never_has_no_ansi(pid_file, tmp_path, capsys):
 
 def test_status_down_state_color_always(pid_file, capsys):
     # No live PID -> red "Not running" card, still colorized on demand.
-    assert ServerCommand.run(["status", "--pid-file", str(pid_file), "--color", "always"]) == 1
+    assert (
+        ServerCommand.run(
+            ["status", "--pid-file", str(pid_file), "--color", "always"]
+        )
+        == 1
+    )
     out = capsys.readouterr().out
     assert "not running" in out.lower()
     assert "\033[1;31m" in out  # bold red header
@@ -1193,9 +1190,7 @@ def test_status_masks_sensitive_env(pid_file, tmp_path, capsys):
     write_pid_file(pid_file, pid)
     try:
         assert (
-            ServerCommand.run(
-                ["status", "--pid-file", str(pid_file), "--show-env"]
-            )
+            ServerCommand.run(["status", "--pid-file", str(pid_file), "--show-env"])
             == 0
         )
         out = capsys.readouterr().out
@@ -1240,9 +1235,7 @@ def test_status_env_hidden_by_default_shown_with_flag(pid_file, tmp_path, capsys
 
         # Opt-in: --show-env reveals the section again.
         assert (
-            ServerCommand.run(
-                ["status", "--pid-file", str(pid_file), "--show-env"]
-            )
+            ServerCommand.run(["status", "--pid-file", str(pid_file), "--show-env"])
             == 0
         )
         out = capsys.readouterr().out
@@ -1259,7 +1252,9 @@ def test_status_env_hidden_by_default_shown_with_flag(pid_file, tmp_path, capsys
 def test_is_sensitive_matches_credentials_only():
     assert _is_sensitive("LLM_ROUTER_REDIS_PASSWORD")
     assert _is_sensitive("LLM_ROUTER_AUTH_VAULT_SECRET_ID")
-    assert _is_sensitive("LLM_ROUTER_AUTH_VAULT_ROLE_ID") is False  # not a secret name
+    assert (
+        _is_sensitive("LLM_ROUTER_AUTH_VAULT_ROLE_ID") is False
+    )  # not a secret name
     assert _is_sensitive("LLM_ROUTER_API_KEY")
     assert _is_sensitive("LLM_ROUTER_BALANCE_STRATEGY") is False
     # Key-prefix/length config is NOT a credential.
