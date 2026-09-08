@@ -902,7 +902,6 @@ class ServerCommand(BaseCommand):
                 or env.get("LLM_ROUTER_LOG_FILENAME")
                 or DEFAULT_LOG_FILENAME,
             ),
-            ("Console log", str(record.get("log_file", DEFAULT_LOG_FILE))),
             ("PID file", str(pid_file)),
         ]
         if record.get("started_at"):

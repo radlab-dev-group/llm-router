@@ -432,7 +432,6 @@ started.
   Details
     PID            7400
     Log            /home/user/project/llm-router.log
-    Console log    ~/.llm-router/server.log
     Started        2026-09-07T23:55:00+0200
     Server         gunicorn
     Host           0.0.0.0
@@ -446,12 +445,11 @@ started.
     LLM_ROUTER_SERVER_PORT       8080
 ```
 
-Two distinct log files are shown: **Log** is the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
+The **Log** row shows the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
 `llm-router.log`). When that variable is a bare file name (no directory part) the server writes it to the CWD from
 which it was launched, so the run record stores the **absolute** path (`<launch-dir>/llm-router.log`) and `status`
-displays it as-is; while **Console log** is where the daemon captures its stdout/stderr. The console log
-(`start --log-file`) follows the user's `LLM_ROUTER_LOG_FILENAME` when it is set in the shell (a bare name resolved
-against the launch CWD) and only falls back to `~/.llm-router/server.log` when the variable is unset. When the server
+displays it as-is. In daemon mode the daemon's captured stdout/stderr are appended to the **same** file, so a single
+log row is enough (without the variable the daemon capture falls back to `~/.llm-router/server.log`). When the server
 is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
 
 Security: environment values whose key names a credential (`*PASSWORD*`,

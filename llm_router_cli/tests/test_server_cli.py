@@ -756,19 +756,15 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
         assert "LLM_ROUTER_MODELS_CONFIG" in out
         assert "/tmp/custom.json" in out
         assert "LLM_ROUTER_LOG_LEVEL" in out
-        assert str(tmp_path / "srv.log") in out
         # "Log" is the app's own file (no LLM_ROUTER_LOG_FILENAME in the env
-        # snapshot -> default fallback); the daemon's stdout capture shows up
-        # as its own "Console log" row.
+        # snapshot -> default fallback).
         assert "llm-router.log" in out
-        assert "Console log" in out
     finally:
         _kill(pid)
 
 
 def test_status_log_row_shows_app_log_from_env(pid_file, tmp_path, capsys):
-    """``Log`` must reflect the app's own file (``LLM_ROUTER_LOG_FILENAME``),
-    distinct from the daemon's stdout capture (``Console log``)."""
+    """``Log`` must reflect the app's own file (``LLM_ROUTER_LOG_FILENAME``)."""
     env_snapshot = {
         "LLM_ROUTER_LOG_FILENAME": str(tmp_path / "app.log"),
         "LLM_ROUTER_SERVER_PORT": "8080",
@@ -789,8 +785,6 @@ def test_status_log_row_shows_app_log_from_env(pid_file, tmp_path, capsys):
         out = capsys.readouterr().out
         assert "Log" in out
         assert str(tmp_path / "app.log") in out
-        assert "Console log" in out
-        assert str(tmp_path / "srv.log") in out
     finally:
         _kill(pid)
 
@@ -815,7 +809,6 @@ def test_status_log_row_prefers_recorded_app_log(pid_file, tmp_path, capsys):
         assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
         out = capsys.readouterr().out
         assert str(app_log) in out
-        assert "Console log" in out
     finally:
         _kill(pid)
 
