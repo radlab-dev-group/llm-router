@@ -34,7 +34,7 @@ from llm_router_cli.cli.commands.base import BaseCommand
 from llm_router_lib.core.constants import ENV_PREFIX
 
 #: Per-user state directory (same home location as ``memory-keys.json``).
-_STATE_DIR = Path.home() / ".llm-router"
+_STATE_DIR = BaseCommand.STATE_DIR
 DEFAULT_PID_FILE = _STATE_DIR / "server.pid"
 DEFAULT_LOG_FILE = _STATE_DIR / "server.log"
 
@@ -387,7 +387,7 @@ def tail_lines(fh: IO[str], n: int) -> List[str]:
     if n <= 0:
         fh.seek(0)
         return []
-    return deque(fh, maxlen=n)
+    return list(deque(fh, maxlen=n))
 
 
 # -------------------------------------------------------------------------- #
@@ -544,7 +544,10 @@ class ServerCommand(BaseCommand):
         start.add_argument(
             "--default-lang",
             default=None,
-            help="Default endpoint language, e.g. 'pl' (LLM_ROUTER_DEFAULT_EP_LANGUAGE)",
+            help=(
+                "Default endpoint language, e.g. 'pl' "
+                "(LLM_ROUTER_DEFAULT_EP_LANGUAGE)"
+            ),
         )
         start.add_argument(
             "--auth",
@@ -711,8 +714,7 @@ class ServerCommand(BaseCommand):
             return cls._status(args)
         if action == cls.LOG_NAME:
             return cls._log(args)
-        cls.build_parser().print_help()
-        return 0
+        return cls.show_help(0)
 
     # ---- Actions --------------------------------------------------------- #
     @classmethod
@@ -721,13 +723,11 @@ class ServerCommand(BaseCommand):
         pid_file = Path(args.pid_file).expanduser()
         alive = get_alive_pid(pid_file)
         if alive is not None:
-            print(
-                f"Error: a server is already running (pid={alive}, "
+            return cls.fail(
+                f"a server is already running (pid={alive}, "
                 f"pid file: {pid_file}).\n"
-                "Use 'llm-router server reload' or 'llm-router server stop'.",
-                file=sys.stderr,
+                "Use 'llm-router server reload' or 'llm-router server stop'."
             )
-            return 1
 
         # Snapshot the user's shell value *before* defaults are applied — the
         # daemon log follows it, and only falls back to ~/.llm-router when it
@@ -754,6 +754,10 @@ class ServerCommand(BaseCommand):
                 run_file_for(pid_file),
                 cls.build_run_record(pid_file, log_file, cmd, args),
             )
+            # Long-lived foreground process: its lifetime is owned by the
+            # surrounding try/finally (PID + run-record cleanup), so a context
+            # manager (which would wait) is wrong here.
+            # pylint: disable-next=consider-using-with
             proc = subprocess.Popen(cmd)
             write_pid_file(pid_file, proc.pid)
             print(
@@ -786,12 +790,9 @@ class ServerCommand(BaseCommand):
         if os.fork() > 0:
             pid = _wait_for_pid(pid_file)
             if pid is None:
-                print(
-                    "Error: the daemon did not start. Check the log file: "
-                    f"{log_file}",
-                    file=sys.stderr,
+                return cls.fail(
+                    "the daemon did not start. Check the log file: " f"{log_file}"
                 )
-                return 1
             print(
                 f"Server started (pid={pid}).\n"
                 f"  log:    {log_file}\n"
@@ -907,7 +908,9 @@ class ServerCommand(BaseCommand):
         return dict(env) if isinstance(env, dict) else {}
 
     @classmethod
-    def _detail_rows(cls, pid: int, pid_file: Path, record: Dict[str, Any]):
+    def _detail_rows(
+        cls, pid: int, pid_file: Path, record: Dict[str, Any]
+    ) -> List[Tuple[str, str]]:
         """Key/value rows for the Details section (in display order)."""
         env = cls._env_from_record(record)
         rows: List[Tuple[str, str]] = [

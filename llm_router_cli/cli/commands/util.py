@@ -308,21 +308,17 @@ class UtilCommand(BaseCommand):
         """Route on the parsed namespace (no re-parsing of ``argv``)."""
         action = getattr(args, cls.SUBPARSER_DEST, None)
         if action is None:
-            cls.build_parser().print_help()
-            return 0
+            return cls.show_help(0)
         handler = {
             cls.TRANSLATE: cls._run_translate,
             cls.CLASSIFIER: cls._run_classifier,
             cls.AUGMENTATION: cls._run_augmentation,
         }.get(action)
         if handler is None:
-            cls.build_parser().print_help()
-            return 1
+            return cls.show_help(1)
 
         # One predictable meaning of --verbose: INFO by default, DEBUG when set.
-        from llm_router_cli.log_utils import setup_logging
-
-        setup_logging(verbose=bool(getattr(args, "verbose", False)))
+        cls.apply_verbose(args)
         return handler(args)
 
     # ------------------------------------------------------------------ #
