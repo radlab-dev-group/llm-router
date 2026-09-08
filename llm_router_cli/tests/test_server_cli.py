@@ -362,9 +362,15 @@ def test_start_foreground_writes_and_cleans_pid_file(monkeypatch, tmp_path, caps
 
     def fake_popen(cmd, **kwargs):
         observed["cmd"] = cmd
+        # The foreground run record must carry the app log path resolved
+        # against the launch CWD (bare LLM_ROUTER_LOG_FILENAME in the shell).
+        record = server_module.read_run_file(server_module.run_file_for(pid_file))
+        assert record is not None
+        assert record["app_log_file"] == str(Path.cwd() / "tutaj-llm-router.log")
         return FakeProc()
 
     monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "tutaj-llm-router.log")
     rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
     assert rc == 0
     assert observed["pid_file"] == "7777"
@@ -561,6 +567,11 @@ def test_build_run_record_captures_params():
     ]
     assert record["log_file"] == "/p/server.log"
     assert record["server"] in ("gunicorn", "waitress", "flask")
+    # The app's own log (no LLM_ROUTER_LOG_FILENAME in the env snapshot ->
+    # default llm-router.log, a relative name) is recorded as an absolute
+    # path anchored to the CWD from which the server was started.
+    assert record["app_log_file"].endswith("llm-router.log")
+    assert os.path.isabs(record["app_log_file"])
     # The full LLM_ROUTER_* env is recorded, not just the CLI overrides.
     assert record["env"] == full_env
     assert record["env_overrides"] == {
@@ -568,6 +579,45 @@ def test_build_run_record_captures_params():
         "LLM_ROUTER_IN_DEBUG": "1",
         "LLM_ROUTER_AUTH_ENABLED": "true",
     }
+
+
+def test_build_run_record_relative_log_filename_anchored_to_cwd(
+    tmp_path, monkeypatch
+):
+    """A bare file name (no directory) lands in the CWD at launch time."""
+    import argparse
+
+    monkeypatch.chdir(tmp_path)
+    record = ServerCommand.build_run_record(
+        Path("/p/server.pid"),
+        Path("/p/server.log"),
+        ["python3"],
+        argparse.Namespace(),
+        env={"LLM_ROUTER_LOG_FILENAME": "my-app.log"},
+    )
+    assert record["app_log_file"] == str(tmp_path / "my-app.log")
+
+
+def test_build_run_record_absolute_log_filename_kept():
+    import argparse
+
+    record = ServerCommand.build_run_record(
+        Path("/p/server.pid"),
+        Path("/p/server.log"),
+        ["python3"],
+        argparse.Namespace(),
+        env={"LLM_ROUTER_LOG_FILENAME": "/var/log/llm-router/app.log"},
+    )
+    assert record["app_log_file"] == "/var/log/llm-router/app.log"
+
+
+def test_resolve_app_log_path_defaults():
+    assert server_module.resolve_app_log_path({}) == str(
+        Path.cwd() / "llm-router.log"
+    )
+    assert server_module.resolve_app_log_path(
+        {"LLM_ROUTER_LOG_FILENAME": ""}
+    ) == str(Path.cwd() / "llm-router.log")
 
 
 def test_collect_env_snapshots_all_prefixed_vars(monkeypatch):
@@ -684,6 +734,31 @@ def test_status_log_row_shows_app_log_from_env(pid_file, tmp_path, capsys):
         _kill(pid)
 
 
+def test_status_log_row_prefers_recorded_app_log(pid_file, tmp_path, capsys):
+    """``Log`` must show the absolute path stored in the run record, even
+    when the env snapshot still carries only the bare file name."""
+    app_log = tmp_path / "launch-dir" / "llm-router.log"
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "server": "gunicorn",
+            "log_file": str(tmp_path / "srv.log"),
+            "app_log_file": str(app_log),
+            "env": {"LLM_ROUTER_LOG_FILENAME": "llm-router.log"},
+        },
+    )
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+
+    try:
+        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        out = capsys.readouterr().out
+        assert str(app_log) in out
+        assert "Console log" in out
+    finally:
+        _kill(pid)
+
+
 def test_status_falls_back_to_env_overrides_for_old_records(
     pid_file, tmp_path, capsys
 ):
@@ -734,7 +809,7 @@ def test_stop_removes_run_record(pid_file, tmp_path):
 def test_log_help_lists_flags(capsys):
     assert ServerCommand.run(["log", "--help"]) == 0
     out = capsys.readouterr().out
-    for flag in ("--log-file", "--lines", "--no-follow", "--color"):
+    for flag in ("--log-file", "--lines", "--no-follow", "--color", "--pid-file"):
         assert flag in out
 
 
@@ -843,6 +918,88 @@ def test_log_missing_file_fails(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "not found" in err
     assert "server start" in err
+
+
+def test_log_defaults_to_app_log_from_run_record(pid_file, tmp_path, capsys):
+    """Without --log-file, the app log (LLM_ROUTER_LOG_FILENAME, recorded at
+    start) is followed by default."""
+    app_log = tmp_path / "launch-dir" / "llm-router.log"
+    app_log.parent.mkdir(parents=True, exist_ok=True)
+    app_log.write_text(
+        "2026-01-01 INFO app: application line 1\n"
+        "2026-01-01 INFO app: application line 2\n",
+        encoding="utf-8",
+    )
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "log_file": str(tmp_path / "srv.log"),
+            "app_log_file": str(app_log),
+        },
+    )
+    rc = ServerCommand.run(
+        [
+            "log",
+            "--pid-file",
+            str(pid_file),
+            "--lines",
+            "2",
+            "--no-follow",
+            "--color",
+            "never",
+        ]
+    )
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "application line 1" in out
+    assert "application line 2" in out
+
+
+def test_log_resolves_env_log_filename_when_no_record(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    """No run record -> fall back to the shell's LLM_ROUTER_LOG_FILENAME,
+    anchored to the CWD for bare names."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "env-app.log")
+    rc = ServerCommand.run(
+        [
+            "log",
+            "--pid-file",
+            str(pid_file),
+            "--lines",
+            "1",
+            "--no-follow",
+        ]
+    )
+    assert rc == 1  # the resolved file does not exist
+    err = capsys.readouterr().err
+    assert str(tmp_path / "env-app.log") in err
+
+
+def test_log_explicit_log_file_overrides_record(
+    pid_file, tmp_path, capsys
+):
+    explicit = tmp_path / "console.log"
+    explicit.write_text("2026-01-01 INFO console: hello\n", encoding="utf-8")
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {"app_log_file": str(tmp_path / "app.log")},
+    )
+    rc = ServerCommand.run(
+        [
+            "log",
+            "--log-file",
+            str(explicit),
+            "--pid-file",
+            str(pid_file),
+            "--lines",
+            "1",
+            "--no-follow",
+        ]
+    )
+    assert rc == 0
+    assert "hello" in capsys.readouterr().out
 
 
 # ---- start: "already running" guard ----------------------------------------

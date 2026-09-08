@@ -429,7 +429,7 @@ started.
 
   Details
     PID            7400
-    Log            llm-router.log
+    Log            /home/user/project/llm-router.log
     Console log    ~/.llm-router/server.log
     Started        2026-09-07T23:55:00+0200
     Server         gunicorn
@@ -445,7 +445,9 @@ started.
 ```
 
 Two distinct log files are shown: **Log** is the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
-`llm-router.log` — a *relative* path, so it lands in the CWD, `./`), while **Console log** is the daemon's captured
+`llm-router.log`). When that variable is a bare file name (no directory part) the server writes it to the CWD from
+which it was launched, so the run record stores the **absolute** path (`<launch-dir>/llm-router.log`) and `status`
+displays it as-is; while **Console log** is the daemon's captured
 stdout/stderr. When the server is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with
 code `1`.
 
@@ -461,21 +463,25 @@ so secrets are never echoed to the terminal.
 
 ### `log` — follow the server log
 
-`log` tails the daemon's captured stdout/stderr (the **Console log** file from
-`status`) with colorized log levels:
+`log` follows the **application's own log** by default — the file set by
+`LLM_ROUTER_LOG_FILENAME` at start time (from the run record; a bare file name
+is resolved against the launch CWD). This works for both daemon and
+`--foreground` servers, since the run record is written in both cases:
 
 ```bash
-llm-router server log                # last 20 lines, then follow
-llm-router server log --lines 200    # more history
-llm-router server log --no-follow    # one-shot tail, then exit
+llm-router server log                              # app log: last 20 lines, then follow
+llm-router server log --lines 200                  # more history
+llm-router server log --no-follow                  # one-shot tail, then exit
+llm-router server log --log-file ~/.llm-router/server.log   # daemon's console log (daemon mode only)
 ```
 
 | Flag         | Default                    | Description                                             |
 |--------------|----------------------------|---------------------------------------------------------|
-| `--log-file` | `~/.llm-router/server.log` | Log file to follow                                      |
+| `--log-file` | *(app log)*                | Explicit log file to follow (e.g. the daemon's console log) |
 | `--lines`    | `20`                       | Initial lines to show (`0` for none)                    |
 | `--no-follow`| `false`                    | Show the tail and exit (no `-f` style following)        |
 | `--color`    | `auto`                     | Colorize output — `auto` (TTY only) / `always` / `never`|
+| `--pid-file` | `~/.llm-router/server.pid` | PID file (run record) location for the app-log lookup   |
 
 `stop`, `reload` and `status` additionally accept `--pid-file` (default
 `~/.llm-router/server.pid`), and `stop` accepts `--force` to skip the SIGTERM

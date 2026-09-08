@@ -269,6 +269,27 @@ def read_run_file(path: Path) -> Optional[Dict[str, Any]]:
     return data if isinstance(data, dict) else None
 
 
+def resolve_app_log_path(env: Dict[str, Any]) -> str:
+    """
+    Absolute path of the application's own (rotating) log file.
+
+    ``LLM_ROUTER_LOG_FILENAME`` is often just a file name with no directory
+    part; the server then creates it in the CWD from which it was launched,
+    so the recorded path must be anchored to :func:`Path.cwd` to point at the
+    real file.
+    """
+    name = env.get("LLM_ROUTER_LOG_FILENAME") or DEFAULT_LOG_FILENAME
+    return anchor_log_name(name)
+
+
+def anchor_log_name(name: str) -> str:
+    """Anchor a bare log file name to the CWD; keep absolute paths as-is."""
+    path = Path(name).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    return str(path)
+
+
 # -------------------------------------------------------------------------- #
 # Daemonization
 # -------------------------------------------------------------------------- #
@@ -560,8 +581,13 @@ class ServerCommand(BaseCommand):
         log = subparsers.add_parser(cls.LOG_NAME, help=cls.LOG_HELP)
         log.add_argument(
             "--log-file",
-            default=str(DEFAULT_LOG_FILE),
-            help="Server log file to follow (default: %(default)s)",
+            default=None,
+            help=(
+                "Explicit log file to follow. Default: the application's own "
+                "log (LLM_ROUTER_LOG_FILENAME from the run record, a bare name "
+                "resolved against the launch CWD); e.g. pass "
+                "~/.llm-router/server.log to follow the daemon's console log"
+            ),
         )
         log.add_argument(
             "--lines",
@@ -574,6 +600,7 @@ class ServerCommand(BaseCommand):
             action="store_true",
             help="Show the initial tail and exit (no -f style following).",
         )
+        cls._add_pid_file_arg(log)
         cls._add_color_arg(log)
 
     # ---- Dispatch -------------------------------------------------------- #
@@ -624,6 +651,7 @@ class ServerCommand(BaseCommand):
             "command": cmd,
             "server": os.environ.get("LLM_ROUTER_SERVER_TYPE", "gunicorn"),
             "log_file": str(log_file),
+            "app_log_file": resolve_app_log_path(env),
             "pid_file": str(pid_file),
             "env": env,
             "env_overrides": cls.build_env_overrides(args),
@@ -840,7 +868,12 @@ class ServerCommand(BaseCommand):
         env = cls._env_from_record(record)
         rows: List[Tuple[str, str]] = [
             ("PID", str(pid)),
-            ("Log", env.get("LLM_ROUTER_LOG_FILENAME") or DEFAULT_LOG_FILENAME),
+            (
+                "Log",
+                record.get("app_log_file")
+                or env.get("LLM_ROUTER_LOG_FILENAME")
+                or DEFAULT_LOG_FILENAME,
+            ),
             ("Console log", str(record.get("log_file", DEFAULT_LOG_FILE))),
             ("PID file", str(pid_file)),
         ]
@@ -930,13 +963,34 @@ class ServerCommand(BaseCommand):
 
     # ---- Log following --------------------------------------------------- #
     @classmethod
+    def _resolve_log_file(cls, args: argparse.Namespace) -> Path:
+        """Resolve the log file for ``server log``.
+
+        Explicit ``--log-file`` wins. Otherwise the application's own log:
+        ``app_log_file`` from the run record (written at start, even in
+        ``--foreground`` mode), else the shell's ``LLM_ROUTER_LOG_FILENAME``
+        (a bare file name is anchored to the CWD).
+        """
+        if args.log_file:
+            return Path(args.log_file).expanduser()
+        pid_file = Path(args.pid_file).expanduser()
+        record = read_run_file(run_file_for(pid_file)) or {}
+        app_log = record.get("app_log_file")
+        if app_log:
+            return Path(app_log).expanduser()
+        name = os.environ.get("LLM_ROUTER_LOG_FILENAME") or DEFAULT_LOG_FILENAME
+        return Path(anchor_log_name(name))
+
+    @classmethod
     def _log(cls, args: argparse.Namespace) -> int:
         """Tail (and by default follow) the server log with colored levels."""
-        log_file = Path(args.log_file).expanduser()
+        log_file = cls._resolve_log_file(args)
         if not log_file.exists():
             print(
                 f"Log file not found: {log_file}\n"
-                "Start the server first: llm-router server start",
+                "Start the server first: llm-router server start\n"
+                "To follow the daemon's console log explicitly:\n"
+                f"  llm-router server log --log-file {DEFAULT_LOG_FILE}",
                 file=sys.stderr,
             )
             return 1
