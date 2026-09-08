@@ -318,7 +318,7 @@ llm-router util translate \
 
 | Flag                   | Default                 | Description                                                                              |
 |------------------------|-------------------------|------------------------------------------------------------------------------------------|
-| `--llm-router-url`     | `http://localhost:8080` | Base URL of the LLM router service (`--llm-router-host` is a backwards‑compatible alias) |
+| `--llm-router-url`     | `http://localhost:8080` | Base URL of the LLM router service                                      |
 | `--model`              | *(req)*                 | Model name used for translation                                                          |
 | `--dataset-path`       | *(req)*                 | Dataset file (JSON/JSONL); repeatable                                                    |
 | `--dataset-type`       | *(auto)*                | Explicit `json` / `jsonl` (else inferred from extension)                                 |

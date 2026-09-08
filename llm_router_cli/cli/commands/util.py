@@ -51,14 +51,12 @@ class UtilCommand(BaseCommand):
     def _add_router_args(cls, p: argparse.ArgumentParser) -> None:
         """Add the router connection flags shared by every ``util`` subcommand.
 
-        ``--llm-router-url`` is the canonical flag; ``--llm-router-host`` is
-        kept as a backwards‑compatible alias (both set ``llm_router_url``).
+        ``--llm-router-url`` is the single flag for the router base URL.
         ``--llm-router-token`` / ``--llm-router-timeout`` are unchanged.
         """
         url = cls.DEFAULT_ROUTER_URL
         p.add_argument(
             "--llm-router-url",
-            "--llm-router-host",
             default=url,
             required=False,
             help=f"Base URL of the LLMRouter service (default: {url}).",
