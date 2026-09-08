@@ -12,7 +12,7 @@ Usage::
     llm-router config discover localhost 192.168.1.50 -o models-config.json
     llm-router config merge base.json override.json -o merged-config.json
     llm-router anonymizer run --algorithm fast_masker [input_file]
-    llm-router util translate --llm-router-host URL --model M --dataset-path d.jsonl
+    llm-router util translate --llm-router-url URL --model M --dataset-path d.jsonl
     llm-router util genai-classifier --dataset-dir DIR --prompts-dir P --output-dir O
     llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P \
         --labels a,b

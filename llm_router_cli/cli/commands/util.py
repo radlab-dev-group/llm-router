@@ -19,7 +19,7 @@ import argparse
 import sys
 
 from pathlib import Path
-from typing import Any, ClassVar, Dict, Optional
+from typing import Any, ClassVar, Dict
 
 from llm_router_cli.cli.commands.base import BaseCommand
 
@@ -47,20 +47,21 @@ class UtilCommand(BaseCommand):
     # ------------------------------------------------------------------ #
     # Shared argument helpers
     # ------------------------------------------------------------------ #
-    @staticmethod
-    def _add_router_args(
-        p: argparse.ArgumentParser,
-        host_option: str,
-        host_default: Optional[str],
-        host_required: bool,
-        host_help: str,
-    ) -> None:
-        """Add ``--llm-router-host/url`` + ``--llm-router-token/timeout`` flags."""
+    @classmethod
+    def _add_router_args(cls, p: argparse.ArgumentParser) -> None:
+        """Add the router connection flags shared by every ``util`` subcommand.
+
+        ``--llm-router-url`` is the canonical flag; ``--llm-router-host`` is
+        kept as a backwards‑compatible alias (both set ``llm_router_url``).
+        ``--llm-router-token`` / ``--llm-router-timeout`` are unchanged.
+        """
+        url = cls.DEFAULT_ROUTER_URL
         p.add_argument(
-            host_option,
-            required=host_required,
-            default=host_default,
-            help=host_help,
+            "--llm-router-url",
+            "--llm-router-host",
+            default=url,
+            required=False,
+            help=f"Base URL of the LLMRouter service (default: {url}).",
         )
         p.add_argument(
             "--llm-router-token",
@@ -121,13 +122,7 @@ class UtilCommand(BaseCommand):
     # ------------------------------------------------------------------ #
     @classmethod
     def _add_translate_args(cls, p: argparse.ArgumentParser) -> None:
-        cls._add_router_args(
-            p,
-            "--llm-router-host",
-            None,
-            True,
-            "Base URL of the LLM router service (e.g., http://localhost:8080)",
-        )
+        cls._add_router_args(p)
         p.add_argument(
             "--model",
             required=True,
@@ -180,13 +175,7 @@ class UtilCommand(BaseCommand):
 
     @classmethod
     def _add_classifier_args(cls, p: argparse.ArgumentParser) -> None:
-        cls._add_router_args(
-            p,
-            "--llm-router-url",
-            cls.DEFAULT_ROUTER_URL,
-            False,
-            f"Base URL of the LLMRouter service (default: {cls.DEFAULT_ROUTER_URL}).",
-        )
+        cls._add_router_args(p)
         cls._add_shared_genai_args(p, temperature_default=0.0)
         p.add_argument(
             "--dataset-dir",
@@ -223,13 +212,7 @@ class UtilCommand(BaseCommand):
 
     @classmethod
     def _add_augmentation_args(cls, p: argparse.ArgumentParser) -> None:
-        cls._add_router_args(
-            p,
-            "--llm-router-url",
-            cls.DEFAULT_ROUTER_URL,
-            False,
-            f"Base URL of the LLMRouter service (default: {cls.DEFAULT_ROUTER_URL}).",
-        )
+        cls._add_router_args(p)
         cls._add_shared_genai_args(p, temperature_default=0.7)
         p.add_argument(
             "--dataset-path",
@@ -358,7 +341,19 @@ class UtilCommand(BaseCommand):
     def _run_translate(cls, args: argparse.Namespace) -> int:
         from llm_router_cli.util.translate import TranslateApp
 
-        return cls._run_app(TranslateApp(args), "translate")
+        app = TranslateApp(
+            dataset_paths=list(args.dataset_path or []),
+            model_name=args.model,
+            llm_router_url=args.llm_router_url,
+            accept_fields=list(args.accept_field or []),
+            dataset_type=args.dataset_type,
+            output=args.output,
+            llm_router_token=args.llm_router_token,
+            llm_router_timeout=args.llm_router_timeout,
+            num_workers=args.num_workers,
+            batch_size=args.batch_size,
+        )
+        return cls._run_app(app, "translate")
 
     @classmethod
     def _run_classifier(cls, args: argparse.Namespace) -> int:
