@@ -16,6 +16,15 @@ Usage::
     llm-router util genai-classifier --dataset-dir DIR --prompts-dir P --output-dir O
     llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P \
         --labels a,b
+    llm-router server start        # start REST API in the background (daemon)
+    llm-router server status       # colored status card (running + launch params, secrets masked)
+    llm-router server log          # follow the log (tail -f style, colored)
+    llm-router server stop         # stop it (SIGTERM, or --force SIGKILL)
+    llm-router server reload       # graceful reload (SIGHUP to Gunicorn master)
+    llm-router completion bash     # tab-completion script (eval into ~/.bashrc)
+    llm-router completion zsh      # tab-completion script (source into ~/.zshrc)
+    llm-router completion bash --install   # append the script to ~/.bashrc
+    llm-router completion zsh --install    # append the script to ~/.zshrc
 
 The dispatcher builds a single top‑level parser, registers every command once
 (see :mod:`llm_router_cli.cli.commands.base`), parses the arguments a single
@@ -39,10 +48,13 @@ import llm_router_api.base.const_global as _cg
 
 _cg.IS_CLI_COMMAND = True
 
+from llm_router_lib.core.constants import PACKAGE_NAME
 from llm_router_cli.cli.commands.anonymizer import AnonymizerCommand
 from llm_router_cli.cli.commands.auth import AuthCommand
 from llm_router_cli.cli.commands.base import BaseCommand
+from llm_router_cli.cli.commands.completion import CompletionCommand
 from llm_router_cli.cli.commands.config import ConfigCommand
+from llm_router_cli.cli.commands.server import ServerCommand
 from llm_router_cli.cli.commands.util import UtilCommand
 
 #: All top‑level commands, in the order they appear in the help text.
@@ -50,6 +62,8 @@ COMMANDS: Tuple[Type[BaseCommand], ...] = (
     AuthCommand,
     AnonymizerCommand,
     ConfigCommand,
+    CompletionCommand,
+    ServerCommand,
     UtilCommand,
 )
 
@@ -57,7 +71,7 @@ COMMANDS: Tuple[Type[BaseCommand], ...] = (
 def _version() -> str:
     """Return the installed package version (e.g. ``0.6.0``)."""
     try:
-        return _pkg_version("llm-router")
+        return _pkg_version(PACKAGE_NAME)
     except Exception:  # PackageNotFoundError — e.g. run from a bare checkout
         return "unknown"
 

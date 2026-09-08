@@ -188,4 +188,4 @@ export TOKENIZERS_PARALLELISM=${TOKENIZERS_PARALLELISM:-true}
 # ==================================================================================
 # RUN MAIN APPLICATION
 # ==================================================================================
-exec python3 -m llm_router_api.rest_api
+llm-router server start --foreground

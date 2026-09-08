@@ -19,6 +19,9 @@ from typing import Dict, List
 # backward compatibility.
 ENV_PREFIX = "LLM_ROUTER_"
 
+# Package name (same as the PyPi)
+PACKAGE_NAME = "radlab-llm-router"
+
 # Default language for endpoint‑specific prompts.  The value can be overridden
 # with the environment variable LLM_ROUTER_DEFAULT_EP_LANGUAGE.
 # If the variable is absent, Polish ("pl") is used as the fallback language.
