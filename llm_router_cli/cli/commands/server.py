@@ -290,6 +290,41 @@ def anchor_log_name(name: str) -> str:
     return str(path)
 
 
+def resolve_models_config_path(env: Dict[str, Any]) -> str:
+    """
+    Absolute path of the models configuration file.
+
+    ``LLM_ROUTER_MODELS_CONFIG`` is often a path relative to the launch CWD
+    (e.g. ``resources/configs/models-config.json``); the server loads it
+    from there, so the recorded path is anchored to :func:`Path.cwd`.
+    Empty string when the variable is unset.
+    """
+    name = env.get("LLM_ROUTER_MODELS_CONFIG") or ""
+    if not name:
+        return ""
+    return anchor_log_name(name)
+
+
+def resolve_start_log_file(
+    cli_value: Optional[str], shell_log_filename: Optional[str]
+) -> Path:
+    """
+    Resolve the daemon log file for ``start``.
+
+    An explicit ``--log-file`` wins. Otherwise, if the user exported
+    ``LLM_ROUTER_LOG_FILENAME``, that path is used — a bare file name is
+    anchored to the CWD, where the server process actually writes its log.
+    Only when the variable is unset do we fall back to the per-user default
+    under ``~/.llm-router``. ``shell_log_filename`` must be captured *before*
+    :func:`apply_default_env` fills in the ``DEFAULT_ENV`` value.
+    """
+    if cli_value:
+        return Path(cli_value).expanduser()
+    if shell_log_filename:
+        return Path(anchor_log_name(shell_log_filename))
+    return DEFAULT_LOG_FILE
+
+
 # -------------------------------------------------------------------------- #
 # Daemonization
 # -------------------------------------------------------------------------- #
@@ -472,8 +507,12 @@ class ServerCommand(BaseCommand):
         )
         start.add_argument(
             "--log-file",
-            default=str(DEFAULT_LOG_FILE),
-            help="Server log file used in daemon mode (default: %(default)s)",
+            default=None,
+            help=(
+                "Server log file used in daemon mode (default: "
+                "LLM_ROUTER_LOG_FILENAME if set in the shell, else "
+                f"{DEFAULT_LOG_FILE})"
+            ),
         )
         start.add_argument(
             "--server",
@@ -652,6 +691,7 @@ class ServerCommand(BaseCommand):
             "server": os.environ.get("LLM_ROUTER_SERVER_TYPE", "gunicorn"),
             "log_file": str(log_file),
             "app_log_file": resolve_app_log_path(env),
+            "models_config": resolve_models_config_path(env),
             "pid_file": str(pid_file),
             "env": env,
             "env_overrides": cls.build_env_overrides(args),
@@ -689,6 +729,10 @@ class ServerCommand(BaseCommand):
             )
             return 1
 
+        # Snapshot the user's shell value *before* defaults are applied — the
+        # daemon log follows it, and only falls back to ~/.llm-router when it
+        # is unset.
+        shell_log_filename = os.environ.get("LLM_ROUTER_LOG_FILENAME")
         apply_default_env()
         if args.server:
             os.environ.setdefault("LLM_ROUTER_SERVER_TYPE", args.server)
@@ -702,7 +746,7 @@ class ServerCommand(BaseCommand):
             cmd += ["--port", str(args.port)]
 
         if args.foreground:
-            log_file = Path(args.log_file).expanduser()
+            log_file = resolve_start_log_file(args.log_file, shell_log_filename)
             # Keep the PID file and run record in sync in foreground mode too,
             # so ``server status`` / ``server stop`` work exactly like for a
             # daemonized server.
@@ -726,7 +770,7 @@ class ServerCommand(BaseCommand):
                 except OSError:
                     pass
 
-        log_file = Path(args.log_file).expanduser()
+        log_file = resolve_start_log_file(args.log_file, shell_log_filename)
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Record the launch parameters next to the PID file so
@@ -874,7 +918,6 @@ class ServerCommand(BaseCommand):
                 or env.get("LLM_ROUTER_LOG_FILENAME")
                 or DEFAULT_LOG_FILENAME,
             ),
-            ("Console log", str(record.get("log_file", DEFAULT_LOG_FILE))),
             ("PID file", str(pid_file)),
         ]
         if record.get("started_at"):
@@ -885,8 +928,16 @@ class ServerCommand(BaseCommand):
             rows.append(("Host", str(env["LLM_ROUTER_SERVER_HOST"])))
         if env.get("LLM_ROUTER_SERVER_PORT"):
             rows.append(("Port", str(env["LLM_ROUTER_SERVER_PORT"])))
-        if env.get("LLM_ROUTER_MODELS_CONFIG"):
-            rows.append(("Models config", str(env["LLM_ROUTER_MODELS_CONFIG"])))
+        if record.get("models_config") or env.get("LLM_ROUTER_MODELS_CONFIG"):
+            rows.append(
+                (
+                    "Models config",
+                    str(
+                        record.get("models_config")
+                        or env.get("LLM_ROUTER_MODELS_CONFIG")
+                    ),
+                )
+            )
         if record.get("command"):
             rows.append(
                 ("Command", " ".join(str(part) for part in record["command"]))

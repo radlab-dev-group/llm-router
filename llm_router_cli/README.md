@@ -413,8 +413,10 @@ Unless your environment already sets them, `start` applies the same `LLM_ROUTER_
 `start` accepts the usual tuning flags (`--foreground`, `--host`, `--port`, `--server
 {gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`,
 `--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
-`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`). Every `LLM_ROUTER_*` variable
-in effect at launch — defaults + shell env +
+`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`). The daemon log
+(`--log-file`) follows `LLM_ROUTER_LOG_FILENAME` when it is set in the shell — a bare file name is resolved against
+the launch CWD — and defaults to `~/.llm-router/server.log` only when the variable is unset. Every `LLM_ROUTER_*`
+variable in effect at launch — defaults + shell env +
 CLI overrides — is snapshotted into the run record (`<pid-file>.run`) so `status` can show exactly how the server was
 started.
 
@@ -430,12 +432,11 @@ started.
   Details
     PID            7400
     Log            /home/user/project/llm-router.log
-    Console log    ~/.llm-router/server.log
     Started        2026-09-07T23:55:00+0200
     Server         gunicorn
     Host           0.0.0.0
     Port           8080
-    Models config  resources/configs/models-config.json
+    Models config  /home/user/project/resources/configs/models-config.json
     Command        /usr/bin/python3 -m llm_router_api.rest_api
 
   Environment (5)
@@ -444,12 +445,16 @@ started.
     LLM_ROUTER_SERVER_PORT       8080
 ```
 
-Two distinct log files are shown: **Log** is the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
+The **Log** row shows the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
 `llm-router.log`). When that variable is a bare file name (no directory part) the server writes it to the CWD from
 which it was launched, so the run record stores the **absolute** path (`<launch-dir>/llm-router.log`) and `status`
-displays it as-is; while **Console log** is the daemon's captured
-stdout/stderr. When the server is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with
-code `1`.
+displays it as-is. In daemon mode the daemon's captured stdout/stderr are appended to the **same** file, so a single
+log row is enough (without the variable the daemon capture falls back to `~/.llm-router/server.log`). When the server
+is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
+
+The **Models config** row behaves the same way as **Log**: when the server was started with a *relative* path
+(e.g. `resources/configs/models-config.json`), the run record stores the **absolute** path anchored to the launch CWD,
+so `status` shows the real location of the file.
 
 Security: environment values whose key names a credential (`*PASSWORD*`,
 `*SECRET*`, `*TOKEN*`, `*API_KEY*`, `*CREDENTIAL*`) are **masked** as `****`

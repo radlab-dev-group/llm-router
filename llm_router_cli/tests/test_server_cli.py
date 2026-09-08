@@ -367,6 +367,9 @@ def test_start_foreground_writes_and_cleans_pid_file(monkeypatch, tmp_path, caps
         record = server_module.read_run_file(server_module.run_file_for(pid_file))
         assert record is not None
         assert record["app_log_file"] == str(Path.cwd() / "tutaj-llm-router.log")
+        # The daemon log follows LLM_ROUTER_LOG_FILENAME instead of the
+        # hardcoded ~/.llm-router/server.log fallback.
+        assert record["log_file"] == str(Path.cwd() / "tutaj-llm-router.log")
         return FakeProc()
 
     monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
@@ -379,6 +382,64 @@ def test_start_foreground_writes_and_cleans_pid_file(monkeypatch, tmp_path, caps
     assert not pid_file.exists()
     assert not server_module.run_file_for(pid_file).exists()
     assert "Running in foreground (pid=7777)" in capsys.readouterr().out
+
+
+def test_start_log_file_defaults_to_home_when_env_unset(
+    monkeypatch, tmp_path, capsys
+):
+    """Without ``LLM_ROUTER_LOG_FILENAME`` the daemon log falls back to
+    ``~/.llm-router/server.log`` (even though the CLI later fills the shell
+    env with its default ``llm-router.log``)."""
+    pid_file = tmp_path / "server.pid"
+
+    class FakeProc:
+        pid = 8888
+
+        def wait(self):
+            return 0
+
+    def fake_popen(cmd, **kwargs):
+        record = server_module.read_run_file(server_module.run_file_for(pid_file))
+        assert record is not None
+        assert record["log_file"] == str(server_module.DEFAULT_LOG_FILE)
+        return FakeProc()
+
+    monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.delenv("LLM_ROUTER_LOG_FILENAME", raising=False)
+    rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
+    assert rc == 0
+
+
+def test_start_explicit_log_file_beats_env(monkeypatch, tmp_path, capsys):
+    """``--log-file`` always wins over ``LLM_ROUTER_LOG_FILENAME``."""
+    pid_file = tmp_path / "server.pid"
+    log_file = tmp_path / "custom.log"
+
+    class FakeProc:
+        pid = 8889
+
+        def wait(self):
+            return 0
+
+    def fake_popen(cmd, **kwargs):
+        record = server_module.read_run_file(server_module.run_file_for(pid_file))
+        assert record is not None
+        assert record["log_file"] == str(log_file)
+        return FakeProc()
+
+    monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "tutaj-llm-router.log")
+    rc = ServerCommand.run(
+        [
+            "start",
+            "--foreground",
+            "--log-file",
+            str(log_file),
+            "--pid-file",
+            str(pid_file),
+        ]
+    )
+    assert rc == 0
 
 
 def test_start_foreground_propagates_exit_code_and_cleans_up(
@@ -572,6 +633,8 @@ def test_build_run_record_captures_params():
     # path anchored to the CWD from which the server was started.
     assert record["app_log_file"].endswith("llm-router.log")
     assert os.path.isabs(record["app_log_file"])
+    # The models config (already absolute in the env snapshot) is recorded as-is.
+    assert record["models_config"] == "/tmp/custom.json"
     # The full LLM_ROUTER_* env is recorded, not just the CLI overrides.
     assert record["env"] == full_env
     assert record["env_overrides"] == {
@@ -579,6 +642,36 @@ def test_build_run_record_captures_params():
         "LLM_ROUTER_IN_DEBUG": "1",
         "LLM_ROUTER_AUTH_ENABLED": "true",
     }
+
+
+def test_build_run_record_anchors_relative_models_config():
+    """A relative ``LLM_ROUTER_MODELS_CONFIG`` is anchored to the launch CWD."""
+    import argparse
+
+    record = ServerCommand.build_run_record(
+        Path("/p/server.pid"),
+        Path("/p/server.log"),
+        ["python3"],
+        argparse.Namespace(),
+        env={"LLM_ROUTER_MODELS_CONFIG": "resources/configs/models.json"},
+    )
+    assert record["models_config"] == str(
+        Path.cwd() / "resources/configs/models.json"
+    )
+
+
+def test_build_run_record_models_config_absent():
+    """No ``LLM_ROUTER_MODELS_CONFIG`` -> empty recorded path (row hidden)."""
+    import argparse
+
+    record = ServerCommand.build_run_record(
+        Path("/p/server.pid"),
+        Path("/p/server.log"),
+        ["python3"],
+        argparse.Namespace(),
+        env={},
+    )
+    assert record["models_config"] == ""
 
 
 def test_build_run_record_relative_log_filename_anchored_to_cwd(
@@ -695,19 +788,15 @@ def test_status_shows_run_record(pid_file, tmp_path, capsys):
         assert "LLM_ROUTER_MODELS_CONFIG" in out
         assert "/tmp/custom.json" in out
         assert "LLM_ROUTER_LOG_LEVEL" in out
-        assert str(tmp_path / "srv.log") in out
         # "Log" is the app's own file (no LLM_ROUTER_LOG_FILENAME in the env
-        # snapshot -> default fallback); the daemon's stdout capture shows up
-        # as its own "Console log" row.
+        # snapshot -> default fallback).
         assert "llm-router.log" in out
-        assert "Console log" in out
     finally:
         _kill(pid)
 
 
 def test_status_log_row_shows_app_log_from_env(pid_file, tmp_path, capsys):
-    """``Log`` must reflect the app's own file (``LLM_ROUTER_LOG_FILENAME``),
-    distinct from the daemon's stdout capture (``Console log``)."""
+    """``Log`` must reflect the app's own file (``LLM_ROUTER_LOG_FILENAME``)."""
     env_snapshot = {
         "LLM_ROUTER_LOG_FILENAME": str(tmp_path / "app.log"),
         "LLM_ROUTER_SERVER_PORT": "8080",
@@ -728,8 +817,6 @@ def test_status_log_row_shows_app_log_from_env(pid_file, tmp_path, capsys):
         out = capsys.readouterr().out
         assert "Log" in out
         assert str(tmp_path / "app.log") in out
-        assert "Console log" in out
-        assert str(tmp_path / "srv.log") in out
     finally:
         _kill(pid)
 
@@ -754,7 +841,32 @@ def test_status_log_row_prefers_recorded_app_log(pid_file, tmp_path, capsys):
         assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
         out = capsys.readouterr().out
         assert str(app_log) in out
-        assert "Console log" in out
+    finally:
+        _kill(pid)
+
+
+def test_status_models_config_row_shows_recorded_absolute_path(
+    pid_file, tmp_path, capsys
+):
+    """``Models config`` must show the absolute path stored in the run record,
+    even when the env snapshot still carries only the relative name."""
+    rel = "resources/configs/models-config.json"
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "server": "gunicorn",
+            "models_config": str(Path.cwd() / rel),
+            "env": {"LLM_ROUTER_MODELS_CONFIG": rel},
+        },
+    )
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+
+    try:
+        assert ServerCommand.run(["status", "--pid-file", str(pid_file)]) == 0
+        out = capsys.readouterr().out
+        assert "Models config" in out
+        assert str(Path.cwd() / rel) in out
     finally:
         _kill(pid)
 
