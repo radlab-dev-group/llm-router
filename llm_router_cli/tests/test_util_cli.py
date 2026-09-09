@@ -63,7 +63,7 @@ def test_translate_help_rc0_and_flags(capsys):
     assert UtilCommand.run(["translate", "--help"]) == 0
     out = capsys.readouterr().out
     for flag in (
-        "--llm-router-host",
+        "--llm-router-url",
         "--llm-router-token",
         "--llm-router-timeout",
         "--model",
@@ -76,9 +76,30 @@ def test_translate_help_rc0_and_flags(capsys):
         "--output",
     ):
         assert flag in out
-    # The old generated names must NOT appear.
-    assert "--llm-router-host-token" not in out
-    assert "--llm-router-host-timeout" not in out
+    # translate now shares the canonical router-URL default with the genai apps.
+    assert "http://localhost:8080" in out
+    # The legacy host flag is gone everywhere.
+    assert "--llm-router-host" not in out
+
+
+def test_translate_router_url_is_single_flag():
+    """``--llm-router-url`` is the one and only router-URL flag.
+
+    It maps to the ``llm_router_url`` dest, carries the shared default, and
+    the legacy ``--llm-router-host`` spelling is no longer accepted.
+    """
+    import argparse
+
+    p = argparse.ArgumentParser()
+    UtilCommand._add_translate_args(p)
+    by_flag = {}
+    for act in p._actions:
+        for opt in act.option_strings:
+            by_flag[opt] = act
+    assert "--llm-router-url" in by_flag
+    assert by_flag["--llm-router-url"].dest == "llm_router_url"
+    assert by_flag["--llm-router-url"].default == UtilCommand.DEFAULT_ROUTER_URL
+    assert "--llm-router-host" not in by_flag
 
 
 def test_classifier_help_rc0_and_flags(capsys):

@@ -12,12 +12,12 @@ Usage::
     llm-router config discover localhost 192.168.1.50 -o models-config.json
     llm-router config merge base.json override.json -o merged-config.json
     llm-router anonymizer run --algorithm fast_masker [input_file]
-    llm-router util translate --llm-router-host URL --model M --dataset-path d.jsonl
+    llm-router util translate --llm-router-url URL --model M --dataset-path d.jsonl
     llm-router util genai-classifier --dataset-dir DIR --prompts-dir P --output-dir O
     llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P \
         --labels a,b
     llm-router server start        # start REST API in the background (daemon)
-    llm-router server status       # colored status card (running + launch params, secrets masked)
+    llm-router server status       # status card (launch params, secrets masked)
     llm-router server log          # follow the log (tail -f style, colored)
     llm-router server stop         # stop it (SIGTERM, or --force SIGKILL)
     llm-router server reload       # graceful reload (SIGHUP to Gunicorn master)
@@ -48,14 +48,14 @@ import llm_router_api.base.const_global as _cg
 
 _cg.IS_CLI_COMMAND = True
 
-from llm_router_lib.core.constants import PACKAGE_NAME
-from llm_router_cli.cli.commands.anonymizer import AnonymizerCommand
-from llm_router_cli.cli.commands.auth import AuthCommand
-from llm_router_cli.cli.commands.base import BaseCommand
-from llm_router_cli.cli.commands.completion import CompletionCommand
-from llm_router_cli.cli.commands.config import ConfigCommand
-from llm_router_cli.cli.commands.server import ServerCommand
-from llm_router_cli.cli.commands.util import UtilCommand
+from llm_router_lib.core.constants import PACKAGE_NAME  # noqa: E402
+from llm_router_cli.cli.commands.anonymizer import AnonymizerCommand  # noqa: E402
+from llm_router_cli.cli.commands.auth import AuthCommand  # noqa: E402
+from llm_router_cli.cli.commands.base import BaseCommand  # noqa: E402
+from llm_router_cli.cli.commands.completion import CompletionCommand  # noqa: E402
+from llm_router_cli.cli.commands.config import ConfigCommand  # noqa: E402
+from llm_router_cli.cli.commands.server import ServerCommand  # noqa: E402
+from llm_router_cli.cli.commands.util import UtilCommand  # noqa: E402
 
 #: All top‑level commands, in the order they appear in the help text.
 COMMANDS: Tuple[Type[BaseCommand], ...] = (

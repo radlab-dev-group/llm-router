@@ -10,7 +10,6 @@ and on-disk output) is exercised offline.
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 from pathlib import Path
@@ -120,15 +119,15 @@ def _read_jsonl(path: Path):
 # --------------------------------------------------------------------- #
 # translate
 # --------------------------------------------------------------------- #
-def _translate_args(dataset_paths, accept_field=None, output=None):
-    return argparse.Namespace(
-        llm_router_host="http://localhost:8080",
+def _translate_kwargs(dataset_paths, accept_field=None, output=None):
+    return dict(
+        dataset_paths=list(dataset_paths),
+        model_name="test-model",
+        llm_router_url="http://localhost:8080",
         llm_router_token=None,
         llm_router_timeout=10,
-        model="test-model",
-        dataset_path=list(dataset_paths),
         dataset_type=None,
-        accept_field=list(accept_field or []),
+        accept_fields=list(accept_field or []),
         num_workers=1,
         batch_size=8,
         output=output,
@@ -140,7 +139,9 @@ def test_translate_writes_translated_jsonl_next_to_input(tmp_path, fake_translat
     _write_jsonl(data_file, [{"text": "hello", "title": "world"}])
     before = data_file.read_text(encoding="utf-8")
 
-    app = TranslateApp(_translate_args([data_file], accept_field=["text", "title"]))
+    app = TranslateApp(
+        **_translate_kwargs([data_file], accept_field=["text", "title"])
+    )
     app.run()
     app.close()
 
@@ -161,7 +162,7 @@ def test_translate_single_output_file(tmp_path, fake_translate):
 
     out_file = tmp_path / "merged" / "all.jsonl"
     app = TranslateApp(
-        _translate_args([f1, f2], accept_field=["text"], output=str(out_file))
+        **_translate_kwargs([f1, f2], accept_field=["text"], output=str(out_file))
     )
     app.run()
     app.close()
@@ -177,7 +178,7 @@ def test_translate_accept_field_filters(tmp_path, fake_translate):
     data_file = tmp_path / "data.jsonl"
     _write_jsonl(data_file, [{"text": "hello", "keep": "x", "drop": "y"}])
 
-    app = TranslateApp(_translate_args([data_file], accept_field=["text"]))
+    app = TranslateApp(**_translate_kwargs([data_file], accept_field=["text"]))
     app.run()
     app.close()
 
@@ -193,7 +194,7 @@ def test_translate_no_accept_field_translates_all_string_fields(
     data_file = tmp_path / "data.jsonl"
     _write_jsonl(data_file, [{"text": "hello", "title": "world", "n": 42}])
 
-    app = TranslateApp(_translate_args([data_file]))  # no accept_field
+    app = TranslateApp(**_translate_kwargs([data_file]))  # no accept_field
     app.run()
     app.close()
 
@@ -206,7 +207,7 @@ def test_translate_empty_file_no_error(tmp_path, fake_translate):
     data_file = tmp_path / "empty.jsonl"
     data_file.write_text("", encoding="utf-8")
 
-    app = TranslateApp(_translate_args([data_file], accept_field=["text"]))
+    app = TranslateApp(**_translate_kwargs([data_file], accept_field=["text"]))
     app.run()  # must not raise
     app.close()
 

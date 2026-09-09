@@ -352,7 +352,7 @@ class GenAIDataAugmentationApp(ConcurrentLLMPipeline):
         )
         return task_queue
 
-    def _process(
+    def _process(  # type: ignore[override]
         self,
         client: LLMRouterClient,
         ctx: Tuple[str, str],

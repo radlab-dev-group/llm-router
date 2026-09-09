@@ -301,7 +301,7 @@ HuggingFace `datasets`, no `pandas` /
 ### Command Tree
 
 ```
-llm-router util translate --llm-router-host URL --model M --dataset-path d.jsonl [--accept-field f] [-o out.jsonl]
+llm-router util translate --llm-router-url URL --model M --dataset-path d.jsonl [--accept-field f] [-o out.jsonl]
 llm-router util genai-classifier --dataset-dir DIR --prompts-dir P --output-dir O [--model-name M]
 llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P --labels a,b [--output-dir DIR]
 ```
@@ -310,25 +310,25 @@ llm-router util genai-data-augmentation --dataset-path d.jsonl --prompt-file P -
 
 ```bash
 llm-router util translate \
-  --llm-router-host http://localhost:8080 \
+  --llm-router-url http://localhost:8080 \
   --model speakleash/Bielik-11B-v2.3-Instruct \
   --dataset-path data.jsonl --dataset-path more.json \
   --accept-field text --accept-field title
 ```
 
-| Flag                   | Default  | Description                                                                             |
-|------------------------|----------|-----------------------------------------------------------------------------------------|
-| `--llm-router-host`    | *(req)*  | Base URL of the LLM router service                                                      |
-| `--model`              | *(req)*  | Model name used for translation                                                         |
-| `--dataset-path`       | *(req)*  | Dataset file (JSON/JSONL); repeatable                                                   |
-| `--dataset-type`       | *(auto)* | Explicit `json` / `jsonl` (else inferred from extension)                                |
-| `--accept-field`       | *(all)*  | Fields to translate; repeatable. Omit to translate **all string fields** in each record |
-| `--num-workers`        | `1`      | Translation worker threads                                                              |
-| `--batch-size`         | `8`      | Texts per request                                                                       |
-| `--llm-router-token`   | —        | Auth token                                                                              |
-| `--llm-router-timeout` | `10`     | Per-request timeout (s)                                                                 |
-| `--verbose`            | `false`  | Enable verbose (DEBUG) logging of internal operations                                   |
-| `-o, --output`         | —        | Single output JSONL file (else `<stem>.translated.jsonl` per input)                     |
+| Flag                   | Default                 | Description                                                                              |
+|------------------------|-------------------------|------------------------------------------------------------------------------------------|
+| `--llm-router-url`     | `http://localhost:8080` | Base URL of the LLM router service                                      |
+| `--model`              | *(req)*                 | Model name used for translation                                                          |
+| `--dataset-path`       | *(req)*                 | Dataset file (JSON/JSONL); repeatable                                                    |
+| `--dataset-type`       | *(auto)*                | Explicit `json` / `jsonl` (else inferred from extension)                                 |
+| `--accept-field`       | *(all)*                 | Fields to translate; repeatable. Omit to translate **all string fields** in each record  |
+| `--num-workers`        | `1`                     | Translation worker threads                                                               |
+| `--batch-size`         | `8`                     | Texts per request                                                                        |
+| `--llm-router-token`   | —                       | Auth token                                                                               |
+| `--llm-router-timeout` | `10`                    | Per-request timeout (s)                                                                  |
+| `--verbose`            | `false`                 | Enable verbose (DEBUG) logging of internal operations                                    |
+| `-o, --output`         | —                       | Single output JSONL file (else `<stem>.translated.jsonl` per input)                      |
 
 > **Output:** without `-o`, each input `<stem>` writes `<stem>.translated.jsonl`
 > next to it; with `-o`, all records go to that one file. **Input files are
@@ -413,12 +413,11 @@ Unless your environment already sets them, `start` applies the same `LLM_ROUTER_
 `start` accepts the usual tuning flags (`--foreground`, `--host`, `--port`, `--server
 {gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`,
 `--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
-`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`). The daemon log
-(`--log-file`) follows `LLM_ROUTER_LOG_FILENAME` when it is set in the shell — a bare file name is resolved against
-the launch CWD — and defaults to `~/.llm-router/server.log` only when the variable is unset. Every `LLM_ROUTER_*`
-variable in effect at launch — defaults + shell env +
-CLI overrides — is snapshotted into the run record (`<pid-file>.run`) so `status` can show exactly how the server was
-started.
+`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`). The daemon log (`--log-file`)
+follows `LLM_ROUTER_LOG_FILENAME` when it is set in the shell — a bare file name is resolved against the launch CWD —
+and defaults to `~/.llm-router/server.log` only when the variable is unset. Every `LLM_ROUTER_*`
+variable in effect at launch — defaults + shell env + CLI overrides — is snapshotted into the run record
+(`<pid-file>.run`) so `status` can show exactly how the server was started.
 
 ### `status` — colored status card
 
@@ -446,15 +445,15 @@ started.
 ```
 
 The **Log** row shows the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
-`llm-router.log`). When that variable is a bare file name (no directory part) the server writes it to the CWD from
-which it was launched, so the run record stores the **absolute** path (`<launch-dir>/llm-router.log`) and `status`
-displays it as-is. In daemon mode the daemon's captured stdout/stderr are appended to the **same** file, so a single
-log row is enough (without the variable the daemon capture falls back to `~/.llm-router/server.log`). When the server
-is **not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
+`llm-router.log`). When that variable is a bare file name (no directory part) the server writes it to the CWD from which
+it was launched, so the run record stores the **absolute** path (`<launch-dir>/llm-router.log`) and `status`
+displays it as-is. In daemon mode the daemon's captured stdout/stderr are appended to the **same** file, so a single log
+row is enough (without the variable the daemon capture falls back to `~/.llm-router/server.log`). When the server is
+**not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
 
-The **Models config** row behaves the same way as **Log**: when the server was started with a *relative* path
-(e.g. `resources/configs/models-config.json`), the run record stores the **absolute** path anchored to the launch CWD,
-so `status` shows the real location of the file.
+The **Models config** row behaves the same way as **Log**: when the server was started with a *relative* path (e.g.
+`resources/configs/models-config.json`), the run record stores the **absolute** path anchored to the launch CWD, so
+`status` shows the real location of the file.
 
 Security: environment values whose key names a credential (`*PASSWORD*`,
 `*SECRET*`, `*TOKEN*`, `*API_KEY*`, `*CREDENTIAL*`) are **masked** as `****`
@@ -469,8 +468,8 @@ so secrets are never echoed to the terminal.
 ### `log` — follow the server log
 
 `log` follows the **application's own log** by default — the file set by
-`LLM_ROUTER_LOG_FILENAME` at start time (from the run record; a bare file name
-is resolved against the launch CWD). This works for both daemon and
+`LLM_ROUTER_LOG_FILENAME` at start time (from the run record; a bare file name is resolved against the launch CWD). This
+works for both daemon and
 `--foreground` servers, since the run record is written in both cases:
 
 ```bash
@@ -480,24 +479,23 @@ llm-router server log --no-follow                  # one-shot tail, then exit
 llm-router server log --log-file ~/.llm-router/server.log   # daemon's console log (daemon mode only)
 ```
 
-| Flag         | Default                    | Description                                             |
-|--------------|----------------------------|---------------------------------------------------------|
-| `--log-file` | *(app log)*                | Explicit log file to follow (e.g. the daemon's console log) |
-| `--lines`    | `20`                       | Initial lines to show (`0` for none)                    |
-| `--no-follow`| `false`                    | Show the tail and exit (no `-f` style following)        |
-| `--color`    | `auto`                     | Colorize output — `auto` (TTY only) / `always` / `never`|
-| `--pid-file` | `~/.llm-router/server.pid` | PID file (run record) location for the app-log lookup   |
+| Flag          | Default                    | Description                                                 |
+|---------------|----------------------------|-------------------------------------------------------------|
+| `--log-file`  | *(app log)*                | Explicit log file to follow (e.g. the daemon's console log) |
+| `--lines`     | `20`                       | Initial lines to show (`0` for none)                        |
+| `--no-follow` | `false`                    | Show the tail and exit (no `-f` style following)            |
+| `--color`     | `auto`                     | Colorize output — `auto` (TTY only) / `always` / `never`    |
+| `--pid-file`  | `~/.llm-router/server.pid` | PID file (run record) location for the app-log lookup       |
 
 `stop`, `reload` and `status` additionally accept `--pid-file` (default
-`~/.llm-router/server.pid`), and `stop` accepts `--force` to skip the SIGTERM
-grace period and send SIGKILL.
+`~/.llm-router/server.pid`), and `stop` accepts `--force` to skip the SIGTERM grace period and send SIGKILL.
 
 ---
 
 ## `llm-router completion` — Shell Tab-Completion (bash / zsh)
 
-Generates a tab-completion script from the live CLI tree — commands,
-sub-commands at **every nesting level** (e.g. `auth key generate`,
+Generates a tab-completion script from the live CLI tree — commands, sub-commands at **every nesting level** (e.g.
+`auth key generate`,
 `anonymizer run`, `config discover`) and all long options.
 
 | Sub-command | Description                              |

@@ -46,7 +46,8 @@ class KeyGenerator:
         Returns
         -------
         str
-            A key like ``sk-llmr-live-abc123XYZ...`` (48+ base62 chars after the prefix).
+            A key like ``sk-llmr-live-abc123XYZ...``
+            (48+ base62 chars after the prefix).
         """
         # token_bytes advances the system PRNG state used by secrets.choice.
         characters = [secrets.choice(cls.CHARSET) for _ in range(cls.MIN_LENGTH)]

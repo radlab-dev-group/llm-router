@@ -88,8 +88,7 @@ class AnonymizerCommand(BaseCommand):
     def dispatch(cls, args: argparse.Namespace) -> int:
         """Route on the parsed namespace (no re-parsing of ``argv``)."""
         if getattr(args, cls.SUBPARSER_DEST, None) != cls.RUN_NAME:
-            cls.build_parser().print_help()
-            return 0
+            return cls.show_help(0)
         return cls._mask(args)
 
     # ---- Core masking logic --------------------------------------------- #
@@ -99,12 +98,10 @@ class AnonymizerCommand(BaseCommand):
         algorithm = args.algorithm
 
         if algorithm == "pii":
-            print(
-                "Error: 'pii' algorithm is not yet implemented. "
-                "Use '--algorithm fast_masker' instead.",
-                file=sys.stderr,
+            return cls.fail(
+                "'pii' algorithm is not yet implemented. "
+                "Use '--algorithm fast_masker' instead."
             )
-            return 1
 
         # Import lazily to avoid pulling in the plugin package at module load
         # time. ``llm_router_plugins`` ships no type stubs (see mypy.ini).

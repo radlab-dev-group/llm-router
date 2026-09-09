@@ -10,8 +10,6 @@ from llm_router_cli.cli import main
 from llm_router_cli.cli.commands.completion import (
     CompletionCommand,
     _command_tree,
-    _render_bash,
-    _render_zsh,
 )
 
 
@@ -83,7 +81,13 @@ def test_command_tree_matches_registered_commands():
         "util",
     }
     # Second level.
-    assert set(tree["server"]["subs"]) == {"start", "stop", "reload", "status", "log"}
+    assert set(tree["server"]["subs"]) == {
+        "start",
+        "stop",
+        "reload",
+        "status",
+        "log",
+    }
     assert "--force" in tree["server"]["subs"]["stop"]["options"]
     assert "--color" in tree["server"]["subs"]["log"]["options"]
     assert "--models-config" in tree["server"]["subs"]["start"]["options"]
@@ -106,6 +110,7 @@ def test_command_tree_matches_registered_commands():
 # --------------------------------------------------------------------------- #
 # --install
 # --------------------------------------------------------------------------- #
+
 
 def test_install_bash_writes_default_rc(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -138,7 +143,9 @@ def test_install_replaces_stale_block(tmp_path, monkeypatch, capsys):
     rc = tmp_path / ".bashrc"
     begin = "# >>> llm-router completion (bash) >>>"
     end = "# <<< llm-router completion (bash) <<<"
-    rc.write_text("echo before\n{}\nSTALE-BLOCK\n{}\necho after\n".format(begin, end))
+    rc.write_text(
+        "echo before\n{}\nSTALE-BLOCK\n{}\necho after\n".format(begin, end)
+    )
     assert main(["completion", "bash", "--install"]) == 0
     capsys.readouterr()
     content = rc.read_text()
@@ -151,9 +158,7 @@ def test_install_replaces_stale_block(tmp_path, monkeypatch, capsys):
 
 def test_install_custom_file(tmp_path, capsys):
     target = tmp_path / "custom-rc"
-    assert main(
-        ["completion", "bash", "--install", "--file", str(target)]
-    ) == 0
+    assert main(["completion", "bash", "--install", "--file", str(target)]) == 0
     capsys.readouterr()
     assert target.is_file()
     assert "complete -F _llm-router llm-router" in target.read_text()

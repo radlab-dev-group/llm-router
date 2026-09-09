@@ -18,7 +18,6 @@ Differences vs. the upstream version:
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import time
@@ -41,13 +40,13 @@ class TextTranslationService:
 
     def __init__(
         self,
-        router_host: str,
+        router_url: str,
         model: str,
         token: Optional[str] = None,
         timeout: int = 10,
     ) -> None:
         self.client = LLMRouterClient(
-            api=router_host, timeout=timeout, retries=2, token=token
+            api=router_url, timeout=timeout, retries=2, token=token
         )
         self.model = model
 
@@ -65,31 +64,45 @@ class TranslateApp:
     """
     High‑level translation orchestrator usable from the CLI or as a library.
 
-    The ``args`` namespace is expected to expose at least:
-    ``dataset_path`` (list), ``dataset_type`` (optional), ``accept_field``
-    (list, may be empty), ``llm_router_host``, ``model``, ``llm_router_token``,
-    ``llm_router_timeout``, ``num_workers``, ``batch_size`` and (optional)
-    ``output``.
+    Takes explicit keyword arguments (consistent with the sibling GenAI apps)
+    instead of an ``argparse.Namespace``:
+
+    * ``dataset_paths`` – input files (JSON/JSONL) to translate.
+    * ``model_name``    – model identifier passed to the router.
+    * ``llm_router_url``– base URL of the LLMRouter service.
+    * optional: ``accept_fields``, ``dataset_type``, ``output``,
+      ``llm_router_token``, ``llm_router_timeout``, ``num_workers``,
+      ``batch_size``.
     """
 
-    def __init__(self, args: argparse.Namespace) -> None:
-        self.args = args
-        self.accept_fields: List[str] = list(args.accept_field or [])
-        self.dataset_paths: List[str] = list(args.dataset_path or [])
-        self.dataset_type: Optional[str] = getattr(args, "dataset_type", None)
-        self.output: Optional[Path] = (
-            Path(args.output) if getattr(args, "output", None) else None
-        )
+    def __init__(
+        self,
+        dataset_paths: List[str],
+        model_name: str,
+        llm_router_url: str,
+        *,
+        accept_fields: Optional[List[str]] = None,
+        dataset_type: Optional[str] = None,
+        output: Optional[Path] = None,
+        llm_router_token: Optional[str] = None,
+        llm_router_timeout: int = 10,
+        num_workers: int = 1,
+        batch_size: int = 8,
+    ) -> None:
+        self.accept_fields: List[str] = list(accept_fields or [])
+        self.dataset_paths: List[str] = list(dataset_paths or [])
+        self.dataset_type = dataset_type
+        self.output: Optional[Path] = Path(output) if output else None
 
         self.service = TextTranslationService(
-            router_host=args.llm_router_host,
-            model=args.model,
-            token=getattr(args, "llm_router_token", None),
-            timeout=getattr(args, "llm_router_timeout", 10),
+            router_url=llm_router_url,
+            model=model_name,
+            token=llm_router_token,
+            timeout=llm_router_timeout,
         )
 
-        self.num_workers = int(getattr(args, "num_workers", 1))
-        self.batch_size = int(getattr(args, "batch_size", 8))
+        self.num_workers = int(num_workers)
+        self.batch_size = int(batch_size)
 
         # Collected for backward‑compatibility / library use.
         self.translations: List[str] = []
