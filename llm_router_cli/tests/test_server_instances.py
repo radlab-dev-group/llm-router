@@ -36,14 +36,18 @@ from llm_router_cli.cli.commands.server import (
     discover_instances,
     get_alive_pid,
     log_file_for,
-    parse_env_file,
     read_run_file,
     release_start_lock,
     resolve_instance,
     run_file_for,
-    scaffold_config_env,
     write_pid_file,
     write_run_file,
+)
+from llm_router_cli.cli.config_env import (
+    format_env_value,
+    parse_env_file,
+    scaffold_config_env,
+    update_config_env,
 )
 
 # ---- fixtures / helpers ----------------------------------------------------
@@ -799,3 +803,207 @@ def test_two_instances_run_side_by_side(state_home, capsys):
     assert get_alive_pid(prod.pid_file) is None
     assert not dev.pid_file.exists()
     assert not prod.pid_file.exists()
+
+
+# ---- remembering a command line: --save-config -----------------------------
+
+
+def _start(*extra: str) -> int:
+    """Run ``server start`` for ``dev`` in fake foreground plus *extra*."""
+    return ServerCommand.run(
+        ["start", "--foreground", "-i", "dev", "--no-port-check", *extra]
+    )
+
+
+def test_save_config_writes_the_given_flags(state_home, fake_spawn, capsys):
+    instance = _instance("dev")
+
+    assert (
+        _start("--port", "8091", "--lb-strategy", "weighted", "--save-config") == 0
+    )
+
+    text = instance.config_env.read_text(encoding="utf-8")
+    assert "LLM_ROUTER_SERVER_PORT=8091" in text
+    assert "LLM_ROUTER_BALANCE_STRATEGY=weighted" in text
+    # the scaffolded template entry is uncommented in place, not duplicated
+    assert "# LLM_ROUTER_SERVER_PORT" not in text
+    assert text.split().count("LLM_ROUTER_SERVER_PORT=8091") == 1
+    assert instance.config_env.stat().st_mode & 0o777 == 0o600
+
+    out = capsys.readouterr().out
+    assert "Saved 2 setting(s)" in out
+    assert "LLM_ROUTER_SERVER_PORT" in out
+
+
+def test_save_config_echoes_key_names_but_never_values(
+    state_home, fake_spawn, capsys
+):
+    instance = _instance("dev")
+
+    assert _start("--redis-password", "s3cr3t!", "--save-config") == 0
+
+    out = capsys.readouterr().out
+    assert "s3cr3t" not in out
+    assert "LLM_ROUTER_REDIS_PASSWORD" in out
+    # ...while the file keeps the real value, quoted and readable back
+    assert "LLM_ROUTER_REDIS_PASSWORD='s3cr3t!'" in instance.config_env.read_text(
+        encoding="utf-8"
+    )
+    assert (
+        parse_env_file(instance.config_env)["LLM_ROUTER_REDIS_PASSWORD"] == "s3cr3t!"
+    )
+
+
+def test_save_config_is_idempotent(state_home, fake_spawn, capsys):
+    instance = _instance("dev")
+
+    assert _start("--port", "8091", "--save-config") == 0
+    capsys.readouterr()
+    assert _start("--port", "8091", "--save-config") == 0
+
+    out = capsys.readouterr().out
+    assert "already up to date" in out
+    text = instance.config_env.read_text(encoding="utf-8")
+    assert text.count("LLM_ROUTER_SERVER_PORT=8091") == 1
+
+
+def test_save_config_keeps_hand_written_lines(state_home, fake_spawn):
+    instance = _instance("dev")
+    instance.ensure_dir()
+    instance.config_env.write_text(
+        "# my own notes\n"
+        "LLM_ROUTER_SERVER_PORT=8081\n"
+        "LLM_ROUTER_LOG_LEVEL=DEBUG\n",
+        encoding="utf-8",
+    )
+
+    assert _start("--port", "8092", "--default-lang", "pl", "--save-config") == 0
+
+    assert instance.config_env.read_text(encoding="utf-8").splitlines() == [
+        "# my own notes",
+        "LLM_ROUTER_SERVER_PORT=8092",
+        "LLM_ROUTER_LOG_LEVEL=DEBUG",
+        "LLM_ROUTER_DEFAULT_EP_LANGUAGE=pl",
+    ]
+
+
+def test_save_config_stores_only_explicit_flags(state_home, fake_spawn, monkeypatch):
+    instance = _instance("dev")
+    monkeypatch.setenv("LLM_ROUTER_BALANCE_STRATEGY", "first_available")
+
+    assert _start("--port", "8091", "--save-config") == 0
+
+    # the shell environment is *not* snapshotted into the file
+    assert parse_env_file(instance.config_env) == {"LLM_ROUTER_SERVER_PORT": "8091"}
+
+
+def test_save_config_without_flags_leaves_the_template_alone(
+    state_home, fake_spawn, capsys
+):
+    instance = _instance("dev")
+
+    assert _start("--save-config") == 0
+
+    out = capsys.readouterr().out
+    assert "nothing to save" in out
+    assert parse_env_file(instance.config_env) == {}
+    assert "# LLM_ROUTER_SERVER_PORT=8081" in instance.config_env.read_text(
+        encoding="utf-8"
+    )
+
+
+def test_save_config_failure_does_not_stop_the_server(
+    state_home, fake_spawn, capsys, monkeypatch
+):
+    instance = _instance("dev")
+    instance.ensure_dir()
+    monkeypatch.setattr(
+        server_module,
+        "update_config_env",
+        lambda path, values: (_ for _ in ()).throw(OSError("read-only")),
+    )
+
+    assert _start("--port", "8091", "--save-config") == 0
+
+    err = capsys.readouterr().err
+    assert "Warning: cannot update" in err
+
+
+def test_saved_config_is_reused_by_the_next_plain_start(
+    state_home, fake_spawn, monkeypatch, capsys
+):
+    assert (
+        _start(
+            "--port",
+            "8091",
+            "--lb-strategy",
+            "weighted",
+            "--server",
+            "waitress",
+            "--save-config",
+        )
+        == 0
+    )
+    capsys.readouterr()
+    # Forget everything the first start exported: only config.env can supply it.
+    for key in (
+        "LLM_ROUTER_SERVER_PORT",
+        "LLM_ROUTER_BALANCE_STRATEGY",
+        "LLM_ROUTER_SERVER_TYPE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    state, _ = fake_spawn
+    assert _start() == 0
+
+    assert state["env"]["LLM_ROUTER_SERVER_PORT"] == "8091"
+    assert state["env"]["LLM_ROUTER_BALANCE_STRATEGY"] == "weighted"
+    assert state["env"]["LLM_ROUTER_SERVER_TYPE"] == "waitress"
+
+
+def test_server_flag_selects_the_engine(state_home, fake_spawn):
+    state, _ = fake_spawn
+
+    assert _start("--server", "waitress") == 0
+
+    assert state["env"]["LLM_ROUTER_SERVER_TYPE"] == "waitress"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("8091", "8091"),
+        ("first_available", "first_available"),
+        ("/opt/models.json", "/opt/models.json"),
+        ("db=0,pool=2", "db=0,pool=2"),
+        ("s3cr3t;now", "'s3cr3t;now'"),
+        ("", ""),
+        ("s3cr3t!", "'s3cr3t!'"),
+        ("it's here", '"it\'s here"'),
+        ("line\nbreak", None),
+        ("both ' and \"", None),
+    ],
+)
+def test_format_env_value(value, expected):
+    assert format_env_value(value) == expected
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["8091", "weighted", "/opt/models.json", "s3cr3t!", "it's here", ""],
+)
+def test_saved_values_survive_a_round_trip(tmp_path, value):
+    path = tmp_path / "config.env"
+    update_config_env(path, {"LLM_ROUTER_REDIS_PASSWORD": value})
+
+    assert parse_env_file(path) == {"LLM_ROUTER_REDIS_PASSWORD": value}
+
+
+def test_update_config_env_rejects_unrepresentable_values(tmp_path):
+    path = tmp_path / "config.env"
+    path.write_text("LLM_ROUTER_LOG_LEVEL=INFO\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        update_config_env(path, {"LLM_ROUTER_LOG_LEVEL": "a\nb"})
+
+    assert path.read_text(encoding="utf-8") == "LLM_ROUTER_LOG_LEVEL=INFO\n"

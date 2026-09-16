@@ -21,12 +21,10 @@ import pytest
 from llm_router_cli.cli import main
 from llm_router_cli.cli.commands import server as server_module
 from llm_router_cli.cli.commands.server import (
-    DEFAULT_ENV,
     ServerCommand,
     _is_sensitive,
     _paint,
     _resolve_color,
-    apply_default_env,
     colorize_line,
     get_alive_pid,
     pid_alive,
@@ -35,7 +33,10 @@ from llm_router_cli.cli.commands.server import (
     tail_lines,
     write_pid_file,
 )
-
+from llm_router_cli.cli.env_defaults import (
+    DEFAULT_ENV,
+    apply_default_env,
+)
 
 # ---- fixtures / helpers ----------------------------------------------------
 
@@ -117,6 +118,7 @@ def test_start_help_lists_flags(capsys):
         "--auth-redis-password",
         "--pid-file",
         "--no-port-check",
+        "--save-config",
         "--instance",
     ):
         assert flag in out
