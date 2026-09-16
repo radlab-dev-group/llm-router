@@ -44,17 +44,24 @@ from pathlib import Path
 from typing import Any, ClassVar, Dict, IO, List, Optional, Tuple
 
 from llm_router_cli.cli.commands.base import BaseCommand
-from llm_router_lib.core.constants import ENV_PREFIX
+from llm_router_cli.cli.config_env import (
+    apply_instance_config,
+    format_env_value,
+    parse_env_file,
+    scaffold_config_env,
+    update_config_env,
+)
+from llm_router_cli.cli.env_defaults import (
+    apply_default_env,
+    collect_env,
+    DEFAULT_LOG_FILENAME,
+)
 
 #: Per-user state directory (same home location as ``memory-keys.json``).
 _STATE_DIR = BaseCommand.STATE_DIR
 DEFAULT_PID_FILE = _STATE_DIR / "server.pid"
 DEFAULT_LOG_FILE = _STATE_DIR / "server.log"
 
-#: Default of ``LLM_ROUTER_LOG_FILENAME`` — the application's *own* (rotating)
-#: log file. It is a **relative** path, so it lands in the CWD (``./``), not in
-#: ``~/.llm-router`` (that only holds the daemon's captured stdout/stderr).
-DEFAULT_LOG_FILENAME = "llm-router.log"
 
 #: Name of the legacy single-instance layout: its state stays directly in
 #: ``~/.llm-router`` (``server.pid`` / ``server.pid.run`` / ``server.log``).
@@ -173,99 +180,6 @@ def resolve_instance(args: argparse.Namespace) -> InstancePaths:
     )
 
 
-def _strip_quotes(value: str) -> str:
-    """Drop one matching pair of single/double quotes around *value*."""
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-        return value[1:-1]
-    return value
-
-
-def parse_env_file(path: Path) -> Dict[str, str]:
-    """
-    Parse a simple ``KEY=value`` file (``config.env``) into a dict.
-
-    Blank lines and ``#`` comments are skipped, a leading ``export`` is
-    tolerated, values may be quoted, ``~`` is expanded, and ``KEY=`` yields
-    an empty value. Malformed lines and non-``LLM_ROUTER_*`` keys are
-    reported on stderr but never abort the command.
-    """
-    values: Dict[str, str] = {}
-    path = Path(path)
-    if not path.is_file():
-        return values
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        print(f"Warning: cannot read {path}: {exc}", file=sys.stderr)
-        return values
-
-    for lineno, raw in enumerate(text.splitlines(), start=1):
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export ") :].strip()
-        key, separator, value = line.partition("=")
-        if not separator:
-            print(
-                f"Warning: ignoring {path}:{lineno} (no '=' in {line!r})",
-                file=sys.stderr,
-            )
-            continue
-        key = key.strip()
-        if not key:
-            print(
-                f"Warning: ignoring {path}:{lineno} (empty variable name)",
-                file=sys.stderr,
-            )
-            continue
-        if not key.startswith(ENV_PREFIX):
-            print(
-                f"Warning: ignoring {path}:{lineno} "
-                f"(key {key!r} is not an {ENV_PREFIX}* variable)",
-                file=sys.stderr,
-            )
-            continue
-        values[key] = os.path.expanduser(_strip_quotes(value.strip()))
-    return values
-
-
-def apply_instance_config(values: Dict[str, str]) -> None:
-    """Export *values* into the current process environment."""
-    for key, value in values.items():
-        os.environ[key] = value
-
-
-def scaffold_config_env(path: Path, name: str) -> bool:
-    """
-    Create a commented ``config.env`` template for a new instance.
-
-    An existing file is never touched; returns True only when created.
-    """
-    path = Path(path)
-    if path.exists():
-        return False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        "# Per-instance configuration for the 'llm-router server' command.\n"
-        f"# Instance: {name}\n"
-        "#\n"
-        "# One KEY=value per line; '#' starts a comment. Only variables named\n"
-        f"# {ENV_PREFIX}... are applied (anything else is ignored).\n"
-        "# Precedence: CLI flag > this file > shell environment > built-in\n"
-        "# defaults.\n"
-        "#\n"
-        "# Examples (uncomment to use):\n"
-        "# LLM_ROUTER_SERVER_PORT=8081\n"
-        "# LLM_ROUTER_SERVER_HOST=127.0.0.1\n"
-        f"# LLM_ROUTER_MODELS_CONFIG={DEFAULT_ENV['LLM_ROUTER_MODELS_CONFIG']}\n"
-        "# LLM_ROUTER_SERVER_WORKERS_COUNT=2\n"
-        "# LLM_ROUTER_LOG_LEVEL=DEBUG\n",
-        encoding="utf-8",
-    )
-    return True
-
-
 def check_port_free(host: str, port: int) -> Optional[str]:
     """
     Return an error message when *port* cannot be bound, else ``None``.
@@ -371,127 +285,6 @@ def discover_instances() -> List[InstancePaths]:
 _STOP_GRACE_SECONDS = 15
 _STOP_POLL_INTERVAL = 0.2
 _KILL_POLL_SECONDS = 5
-
-#: ``LLM_ROUTER_*`` defaults mirrored from ``run-rest-api-gunicorn.sh``.
-#: Applied with :func:`os.environ.setdefault`, so the user's shell always wins.
-DEFAULT_ENV: Dict[str, str] = {
-    # Logging
-    "LLM_ROUTER_IN_DEBUG": "1",
-    "LLM_ROUTER_MINIMUM": "1",
-    "LLM_ROUTER_LOG_FILENAME": DEFAULT_LOG_FILENAME,
-    "LLM_ROUTER_LOG_TO_FILE": "1",
-    "LLM_ROUTER_LOG_LEVEL": "INFO",
-    "LLM_ROUTER_LOG_MAX_BYTES": "52428800",
-    "LLM_ROUTER_LOG_BACKUP_COUNT": "5",
-    # Metrics
-    "LLM_ROUTER_USE_PROMETHEUS": "1",
-    # Router resources
-    "LLM_ROUTER_PROMPTS_DIR": "resources/prompts",
-    "LLM_ROUTER_MODELS_CONFIG": "resources/configs/models-config.json",
-    # Request limits
-    "LLM_ROUTER_MAX_REQUEST_BODY_SIZE": "10485760",
-    # Endpoints / routing
-    "LLM_ROUTER_EP_PREFIX": "/api",
-    "LLM_ROUTER_DEFAULT_EP_LANGUAGE": "pl",
-    "LLM_ROUTER_BALANCE_STRATEGY": "balanced",
-    # Server engine
-    "LLM_ROUTER_SERVER_TYPE": "gunicorn",
-    "LLM_ROUTER_SERVER_PORT": "8080",
-    "LLM_ROUTER_SERVER_HOST": "0.0.0.0",
-    "LLM_ROUTER_SERVER_WORKERS_COUNT": "4",
-    "LLM_ROUTER_SERVER_THREADS_COUNT": "16",
-    "LLM_ROUTER_SERVER_WORKER_CLASS": "",
-    "LLM_ROUTER_TIMEOUT": "0",
-    "LLM_ROUTER_EXTERNAL_TIMEOUT": "300",
-    # Redis
-    "LLM_ROUTER_REDIS_HOST": "",
-    "LLM_ROUTER_REDIS_PORT": "6379",
-    "LLM_ROUTER_REDIS_DB": "0",
-    "LLM_ROUTER_REDIS_PASSWORD": "",
-    "LLM_ROUTER_REDIS_PROTOCOL": "3",
-    # Monitoring
-    "LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS": "5",
-    "LLM_ROUTER_KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS": "1",
-    "LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS": "5",
-    "LLM_ROUTER_PROVIDER_MONITOR_PING_TIMEOUT_SECONDS": "5.0",
-    "LLM_ROUTER_PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES": "2",
-    # Masking
-    "LLM_ROUTER_FORCE_MASKING": "0",
-    "LLM_ROUTER_MASKING_WITH_AUDIT": "0",
-    "LLM_ROUTER_MASKING_STRATEGY_PIPELINE": "fast_masker",
-    # Guardrails
-    "LLM_ROUTER_FORCE_GUARDRAIL_REQUEST": "0",
-    "LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST": "0",
-    "LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_REQUEST": "",
-    "LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST": "",
-    "LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST": "",
-    "LLM_ROUTER_MASKER_PII_HOST": "",
-    # Authentication
-    "LLM_ROUTER_AUTH_ENABLED": "false",
-    "LLM_ROUTER_AUTH_KEY_STORE": "memory",
-    "LLM_ROUTER_AUTH_MEMORY_SEED_FILE": "~/.llm-router/configs/auth/memory-keys.json",
-    "LLM_ROUTER_AUTH_REDIS_HOST": "",
-    "LLM_ROUTER_AUTH_REDIS_PORT": "6379",
-    "LLM_ROUTER_AUTH_REDIS_DB": "0",
-    "LLM_ROUTER_AUTH_REDIS_PASSWORD": "",
-    "LLM_ROUTER_AUTH_REDIS_PROTOCOL": "3",
-    "LLM_ROUTER_AUTH_VAULT_ADDR": "",
-    "LLM_ROUTER_AUTH_VAULT_PATH": "secret/data/llm-router/api-keys",
-    "LLM_ROUTER_AUTH_VAULT_AUTH_METHOD": "kubernetes",
-    "LLM_ROUTER_AUTH_VAULT_ROLE_ID": "",
-    "LLM_ROUTER_AUTH_VAULT_SECRET_ID": "",
-    "LLM_ROUTER_AUTH_KEY_CACHE_TTL": "300",
-    "LLM_ROUTER_AUTH_KEY_CACHE_JITTER": "60",
-    "LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT": "60",
-    "LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS": "/metrics,/health",
-    "LLM_ROUTER_TRUSTED_PROXIES": "",
-    "LLM_ROUTER_AUTH_FAILURE_LIMIT": "20",
-    "LLM_ROUTER_AUTH_KEY_PREFIX": "sk-llmr-live",
-    "LLM_ROUTER_AUTH_KEY_LENGTH": "48",
-    "LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD": "3600",
-    "LLM_ROUTER_AUTH_AUDIT": "",
-    # Plugins / utils
-    "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR": "",
-    "LLM_ROUTER_LANGCHAIN_RAG_COLLECTION": "",
-    "LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER": "",
-    "LLM_ROUTER_LANGCHAIN_RAG_DEVICE": "cpu",
-    "LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE": "1024",
-    "LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP": "100",
-    "LLM_ROUTER_LANGCHAIN_RAG_PERSIST_DIR": "",
-    "TOKENIZERS_PARALLELISM": "true",
-}
-
-
-# -------------------------------------------------------------------------- #
-# Environment defaults
-# -------------------------------------------------------------------------- #
-def apply_default_env() -> None:
-    """Apply :data:`DEFAULT_ENV` without overriding variables already set."""
-    for key, value in DEFAULT_ENV.items():
-        os.environ.setdefault(key, value)
-
-
-def collect_env() -> Dict[str, str]:
-    """
-    Snapshot every ``LLM_ROUTER_*`` variable currently set in the environment.
-
-    Uses the shared :data:`ENV_PREFIX` from ``llm_router_lib.core.constants``
-    so the run record always captures the full configuration the server was
-    launched with (defaults + shell env + CLI overrides), not just the flags.
-    Keys are returned sorted for stable, diffable records.
-    """
-    prefix = ENV_PREFIX
-    return {
-        key: value
-        for key, value in sorted(os.environ.items())
-        if key.startswith(prefix)
-    }
 
 
 # -------------------------------------------------------------------------- #
@@ -823,6 +616,11 @@ class ServerCommand(BaseCommand):
         ("auth_redis_port", "LLM_ROUTER_AUTH_REDIS_PORT", "str"),
         ("auth_redis_db", "LLM_ROUTER_AUTH_REDIS_DB", "str"),
         ("auth_redis_password", "LLM_ROUTER_AUTH_REDIS_PASSWORD", None),
+        # Bind target and engine, so ``--save-config`` can also remember where
+        # (and how) an instance was last launched.
+        ("server", "LLM_ROUTER_SERVER_TYPE", None),
+        ("host", "LLM_ROUTER_SERVER_HOST", None),
+        ("port", "LLM_ROUTER_SERVER_PORT", "str"),
     ]
 
     _LB_STRATEGIES = [
@@ -894,8 +692,6 @@ class ServerCommand(BaseCommand):
 
         user_log = os.environ.get("LLM_ROUTER_LOG_FILENAME")
         apply_default_env()
-        if args.server:
-            os.environ.setdefault("LLM_ROUTER_SERVER_TYPE", args.server)
         # Explicit CLI flags win over both the defaults and the shell env.
         os.environ.update(cls.build_env_overrides(args))
 
@@ -930,6 +726,59 @@ class ServerCommand(BaseCommand):
             "Use --port/--host or set LLM_ROUTER_SERVER_PORT in "
             f"{instance.config_env}."
         )
+
+    @classmethod
+    def _save_config(cls, args: argparse.Namespace, instance: InstancePaths) -> None:
+        """
+        Persist this command line's flags into the instance ``config.env``.
+
+        Only flags actually given here are written (see
+        :meth:`build_env_overrides`), so a later plain ``start -i NAME``
+        relaunches the instance with the same settings. Values are stored
+        verbatim — a Redis password included, which is why the file is kept
+        mode 0600 — while only the *names* of the keys are echoed.
+
+        Everything is best-effort: a state directory that cannot be written
+        produces a warning, never a failed start.
+        """
+        overrides = cls.build_env_overrides(args)
+        values: Dict[str, str] = {}
+        for key, value in overrides.items():
+            if format_env_value(value) is None:
+                print(
+                    f"Warning: not saving {key}: the value cannot be written "
+                    f"to {instance.config_env}",
+                    file=sys.stderr,
+                )
+                continue
+            values[key] = value
+        if not values:
+            if not overrides:
+                print(
+                    "--save-config: nothing to save; only flags given on "
+                    "this command line are persisted."
+                )
+            return
+        try:
+            scaffold_config_env(instance.config_env, instance.name)
+            changed, unchanged = update_config_env(instance.config_env, values)
+        except OSError as exc:
+            print(
+                f"Warning: cannot update {instance.config_env}: {exc}",
+                file=sys.stderr,
+            )
+            return
+        if changed:
+            print(f"Saved {len(changed)} setting(s) to {instance.config_env}:")
+            for key in changed:
+                print(f"  {key}")
+            if unchanged:
+                print(f"  ({len(unchanged)} already up to date)")
+        else:
+            print(
+                f"{instance.config_env} already up to date "
+                f"({len(unchanged)} setting(s))"
+            )
 
     # ---- Registration ---------------------------------------------------- #
     @classmethod
@@ -1000,6 +849,16 @@ class ServerCommand(BaseCommand):
             "--no-port-check",
             action="store_true",
             help="Skip the port-availability check before spawning.",
+        )
+        start.add_argument(
+            "--save-config",
+            action="store_true",
+            help=(
+                "Save the flags given on this command line into the "
+                "instance's config.env, so a later plain 'start' reuses "
+                "them. Values are written verbatim (the file is kept mode "
+                "0600); only key names are printed."
+            ),
         )
         # Environment overrides (CLI flag > shell env > script defaults)
         start.add_argument(
@@ -1276,6 +1135,9 @@ class ServerCommand(BaseCommand):
                 port_error = cls._check_start_port(args, instance)
                 if port_error is not None:
                     return cls.fail(port_error)
+
+            if args.save_config:
+                cls._save_config(args, instance)
 
             if args.foreground:
                 return cls._run_foreground(
