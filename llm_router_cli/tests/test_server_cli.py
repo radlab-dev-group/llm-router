@@ -116,6 +116,8 @@ def test_start_help_lists_flags(capsys):
         "--auth-redis-db",
         "--auth-redis-password",
         "--pid-file",
+        "--no-port-check",
+        "--instance",
     ):
         assert flag in out
 
@@ -125,6 +127,8 @@ def test_stop_help_lists_flags(capsys):
     out = capsys.readouterr().out
     assert "--force" in out
     assert "--pid-file" in out
+    assert "--all" in out
+    assert "-i" in out
 
 
 def test_invalid_server_choice_rejected(capsys):
@@ -134,7 +138,14 @@ def test_invalid_server_choice_rejected(capsys):
 
 def test_dispatch_routes_each_action(monkeypatch):
     calls = []
-    for name in ("_start", "_stop", "_reload", "_status"):
+    for name in (
+        "_start",
+        "_stop",
+        "_reload",
+        "_status",
+        "_list",
+        "_rm_instance",
+    ):
         monkeypatch.setattr(
             ServerCommand,
             name,
@@ -145,7 +156,16 @@ def test_dispatch_routes_each_action(monkeypatch):
     assert ServerCommand.dispatch(parser.parse_args(["stop"])) == 7
     assert ServerCommand.dispatch(parser.parse_args(["reload"])) == 7
     assert ServerCommand.dispatch(parser.parse_args(["status"])) == 7
-    assert calls == ["_start", "_stop", "_reload", "_status"]
+    assert ServerCommand.dispatch(parser.parse_args(["list"])) == 7
+    assert ServerCommand.dispatch(parser.parse_args(["rm-instance", "dev"])) == 7
+    assert calls == [
+        "_start",
+        "_stop",
+        "_reload",
+        "_status",
+        "_list",
+        "_rm_instance",
+    ]
 
 
 def test_main_dispatches_server_stop(monkeypatch, pid_file, capsys):

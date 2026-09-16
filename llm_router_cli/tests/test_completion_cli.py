@@ -24,7 +24,9 @@ def test_completion_bash_lists_commands_subcommands_options(capsys):
     # Top-level commands.
     assert "'auth' 'anonymizer' 'config' 'completion' 'server' 'util'" in out
     # Second-level subcommands (server, auth).
-    assert "subs=( 'start' 'stop' 'reload' 'status' 'log' )" in out
+    assert (
+        "subs=( 'start' 'stop' 'reload' 'status' 'log' 'list' 'rm-instance' )" in out
+    )
     assert "subs=( 'key' 'policy' 'rate-limit' )" in out
     # Third-level subcommands are present as full paths in the tree.
     assert "'auth key generate'" in out
@@ -42,6 +44,8 @@ def test_completion_bash_lists_commands_subcommands_options(capsys):
     assert "'--algorithm'" in out  # anonymizer run (level 2)
     assert "'--output-config-file'" in out  # config discover/merge (level 2)
     assert "'--install'" in out  # completion bash/zsh (level 2)
+    assert "'--instance'" in out  # every server sub-command
+    assert "'--no-port-check'" in out  # server start
 
 
 def test_completion_zsh_lists_commands_subcommands_options(capsys):
@@ -87,8 +91,13 @@ def test_command_tree_matches_registered_commands():
         "reload",
         "status",
         "log",
+        "list",
+        "rm-instance",
     }
     assert "--force" in tree["server"]["subs"]["stop"]["options"]
+    assert "--all" in tree["server"]["subs"]["stop"]["options"]
+    assert "--instance" in tree["server"]["subs"]["status"]["options"]
+    assert "--json" in tree["server"]["subs"]["list"]["options"]
     assert "--color" in tree["server"]["subs"]["log"]["options"]
     assert "--models-config" in tree["server"]["subs"]["start"]["options"]
     # Third level: auth key *.
