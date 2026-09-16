@@ -2,7 +2,8 @@
 Shell tab-completion for ``llm-router`` (bash and zsh).
 
 The script is generated from the *live* top-level parser, so completions
-always match the registered commands, sub-commands and long options::
+always match the registered commands, sub-commands and options — both the
+long (``--instance``) and the short (``-i``) spellings::
 
     # bash — append to ~/.bashrc (or run once per shell):
     eval "$(llm-router completion bash)"
@@ -28,16 +29,24 @@ from typing import Any, ClassVar, Dict, List, Tuple
 from llm_router_cli.cli.commands.base import BaseCommand
 
 
-def _long_options(parser: argparse.ArgumentParser) -> List[str]:
-    """All long (``--``) option strings declared on *parser* (no sub-commands)."""
-    opts: List[str] = []
+def _option_strings(parser: argparse.ArgumentParser) -> List[str]:
+    """
+    All option strings declared on *parser* (no sub-commands).
+
+    Long options are listed first and the short ones after them, so a menu
+    reads ``--instance`` then ``-i``. The ``-h/--help`` action and the
+    sub-command parser itself are skipped.
+    """
+    longs: List[str] = []
+    shorts: List[str] = []
     for action in parser._actions:
         if isinstance(action, (argparse._SubParsersAction, argparse._HelpAction)):
             continue
         for opt in action.option_strings:
-            if opt.startswith("--") and opt not in opts:
-                opts.append(opt)
-    return opts
+            if not opt.startswith("-") or opt in longs or opt in shorts:
+                continue
+            (longs if opt.startswith("--") else shorts).append(opt)
+    return longs + shorts
 
 
 def _command_tree(
@@ -57,7 +66,7 @@ def _command_tree(
             if name == "help" or sub is None:
                 continue
             tree[name] = {
-                "options": _long_options(sub),
+                "options": _option_strings(sub),
                 "subs": _command_tree(sub),
             }
     return tree
@@ -141,9 +150,10 @@ def _render_bash(tree: Dict[str, Dict[str, Any]]) -> str:
     ]
     lines.extend(_path_case_lines(paths, "        "))
     lines += [
-        "        cands=( ${subs[@]} )",
-        '        if [[ -n "${matched}" && "${typed}" == "${matched}" ]]; then',
-        "            cands+=( ${opts[@]} )",
+        '        if [[ "${cur}" == -* ]]; then',
+        "            cands=( ${opts[@]} )",
+        "        else",
+        "            cands=( ${subs[@]} ${opts[@]} )",
         "        fi",
         "    fi",
         '    COMPREPLY=( $(compgen -W "${cands[*]}" -- "${cur}" || true) )',
@@ -182,7 +192,11 @@ def _render_zsh(tree: Dict[str, Dict[str, Any]]) -> str:
     ]
     lines.extend(_path_case_lines(paths, "        "))
     lines += [
-        "        cands=( ${opts[@]} ${subs[@]} )",
+        '        if [[ "${words[CURRENT]}" == -* ]]; then',
+        "            cands=( ${opts[@]} )",
+        "        else",
+        "            cands=( ${subs[@]} ${opts[@]} )",
+        "        fi",
         "    fi",
         "    if (( ${#cands[@]} > 0 )); then",
         "        compadd -a cands",

@@ -419,7 +419,8 @@ Every sub-command takes `-i/--instance NAME`, so a host can run several routers 
 {gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`,
 `--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
 `--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`), plus `--instance NAME` (which
-instance to start) and `--no-port-check` (skip the port pre-flight check). The daemon log (`--log-file`)
+instance to start), `--no-port-check` (skip the port pre-flight check) and `--save-config` (remember the flags in the
+instance `config.env` — see [Saving a command line](#saving-a-command-line---save-config)). The daemon log (`--log-file`)
 follows `LLM_ROUTER_LOG_FILENAME` when it is set in the shell — a bare file name is resolved against the launch CWD —
 and defaults to `~/.llm-router/server.log` only when the variable is unset. Every `LLM_ROUTER_*`
 variable in effect at launch — defaults + shell env + CLI overrides — is snapshotted into the run record
@@ -467,6 +468,47 @@ export LLM_ROUTER_INSTANCE=dev                 # pin a shell (or a systemd unit)
 llm-router server status                       # now reports the 'dev' instance
 llm-router server reload                       # … and reloads it
 ```
+
+#### Saving a command line: `--save-config`
+
+A `start` command line applies to that run only: after `server stop -i helpi`, the next plain `server start -i helpi`
+reads `config.env`, the shell and the built-in defaults again, so `--port 8081 --lb-strategy balanced …` has to be
+typed out once more. `--save-config` writes the flags **given on this command line** into the instance's `config.env`
+before launching, which makes the settings survive a restart:
+
+```bash
+llm-router server start -i helpi --port 8081 --lb-strategy balanced \
+    --models-config resources/configs/models-config-fake-names.json --save-config
+Saved 3 setting(s) to /home/user/.llm-router/instances/helpi/config.env:
+  LLM_ROUTER_MODELS_CONFIG
+  LLM_ROUTER_BALANCE_STRATEGY
+  LLM_ROUTER_SERVER_PORT
+
+llm-router server stop -i helpi
+llm-router server start -i helpi                 # same models config, port and strategy
+```
+
+```ini
+# ~/.llm-router/instances/helpi/config.env — template entries are uncommented in place
+LLM_ROUTER_SERVER_PORT=8081
+# LLM_ROUTER_SERVER_HOST=127.0.0.1
+LLM_ROUTER_MODELS_CONFIG=resources/configs/models-config-fake-names.json
+# LLM_ROUTER_SERVER_WORKERS_COUNT=2
+# LLM_ROUTER_LOG_LEVEL=DEBUG
+LLM_ROUTER_BALANCE_STRATEGY=balanced
+```
+
+- Only explicitly-passed flags are stored — values taken from the shell or from the defaults are not, so saving never
+  freezes a value the user did not choose. `--host`, `--port` and `--server` are saved too, and the resulting
+  `config.env` is what a later `start` reads (precedence stays `CLI flag > config.env > shell > defaults`).
+- An existing key is rewritten **in place** (a commented template line is uncommented), so hand-written comments,
+  ordering and unrelated variables survive; repeating the identical command prints
+  `… already up to date (3 setting(s))` instead of duplicating lines.
+- Values are written **verbatim**, `--redis-password` and `--auth-redis-password` included — that is why the file is
+  created/kept mode `0600`. The terminal only ever sees the *names* of the keys, never their values.
+- `--save-config` with no option flags saves nothing and leaves the file untouched (it prints a hint). A value that
+  cannot be represented in a shell file (an embedded newline) is skipped with a warning, and an unwritable
+  `config.env` is a warning too — in both cases the server still starts.
 
 #### Port pre-flight
 
@@ -618,7 +660,9 @@ every other `server` sub-command, they all take `-i/--instance NAME` (see
 
 Generates a tab-completion script from the live CLI tree — commands, sub-commands at **every nesting level** (e.g.
 `auth key generate`,
-`anonymizer run`, `config discover`) and all long options.
+`anonymizer run`, `config discover`) and every option in **both spellings**: the long one (`--instance`) and the short
+one (`-i`), long options listed first. Options keep being offered **mid-command**, also after a value has been typed,
+so `llm-router server start --port 8081 <TAB>` still completes `--models-config`, `-i` and the rest.
 
 | Sub-command | Description                              |
 |-------------|------------------------------------------|
