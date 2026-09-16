@@ -21,6 +21,8 @@ Usage::
     llm-router server log          # follow the log (tail -f style, colored)
     llm-router server stop         # stop it (SIGTERM, or --force SIGKILL)
     llm-router server reload       # graceful reload (SIGHUP to Gunicorn master)
+    llm-router server list         # every instance with its status/PID/port
+    llm-router server rm-instance NAME  # delete a stopped instance's state
     llm-router completion bash     # tab-completion script (eval into ~/.bashrc)
     llm-router completion zsh      # tab-completion script (source into ~/.zshrc)
     llm-router completion bash --install   # append the script to ~/.bashrc
