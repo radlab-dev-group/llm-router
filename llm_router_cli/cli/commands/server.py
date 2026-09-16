@@ -10,6 +10,15 @@ managed background daemon with a PID file, so the same lifecycle operations
     llm-router server log      # follow the log (tail -f style, colored levels)
     llm-router server stop    # SIGTERM (with grace period), or SIGKILL --force
     llm-router server reload  # graceful SIGHUP to the Gunicorn master
+    llm-router server list     # list every known instance (--json for scripts)
+    llm-router server rm-instance NAME  # drop a named instance's state
+
+Several instances can run side by side: ``-i/--instance NAME`` (or
+``$LLM_ROUTER_INSTANCE``) gives each one its own state tree under
+``~/.llm-router/instances/NAME`` (PID file, run record, daemon log,
+``config.env`` overrides, metrics dir, application log). ``stop --all`` and
+``status --all`` act on every instance at once. The built-in ``default``
+instance keeps the historical single-instance layout in ``~/.llm-router``.
 
 Unless the user's environment already defines them, the command applies the
 same ``LLM_ROUTER_*`` defaults as ``run-rest-api-gunicorn.sh``.
@@ -18,156 +27,264 @@ same ``LLM_ROUTER_*`` defaults as ``run-rest-api-gunicorn.sh``.
 from __future__ import annotations
 
 import argparse
+import errno
 import json
 import os
 import re
+import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
 
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Dict, IO, List, Optional, Tuple
 
 from llm_router_cli.cli.commands.base import BaseCommand
-from llm_router_lib.core.constants import ENV_PREFIX
+from llm_router_cli.cli.config_env import (
+    apply_instance_config,
+    format_env_value,
+    parse_env_file,
+    scaffold_config_env,
+    update_config_env,
+)
+from llm_router_cli.cli.env_defaults import (
+    apply_default_env,
+    collect_env,
+    DEFAULT_LOG_FILENAME,
+)
 
 #: Per-user state directory (same home location as ``memory-keys.json``).
 _STATE_DIR = BaseCommand.STATE_DIR
 DEFAULT_PID_FILE = _STATE_DIR / "server.pid"
 DEFAULT_LOG_FILE = _STATE_DIR / "server.log"
 
-#: Default of ``LLM_ROUTER_LOG_FILENAME`` — the application's *own* (rotating)
-#: log file. It is a **relative** path, so it lands in the CWD (``./``), not in
-#: ``~/.llm-router`` (that only holds the daemon's captured stdout/stderr).
-DEFAULT_LOG_FILENAME = "llm-router.log"
+
+#: Name of the legacy single-instance layout: its state stays directly in
+#: ``~/.llm-router`` (``server.pid`` / ``server.pid.run`` / ``server.log``).
+DEFAULT_INSTANCE = "default"
+
+#: Environment variable read when ``--instance`` is not given, so a shell
+#: session (or a systemd unit) can pin every command to one instance.
+INSTANCE_ENV_VAR = "LLM_ROUTER_INSTANCE"
+
+#: Instance names are used verbatim as state-directory names, so they are
+#: restricted to a filesystem-safe slug (no separators, no ``..``).
+_INSTANCE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+#: Directory (under ``_STATE_DIR``) holding every named instance's state tree.
+_INSTANCES_DIRNAME = "instances"
+
+#: Per-instance lock guarding concurrent ``start`` calls (PID-file creation
+#: is not atomic with the ``is it alive?`` check).
+_START_LOCK_SUFFIX = "server.start.lock"
+
+#: A start lock older than this is treated as abandoned (a killed ``start``)
+#: and broken, so an instance never stays wedged by a crashed CLI run.
+_START_LOCK_TIMEOUT_SECONDS = 60
+
+#: Per-instance overrides file, applied between the shell env and the defaults.
+_CONFIG_ENV_FILENAME = "config.env"
+
+
+def instances_dir() -> Path:
+    """Return the root of the named-instance state trees."""
+    return _STATE_DIR / _INSTANCES_DIRNAME
+
+
+# -------------------------------------------------------------------------- #
+# Instances (one state tree per concurrently running server)
+# -------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class InstancePaths:
+    """Filesystem layout of a single router instance."""
+
+    name: str
+    dir: Path
+    pid_file: Path
+    run_file: Path
+    daemon_log: Path
+    config_env: Path
+    metrics_dir: Path
+    #: The application's own log inside the instance dir (``None`` for the
+    #: ``default`` instance, which keeps the CWD-relative historical behavior).
+    app_log: Optional[Path]
+    lock_file: Path
+
+    @property
+    def named(self) -> bool:
+        """True for every instance except the legacy ``default`` one."""
+        return self.name != DEFAULT_INSTANCE
+
+    def ensure_dir(self) -> None:
+        """Create the instance state directory (parents included)."""
+        self.dir.mkdir(parents=True, exist_ok=True)
+
+
+def instance_name_from(args: argparse.Namespace) -> str:
+    """Resolve the instance name from ``--instance``, env, or the default."""
+    name = getattr(args, "instance", None)
+    if not name:
+        name = os.environ.get(INSTANCE_ENV_VAR)
+    return name or DEFAULT_INSTANCE
+
+
+def resolve_instance(args: argparse.Namespace) -> InstancePaths:
+    """
+    Build the :class:`InstancePaths` for *args*.
+
+    ``default`` maps onto the historical ``~/.llm-router`` layout so existing
+    PID files, scripts and muscle memory keep working; every other name gets
+    its own ``~/.llm-router/instances/<name>`` directory (PID file, run
+    record, daemon log, ``config.env``, metrics dir and application log).
+
+    Raises:
+        ValueError: if the name is not a filesystem-safe slug.
+    """
+    name = instance_name_from(args)
+    if not _INSTANCE_NAME_RE.match(name) or ".." in name:
+        raise ValueError(
+            f"invalid instance name {name!r}: use 1-64 characters from "
+            "letters, digits, '.', '_' or '-' (starting with a letter or "
+            "digit), e.g. 'llm-router server start -i dev'"
+        )
+
+    if name == DEFAULT_INSTANCE:
+        return InstancePaths(
+            name=name,
+            dir=_STATE_DIR,
+            pid_file=DEFAULT_PID_FILE,
+            run_file=run_file_for(DEFAULT_PID_FILE),
+            daemon_log=DEFAULT_LOG_FILE,
+            config_env=_STATE_DIR / _CONFIG_ENV_FILENAME,
+            metrics_dir=_STATE_DIR / "metrics" / "prometheus" / "multiproc",
+            app_log=None,
+            lock_file=_STATE_DIR / _START_LOCK_SUFFIX,
+        )
+
+    inst_dir = instances_dir() / name
+    pid_file = inst_dir / "server.pid"
+    return InstancePaths(
+        name=name,
+        dir=inst_dir,
+        pid_file=pid_file,
+        run_file=run_file_for(pid_file),
+        daemon_log=inst_dir / "server.log",
+        config_env=inst_dir / _CONFIG_ENV_FILENAME,
+        metrics_dir=inst_dir / "metrics" / "prometheus" / "multiproc",
+        app_log=inst_dir / DEFAULT_LOG_FILENAME,
+        lock_file=inst_dir / _START_LOCK_SUFFIX,
+    )
+
+
+def check_port_free(host: str, port: int) -> Optional[str]:
+    """
+    Return an error message when *port* cannot be bound, else ``None``.
+
+    Two instances on one host must not share a port; binding probes it once
+    before any daemon is spawned, so the second ``start`` fails loudly and
+    immediately instead of dying silently in the background.
+    """
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        probe.bind((host or "0.0.0.0", int(port)))
+    except OSError as exc:
+        if getattr(exc, "errno", None) == errno.EADDRINUSE:
+            return f"port {port} is already in use on {host or '0.0.0.0'}"
+        print(f"Warning: could not verify port availability: {exc}", file=sys.stderr)
+        return None
+    finally:
+        probe.close()
+    return None
+
+
+def _remove_quietly(path: Path) -> None:
+    """Delete *path* if present, ignoring every error."""
+    try:
+        Path(path).unlink()
+    except OSError:
+        pass
+
+
+def acquire_start_lock(instance: InstancePaths) -> Optional[Path]:
+    """
+    Take the per-instance start lock; return its path or ``None`` if busy.
+
+    A lock left behind by a killed ``start`` is broken after
+    :data:`_START_LOCK_TIMEOUT_SECONDS` so the instance is not stuck forever.
+    """
+    instance.ensure_dir()
+    lock_file = instance.lock_file
+    for attempt in (0, 1):
+        try:
+            fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            if attempt:
+                return None
+            try:
+                age = time.time() - lock_file.stat().st_mtime
+            except OSError:
+                continue
+            if age <= _START_LOCK_TIMEOUT_SECONDS:
+                return None
+            _remove_quietly(lock_file)
+            continue
+        except OSError as exc:
+            print(f"Warning: cannot create {lock_file}: {exc}", file=sys.stderr)
+            return None
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(f"{os.getpid()}\n")
+        return lock_file
+    return None
+
+
+def release_start_lock(lock_file: Optional[Path]) -> None:
+    """Release the start lock held by :func:`acquire_start_lock`."""
+    if lock_file is not None:
+        _remove_quietly(lock_file)
+
+
+def discover_instances() -> List[InstancePaths]:
+    """
+    Return every instance that has state on disk (running or not).
+
+    The legacy ``default`` instance counts as discovered only while its PID or
+    run record exists (otherwise it is just the shared state directory, not an
+    instance the user created). A named instance also survives on disk with
+    only its ``config.env``, so deleting its PID file does not lose it.
+    """
+    found: List[InstancePaths] = []
+    default = resolve_instance(argparse.Namespace())
+    if default.pid_file.exists() or default.run_file.exists():
+        found.append(default)
+
+    root = instances_dir()
+    try:
+        children = sorted(path for path in root.iterdir() if path.is_dir())
+    except OSError:
+        children = []
+    for child in children:
+        name = child.name
+        if not _INSTANCE_NAME_RE.match(name) or ".." in name:
+            continue
+        instance = resolve_instance(argparse.Namespace(instance=name))
+        if (
+            instance.pid_file.exists()
+            or instance.run_file.exists()
+            or instance.config_env.exists()
+        ):
+            found.append(instance)
+    return sorted(found, key=lambda item: item.name)
+
 
 #: How long to wait for SIGTERM before telling the user to use ``--force``.
 _STOP_GRACE_SECONDS = 15
 _STOP_POLL_INTERVAL = 0.2
 _KILL_POLL_SECONDS = 5
-
-#: ``LLM_ROUTER_*`` defaults mirrored from ``run-rest-api-gunicorn.sh``.
-#: Applied with :func:`os.environ.setdefault`, so the user's shell always wins.
-DEFAULT_ENV: Dict[str, str] = {
-    # Logging
-    "LLM_ROUTER_IN_DEBUG": "1",
-    "LLM_ROUTER_MINIMUM": "1",
-    "LLM_ROUTER_LOG_FILENAME": DEFAULT_LOG_FILENAME,
-    "LLM_ROUTER_LOG_TO_FILE": "1",
-    "LLM_ROUTER_LOG_LEVEL": "INFO",
-    "LLM_ROUTER_LOG_MAX_BYTES": "52428800",
-    "LLM_ROUTER_LOG_BACKUP_COUNT": "5",
-    # Metrics
-    "LLM_ROUTER_USE_PROMETHEUS": "1",
-    # Router resources
-    "LLM_ROUTER_PROMPTS_DIR": "resources/prompts",
-    "LLM_ROUTER_MODELS_CONFIG": "resources/configs/models-config.json",
-    # Request limits
-    "LLM_ROUTER_MAX_REQUEST_BODY_SIZE": "10485760",
-    # Endpoints / routing
-    "LLM_ROUTER_EP_PREFIX": "/api",
-    "LLM_ROUTER_DEFAULT_EP_LANGUAGE": "pl",
-    "LLM_ROUTER_BALANCE_STRATEGY": "balanced",
-    # Server engine
-    "LLM_ROUTER_SERVER_TYPE": "gunicorn",
-    "LLM_ROUTER_SERVER_PORT": "8080",
-    "LLM_ROUTER_SERVER_HOST": "0.0.0.0",
-    "LLM_ROUTER_SERVER_WORKERS_COUNT": "4",
-    "LLM_ROUTER_SERVER_THREADS_COUNT": "16",
-    "LLM_ROUTER_SERVER_WORKER_CLASS": "",
-    "LLM_ROUTER_TIMEOUT": "0",
-    "LLM_ROUTER_EXTERNAL_TIMEOUT": "300",
-    # Redis
-    "LLM_ROUTER_REDIS_HOST": "",
-    "LLM_ROUTER_REDIS_PORT": "6379",
-    "LLM_ROUTER_REDIS_DB": "0",
-    "LLM_ROUTER_REDIS_PASSWORD": "",
-    "LLM_ROUTER_REDIS_PROTOCOL": "3",
-    # Monitoring
-    "LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS": "5",
-    "LLM_ROUTER_KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS": "1",
-    "LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS": "5",
-    "LLM_ROUTER_PROVIDER_MONITOR_PING_TIMEOUT_SECONDS": "5.0",
-    "LLM_ROUTER_PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES": "2",
-    # Masking
-    "LLM_ROUTER_FORCE_MASKING": "0",
-    "LLM_ROUTER_MASKING_WITH_AUDIT": "0",
-    "LLM_ROUTER_MASKING_STRATEGY_PIPELINE": "fast_masker",
-    # Guardrails
-    "LLM_ROUTER_FORCE_GUARDRAIL_REQUEST": "0",
-    "LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST": "0",
-    "LLM_ROUTER_GUARDRAIL_STRATEGY_PIPELINE_REQUEST": "",
-    "LLM_ROUTER_GUARDRAIL_NASK_GUARD_HOST": "",
-    "LLM_ROUTER_GUARDRAIL_SOJKA_GUARD_HOST": "",
-    "LLM_ROUTER_MASKER_PII_HOST": "",
-    # Authentication
-    "LLM_ROUTER_AUTH_ENABLED": "false",
-    "LLM_ROUTER_AUTH_KEY_STORE": "memory",
-    "LLM_ROUTER_AUTH_MEMORY_SEED_FILE": "~/.llm-router/configs/auth/memory-keys.json",
-    "LLM_ROUTER_AUTH_REDIS_HOST": "",
-    "LLM_ROUTER_AUTH_REDIS_PORT": "6379",
-    "LLM_ROUTER_AUTH_REDIS_DB": "0",
-    "LLM_ROUTER_AUTH_REDIS_PASSWORD": "",
-    "LLM_ROUTER_AUTH_REDIS_PROTOCOL": "3",
-    "LLM_ROUTER_AUTH_VAULT_ADDR": "",
-    "LLM_ROUTER_AUTH_VAULT_PATH": "secret/data/llm-router/api-keys",
-    "LLM_ROUTER_AUTH_VAULT_AUTH_METHOD": "kubernetes",
-    "LLM_ROUTER_AUTH_VAULT_ROLE_ID": "",
-    "LLM_ROUTER_AUTH_VAULT_SECRET_ID": "",
-    "LLM_ROUTER_AUTH_KEY_CACHE_TTL": "300",
-    "LLM_ROUTER_AUTH_KEY_CACHE_JITTER": "60",
-    "LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT": "60",
-    "LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS": "/metrics,/health",
-    "LLM_ROUTER_TRUSTED_PROXIES": "",
-    "LLM_ROUTER_AUTH_FAILURE_LIMIT": "20",
-    "LLM_ROUTER_AUTH_KEY_PREFIX": "sk-llmr-live",
-    "LLM_ROUTER_AUTH_KEY_LENGTH": "48",
-    "LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD": "3600",
-    "LLM_ROUTER_AUTH_AUDIT": "",
-    # Plugins / utils
-    "LLM_ROUTER_UTILS_PLUGINS_PIPELINE": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CONFIG": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_MODEL": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_TARGETS": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_SIZE": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP": "",
-    "LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR": "",
-    "LLM_ROUTER_LANGCHAIN_RAG_COLLECTION": "",
-    "LLM_ROUTER_LANGCHAIN_RAG_EMBEDDER": "",
-    "LLM_ROUTER_LANGCHAIN_RAG_DEVICE": "cpu",
-    "LLM_ROUTER_LANGCHAIN_RAG_CHUNK_SIZE": "1024",
-    "LLM_ROUTER_LANGCHAIN_RAG_CHUNK_OVERLAP": "100",
-    "LLM_ROUTER_LANGCHAIN_RAG_PERSIST_DIR": "",
-    "TOKENIZERS_PARALLELISM": "true",
-}
-
-
-# -------------------------------------------------------------------------- #
-# Environment defaults
-# -------------------------------------------------------------------------- #
-def apply_default_env() -> None:
-    """Apply :data:`DEFAULT_ENV` without overriding variables already set."""
-    for key, value in DEFAULT_ENV.items():
-        os.environ.setdefault(key, value)
-
-
-def collect_env() -> Dict[str, str]:
-    """
-    Snapshot every ``LLM_ROUTER_*`` variable currently set in the environment.
-
-    Uses the shared :data:`ENV_PREFIX` from ``llm_router_lib.core.constants``
-    so the run record always captures the full configuration the server was
-    launched with (defaults + shell env + CLI overrides), not just the flags.
-    Keys are returned sorted for stable, diffable records.
-    """
-    prefix = ENV_PREFIX
-    return {
-        key: value
-        for key, value in sorted(os.environ.items())
-        if key.startswith(prefix)
-    }
 
 
 # -------------------------------------------------------------------------- #
@@ -306,7 +423,9 @@ def resolve_models_config_path(env: Dict[str, Any]) -> str:
 
 
 def resolve_start_log_file(
-    cli_value: Optional[str], shell_log_filename: Optional[str]
+    cli_value: Optional[str],
+    shell_log_filename: Optional[str],
+    default_log: Optional[Path] = None,
 ) -> Path:
     """
     Resolve the daemon log file for ``start``.
@@ -317,12 +436,37 @@ def resolve_start_log_file(
     Only when the variable is unset do we fall back to the per-user default
     under ``~/.llm-router``. ``shell_log_filename`` must be captured *before*
     :func:`apply_default_env` fills in the ``DEFAULT_ENV`` value.
+
+    *default_log* replaces that fallback for named instances, whose daemon log
+    lives inside their own state directory.
     """
     if cli_value:
         return Path(cli_value).expanduser()
     if shell_log_filename:
         return Path(anchor_log_name(shell_log_filename))
+    if default_log is not None:
+        return Path(default_log)
     return DEFAULT_LOG_FILE
+
+
+def log_file_for(
+    args: argparse.Namespace,
+    instance: InstancePaths,
+    shell_log_filename: Optional[str] = None,
+) -> Path:
+    """
+    Resolve the daemon log for *instance*.
+
+    A named instance never follows the shell's ``LLM_ROUTER_LOG_FILENAME``:
+    that variable names the *application's* log, which for a named instance
+    lives inside its own state directory. Only the ``default`` instance keeps
+    the historical behavior of honoring the shell variable.
+    """
+    return resolve_start_log_file(
+        args.log_file,
+        None if instance.named else shell_log_filename,
+        instance.daemon_log if instance.named else None,
+    )
 
 
 # -------------------------------------------------------------------------- #
@@ -436,7 +580,8 @@ class ServerCommand(BaseCommand):
 
     NAME: ClassVar[str] = "server"
     HELP: ClassVar[str] = (
-        "Manage the LLM-Router REST API server (start/stop/reload/status/log)"
+        "Manage the LLM-Router REST API server "
+        "(start/stop/reload/status/log/list/rm-instance)"
     )
     SUBPARSER_DEST: ClassVar[str] = "server_command"
 
@@ -445,11 +590,15 @@ class ServerCommand(BaseCommand):
     RELOAD_NAME = "reload"
     STATUS_NAME = "status"
     LOG_NAME = "log"
+    LIST_NAME = "list"
+    RM_INSTANCE_NAME = "rm-instance"
     START_HELP = "Start the REST API server in the background (daemon)"
     STOP_HELP = "Stop the running REST API server"
     RELOAD_HELP = "Gracefully reload the running Gunicorn master (SIGHUP)"
     STATUS_HELP = "Show server status (pid, log, launch parameters)"
     LOG_HELP = "Follow the server log (tail -f style, colorized levels)"
+    LIST_HELP = "List all known server instances (running or not)"
+    RM_INSTANCE_HELP = "Delete a named instance's state directory"
 
     #: (namespace attribute, environment variable, value converter) pairs
     #: applied when the corresponding flag is given to ``server start``.
@@ -467,6 +616,11 @@ class ServerCommand(BaseCommand):
         ("auth_redis_port", "LLM_ROUTER_AUTH_REDIS_PORT", "str"),
         ("auth_redis_db", "LLM_ROUTER_AUTH_REDIS_DB", "str"),
         ("auth_redis_password", "LLM_ROUTER_AUTH_REDIS_PASSWORD", None),
+        # Bind target and engine, so ``--save-config`` can also remember where
+        # (and how) an instance was last launched.
+        ("server", "LLM_ROUTER_SERVER_TYPE", None),
+        ("host", "LLM_ROUTER_SERVER_HOST", None),
+        ("port", "LLM_ROUTER_SERVER_PORT", "str"),
     ]
 
     _LB_STRATEGIES = [
@@ -476,13 +630,181 @@ class ServerCommand(BaseCommand):
         "first_available_optim",
     ]
 
+    # ---- Instance helpers ------------------------------------------------ #
+    @classmethod
+    def _instance(
+        cls, args: argparse.Namespace
+    ) -> Tuple[Optional[InstancePaths], Optional[str]]:
+        """Resolve the target instance, or return the validation error."""
+        try:
+            return resolve_instance(args), None
+        except ValueError as exc:
+            return None, str(exc)
+
+    @staticmethod
+    def _pid_file_for(args: argparse.Namespace, instance: InstancePaths) -> Path:
+        """Explicit ``--pid-file`` wins, else the instance's own PID file."""
+        explicit = getattr(args, "pid_file", None)
+        if explicit:
+            return Path(explicit).expanduser()
+        return instance.pid_file
+
+    @staticmethod
+    def _hint(command: str, instance: InstancePaths) -> str:
+        """Render a copy-pasteable follow-up command for *instance*."""
+        suffix = f" -i {instance.name}" if instance.named else ""
+        return f"llm-router server {command}{suffix}"
+
+    @staticmethod
+    def _scope(instance: InstancePaths) -> str:
+        """Suffix naming a non-default instance in error/hint messages."""
+        return "" if not instance.named else f" for instance '{instance.name}'"
+
+    @staticmethod
+    def _all_conflict(args: argparse.Namespace) -> Optional[str]:
+        """Error text when ``--all`` is combined with a single-target option."""
+        if getattr(args, "all", False) and (
+            getattr(args, "instance", None) or getattr(args, "pid_file", None)
+        ):
+            return "--all cannot be combined with --instance or --pid-file"
+        return None
+
+    @classmethod
+    def _apply_start_env(
+        cls, args: argparse.Namespace, instance: InstancePaths
+    ) -> Optional[str]:
+        """
+        Build the environment a server for *instance* starts with.
+
+        Order of application (last wins): built-in defaults, the shell
+        environment, the instance ``config.env``, explicit CLI flags. Named
+        instances additionally get their own application log and Prometheus
+        multiproc directory, so concurrent instances cannot corrupt each
+        other's metrics or logs.
+
+        Returns the user's own ``LLM_ROUTER_LOG_FILENAME`` (captured before the
+        defaults were applied), which the daemon-log resolution still needs.
+        """
+        instance.ensure_dir()
+        if instance.named:
+            scaffold_config_env(instance.config_env, instance.name)
+        apply_instance_config(parse_env_file(instance.config_env))
+
+        user_log = os.environ.get("LLM_ROUTER_LOG_FILENAME")
+        apply_default_env()
+        # Explicit CLI flags win over both the defaults and the shell env.
+        os.environ.update(cls.build_env_overrides(args))
+
+        if instance.named:
+            if not user_log:
+                os.environ["LLM_ROUTER_LOG_FILENAME"] = str(instance.app_log)
+            if not os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
+                instance.metrics_dir.mkdir(parents=True, exist_ok=True)
+                os.environ["PROMETHEUS_MULTIPROC_DIR"] = str(instance.metrics_dir)
+        return user_log
+
+    @staticmethod
+    def _check_start_port(
+        args: argparse.Namespace, instance: InstancePaths
+    ) -> Optional[str]:
+        """Pre-flight bind test of the port the server is about to use."""
+        port_value = args.port
+        if port_value is None:
+            port_value = os.environ.get("LLM_ROUTER_SERVER_PORT")
+        if port_value is None or str(port_value).strip() == "":
+            return None
+        try:
+            port = int(port_value)
+        except (TypeError, ValueError):
+            return None
+        host = args.host or os.environ.get("LLM_ROUTER_SERVER_HOST") or "0.0.0.0"
+        error = check_port_free(host, port)
+        if error is None:
+            return None
+        return (
+            f"{error} (instance '{instance.name}').\n"
+            "Use --port/--host or set LLM_ROUTER_SERVER_PORT in "
+            f"{instance.config_env}."
+        )
+
+    @classmethod
+    def _save_config(cls, args: argparse.Namespace, instance: InstancePaths) -> None:
+        """
+        Persist this command line's flags into the instance ``config.env``.
+
+        Only flags actually given here are written (see
+        :meth:`build_env_overrides`), so a later plain ``start -i NAME``
+        relaunches the instance with the same settings. Values are stored
+        verbatim — a Redis password included, which is why the file is kept
+        mode 0600 — while only the *names* of the keys are echoed.
+
+        Everything is best-effort: a state directory that cannot be written
+        produces a warning, never a failed start.
+        """
+        overrides = cls.build_env_overrides(args)
+        values: Dict[str, str] = {}
+        for key, value in overrides.items():
+            if format_env_value(value) is None:
+                print(
+                    f"Warning: not saving {key}: the value cannot be written "
+                    f"to {instance.config_env}",
+                    file=sys.stderr,
+                )
+                continue
+            values[key] = value
+        if not values:
+            if not overrides:
+                print(
+                    "--save-config: nothing to save; only flags given on "
+                    "this command line are persisted."
+                )
+            return
+        try:
+            scaffold_config_env(instance.config_env, instance.name)
+            changed, unchanged = update_config_env(instance.config_env, values)
+        except OSError as exc:
+            print(
+                f"Warning: cannot update {instance.config_env}: {exc}",
+                file=sys.stderr,
+            )
+            return
+        if changed:
+            print(f"Saved {len(changed)} setting(s) to {instance.config_env}:")
+            for key in changed:
+                print(f"  {key}")
+            if unchanged:
+                print(f"  ({len(unchanged)} already up to date)")
+        else:
+            print(
+                f"{instance.config_env} already up to date "
+                f"({len(unchanged)} setting(s))"
+            )
+
     # ---- Registration ---------------------------------------------------- #
     @classmethod
     def _add_pid_file_arg(cls, p: argparse.ArgumentParser) -> None:
         p.add_argument(
             "--pid-file",
-            default=str(DEFAULT_PID_FILE),
-            help="PID file location (default: %(default)s)",
+            default=None,
+            help=(
+                "PID file location (default: the instance's own file, "
+                f"{DEFAULT_PID_FILE} for the '{DEFAULT_INSTANCE}' instance)"
+            ),
+        )
+
+    @classmethod
+    def _add_instance_arg(cls, p: argparse.ArgumentParser) -> None:
+        p.add_argument(
+            "-i",
+            "--instance",
+            metavar="NAME",
+            default=None,
+            help=(
+                "Server instance to act on (default: "
+                f"'{DEFAULT_INSTANCE}', or ${INSTANCE_ENV_VAR} when set). "
+                "Each instance keeps its own state under "
+                f"{instances_dir()}/<NAME>"
+            ),
         )
 
     @classmethod
@@ -498,7 +820,7 @@ class ServerCommand(BaseCommand):
     def register_children(
         cls, subparsers: "argparse._SubParsersAction[Any]"
     ) -> None:
-        """Register the *start* / *stop* / *reload* / *status* sub-commands."""
+        """Register the server sub-commands (incl. list / rm-instance)."""
         start = subparsers.add_parser(cls.START_NAME, help=cls.START_HELP)
         start.add_argument(
             "--foreground",
@@ -510,8 +832,9 @@ class ServerCommand(BaseCommand):
             default=None,
             help=(
                 "Server log file used in daemon mode (default: "
-                "LLM_ROUTER_LOG_FILENAME if set in the shell, else "
-                f"{DEFAULT_LOG_FILE})"
+                "LLM_ROUTER_LOG_FILENAME if set in the shell, else the "
+                f"instance's daemon log, {DEFAULT_LOG_FILE} for the "
+                f"'{DEFAULT_INSTANCE}' instance)"
             ),
         )
         start.add_argument(
@@ -522,6 +845,21 @@ class ServerCommand(BaseCommand):
         )
         start.add_argument("--host", default=None, help="Interface to bind to")
         start.add_argument("--port", type=int, default=None, help="Port number")
+        start.add_argument(
+            "--no-port-check",
+            action="store_true",
+            help="Skip the port-availability check before spawning.",
+        )
+        start.add_argument(
+            "--save-config",
+            action="store_true",
+            help=(
+                "Save the flags given on this command line into the "
+                "instance's config.env, so a later plain 'start' reuses "
+                "them. Values are written verbatim (the file is kept mode "
+                "0600); only key names are printed."
+            ),
+        )
         # Environment overrides (CLI flag > shell env > script defaults)
         start.add_argument(
             "--models-config",
@@ -599,6 +937,7 @@ class ServerCommand(BaseCommand):
             help="Auth key-store Redis password (LLM_ROUTER_AUTH_REDIS_PASSWORD)",
         )
         cls._add_pid_file_arg(start)
+        cls._add_instance_arg(start)
 
         stop = subparsers.add_parser(cls.STOP_NAME, help=cls.STOP_HELP)
         stop.add_argument(
@@ -606,18 +945,31 @@ class ServerCommand(BaseCommand):
             action="store_true",
             help="Skip the SIGTERM grace period and send SIGKILL instead.",
         )
+        stop.add_argument(
+            "--all",
+            action="store_true",
+            help="Stop every known instance instead of a single one.",
+        )
         cls._add_pid_file_arg(stop)
+        cls._add_instance_arg(stop)
 
         reload = subparsers.add_parser(cls.RELOAD_NAME, help=cls.RELOAD_HELP)
         cls._add_pid_file_arg(reload)
+        cls._add_instance_arg(reload)
 
         status = subparsers.add_parser(cls.STATUS_NAME, help=cls.STATUS_HELP)
         cls._add_pid_file_arg(status)
+        cls._add_instance_arg(status)
         cls._add_color_arg(status)
         status.add_argument(
             "--show-env",
             action="store_true",
             help="Show the environment section (hidden by default).",
+        )
+        status.add_argument(
+            "--all",
+            action="store_true",
+            help="Report every known instance instead of a single one.",
         )
 
         log = subparsers.add_parser(cls.LOG_NAME, help=cls.LOG_HELP)
@@ -627,8 +979,9 @@ class ServerCommand(BaseCommand):
             help=(
                 "Explicit log file to follow. Default: the application's own "
                 "log (LLM_ROUTER_LOG_FILENAME from the run record, a bare name "
-                "resolved against the launch CWD); e.g. pass "
-                "~/.llm-router/server.log to follow the daemon's console log"
+                "resolved against the launch CWD, or the instance's own log); "
+                f"e.g. pass {DEFAULT_LOG_FILE} to follow the daemon's "
+                "console log"
             ),
         )
         log.add_argument(
@@ -644,6 +997,26 @@ class ServerCommand(BaseCommand):
         )
         cls._add_pid_file_arg(log)
         cls._add_color_arg(log)
+        cls._add_instance_arg(log)
+
+        instances = subparsers.add_parser(cls.LIST_NAME, help=cls.LIST_HELP)
+        instances.add_argument(
+            "--json",
+            action="store_true",
+            help="Print the instance list as JSON (for scripting).",
+        )
+        cls._add_color_arg(instances)
+
+        rm_instance = subparsers.add_parser(
+            cls.RM_INSTANCE_NAME, help=cls.RM_INSTANCE_HELP
+        )
+        rm_instance.add_argument(
+            "name",
+            help=(
+                "Name of the instance to delete (its directory under "
+                f"{instances_dir()})"
+            ),
+        )
 
     # ---- Dispatch -------------------------------------------------------- #
     @classmethod
@@ -692,6 +1065,7 @@ class ServerCommand(BaseCommand):
             "executable": sys.executable,
             "command": cmd,
             "server": os.environ.get("LLM_ROUTER_SERVER_TYPE", "gunicorn"),
+            "instance": instance_name_from(args),
             "log_file": str(log_file),
             "app_log_file": resolve_app_log_path(env),
             "models_config": resolve_models_config_path(env),
@@ -714,67 +1088,126 @@ class ServerCommand(BaseCommand):
             return cls._status(args)
         if action == cls.LOG_NAME:
             return cls._log(args)
+        if action == cls.LIST_NAME:
+            return cls._list(args)
+        if action == cls.RM_INSTANCE_NAME:
+            return cls._rm_instance(args)
         return cls.show_help(0)
 
     # ---- Actions --------------------------------------------------------- #
     @classmethod
     def _start(cls, args: argparse.Namespace) -> int:
         """Start the API server (daemonized by default)."""
-        pid_file = Path(args.pid_file).expanduser()
+        instance, error = cls._instance(args)
+        if error:
+            return cls.fail(error)
+        assert instance is not None
+        pid_file = cls._pid_file_for(args, instance)
+
         alive = get_alive_pid(pid_file)
         if alive is not None:
             return cls.fail(
-                f"a server is already running (pid={alive}, "
+                f"a server is already running{cls._scope(instance)} "
+                f"(pid={alive}, "
                 f"pid file: {pid_file}).\n"
-                "Use 'llm-router server reload' or 'llm-router server stop'."
+                f"Use '{cls._hint('reload', instance)}' or "
+                f"'{cls._hint('stop', instance)}'."
             )
 
-        # Snapshot the user's shell value *before* defaults are applied — the
-        # daemon log follows it, and only falls back to ~/.llm-router when it
-        # is unset.
-        shell_log_filename = os.environ.get("LLM_ROUTER_LOG_FILENAME")
-        apply_default_env()
-        if args.server:
-            os.environ.setdefault("LLM_ROUTER_SERVER_TYPE", args.server)
-        # Explicit CLI flags win over both the defaults and the shell env.
-        os.environ.update(cls.build_env_overrides(args))
-
-        cmd = [sys.executable, "-m", "llm_router_api.rest_api"]
-        if args.host is not None:
-            cmd += ["--host", args.host]
-        if args.port is not None:
-            cmd += ["--port", str(args.port)]
-
-        if args.foreground:
-            log_file = resolve_start_log_file(args.log_file, shell_log_filename)
-            # Keep the PID file and run record in sync in foreground mode too,
-            # so ``server status`` / ``server stop`` work exactly like for a
-            # daemonized server.
-            write_run_file(
-                run_file_for(pid_file),
-                cls.build_run_record(pid_file, log_file, cmd, args),
+        # The lock closes the race between "is it alive?" and "write the PID":
+        # two concurrent ``start`` calls for one instance must not both spawn.
+        lock = acquire_start_lock(instance)
+        if lock is None:
+            return cls.fail(
+                f"a start is already in progress for instance "
+                f"'{instance.name}'; retry in a moment"
             )
-            # Long-lived foreground process: its lifetime is owned by the
-            # surrounding try/finally (PID + run-record cleanup), so a context
-            # manager (which would wait) is wrong here.
-            # pylint: disable-next=consider-using-with
-            proc = subprocess.Popen(cmd)
-            write_pid_file(pid_file, proc.pid)
-            print(
-                f"Running in foreground (pid={proc.pid}).\n"
-                f"  stop: llm-router server stop  (or Ctrl-C)",
-                flush=True,
+        try:
+            shell_log_filename = cls._apply_start_env(args, instance)
+
+            cmd = [sys.executable, "-m", "llm_router_api.rest_api"]
+            if args.host is not None:
+                cmd += ["--host", args.host]
+            if args.port is not None:
+                cmd += ["--port", str(args.port)]
+
+            if not args.no_port_check:
+                port_error = cls._check_start_port(args, instance)
+                if port_error is not None:
+                    return cls.fail(port_error)
+
+            if args.save_config:
+                cls._save_config(args, instance)
+
+            if args.foreground:
+                return cls._run_foreground(
+                    args,
+                    instance,
+                    pid_file,
+                    cmd,
+                    log_file_for(args, instance, shell_log_filename),
+                )
+
+            return cls._run_daemon(
+                args,
+                instance,
+                pid_file,
+                cmd,
+                log_file_for(args, instance, shell_log_filename),
+                lock=lock,
             )
+        finally:
+            release_start_lock(lock)
+
+    @classmethod
+    def _run_foreground(
+        cls,
+        args: argparse.Namespace,
+        instance: InstancePaths,
+        pid_file: Path,
+        cmd: List[str],
+        log_file: Path,
+    ) -> int:
+        """Run the server as a child of the CLI until it exits."""
+        # Keep the PID file and run record in sync in foreground mode too,
+        # so ``server status`` / ``server stop`` work exactly like for a
+        # daemonized server.
+        write_run_file(
+            run_file_for(pid_file),
+            cls.build_run_record(pid_file, log_file, cmd, args),
+        )
+        # Long-lived foreground process: its lifetime is owned by the
+        # surrounding try/finally (PID + run-record cleanup), so a context
+        # manager (which would wait) is wrong here.
+        # pylint: disable-next=consider-using-with
+        proc = subprocess.Popen(cmd)
+        write_pid_file(pid_file, proc.pid)
+        print(
+            f"Running in foreground (pid={proc.pid}).\n"
+            f"  stop: {cls._hint('stop', instance)}  (or Ctrl-C)",
+            flush=True,
+        )
+        try:
+            return proc.wait()
+        finally:
+            remove_pid_file(pid_file)
             try:
-                return proc.wait()
-            finally:
-                remove_pid_file(pid_file)
-                try:
-                    run_file_for(pid_file).unlink()
-                except OSError:
-                    pass
+                run_file_for(pid_file).unlink()
+            except OSError:
+                pass
 
-        log_file = resolve_start_log_file(args.log_file, shell_log_filename)
+    @classmethod
+    def _run_daemon(
+        cls,
+        args: argparse.Namespace,
+        instance: InstancePaths,
+        pid_file: Path,
+        cmd: List[str],
+        log_file: Path,
+        *,
+        lock: Optional[Path] = None,
+    ) -> int:
+        """Spawn the classic double-fork daemon and report its PID."""
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Record the launch parameters next to the PID file so
@@ -788,19 +1221,23 @@ class ServerCommand(BaseCommand):
         # daemon to publish its PID and reports it; the daemon then execs
         # the server, so the PID file keeps pointing at the Gunicorn master.
         if os.fork() > 0:
+            release_start_lock(lock)
             pid = _wait_for_pid(pid_file)
             if pid is None:
                 return cls.fail(
-                    "the daemon did not start. Check the log file: " f"{log_file}"
+                    f"the daemon did not start. Check the log file: {log_file}"
                 )
             print(
                 f"Server started (pid={pid}).\n"
                 f"  log:    {log_file}\n"
                 f"  pid:    {pid_file}\n"
-                f"  stop:   llm-router server stop\n"
-                f"  reload: llm-router server reload"
+                f"  stop:   {cls._hint('stop', instance)}\n"
+                f"  reload: {cls._hint('reload', instance)}"
             )
             return 0
+
+        # Child: it must not touch the start lock owned by the CLI process.
+        lock = None
 
         os.setsid()
         if os.fork() > 0:
@@ -813,9 +1250,8 @@ class ServerCommand(BaseCommand):
         return 127  # pragma: no cover - execvpe never returns
 
     @classmethod
-    def _stop(cls, args: argparse.Namespace) -> int:
-        """Stop the server recorded in the PID file."""
-        pid_file = Path(args.pid_file).expanduser()
+    def _stop_instance(cls, pid_file: Path, force: bool) -> int:
+        """Stop the single server recorded in *pid_file*."""
         pid = get_alive_pid(pid_file)
         if pid is None:
             print(
@@ -825,7 +1261,7 @@ class ServerCommand(BaseCommand):
             return 1
 
         try:
-            if args.force:
+            if force:
                 os.kill(pid, signal.SIGKILL)
                 _wait_gone(pid, _KILL_POLL_SECONDS)
             else:
@@ -849,9 +1285,48 @@ class ServerCommand(BaseCommand):
         return 0
 
     @classmethod
+    def _stop_all(cls, args: argparse.Namespace) -> int:
+        """Stop every discovered instance (one that has state on disk)."""
+        instances = discover_instances()
+        if not instances:
+            print("No running server found (no instances).", file=sys.stderr)
+            return 1
+
+        code = 0
+        for instance in reversed(instances):
+            pid = get_alive_pid(instance.pid_file)
+            if pid is None:
+                print(f"not running: {instance.name}")
+                continue
+            print(f"stopping {instance.name} (pid={pid}) ...", flush=True)
+            if cls._stop_instance(instance.pid_file, args.force) != 0:
+                print(f"  failed: {instance.name}", file=sys.stderr)
+                code = 1
+        return code
+
+    @classmethod
+    def _stop(cls, args: argparse.Namespace) -> int:
+        """Stop one instance, or every known one with ``--all``."""
+        conflict = cls._all_conflict(args)
+        if conflict:
+            return cls.fail(conflict)
+        if getattr(args, "all", False):
+            return cls._stop_all(args)
+
+        instance, error = cls._instance(args)
+        if error:
+            return cls.fail(error)
+        assert instance is not None
+        return cls._stop_instance(cls._pid_file_for(args, instance), args.force)
+
+    @classmethod
     def _reload(cls, args: argparse.Namespace) -> int:
         """Send SIGHUP to the server (Gunicorn master recycles workers)."""
-        pid_file = Path(args.pid_file).expanduser()
+        instance, error = cls._instance(args)
+        if error:
+            return cls.fail(error)
+        assert instance is not None
+        pid_file = cls._pid_file_for(args, instance)
         pid = get_alive_pid(pid_file)
         if pid is None:
             print(
@@ -868,11 +1343,55 @@ class ServerCommand(BaseCommand):
         return 0
 
     @classmethod
+    def _status_all(cls, color: bool) -> int:
+        """Print a compact one-line-per-instance summary."""
+        instances = discover_instances()
+        if not instances:
+            print("No instances found.")
+            return 1
+
+        rows: List[Tuple[str, str, str]] = []
+        running = 0
+        for instance in instances:
+            pid = get_alive_pid(instance.pid_file)
+            if pid is None:
+                status = _paint(color, "31", "● stopped")
+                detail = str(instance.pid_file)
+            else:
+                running += 1
+                status = _paint(color, "32", "● running")
+                detail = cls._running_line(
+                    pid, read_run_file(instance.run_file) or {}
+                )
+            rows.append((instance.name, status, detail))
+
+        width = max(len(name) for name, _, _ in rows)
+        lines = [
+            "  " + _paint(color, "1;90", f"Instances ({len(instances)})"),
+            "",
+        ]
+        lines += [
+            f"  {name:<{width}}  {status}  {detail}" for name, status, detail in rows
+        ]
+        print("\n".join(lines))
+        return 0 if running == len(instances) else 1
+
+    @classmethod
     def _status(cls, args: argparse.Namespace) -> int:
         """Report whether the server is running, with its launch parameters."""
+        conflict = cls._all_conflict(args)
+        if conflict:
+            return cls.fail(conflict)
         color = _resolve_color(getattr(args, "color", "auto"))
+        if getattr(args, "all", False):
+            return cls._status_all(color)
+
+        instance, error = cls._instance(args)
+        if error:
+            return cls.fail(error)
+        assert instance is not None
         show_env = bool(getattr(args, "show_env", False))
-        pid_file = Path(args.pid_file).expanduser()
+        pid_file = cls._pid_file_for(args, instance)
         pid = get_alive_pid(pid_file)
         if pid is None:
             print(cls._render_status_down(color, pid_file))
@@ -915,14 +1434,21 @@ class ServerCommand(BaseCommand):
         env = cls._env_from_record(record)
         rows: List[Tuple[str, str]] = [
             ("PID", str(pid)),
+        ]
+        instance_name = record.get("instance")
+        if instance_name not in (None, DEFAULT_INSTANCE):
+            rows.append(("Instance", str(instance_name)))
+        rows.append(
             (
                 "Log",
-                record.get("app_log_file")
-                or env.get("LLM_ROUTER_LOG_FILENAME")
-                or DEFAULT_LOG_FILENAME,
-            ),
-            ("PID file", str(pid_file)),
-        ]
+                str(
+                    record.get("app_log_file")
+                    or env.get("LLM_ROUTER_LOG_FILENAME")
+                    or DEFAULT_LOG_FILENAME
+                ),
+            )
+        )
+        rows.append(("PID file", str(pid_file)))
         if record.get("started_at"):
             rows.append(("Started", str(record["started_at"])))
         if record.get("server"):
@@ -1015,36 +1541,154 @@ class ServerCommand(BaseCommand):
         lines.extend(cls._kv_block(color, "Details", [("PID file", str(pid_file))]))
         return "\n".join(lines)
 
+    # ---- Instance listing / removal -------------------------------------- #
+    @classmethod
+    def _list_entry(cls, instance: InstancePaths) -> Dict[str, Any]:
+        """Collect the ``list`` row of *instance* (run record + live PID)."""
+        pid = get_alive_pid(instance.pid_file)
+        record = read_run_file(instance.run_file) or {}
+        env = cls._env_from_record(record)
+        return {
+            "name": instance.name,
+            "status": "running" if pid is not None else "stopped",
+            "pid": pid,
+            "port": env.get("LLM_ROUTER_SERVER_PORT"),
+            "server": record.get("server") or env.get("LLM_ROUTER_SERVER_TYPE"),
+            "started_at": record.get("started_at"),
+            "pid_file": str(instance.pid_file),
+            "log_file": record.get("log_file") or str(instance.daemon_log),
+            "app_log_file": record.get("app_log_file")
+            or (str(instance.app_log) if instance.named else ""),
+            "models_config": record.get("models_config")
+            or env.get("LLM_ROUTER_MODELS_CONFIG"),
+        }
+
+    @classmethod
+    def _list(cls, args: argparse.Namespace) -> int:
+        """Print every known instance (``--json`` for scripting)."""
+        entries = [cls._list_entry(item) for item in discover_instances()]
+        if getattr(args, "json", False):
+            print(json.dumps(entries, indent=2))
+            return 0
+
+        if not entries:
+            print("no instances found")
+            return 0
+
+        color = _resolve_color(getattr(args, "color", "auto"))
+        headers = ("NAME", "STATUS", "PID", "PORT", "SERVER", "STARTED", "LOG")
+        rows = [
+            [
+                entry["name"],
+                f"● {entry['status']}",
+                "-" if entry["pid"] is None else str(entry["pid"]),
+                "-" if entry["port"] is None else str(entry["port"]),
+                entry["server"] or "-",
+                entry["started_at"] or "-",
+                entry["log_file"] or "-",
+            ]
+            for entry in entries
+        ]
+        widths = [
+            max([len(header)] + [len(row[column]) for row in rows])
+            for column, header in enumerate(headers)
+        ]
+        lines = [
+            _paint(
+                color,
+                "1;90",
+                "  ".join(
+                    header.ljust(widths[column])
+                    for column, header in enumerate(headers)
+                ).rstrip(),
+            )
+        ]
+        for row in rows:
+            cells = []
+            for column, cell in enumerate(row):
+                if column == len(row) - 1:
+                    cells.append(cell)
+                    continue
+                padded = cell.ljust(widths[column])
+                if column == 1:
+                    padded = _paint(
+                        color,
+                        "32" if cell.endswith("running") else "31",
+                        padded.rstrip(),
+                    )
+                cells.append(padded)
+            lines.append("  ".join(cells).rstrip())
+        print("\n".join(lines))
+        return 0
+
+    @classmethod
+    def _rm_instance(cls, args: argparse.Namespace) -> int:
+        """Delete a named instance's state directory (must not be running)."""
+        try:
+            instance = resolve_instance(argparse.Namespace(instance=args.name))
+        except ValueError as exc:
+            return cls.fail(str(exc))
+
+        if instance.name == DEFAULT_INSTANCE:
+            return cls.fail(
+                f"{DEFAULT_INSTANCE} is the built-in instance and cannot "
+                "be removed"
+            )
+
+        pid = get_alive_pid(instance.pid_file)
+        if pid is not None:
+            return cls.fail(
+                f"instance '{instance.name}' is running (pid={pid}). "
+                f"Stop it first: {cls._hint('stop', instance)}"
+            )
+        if not instance.dir.is_dir():
+            return cls.fail(f"no such instance: {instance.name}")
+
+        shutil.rmtree(instance.dir)
+        print(f"Removed instance '{instance.name}' ({instance.dir})")
+        return 0
+
     # ---- Log following --------------------------------------------------- #
     @classmethod
-    def _resolve_log_file(cls, args: argparse.Namespace) -> Path:
+    def _resolve_log_file(
+        cls, args: argparse.Namespace, instance: InstancePaths
+    ) -> Path:
         """Resolve the log file for ``server log``.
 
         Explicit ``--log-file`` wins. Otherwise the application's own log:
         ``app_log_file`` from the run record (written at start, even in
         ``--foreground`` mode), else the shell's ``LLM_ROUTER_LOG_FILENAME``
-        (a bare file name is anchored to the CWD).
+        (a bare file name is anchored to the CWD), else the instance's own
+        log file (named instances only).
         """
         if args.log_file:
             return Path(args.log_file).expanduser()
-        pid_file = Path(args.pid_file).expanduser()
+        pid_file = cls._pid_file_for(args, instance)
         record = read_run_file(run_file_for(pid_file)) or {}
         app_log = record.get("app_log_file")
         if app_log:
             return Path(app_log).expanduser()
-        name = os.environ.get("LLM_ROUTER_LOG_FILENAME") or DEFAULT_LOG_FILENAME
-        return Path(anchor_log_name(name))
+        name = os.environ.get("LLM_ROUTER_LOG_FILENAME")
+        if name:
+            return Path(anchor_log_name(name))
+        if instance.named and instance.app_log is not None:
+            return instance.app_log
+        return Path(anchor_log_name(DEFAULT_LOG_FILENAME))
 
     @classmethod
     def _log(cls, args: argparse.Namespace) -> int:
         """Tail (and by default follow) the server log with colored levels."""
-        log_file = cls._resolve_log_file(args)
+        instance, error = cls._instance(args)
+        if error:
+            return cls.fail(error)
+        assert instance is not None
+        log_file = cls._resolve_log_file(args, instance)
         if not log_file.exists():
             print(
                 f"Log file not found: {log_file}\n"
-                "Start the server first: llm-router server start\n"
+                f"Start the server first: {cls._hint('start', instance)}\n"
                 "To follow the daemon's console log explicitly:\n"
-                f"  llm-router server log --log-file {DEFAULT_LOG_FILE}",
+                f"  llm-router server log --log-file {instance.daemon_log}",
                 file=sys.stderr,
             )
             return 1

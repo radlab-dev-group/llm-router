@@ -4,7 +4,10 @@ Tests for the ``llm-router completion`` command (bash / zsh tab-completion).
 
 from __future__ import annotations
 
+import shlex
 import subprocess
+
+from typing import List
 
 from llm_router_cli.cli import main
 from llm_router_cli.cli.commands.completion import (
@@ -18,13 +21,42 @@ def _script(shell: str, capsys) -> str:
     return capsys.readouterr().out
 
 
+def _bash_completions(script: str, words: List[str], tmp_path) -> List[str]:
+    """Run the generated bash function for *words* and return ``COMPREPLY``."""
+    completion_file = tmp_path / "llm-router-completion.bash"
+    completion_file.write_text(script, encoding="utf-8")
+    probe = tmp_path / "probe.bash"
+    probe.write_text(
+        "\n".join(
+            [
+                f"source {shlex.quote(str(completion_file))}",
+                "COMP_WORDS=( {} )".format(
+                    " ".join(shlex.quote(word) for word in words)
+                ),
+                f"COMP_CWORD={len(words) - 1}",
+                "COMPREPLY=()",
+                "_llm-router",
+                "printf '%s\\n' \"${COMPREPLY[@]}\"",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        ["bash", str(probe)], capture_output=True, text=True, check=True
+    )
+    return result.stdout.split()
+
+
 def test_completion_bash_lists_commands_subcommands_options(capsys):
     out = _script("bash", capsys)
     assert "complete -F _llm-router llm-router" in out
     # Top-level commands.
     assert "'auth' 'anonymizer' 'config' 'completion' 'server' 'util'" in out
     # Second-level subcommands (server, auth).
-    assert "subs=( 'start' 'stop' 'reload' 'status' 'log' )" in out
+    assert (
+        "subs=( 'start' 'stop' 'reload' 'status' 'log' 'list' 'rm-instance' )" in out
+    )
     assert "subs=( 'key' 'policy' 'rate-limit' )" in out
     # Third-level subcommands are present as full paths in the tree.
     assert "'auth key generate'" in out
@@ -42,6 +74,10 @@ def test_completion_bash_lists_commands_subcommands_options(capsys):
     assert "'--algorithm'" in out  # anonymizer run (level 2)
     assert "'--output-config-file'" in out  # config discover/merge (level 2)
     assert "'--install'" in out  # completion bash/zsh (level 2)
+    assert "'--instance'" in out  # every server sub-command
+    assert "'--no-port-check'" in out  # server start
+    assert "'-i'" in out  # short form of --instance
+    assert "'-o'" in out  # short form of --output / --output-config-file
 
 
 def test_completion_zsh_lists_commands_subcommands_options(capsys):
@@ -57,6 +93,8 @@ def test_completion_zsh_lists_commands_subcommands_options(capsys):
     assert "'--preset'" in out
     assert "'--algorithm'" in out
     assert "compdef _llm-router llm-router" in out
+    assert "'-i'" in out  # short form of --instance
+    assert "'-o'" in out  # short form of --output / --output-config-file
 
 
 def test_completion_no_shell_prints_help(capsys):
@@ -68,6 +106,48 @@ def test_completion_no_shell_prints_help(capsys):
 def test_bash_script_has_valid_syntax(capsys):
     script = _script("bash", capsys)
     subprocess.run(["bash", "-nc", script], check=True)
+
+
+# --------------------------------------------------------------------------- #
+# generated bash function (behaviour)
+# --------------------------------------------------------------------------- #
+
+
+def test_bash_completes_long_and_short_options(capsys, tmp_path):
+    script = _script("bash", capsys)
+    longs = _bash_completions(
+        script, ["llm-router", "server", "start", "--"], tmp_path
+    )
+    assert "--instance" in longs
+    assert "-i" not in longs  # `-i` does not start with `--`
+    assert "-i" in _bash_completions(
+        script, ["llm-router", "server", "start", "-"], tmp_path
+    )
+
+
+def test_bash_keeps_options_after_values(capsys, tmp_path):
+    script = _script("bash", capsys)
+    words = ["llm-router", "server", "start", "--port", "8081", ""]
+    cands = _bash_completions(script, words, tmp_path)
+    assert "--save-config" in cands
+    assert "--instance" in cands
+    assert "-i" in cands
+
+
+def test_bash_completes_deep_subcommands_and_their_options(capsys, tmp_path):
+    script = _script("bash", capsys)
+    assert "generate" in _bash_completions(
+        script, ["llm-router", "auth", "key", ""], tmp_path
+    )
+    assert "--policy" in _bash_completions(
+        script, ["llm-router", "auth", "key", "generate", "--"], tmp_path
+    )
+    assert _bash_completions(
+        script, ["llm-router", "server", "stop", "--insta"], tmp_path
+    ) == ["--instance"]
+    assert "-o" in _bash_completions(
+        script, ["llm-router", "util", "translate", "-"], tmp_path
+    )
 
 
 def test_command_tree_matches_registered_commands():
@@ -87,8 +167,17 @@ def test_command_tree_matches_registered_commands():
         "reload",
         "status",
         "log",
+        "list",
+        "rm-instance",
     }
     assert "--force" in tree["server"]["subs"]["stop"]["options"]
+    assert "--all" in tree["server"]["subs"]["stop"]["options"]
+    assert "--instance" in tree["server"]["subs"]["status"]["options"]
+    assert "-i" in tree["server"]["subs"]["status"]["options"]
+    # Long options are proposed before their short counterpart.
+    stop_options = tree["server"]["subs"]["stop"]["options"]
+    assert stop_options.index("--instance") < stop_options.index("-i")
+    assert "--json" in tree["server"]["subs"]["list"]["options"]
     assert "--color" in tree["server"]["subs"]["log"]["options"]
     assert "--models-config" in tree["server"]["subs"]["start"]["options"]
     # Third level: auth key *.
@@ -105,6 +194,9 @@ def test_command_tree_matches_registered_commands():
     # Second level with no third level.
     assert tree["anonymizer"]["subs"]["run"]["subs"] == {}
     assert "--algorithm" in tree["anonymizer"]["subs"]["run"]["options"]
+    assert "-o" in tree["anonymizer"]["subs"]["run"]["options"]
+    assert "-o" in tree["config"]["subs"]["merge"]["options"]
+    assert "-o" in tree["util"]["subs"]["translate"]["options"]
 
 
 # --------------------------------------------------------------------------- #
