@@ -19,14 +19,14 @@ llm-router --version
 
 ## Top-Level Commands
 
-| Command          | Description                                                                |
-|------------------|----------------------------------------------------------------------------|
-| `auth`           | Manage API keys, policies, and rate limiting                               |
-| `config`         | Auto-discover local providers & merge configs                              |
-| `anonymizer run` | Anonymize text using a selectable algorithm                                |
-| `util`           | Utility apps: `translate`, `genai-classifier`, `genai-data-augmentation`   |
-| `server`         | Manage the REST API server: `start` / `stop` / `reload` / `status` / `log` |
-| `completion`     | Generate / install shell tab-completion (`bash` / `zsh`)                   |
+| Command          | Description                                                                       |
+|------------------|-----------------------------------------------------------------------------------|
+| `auth`           | Manage API keys, policies, and rate limiting                                      |
+| `config`         | Auto-discover local providers & merge configs                                     |
+| `anonymizer run` | Anonymize text using a selectable algorithm                                       |
+| `util`           | Utility apps: `translate`, `genai-classifier`, `genai-data-augmentation`          |
+| `server`         | Manage the REST API server (`start` / `stop` / `status` / `list`), many instances |
+| `completion`     | Generate / install shell tab-completion (`bash` / `zsh`)                          |
 
 ---
 
@@ -402,22 +402,142 @@ Start / stop / reload the REST API server (a managed daemon with a PID file), in
 Unless your environment already sets them, `start` applies the same `LLM_ROUTER_*` defaults as
 `run-rest-api-gunicorn.sh`.
 
-| Sub-command | Description                                                      |
-|-------------|------------------------------------------------------------------|
-| `start`     | Start in the background (daemon) or `--foreground` for debugging |
-| `stop`      | SIGTERM (with a grace period), or SIGKILL with `--force`         |
-| `reload`    | Gracefully reload the running Gunicorn master (SIGHUP)           |
-| `status`    | Show whether it is running, with a colored status card           |
-| `log`       | Follow the server log (tail -f style, colorized levels)          |
+| Sub-command        | Description                                                                            |
+|--------------------|----------------------------------------------------------------------------------------|
+| `start`            | Start in the background (daemon) or `--foreground` for debugging                       |
+| `stop`             | SIGTERM (with a grace period), or SIGKILL with `--force`; `--all` stops every instance |
+| `reload`           | Gracefully reload the running Gunicorn master (SIGHUP)                                 |
+| `status`           | Show whether it is running, with a colored status card; `--all` for a fleet table      |
+| `log`              | Follow the server log (tail -f style, colorized levels)                                |
+| `list`             | List every instance with status / PID / port (`--json` for scripting)                  |
+| `rm-instance NAME` | Delete a stopped instance's state directory                                            |
+
+Every sub-command takes `-i/--instance NAME`, so a host can run several routers at once — see
+[Instances](#instances--running-several-servers-side-by-side).
 
 `start` accepts the usual tuning flags (`--foreground`, `--host`, `--port`, `--server
 {gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`,
 `--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
-`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`). The daemon log (`--log-file`)
+`--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`), plus `--instance NAME` (which
+instance to start) and `--no-port-check` (skip the port pre-flight check). The daemon log (`--log-file`)
 follows `LLM_ROUTER_LOG_FILENAME` when it is set in the shell — a bare file name is resolved against the launch CWD —
 and defaults to `~/.llm-router/server.log` only when the variable is unset. Every `LLM_ROUTER_*`
 variable in effect at launch — defaults + shell env + CLI overrides — is snapshotted into the run record
 (`<pid-file>.run`) so `status` can show exactly how the server was started.
+
+### Instances — running several servers side by side
+
+Every `server` sub-command takes `-i/--instance NAME` (or `$LLM_ROUTER_INSTANCE`), so one host can run several
+independent routers at the same time — one per project, per environment, or per provider pool. Each named instance
+owns its own state tree, so nothing ever collides:
+
+```text
+~/.llm-router/
+├── server.pid  server.pid.run  server.log          # the 'default' instance (historical layout)
+└── instances/
+    ├── dev/
+    │   ├── config.env          per-instance LLM_ROUTER_* overrides
+    │   ├── server.pid          PID of the daemon
+    │   ├── server.pid.run      run record — how this instance was started
+    │   ├── server.log          daemon's captured stdout/stderr
+    │   ├── llm-router.log      the application's own (rotating) log
+    │   ├── metrics/prometheus/ private PROMETHEUS_MULTIPROC_DIR
+    │   └── server.start.lock   lock guarding concurrent `start` calls
+    └── prod/
+        └── …
+```
+
+An instance name is a filesystem-safe slug: **1–64 characters** from `[A-Za-z0-9._-]`, starting with a letter or a
+digit (no separators, no `..`). `default` is built in and reserved: its files stay directly in `~/.llm-router`, so
+existing scripts, PID files and `run-rest-api-gunicorn.sh` keep working byte-for-byte unchanged.
+
+#### Configuration per instance
+
+The first `start` of a named instance writes a commented `config.env` template into its directory — an existing file
+is never overwritten. Values are applied with this precedence:
+
+```text
+CLI flag  >  instance config.env  >  shell environment  >  built-in defaults
+```
+
+```bash
+llm-router server start -i dev --port 8081     # state in ~/.llm-router/instances/dev
+llm-router server start -i prod                # second router, port 8080
+export LLM_ROUTER_INSTANCE=dev                 # pin a shell (or a systemd unit) to one instance
+llm-router server status                       # now reports the 'dev' instance
+llm-router server reload                       # … and reloads it
+```
+
+#### Port pre-flight
+
+Two instances on one host must not share a port, so `start` binds it **before** spawning and fails fast instead of
+dying silently in the background:
+
+```text
+Error: port 8080 is already in use on 0.0.0.0 (instance 'prod').
+Use --port/--host or set LLM_ROUTER_SERVER_PORT in /home/user/.llm-router/instances/prod/config.env.
+```
+
+Pass `--no-port-check` to skip the probe (a port held by a socket-activated service, or a check against a different
+interface than the one the server binds). Concurrent `start` calls for the same instance are serialized by
+`server.start.lock`; a lock older than 60 s (a killed `start`) is broken automatically.
+
+> **Note on Prometheus:** `prepare_prometheus_multiproc_dir()` wipes its directory on every start, so instances that
+> shared `PROMETHEUS_MULTIPROC_DIR` would erase each other's counters. Every *named* instance therefore gets a private
+> `PROMETHEUS_MULTIPROC_DIR` inside its own state directory (unless the variable is already set in the shell or
+> `config.env`). The `default` instance keeps the historical shared directory.
+>
+> **Note on shared state:** the auth key store (`~/.llm-router/configs/auth/memory-keys.json`) is deliberately *not*
+> per-instance — all instances on a host authenticate against the same keys.
+
+### `list` — every instance at a glance
+
+```bash
+llm-router server list
+```
+
+```text
+NAME   STATUS     PID    PORT  SERVER    STARTED                   LOG
+batch  ● stopped  -      8090  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/batch/server.log
+dev    ● running  51087  8081  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/dev/server.log
+prod   ● running  51088  8080  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/prod/server.log
+```
+
+An instance is listed when it has state (a PID / run record for `default`, any file for a named instance), so a
+configured-but-never-started instance still shows up as `stopped`. `list` always exits `0`.
+
+| Flag      | Default | Description                                                      |
+|-----------|---------|------------------------------------------------------------------|
+| `--json`  | `false` | Machine-readable array with `name`, `status`, `pid`, `port`, `server`, `started_at`, `pid_file`, `log_file`, `app_log_file`, `models_config` |
+| `--color` | `auto`  | Colorize output — `auto` (TTY only) / `always` / `never`          |
+
+### `stop --all` / `status --all` / `rm-instance`
+
+```bash
+llm-router server status --all        # one-line summary of every instance
+llm-router server stop --all          # stop them all (newest first)
+llm-router server stop -i dev         # stop a single instance
+llm-router server rm-instance batch   # forget a stopped instance (deletes its state dir)
+```
+
+```text
+$ llm-router server status --all
+  Instances (3)
+
+  batch  ● stopped  /home/user/.llm-router/instances/batch/server.pid
+  dev    ● running  Server is running (pid 51087, gunicorn, port 8081)
+  prod   ● running  Server is running (pid 51088, gunicorn, port 8080)
+```
+
+`status --all` exits `0` only when **every** instance is running; `stop --all` exits `1` when no instance exists at
+all. `rm-instance` refuses to touch a running instance and the built-in `default`:
+
+```text
+Error: instance 'dev' is running (pid=51087). Stop it first: llm-router server stop -i dev
+Error: default is the built-in instance and cannot be removed
+```
+
+> `--all` cannot be combined with `--instance` or `--pid-file`.
 
 ### `status` — colored status card
 
@@ -488,7 +608,9 @@ llm-router server log --log-file ~/.llm-router/server.log   # daemon's console l
 | `--pid-file`  | `~/.llm-router/server.pid` | PID file (run record) location for the app-log lookup       |
 
 `stop`, `reload` and `status` additionally accept `--pid-file` (default
-`~/.llm-router/server.pid`), and `stop` accepts `--force` to skip the SIGTERM grace period and send SIGKILL.
+`~/.llm-router/server.pid`), and `stop` accepts `--force` to skip the SIGTERM grace period and send SIGKILL. As
+every other `server` sub-command, they all take `-i/--instance NAME` (see
+[Instances](#instances--running-several-servers-side-by-side)); `stop` and `status` also take `--all`.
 
 ---
 
