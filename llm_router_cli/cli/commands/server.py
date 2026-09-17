@@ -285,6 +285,8 @@ def discover_instances() -> List[InstancePaths]:
 _STOP_GRACE_SECONDS = 15
 _STOP_POLL_INTERVAL = 0.2
 _KILL_POLL_SECONDS = 5
+#: How long a freshly spawned daemon has to stay alive before we trust it.
+_DAEMON_START_GRACE = 1.5
 
 
 # -------------------------------------------------------------------------- #
@@ -801,6 +803,85 @@ class ServerCommand(BaseCommand):
             f"{instance.config_env}."
         )
 
+    @staticmethod
+    def _models_config_source(
+        args: argparse.Namespace,
+        instance: InstancePaths,
+        shell_models_config: Optional[str],
+    ) -> str:
+        """
+        Name the layer that picked ``LLM_ROUTER_MODELS_CONFIG``.
+
+        Called on the error path only, so parsing the instance ``config.env``
+        (which warns on stderr about malformed lines) never costs a healthy
+        start.
+        """
+        if getattr(args, "models_config", None):
+            return "--models-config flag"
+        if parse_env_file(instance.config_env).get("LLM_ROUTER_MODELS_CONFIG"):
+            return f"config.env {instance.config_env}"
+        if shell_models_config:
+            return "shell environment"
+        return "built-in default"
+
+    @classmethod
+    def _check_models_config(
+        cls,
+        args: argparse.Namespace,
+        instance: InstancePaths,
+        shell_models_config: Optional[str],
+    ) -> Optional[str]:
+        """
+        Pre-flight check of the models config the server is about to load.
+
+        A daemon publishes its PID *before* execing the server, so a missing
+        or broken models config would otherwise be reported as a successful
+        start with the real failure buried in the daemon log. What is accepted
+        mirrors :meth:`llm_router_api.core.model_config.ModelConfig` reading
+        the file: a JSON object whose sections are all empty is fine (that
+        simply means "no models"), while one with any model defined must have
+        an ``active_models`` section.
+
+        Returns the error text, or ``None`` when the server can start.
+        """
+        path = resolve_models_config_path(os.environ)
+        reason = ""
+        if not path:
+            reason = "is not set"
+        else:
+            candidate = Path(path)
+            if not candidate.exists():
+                reason = "was not found"
+            elif not candidate.is_file():
+                reason = "is not a file"
+            else:
+                try:
+                    with open(candidate, "rt", encoding="utf-8") as handle:
+                        data = json.load(handle)
+                except OSError as exc:
+                    reason = f"cannot be read: {exc}"
+                except json.JSONDecodeError as exc:
+                    reason = f"is not valid JSON: {exc}"
+                else:
+                    if not isinstance(data, dict):
+                        reason = "must contain a JSON object"
+                    elif (not data or any(data.values())) and (
+                        "active_models" not in data
+                    ):
+                        reason = "has no 'active_models' section"
+        if not reason:
+            return None
+        source = cls._models_config_source(args, instance, shell_models_config)
+        return (
+            f"models config {reason}: "
+            f"{path or 'LLM_ROUTER_MODELS_CONFIG'} (instance "
+            f"'{instance.name}').\n"
+            f"Source: {source}.\n"
+            "Create the file, pass --models-config PATH, set "
+            f"LLM_ROUTER_MODELS_CONFIG in {instance.config_env}, "
+            "or use --no-config-check to start anyway."
+        )
+
     @classmethod
     def _save_config(cls, args: argparse.Namespace, instance: InstancePaths) -> None:
         """
@@ -925,6 +1006,11 @@ class ServerCommand(BaseCommand):
             "--no-port-check",
             action="store_true",
             help="Skip the port-availability check before spawning.",
+        )
+        start.add_argument(
+            "--no-config-check",
+            action="store_true",
+            help="Skip the models-config file check before spawning.",
         )
         start.add_argument(
             "--save-config",
@@ -1199,10 +1285,20 @@ class ServerCommand(BaseCommand):
                 f"'{instance.name}'; retry in a moment"
             )
         try:
+            # Captured before the defaults land in os.environ, so the error
+            # message can still name the layer the value really came from.
+            shell_models_config = os.environ.get("LLM_ROUTER_MODELS_CONFIG")
             shell_log_filename = cls._apply_start_env(args, instance)
             cls._warn_shared_app_log(
                 instance, os.environ.get("LLM_ROUTER_LOG_FILENAME", "")
             )
+
+            if not args.no_config_check:
+                config_error = cls._check_models_config(
+                    args, instance, shell_models_config
+                )
+                if config_error is not None:
+                    return cls.fail(config_error)
 
             cmd = [sys.executable, "-m", "llm_router_api.rest_api"]
             if args.host is not None:
@@ -1276,6 +1372,31 @@ class ServerCommand(BaseCommand):
                 pass
 
     @classmethod
+    def _log_tail(cls, log_file: Path, n: int = 15) -> str:
+        """
+        Return the last *n* lines of *log_file*, indented for a CLI error.
+
+        A daemon that dies during import leaves its traceback only in the
+        daemon log, which nobody looks at from a shell. Echoing the tail turns
+        "started successfully" into an actionable message. A missing or
+        unreadable log is not worth a second error, so it yields an empty
+        string and the caller keeps its own message.
+        """
+        try:
+            with open(log_file, "rt", encoding="utf-8", errors="replace") as fh:
+                lines = tail_lines(fh, n)
+        except OSError:
+            return ""
+        if not lines:
+            return ""
+        formatted = []
+        for line in lines:
+            if not line.endswith("\n"):
+                line += "\n"
+            formatted.append(f"  {line}")
+        return "\n  last log lines:\n" + "".join(formatted)
+
+    @classmethod
     def _run_daemon(
         cls,
         args: argparse.Namespace,
@@ -1304,7 +1425,18 @@ class ServerCommand(BaseCommand):
             pid = _wait_for_pid(pid_file)
             if pid is None:
                 return cls.fail(
-                    f"the daemon did not start. Check the log file: {log_file}"
+                    f"the daemon did not start. Check the log file: "
+                    f"{log_file}{cls._log_tail(log_file)}"
+                )
+            if _wait_gone(pid, _DAEMON_START_GRACE):
+                remove_pid_file(pid_file)
+                try:
+                    run_file_for(pid_file).unlink()
+                except OSError:
+                    pass
+                return cls.fail(
+                    f"the server exited immediately after starting "
+                    f"(pid={pid}).\n  log: {log_file}{cls._log_tail(log_file)}"
                 )
             print(
                 f"Server started (pid={pid}).\n"
