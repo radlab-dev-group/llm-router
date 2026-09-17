@@ -407,6 +407,39 @@ def anchor_log_name(name: str) -> str:
     return str(path)
 
 
+def resolve_instance_app_log(
+    instance: InstancePaths, value: Optional[str], create: bool = True
+) -> str:
+    """
+    Anchor the application-log *value* inside *instance*'s state directory.
+
+    A named instance must never share its application log with another one.
+    Launch scripts usually export a bare ``LLM_ROUTER_LOG_FILENAME`` (just
+    ``llm-router.log``), which the server resolves against its CWD: every
+    instance started from the same directory would then append to one file,
+    where two rotating handlers truncate each other and silently lose entries.
+
+    Absolute paths and ``~``-relative ones are honored as given; a relative
+    value (bare file name or with subdirectories) is placed under
+    :attr:`InstancePaths.dir`, with ``.``/``..`` components dropped so it
+    cannot escape the instance tree. An empty *value* selects the instance's
+    own default log name. *create* also creates the parent directory.
+    """
+    fallback = instance.app_log or Path(DEFAULT_LOG_FILENAME)
+    if value is None or not str(value).strip():
+        path = fallback
+    else:
+        candidate = Path(str(value)).expanduser()
+        if candidate.is_absolute():
+            path = candidate
+        else:
+            parts = [part for part in candidate.parts if part not in (".", "..")]
+            path = instance.dir.joinpath(*parts) if parts else fallback
+    if create:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    return str(path)
+
+
 def resolve_models_config_path(env: Dict[str, Any]) -> str:
     """
     Absolute path of the models configuration file.
@@ -680,7 +713,10 @@ class ServerCommand(BaseCommand):
         environment, the instance ``config.env``, explicit CLI flags. Named
         instances additionally get their own application log and Prometheus
         multiproc directory, so concurrent instances cannot corrupt each
-        other's metrics or logs.
+        other's metrics or logs. A named instance always gets its application
+        log inside its state directory, even when the shell exported a bare
+        ``LLM_ROUTER_LOG_FILENAME`` (which the server would otherwise resolve
+        against the launch CWD and share with every sibling instance).
 
         Returns the user's own ``LLM_ROUTER_LOG_FILENAME`` (captured before the
         defaults were applied), which the daemon-log resolution still needs.
@@ -696,12 +732,50 @@ class ServerCommand(BaseCommand):
         os.environ.update(cls.build_env_overrides(args))
 
         if instance.named:
-            if not user_log:
-                os.environ["LLM_ROUTER_LOG_FILENAME"] = str(instance.app_log)
+            os.environ["LLM_ROUTER_LOG_FILENAME"] = resolve_instance_app_log(
+                instance, user_log
+            )
             if not os.environ.get("PROMETHEUS_MULTIPROC_DIR"):
                 instance.metrics_dir.mkdir(parents=True, exist_ok=True)
                 os.environ["PROMETHEUS_MULTIPROC_DIR"] = str(instance.metrics_dir)
         return user_log
+
+    @staticmethod
+    def _warn_shared_app_log(instance: InstancePaths, log_path: str) -> None:
+        """Warn (stderr, non-fatal) when another instance shares *log_path*.
+
+        Only a hint: an explicit absolute ``LLM_ROUTER_LOG_FILENAME`` can
+        deliberately point two instances at one file, but the usual cause is
+        the two of them inheriting the same name and landing in the same
+        directory, where their rotating handlers fight over the file.
+        """
+        if not instance.named or not log_path:
+            return
+        try:
+            resolved = os.path.realpath(log_path)
+            others = discover_instances()
+        except OSError:  # pragma: no cover - defensive
+            return
+        for other in others:
+            if other.name == instance.name:
+                continue
+            if get_alive_pid(other.pid_file) is None:
+                continue
+            other_log = (read_run_file(other.run_file) or {}).get("app_log_file")
+            if not other_log:
+                continue
+            try:
+                same_file = os.path.realpath(str(other_log)) == resolved
+            except OSError:  # pragma: no cover - defensive
+                same_file = False
+            if same_file:
+                print(
+                    f"Warning: instance '{other.name}' is already logging to "
+                    f"{log_path}; the two instances will interleave and rotate "
+                    "the same file.",
+                    file=sys.stderr,
+                )
+                return
 
     @staticmethod
     def _check_start_port(
@@ -831,10 +905,12 @@ class ServerCommand(BaseCommand):
             "--log-file",
             default=None,
             help=(
-                "Server log file used in daemon mode (default: "
-                "LLM_ROUTER_LOG_FILENAME if set in the shell, else the "
-                f"instance's daemon log, {DEFAULT_LOG_FILE} for the "
-                f"'{DEFAULT_INSTANCE}' instance)"
+                "Daemon console log (default: LLM_ROUTER_LOG_FILENAME if set "
+                "in the shell, else the instance's daemon log, "
+                f"{DEFAULT_LOG_FILE} for the '{DEFAULT_INSTANCE}' instance). "
+                "Not written in --foreground mode, where the server logs to "
+                "the terminal; the application's own log always lives in the "
+                "instance directory"
             ),
         )
         start.add_argument(
@@ -978,10 +1054,10 @@ class ServerCommand(BaseCommand):
             default=None,
             help=(
                 "Explicit log file to follow. Default: the application's own "
-                "log (LLM_ROUTER_LOG_FILENAME from the run record, a bare name "
-                "resolved against the launch CWD, or the instance's own log); "
-                f"e.g. pass {DEFAULT_LOG_FILE} to follow the daemon's "
-                "console log"
+                "log (LLM_ROUTER_LOG_FILENAME from the run record, or from "
+                "the shell anchored to the instance directory for a named "
+                f"instance); e.g. pass {DEFAULT_LOG_FILE} to follow the "
+                "daemon's console log"
             ),
         )
         log.add_argument(
@@ -1124,6 +1200,9 @@ class ServerCommand(BaseCommand):
             )
         try:
             shell_log_filename = cls._apply_start_env(args, instance)
+            cls._warn_shared_app_log(
+                instance, os.environ.get("LLM_ROUTER_LOG_FILENAME", "")
+            )
 
             cmd = [sys.executable, "-m", "llm_router_api.rest_api"]
             if args.host is not None:
@@ -1585,7 +1664,7 @@ class ServerCommand(BaseCommand):
                 "-" if entry["port"] is None else str(entry["port"]),
                 entry["server"] or "-",
                 entry["started_at"] or "-",
-                entry["log_file"] or "-",
+                entry["app_log_file"] or entry["log_file"] or "-",
             ]
             for entry in entries
         ]
@@ -1658,8 +1737,8 @@ class ServerCommand(BaseCommand):
         Explicit ``--log-file`` wins. Otherwise the application's own log:
         ``app_log_file`` from the run record (written at start, even in
         ``--foreground`` mode), else the shell's ``LLM_ROUTER_LOG_FILENAME``
-        (a bare file name is anchored to the CWD), else the instance's own
-        log file (named instances only).
+        (anchored to the instance directory for a named instance, to the CWD
+        for the legacy ``default`` one), else the instance's own log file.
         """
         if args.log_file:
             return Path(args.log_file).expanduser()
@@ -1669,10 +1748,10 @@ class ServerCommand(BaseCommand):
         if app_log:
             return Path(app_log).expanduser()
         name = os.environ.get("LLM_ROUTER_LOG_FILENAME")
+        if instance.named and instance.app_log is not None:
+            return Path(resolve_instance_app_log(instance, name, create=False))
         if name:
             return Path(anchor_log_name(name))
-        if instance.named and instance.app_log is not None:
-            return instance.app_log
         return Path(anchor_log_name(DEFAULT_LOG_FILENAME))
 
     @classmethod
