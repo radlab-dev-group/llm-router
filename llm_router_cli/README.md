@@ -421,8 +421,10 @@ Every sub-command takes `-i/--instance NAME`, so a host can run several routers 
 `--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`), plus `--instance NAME` (which
 instance to start), `--no-port-check` (skip the port pre-flight check) and `--save-config` (remember the flags in the
 instance `config.env` — see [Saving a command line](#saving-a-command-line---save-config)). The daemon log (`--log-file`)
-follows `LLM_ROUTER_LOG_FILENAME` when it is set in the shell — a bare file name is resolved against the launch CWD —
-and defaults to `~/.llm-router/server.log` only when the variable is unset. Every `LLM_ROUTER_*`
+follows `LLM_ROUTER_LOG_FILENAME` when the shell sets it — a bare file name resolves against the launch CWD — and falls
+back to `~/.llm-router/server.log` only when the variable is unset. A **named** instance keeps its logs to itself: its
+application log always lives in `~/.llm-router/instances/NAME/`, and the daemon console log sits next to it unless
+`--log-file` says otherwise (see [Instances](#instances--running-several-servers-side-by-side)). Every `LLM_ROUTER_*`
 variable in effect at launch — defaults + shell env + CLI overrides — is snapshotted into the run record
 (`<pid-file>.run`) so `status` can show exactly how the server was started.
 
@@ -441,7 +443,7 @@ owns its own state tree, so nothing ever collides:
     │   ├── server.pid          PID of the daemon
     │   ├── server.pid.run      run record — how this instance was started
     │   ├── server.log          daemon's captured stdout/stderr
-    │   ├── llm-router.log      the application's own (rotating) log
+    │   ├── llm-router.log      the app's own rotating log (relative names land here)
     │   ├── metrics/prometheus/ private PROMETHEUS_MULTIPROC_DIR
     │   └── server.start.lock   lock guarding concurrent `start` calls
     └── prod/
@@ -531,6 +533,14 @@ interface than the one the server binds). Concurrent `start` calls for the same 
 >
 > **Note on shared state:** the auth key store (`~/.llm-router/configs/auth/memory-keys.json`) is deliberately *not*
 > per-instance — all instances on a host authenticate against the same keys.
+>
+> **Note on logs:** a *named* instance always keeps its **application** log inside its own state directory. Launch
+> scripts typically export a bare `LLM_ROUTER_LOG_FILENAME` (`llm-router.log`), which the server resolves against its
+> CWD — without anchoring, every instance started from one directory would append to the same file, where two rotating
+> handlers truncate each other and lose entries. A relative value is therefore placed under
+> `~/.llm-router/instances/NAME/` (`.`/`..` components are dropped so it cannot escape the instance tree); an absolute or
+> `~`-relative path is honored as given. `start` additionally warns on stderr when a *running* instance already logs to
+> the same file. The `default` instance keeps the historical launch-CWD behavior.
 
 ### `list` — every instance at a glance
 
@@ -540,10 +550,14 @@ llm-router server list
 
 ```text
 NAME   STATUS     PID    PORT  SERVER    STARTED                   LOG
-batch  ● stopped  -      8090  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/batch/server.log
-dev    ● running  51087  8081  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/dev/server.log
-prod   ● running  51088  8080  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/prod/server.log
+batch  ● stopped  -      8090  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/batch/llm-router.log
+dev    ● running  51087  8081  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/dev/llm-router.log
+prod   ● running  51088  8080  gunicorn  2026-09-16T19:58:29+0200  /home/user/.llm-router/instances/prod/llm-router.log
 ```
+
+The **LOG** column is the **application's** own log — the file `server log` follows — taken from the run record, and
+falls back to the daemon's console log only when no run record exists (an instance that never started). `--json`
+reports both files separately as `app_log_file` and `log_file`.
 
 An instance is listed when it has state (a PID / run record for `default`, any file for a named instance), so a
 configured-but-never-started instance still shows up as `stopped`. `list` always exits `0`.
@@ -606,12 +620,13 @@ Error: default is the built-in instance and cannot be removed
     LLM_ROUTER_SERVER_PORT       8080
 ```
 
-The **Log** row shows the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default
-`llm-router.log`). When that variable is a bare file name (no directory part) the server writes it to the CWD from which
-it was launched, so the run record stores the **absolute** path (`<launch-dir>/llm-router.log`) and `status`
-displays it as-is. In daemon mode the daemon's captured stdout/stderr are appended to the **same** file, so a single log
-row is enough (without the variable the daemon capture falls back to `~/.llm-router/server.log`). When the server is
-**not** running the header/dot turn red (`✗ Not running`), and `status` exits with code `1`.
+The **Log** row shows the application's own rotating log (`LLM_ROUTER_LOG_FILENAME`, default `llm-router.log`) as an
+**absolute** path: a named instance anchors a bare name to `~/.llm-router/instances/NAME/`, the `default` instance to
+the CWD it was launched from (`<launch-dir>/llm-router.log`). In daemon mode the `default` instance also sends the
+daemon's captured stdout/stderr to that **same** file, which is why a single log row is enough; a named instance keeps
+them apart — its console capture goes to `~/.llm-router/instances/NAME/server.log`, and `server list --json` reports
+both files as `app_log_file` and `log_file`. When the server is **not** running the header/dot turn red
+(`✗ Not running`), and `status` exits with code `1`.
 
 The **Models config** row behaves the same way as **Log**: when the server was started with a *relative* path (e.g.
 `resources/configs/models-config.json`), the run record stores the **absolute** path anchored to the launch CWD, so
@@ -630,9 +645,9 @@ so secrets are never echoed to the terminal.
 ### `log` — follow the server log
 
 `log` follows the **application's own log** by default — the file set by
-`LLM_ROUTER_LOG_FILENAME` at start time (from the run record; a bare file name is resolved against the launch CWD). This
-works for both daemon and
-`--foreground` servers, since the run record is written in both cases:
+`LLM_ROUTER_LOG_FILENAME` at start time: `app_log_file` from the run record when present, otherwise the variable itself,
+anchored to the instance directory for a named instance and to the launch CWD for `default`. This works for both daemon
+and `--foreground` servers, since the run record is written in both cases:
 
 ```bash
 llm-router server log                              # app log: last 20 lines, then follow
