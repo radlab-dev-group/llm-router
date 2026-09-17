@@ -118,6 +118,7 @@ def test_start_help_lists_flags(capsys):
         "--auth-redis-password",
         "--pid-file",
         "--no-port-check",
+        "--no-config-check",
         "--save-config",
         "--instance",
     ):

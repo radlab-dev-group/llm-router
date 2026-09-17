@@ -76,6 +76,7 @@ def test_completion_bash_lists_commands_subcommands_options(capsys):
     assert "'--install'" in out  # completion bash/zsh (level 2)
     assert "'--instance'" in out  # every server sub-command
     assert "'--no-port-check'" in out  # server start
+    assert "'--no-config-check'" in out  # server start
     assert "'-i'" in out  # short form of --instance
     assert "'-o'" in out  # short form of --output / --output-config-file
 

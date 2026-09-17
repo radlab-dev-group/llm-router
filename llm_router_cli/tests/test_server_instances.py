@@ -5,7 +5,8 @@ Every instance keeps its own state tree under ``~/.llm-router/instances/<name>``
 (``default`` keeps the historical flat layout). Covered here: name resolution
 and validation, the per-instance ``config.env`` and its precedence, per-instance
 metrics/log isolation, the start lock, port pre-flight checks, discovery plus
-the ``list``/``rm-instance`` sub-commands and ``--all`` for ``stop``/``status``.
+the models-config pre-flight check (including a daemon that dies at once), the
+``list``/``rm-instance`` sub-commands and ``--all`` for ``stop``/``status``.
 
 No real server is ever spawned: foreground starts run through a patched
 ``subprocess.Popen``, and ``stop``/``status`` use dummy double-forked
@@ -19,6 +20,7 @@ import json
 import os
 import signal
 import socket
+import sys
 import time
 
 from pathlib import Path
@@ -36,6 +38,7 @@ from llm_router_cli.cli.commands.server import (
     discover_instances,
     get_alive_pid,
     log_file_for,
+    read_pid_file,
     read_run_file,
     release_start_lock,
     resolve_instance,
@@ -50,6 +53,11 @@ from llm_router_cli.cli.config_env import (
     scaffold_config_env,
     update_config_env,
 )
+from llm_router_cli.cli.env_defaults import DEFAULT_ENV
+
+#: Built-in default of ``LLM_ROUTER_MODELS_CONFIG``, relative to the launch CWD.
+DEFAULT_MODELS_CONFIG = DEFAULT_ENV["LLM_ROUTER_MODELS_CONFIG"]
+
 
 # ---- fixtures / helpers ----------------------------------------------------
 
@@ -65,14 +73,24 @@ def _restore_env():
 
 @pytest.fixture
 def state_home(tmp_path, monkeypatch):
-    """Point all instance state at *tmp_path* and start from a clean env."""
+    """
+    Point all instance state at *tmp_path* and start from a clean env.
+
+    ``start`` pre-flights the models config, whose built-in default is
+    relative to the launch CWD, so a valid (empty) one is created next to the
+    chdir'ed home. Tests that want a broken config overwrite or delete it.
+    """
     monkeypatch.setattr(server_module, "_STATE_DIR", tmp_path)
     monkeypatch.setattr(server_module, "DEFAULT_PID_FILE", tmp_path / "server.pid")
     monkeypatch.setattr(server_module, "DEFAULT_LOG_FILE", tmp_path / "server.log")
     monkeypatch.delenv(INSTANCE_ENV_VAR, raising=False)
     monkeypatch.delenv("LLM_ROUTER_LOG_FILENAME", raising=False)
     monkeypatch.delenv("PROMETHEUS_MULTIPROC_DIR", raising=False)
+    monkeypatch.delenv("LLM_ROUTER_MODELS_CONFIG", raising=False)
     monkeypatch.chdir(tmp_path)
+    models_config = tmp_path / DEFAULT_MODELS_CONFIG
+    models_config.parent.mkdir(parents=True, exist_ok=True)
+    models_config.write_text(json.dumps({"active_models": {}}), encoding="utf-8")
     return tmp_path
 
 
@@ -688,6 +706,224 @@ def test_start_refuses_a_port_used_by_another_instance(
     assert str(_instance("dev").config_env) in err
     assert calls == []
     assert not _instance("dev").pid_file.exists()
+
+
+# ---- models-config pre-flight ----------------------------------------------
+
+
+def _models_config_path() -> Path:
+    """Path of the models config the fixture created for the launch CWD."""
+    return Path.cwd() / DEFAULT_MODELS_CONFIG
+
+
+def _start_dev(extra: Optional[List[str]] = None) -> int:
+    """Run ``start`` for instance ``dev`` in the foreground, port probe off."""
+    return ServerCommand.run(
+        ["start", "--foreground", "-i", "dev", "--no-port-check"] + list(extra or [])
+    )
+
+
+def test_start_reports_a_missing_models_config(state_home, fake_spawn, capsys):
+    _models_config_path().unlink()
+    _, calls = fake_spawn
+
+    assert _start_dev() == 1
+
+    err = capsys.readouterr().err
+    assert "models config was not found" in err
+    assert str(_models_config_path()) in err
+    assert "Source: built-in default." in err
+    assert "--no-config-check" in err
+    assert "Traceback" not in err
+    assert calls == []
+    assert not _instance("dev").pid_file.exists()
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        ("not json at all", "is not valid JSON"),
+        ("[]", "must contain a JSON object"),
+        ('{"google_models": {"m": {}}}', "has no 'active_models' section"),
+    ],
+)
+def test_start_reports_a_broken_models_config(
+    state_home, fake_spawn, capsys, body, reason
+):
+    _models_config_path().write_text(body, encoding="utf-8")
+    _, calls = fake_spawn
+
+    assert _start_dev() == 1
+
+    err = capsys.readouterr().err
+    assert f"models config {reason}" in err
+    assert str(_models_config_path()) in err
+    assert "Source:" in err
+    assert calls == []
+
+
+def test_a_config_with_only_empty_sections_still_starts(state_home, fake_spawn):
+    _models_config_path().write_text(
+        json.dumps({"google_models": {}}), encoding="utf-8"
+    )
+    _, calls = fake_spawn
+
+    assert _start_dev() == 0
+
+    assert len(calls) == 1
+
+
+def test_no_config_check_skips_the_models_config_check(state_home, fake_spawn):
+    _models_config_path().write_text("not json at all", encoding="utf-8")
+    _, calls = fake_spawn
+
+    assert _start_dev(["--no-config-check"]) == 0
+
+    assert len(calls) == 1
+
+
+def test_a_daemon_start_reports_a_broken_models_config_without_forking(
+    state_home, fake_spawn, capsys
+):
+    _models_config_path().write_text("[]", encoding="utf-8")
+    _, calls = fake_spawn
+
+    assert ServerCommand.run(["start", "-i", "dev", "--no-port-check"]) == 1
+
+    err = capsys.readouterr().err
+    assert "models config must contain a JSON object" in err
+    assert calls == []
+    assert not _instance("dev").pid_file.exists()
+    assert not run_file_for(_instance("dev").pid_file).exists()
+
+
+def test_models_config_source_names_the_cli_flag(state_home, fake_spawn, capsys):
+    target = state_home / "from-flag.json"
+    _, calls = fake_spawn
+
+    assert _start_dev(["--models-config", str(target)]) == 1
+
+    err = capsys.readouterr().err
+    assert "Source: --models-config flag." in err
+    assert str(target) in err
+    assert calls == []
+
+
+def test_models_config_source_names_the_instance_config_env(
+    state_home, fake_spawn, capsys
+):
+    instance = _instance("dev")
+    instance.ensure_dir()
+    target = state_home / "from-config-env.json"
+    update_config_env(instance.config_env, {"LLM_ROUTER_MODELS_CONFIG": str(target)})
+    _, calls = fake_spawn
+
+    assert _start_dev() == 1
+
+    err = capsys.readouterr().err
+    assert f"Source: config.env {instance.config_env}." in err
+    assert str(target) in err
+    assert calls == []
+
+
+def test_models_config_source_names_the_shell_environment(
+    state_home, fake_spawn, capsys, monkeypatch
+):
+    target = state_home / "from-shell.json"
+    monkeypatch.setenv("LLM_ROUTER_MODELS_CONFIG", str(target))
+    _, calls = fake_spawn
+
+    assert _start_dev() == 1
+
+    err = capsys.readouterr().err
+    assert "Source: shell environment." in err
+    assert str(target) in err
+    assert calls == []
+
+
+def test_a_daemon_that_dies_immediately_is_reported(
+    state_home, capfd, monkeypatch, request
+):
+    """A daemon that exits at once is an error, not a successful start.
+
+    Uses ``capfd`` (real descriptors) because the daemon redirects stdio, and
+    stays alive briefly so the CLI can observe the PID before it disappears.
+    pytest's stand-in for ``sys.stdin`` has no file descriptor, so the daemon
+    is given ``os.devnull`` to redirect, exactly as it has under a shell.
+    """
+    null_stdin = open(os.devnull, "r")
+    request.addfinalizer(null_stdin.close)
+    monkeypatch.setattr(sys, "stdin", null_stdin)
+    args = ServerCommand.build_parser().parse_args(["start", "-i", "dev"])
+    instance = _instance("dev")
+    instance.ensure_dir()
+    script = (
+        "import sys, time\n"
+        "print('daemon died here', file=sys.stderr)\n"
+        "time.sleep(0.5)\n"
+        "raise SystemExit(3)\n"
+    )
+
+    rc = ServerCommand._run_daemon(
+        args,
+        instance,
+        instance.pid_file,
+        [sys.executable, "-c", script],
+        instance.daemon_log,
+    )
+
+    assert rc == 1
+    err = capfd.readouterr().err
+    assert "exited immediately after starting" in err
+    assert str(instance.daemon_log) in err
+    assert "daemon died here" in err
+    assert not instance.pid_file.exists()
+    assert not run_file_for(instance.pid_file).exists()
+
+
+def test_a_daemon_that_outlives_the_grace_period_starts_cleanly(
+    state_home, capfd, monkeypatch, request
+):
+    """A daemon that stays up is a successful start, PID and run record intact.
+
+    The counterweight to the immediate-exit test above: it proves the
+    early-death net does not fire on a healthy server. It uses ``capfd`` and
+    ``os.devnull`` for the same reason -- the daemon redirects real
+    descriptors -- and the backgrounded sleeper is killed when the test ends.
+    """
+    null_stdin = open(os.devnull, "r")
+    request.addfinalizer(null_stdin.close)
+    monkeypatch.setattr(sys, "stdin", null_stdin)
+    args = ServerCommand.build_parser().parse_args(["start", "-i", "dev"])
+    instance = _instance("dev")
+    instance.ensure_dir()
+
+    def kill_daemon() -> None:
+        """Make sure the backgrounded sleeper cannot outlive the test run."""
+        pid = read_pid_file(instance.pid_file)
+        if pid is None:
+            return
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+    request.addfinalizer(kill_daemon)
+
+    rc = ServerCommand._run_daemon(
+        args,
+        instance,
+        instance.pid_file,
+        [sys.executable, "-c", "import time\ntime.sleep(30)\n"],
+        instance.daemon_log,
+    )
+
+    captured = capfd.readouterr()
+    assert rc == 0
+    assert "Server started (pid=" in captured.out
+    assert "exited immediately" not in captured.err
+    assert instance.pid_file.exists()
+    assert run_file_for(instance.pid_file).exists()
 
 
 # ---- start lock ------------------------------------------------------------
