@@ -419,8 +419,9 @@ Every sub-command takes `-i/--instance NAME`, so a host can run several routers 
 {gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`,
 `--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
 `--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`), plus `--instance NAME` (which
-instance to start), `--no-port-check` (skip the port pre-flight check) and `--save-config` (remember the flags in the
-instance `config.env` — see [Saving a command line](#saving-a-command-line---save-config)). The daemon log (`--log-file`)
+instance to start), `--no-port-check` (skip the port pre-flight check), `--no-config-check` (skip the models-config
+pre-flight check) and `--save-config` (remember the flags in the instance `config.env` — see [Saving a command
+line](#saving-a-command-line---save-config)). The daemon log (`--log-file`)
 follows `LLM_ROUTER_LOG_FILENAME` when the shell sets it — a bare file name resolves against the launch CWD — and falls
 back to `~/.llm-router/server.log` only when the variable is unset. A **named** instance keeps its logs to itself: its
 application log always lives in `~/.llm-router/instances/NAME/`, and the daemon console log sits next to it unless
@@ -525,6 +526,28 @@ Use --port/--host or set LLM_ROUTER_SERVER_PORT in /home/user/.llm-router/instan
 Pass `--no-port-check` to skip the probe (a port held by a socket-activated service, or a check against a different
 interface than the one the server binds). Concurrent `start` calls for the same instance are serialized by
 `server.start.lock`; a lock older than 60 s (a killed `start`) is broken automatically.
+
+#### Models-config pre-flight
+
+`start` also checks the models config file it is about to hand to the server, so a typo in
+`LLM_ROUTER_MODELS_CONFIG` fails on the terminal instead of leaving a daemon that dies a second later:
+
+```text
+Error: models config was not found: /srv/llm-router/resources/configs/models-config.json (instance 'prod').
+Source: config.env /home/user/.llm-router/instances/prod/config.env.
+Create the file, pass --models-config PATH, set LLM_ROUTER_MODELS_CONFIG in /home/user/.llm-router/instances/prod/config.env, or use --no-config-check to start anyway.
+```
+
+`Source:` names the layer the path came from — the `--models-config` flag, the instance `config.env`, the shell
+environment or the built-in default — which is usually the whole fix. The check covers existence, readability,
+valid JSON, a top-level JSON object and, mirroring the runtime loader, an `active_models` section whenever the
+file defines at least one model. A file whose sections are all empty (`{"google_models": {}}`) stays legal: it
+simply means "no models". Pass `--no-config-check` to skip the check.
+
+A daemon publishes its PID *before* execing the server, so a startup failure the check cannot see (a schema the
+loader rejects later, a provider key it cannot resolve) would still be swallowed. `start` therefore watches the
+new daemon for 1.5 s: if it disappears, the PID and run-record files are removed and the console gets the daemon
+log path plus the last 15 lines of that log — the traceback, in practice.
 
 > **Note on Prometheus:** `prepare_prometheus_multiproc_dir()` wipes its directory on every start, so instances that
 > shared `PROMETHEUS_MULTIPROC_DIR` would erase each other's counters. Every *named* instance therefore gets a private
