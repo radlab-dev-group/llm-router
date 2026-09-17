@@ -16,7 +16,7 @@ Having a single source of truth for model definitions makes it easy to:
 
 ## 🏗️ High‑level structure
 
-```plain text
+```
 {
   "<model_type>": {               # e.g. "google_models", "openai_models", "qwen_models"
     "<model_name>": {            # full identifier used by the router, e.g. "google/gemma-3-12b-it"
@@ -55,7 +55,7 @@ Having a single source of truth for model definitions makes it easy to:
 | `input_size`   | `int` (or numeric string) | Maximum context length the provider accepts. The `ApiModel.from_config` helper converts it to `int`.                                | `4096`                          |
 | `model_path`   | `str`                     | Path or name of the model on the provider side (used by Ollama, vLLM, etc.). May be empty for providers that infer it from the URL. | `"gpt-3.5-turbo-0125"`          |
 | `weight`       | `float`                   | Relative weight for **weighted‑random** load‑balancing strategies. Default `1.0`.                                                   | `0.1`                           |
-| `keep_alive`   | `str`                     | Optional keep‑alive duration (e.g. `"35m"`). Empty or `null` means the provider is not kept alive.                                  | `"35m"`                         |
+| `keep_alive`   | `str`                     | Optional keep‑alive duration (e.g. `"35m"`). Empty or `null` means the provider is not kept alive.                                  | `"35m"`                         |
 | `tool_calling` | `bool`                    | Whether the provider supports tool‑calling (function calling).                                                                      | `true`                          |
 | `is_embedding` | `bool`                    | Whether the model is an embedding model (determines use of embedding endpoints).                                                    | `true`                          |
 
@@ -63,7 +63,6 @@ Having a single source of truth for model definitions makes it easy to:
 
 ```json
 {
-  (...)
   "active_models": {
     "google_models": [
       "google/gemma-3-12b-it",
