@@ -871,7 +871,12 @@ class ServerCommand(BaseCommand):
                         reason = "has no 'active_models' section"
         if not reason:
             return None
+
         source = cls._models_config_source(args, instance, shell_models_config)
+
+        # Remove instance when no config is found
+        cls._rm_instance(args=args, instance=instance)
+
         return (
             f"models config {reason}: "
             f"{path or 'LLM_ROUTER_MODELS_CONFIG'} (instance "
@@ -1833,10 +1838,14 @@ class ServerCommand(BaseCommand):
         return 0
 
     @classmethod
-    def _rm_instance(cls, args: argparse.Namespace) -> int:
+    def _rm_instance(
+        cls, args: argparse.Namespace, instance: Optional[InstancePaths] = None
+    ) -> int:
         """Delete a named instance's state directory (must not be running)."""
         try:
-            instance = resolve_instance(argparse.Namespace(instance=args.name))
+            instance = instance or resolve_instance(
+                argparse.Namespace(instance=args.name)
+            )
         except ValueError as exc:
             return cls.fail(str(exc))
 
