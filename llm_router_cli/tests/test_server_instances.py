@@ -39,6 +39,7 @@ from llm_router_cli.cli.commands.server import (
     read_run_file,
     release_start_lock,
     resolve_instance,
+    resolve_instance_app_log,
     run_file_for,
     write_pid_file,
     write_run_file,
@@ -401,7 +402,7 @@ def test_named_instance_gets_its_own_metrics_dir_and_app_log(state_home, fake_sp
     assert record["log_file"] == str(instance.daemon_log)
 
 
-def test_named_instance_keeps_an_explicit_shell_app_log(
+def test_named_instance_anchors_an_explicit_shell_app_log(
     state_home, fake_spawn, monkeypatch
 ):
     monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "custom-app.log")
@@ -412,7 +413,206 @@ def test_named_instance_keeps_an_explicit_shell_app_log(
         == 0
     )
 
-    assert state["env"]["LLM_ROUTER_LOG_FILENAME"] == "custom-app.log"
+    expected = str(_instance("dev").dir / "custom-app.log")
+    assert state["env"]["LLM_ROUTER_LOG_FILENAME"] == expected
+    assert state["record"]["app_log_file"] == expected
+    assert state["record"]["log_file"] == str(_instance("dev").daemon_log)
+
+
+def test_named_instances_from_one_directory_get_their_own_app_log(
+    state_home, fake_spawn, monkeypatch
+):
+    """Launch scripts export a bare name: it must not become a shared file."""
+    state, _ = fake_spawn
+    app_logs: Dict[str, str] = {}
+
+    for name in ("dev", "staging"):
+        monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "llm-router.log")
+        assert (
+            ServerCommand.run(
+                ["start", "--foreground", "-i", name, "--no-port-check"]
+            )
+            == 0
+        )
+        app_logs[name] = state["record"]["app_log_file"]
+
+    assert app_logs["dev"] != app_logs["staging"]
+    for name, path in app_logs.items():
+        assert Path(path) == _instance(name).dir / "llm-router.log"
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("app.log", "app.log"),
+        ("logs/app.log", "logs/app.log"),
+        ("./app.log", "app.log"),
+        ("../escape.log", "escape.log"),
+        ("../../a/b.log", "a/b.log"),
+    ],
+)
+def test_relative_app_log_names_stay_inside_the_instance_tree(
+    state_home, fake_spawn, monkeypatch, value, expected
+):
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", value)
+
+    state, _ = fake_spawn
+    assert (
+        ServerCommand.run(["start", "--foreground", "-i", "dev", "--no-port-check"])
+        == 0
+    )
+
+    instance = _instance("dev")
+    resolved = Path(state["env"]["LLM_ROUTER_LOG_FILENAME"])
+    assert resolved == instance.dir / expected
+    assert instance.dir in resolved.parents
+
+
+def test_absolute_and_home_relative_app_logs_are_honored(
+    state_home, fake_spawn, monkeypatch
+):
+    state, _ = fake_spawn
+    absolute = state_home / "elsewhere" / "router.log"
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", str(absolute))
+    assert (
+        ServerCommand.run(["start", "--foreground", "-i", "dev", "--no-port-check"])
+        == 0
+    )
+    assert state["env"]["LLM_ROUTER_LOG_FILENAME"] == str(absolute)
+    assert state["record"]["app_log_file"] == str(absolute)
+    assert absolute.parent.is_dir()
+
+    home = state_home / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "~/router-app.log")
+    assert (
+        ServerCommand.run(["start", "--foreground", "-i", "dev", "--no-port-check"])
+        == 0
+    )
+    assert state["env"]["LLM_ROUTER_LOG_FILENAME"] == str(home / "router-app.log")
+
+
+def test_default_instance_app_log_still_follows_the_launch_cwd(
+    state_home, fake_spawn, monkeypatch
+):
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "llm-router.log")
+
+    state, _ = fake_spawn
+    assert ServerCommand.run(["start", "--foreground", "--no-port-check"]) == 0
+
+    assert state["env"]["LLM_ROUTER_LOG_FILENAME"] == "llm-router.log"
+    assert state["record"]["app_log_file"] == str(Path.cwd() / "llm-router.log")
+
+
+def test_resolve_instance_app_log_paths(state_home):
+    instance = _instance("dev")
+
+    assert resolve_instance_app_log(instance, None, create=False) == str(
+        instance.app_log
+    )
+    assert resolve_instance_app_log(instance, "  ", create=False) == str(
+        instance.app_log
+    )
+    assert resolve_instance_app_log(instance, "x.log", create=False) == str(
+        instance.dir / "x.log"
+    )
+    assert (
+        resolve_instance_app_log(instance, "/tmp/x.log", create=False)
+        == "/tmp/x.log"
+    )
+
+    target = Path(resolve_instance_app_log(instance, "nested/dir/x.log"))
+    assert target == instance.dir / "nested" / "dir" / "x.log"
+    assert target.parent.is_dir()
+
+
+def test_log_resolution_anchors_the_shell_name_for_a_named_instance(
+    state_home, monkeypatch
+):
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "llm-router.log")
+    instance = _instance("dev")
+
+    resolved = ServerCommand._resolve_log_file(
+        argparse.Namespace(log_file=None), instance
+    )
+
+    assert resolved == instance.dir / "llm-router.log"
+    assert not resolved.exists()
+
+
+def test_log_resolution_of_the_default_instance_follows_the_cwd(
+    state_home, monkeypatch
+):
+    monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "llm-router.log")
+
+    resolved = ServerCommand._resolve_log_file(
+        argparse.Namespace(log_file=None), _instance(DEFAULT_INSTANCE)
+    )
+
+    assert resolved == Path.cwd() / "llm-router.log"
+
+
+def _make_other_instance_alive(
+    other: server_module.InstancePaths, monkeypatch
+) -> None:
+    """Report *other* as the only running instance, without spawning anything."""
+    monkeypatch.setattr(
+        server_module,
+        "get_alive_pid",
+        lambda pid_file: 4321 if Path(pid_file) == other.pid_file else None,
+    )
+
+
+def test_start_warns_when_a_running_instance_shares_the_app_log(
+    state_home, fake_spawn, monkeypatch, capsys
+):
+    other = _instance("prod")
+    other.ensure_dir()
+    _write_record(other, app_log_file=str(_instance("dev").app_log))
+    _make_other_instance_alive(other, monkeypatch)
+
+    state, _ = fake_spawn
+    assert (
+        ServerCommand.run(["start", "--foreground", "-i", "dev", "--no-port-check"])
+        == 0
+    )
+
+    err = capsys.readouterr().err
+    assert "already logging to" in err
+    assert "prod" in err
+
+
+def test_start_does_not_warn_when_the_other_instance_is_stopped(
+    state_home, fake_spawn, capsys
+):
+    other = _instance("prod")
+    other.ensure_dir()
+    _write_record(other, app_log_file=str(_instance("dev").app_log))
+
+    state, _ = fake_spawn
+    assert (
+        ServerCommand.run(["start", "--foreground", "-i", "dev", "--no-port-check"])
+        == 0
+    )
+
+    assert "already logging to" not in capsys.readouterr().err
+
+
+def test_start_does_not_warn_when_app_logs_are_separate(
+    state_home, fake_spawn, monkeypatch, capsys
+):
+    other = _instance("prod")
+    other.ensure_dir()
+    _write_record(other, app_log_file=str(other.app_log))
+    _make_other_instance_alive(other, monkeypatch)
+
+    state, _ = fake_spawn
+    assert (
+        ServerCommand.run(["start", "--foreground", "-i", "dev", "--no-port-check"])
+        == 0
+    )
+
+    assert "already logging to" not in capsys.readouterr().err
 
 
 def test_named_instance_keeps_an_explicit_prometheus_dir(
@@ -619,6 +819,46 @@ def test_list_reports_a_stopped_instance(state_home, capsys):
     assert "gunicorn" in out
     assert "2026-01-01T00:00:00+0200" in out
     assert "-" in out  # the missing PID becomes a placeholder
+
+
+def test_list_shows_the_application_log_not_the_daemon_log(state_home, capsys):
+    instance = _instance("dev")
+    instance.ensure_dir()
+    # a foreground start records the application log, while the daemon log
+    # reserved for it is never written
+    _write_record(instance, app_log_file=str(instance.app_log))
+
+    assert ServerCommand.run(["list", "--color", "never"]) == 0
+
+    out = capsys.readouterr().out
+    assert str(instance.app_log) in out
+    assert str(instance.daemon_log) not in out
+
+
+def test_list_falls_back_to_the_instance_log_without_a_record_value(
+    state_home, capsys
+):
+    instance = _instance("dev")
+    instance.ensure_dir()
+    _write_record(instance)
+
+    assert ServerCommand.run(["list", "--color", "never"]) == 0
+
+    assert str(instance.app_log) in capsys.readouterr().out
+
+
+def test_list_json_reports_the_daemon_and_the_application_log(state_home, capsys):
+    instance = _instance("dev")
+    instance.ensure_dir()
+    daemon = str(state_home / "console.log")
+    app = str(instance.dir / "app.log")
+    _write_record(instance, log_file=daemon, app_log_file=app)
+
+    assert ServerCommand.run(["list", "--json"]) == 0
+
+    entry = json.loads(capsys.readouterr().out)[0]
+    assert entry["log_file"] == daemon
+    assert entry["app_log_file"] == app
 
 
 def test_list_json_is_machine_readable(state_home, capsys):
