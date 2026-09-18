@@ -105,6 +105,7 @@ def test_start_help_lists_flags(capsys):
         "--port",
         "--models-config",
         "--debug",
+        "--verbose",
         "--lb-strategy",
         "--default-lang",
         "--auth",
@@ -247,6 +248,16 @@ def test_apply_default_env_sets_defaults_without_overriding(monkeypatch):
     assert os.environ["LLM_ROUTER_SERVER_TYPE"] in ("gunicorn", "waitress", "flask")
 
 
+def test_verbose_mode_is_off_by_default(monkeypatch):
+    """Verbose mode dumps unmasked params, so the shipped default is off."""
+    monkeypatch.delenv("LLM_ROUTER_VERBOSE", raising=False)
+
+    apply_default_env()
+
+    assert DEFAULT_ENV["LLM_ROUTER_VERBOSE"] == "0"
+    assert os.environ["LLM_ROUTER_VERBOSE"] == "0"
+
+
 def test_invalid_lb_strategy_rejected(capsys):
     assert ServerCommand.run(["start", "--lb-strategy", "bogus"]) == 2
     assert "invalid choice" in capsys.readouterr().err
@@ -318,6 +329,17 @@ def test_start_auth_zero_maps_to_false():
     assert ServerCommand.build_env_overrides(args) == {
         "LLM_ROUTER_AUTH_ENABLED": "false"
     }
+
+
+def test_start_verbose_flag_maps_to_env_override():
+    parser = ServerCommand.build_parser()
+    # Without the flag the shell env / defaults keep verbose mode off.
+    assert "LLM_ROUTER_VERBOSE" not in ServerCommand.build_env_overrides(
+        parser.parse_args(["start"])
+    )
+
+    args = parser.parse_args(["start", "--verbose"])
+    assert ServerCommand.build_env_overrides(args) == {"LLM_ROUTER_VERBOSE": "1"}
 
 
 def test_start_applies_overrides_beating_shell_env(monkeypatch, tmp_path, capsys):

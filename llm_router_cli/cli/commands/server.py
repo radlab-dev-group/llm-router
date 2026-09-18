@@ -640,6 +640,7 @@ class ServerCommand(BaseCommand):
     _ENV_OVERRIDES: ClassVar[List[Tuple[str, str, Optional[str]]]] = [
         ("models_config", "LLM_ROUTER_MODELS_CONFIG", None),
         ("debug", "LLM_ROUTER_IN_DEBUG", "str"),
+        ("verbose", "LLM_ROUTER_VERBOSE", "str"),
         ("lb_strategy", "LLM_ROUTER_BALANCE_STRATEGY", None),
         ("default_lang", "LLM_ROUTER_DEFAULT_EP_LANGUAGE", None),
         ("auth", "LLM_ROUTER_AUTH_ENABLED", "bool"),
@@ -1039,6 +1040,15 @@ class ServerCommand(BaseCommand):
             choices=[0, 1],
             default=None,
             help="Enable (1) or disable (0) debug mode (LLM_ROUTER_IN_DEBUG)",
+        )
+        start.add_argument(
+            "--verbose",
+            action="store_const",
+            const=1,
+            default=None,
+            help="Log raw, UNMASKED request params (LLM_ROUTER_VERBOSE). "
+            "Never use in production: it prints PII to the log and "
+            "delays the server startup.",
         )
         start.add_argument(
             "--lb-strategy",
