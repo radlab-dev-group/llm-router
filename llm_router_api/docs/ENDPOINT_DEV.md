@@ -394,6 +394,9 @@ Summary of the constructor of `EndpointI` + `EndpointWithHttpRequestI`:
   `endpoints/http_dispatch.py`); transport errors are retried the same way.
 * **Guards** – every payload passes the guardrail check and (optionally) PII masking before the provider call, unless
   `EP_DONT_NEED_GUARDRAIL_AND_MASKING = True` is set.
+* **Verbose mode** – the base class keeps the `LLM_ROUTER_VERBOSE` switch as `self._verbose_mode`; when it is on,
+  `run_ep` logs the incoming params **verbatim, before masking** (the log then contains PII). Development only — the
+  server warns about it and pauses for 3 s at startup. See [ENV_DEFINITIONS.md](ENV_DEFINITIONS.md).
 * **Response envelope** – `@EP.response_time` (and the base `prepare_payload` of `PassthroughI`)
   add a `response_time` field (seconds) to dict results; it is stripped again before forwarding (`_clear_payload`).
 * **Per‑message mode** – only `"user"`‑role messages are dispatched (one call each, with the shared system message);

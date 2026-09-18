@@ -60,6 +60,7 @@ from llm_router_api.base.constants import (
     GUARDRAIL_STRATEGY_PIPELINE_RESPONSE,
     GUARDRAIL_WITH_AUDIT_RESPONSE,
     UTILS_PLUGINS_PIPELINE,
+    VERBOSE_MODE,
 )
 
 from llm_router_api.core.auditor.auditor import AnyRequestAuditor
@@ -140,6 +141,7 @@ class SecureEndpointI(abc.ABC):
         self._ep_name = ep_name
         self._ep_method = method
         self._metrics = MetricsHandler() if USE_PROMETHEUS else None
+        self._verbose_mode = VERBOSE_MODE
 
         # --------------------------------------------------------------------------
         # ----------- MASKER SECTION
@@ -1292,6 +1294,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         self.logger.debug(
             f"[{self._ep_method}] {self._ep_name} => {self._ep_types_str}"
         )
+
+        if self._verbose_mode:
+            self.logger.info(json.dumps(orig_params or {}, indent=2, ensure_ascii=False))
 
         self._start_time = time.time()
         try:

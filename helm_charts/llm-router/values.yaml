@@ -52,6 +52,8 @@ config:
   #LLM_ROUTER_SERVER_WORKER_CLASS: uvicorn.workers.UvicornWorker
   #LLM_ROUTER_SERVER_WORKERS_COUNT: "1"
   #LLM_ROUTER_TIMEOUT: "30"
+  # Logs RAW (unmasked) request params — PII! Dev only, never on production
+  #LLM_ROUTER_VERBOSE: "False"
   LLM_ROUTER_MASKING_WITH_AUDIT: "0"
 
 

@@ -132,6 +132,11 @@ if RUN_IN_DEBUG_MODE:
     REST_API_LOG_LEVEL = "DEBUG"
 
 # =============================================================================
+# Verbose mode: endpoints log RAW (UNMASKED) request params. NEVER enable on
+# production -- the log then contains PII that masking would normally strip.
+VERBOSE_MODE = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}VERBOSE")
+
+# =============================================================================
 # Use Prometheus to collect metrics
 USE_PROMETHEUS = bool_env_value(f"{_DontChangeMe.MAIN_ENV_PREFIX}USE_PROMETHEUS")
 
