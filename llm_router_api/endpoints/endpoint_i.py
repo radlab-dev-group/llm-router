@@ -964,8 +964,9 @@ class EndpointI(SecureEndpointI, abc.ABC):
             return payload
 
         _cfg = None
-        if self.model_handler:
-            _cfg = self.model_handler.api_model_config
+        _handler = self.model_handler
+        if _handler and _handler.api_model_config:
+            _cfg = _handler.api_model_config.safe_active_models_config
 
         return self._utils_pipeline.apply(payload,  model_config=_cfg)
 
