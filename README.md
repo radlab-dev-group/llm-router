@@ -339,6 +339,7 @@ docker run \
   -p 5555:8080 \
   -e LLM_ROUTER_TIMEOUT=500 \
   -e LLM_ROUTER_IN_DEBUG=1 \
+  -e LLM_ROUTER_VERBOSE=0 \
   -e LLM_ROUTER_MINIMUM=1 \
   -e LLM_ROUTER_EP_PREFIX="/api" \
   -e LLM_ROUTER_SERVER_TYPE=gunicorn \
@@ -504,6 +505,7 @@ The `resources/llm-router-speakleash/` directory contains ready‑made configs f
 | `LLM_ROUTER_TIMEOUT`                               | Upper bound for any request to an upstream LLM (seconds).                                             |
 | `LLM_ROUTER_LOG_FILENAME` / `LLM_ROUTER_LOG_LEVEL` | Logging destinations and verbosity.                                                                   |
 | `LLM_ROUTER_IN_DEBUG`                              | When set, enables DEBUG‑level logs and more verbose error payloads.                                   |
+| `LLM_ROUTER_VERBOSE`                               | When set, endpoints log raw, **unmasked** request params (PII); startup warns, then pauses 3 s.       |
 
 ---
 

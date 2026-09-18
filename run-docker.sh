@@ -14,6 +14,7 @@ docker run \
   -p 5555:8080 \
   -e LLM_ROUTER_TIMEOUT=500 \
   -e LLM_ROUTER_IN_DEBUG=1 \
+  -e LLM_ROUTER_VERBOSE=0 \
   -e LLM_ROUTER_MINIMUM=1 \
   -e LLM_ROUTER_EP_PREFIX="/api" \
   -e LLM_ROUTER_SERVER_TYPE=gunicorn \
