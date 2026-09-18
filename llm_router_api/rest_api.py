@@ -67,7 +67,7 @@ def _warn_verbose_mode():
         "raw, UNMASKED request parameters are written to the log.\n"
         "This exposes PII and must never be used in production.\n"
         "Unset LLM_ROUTER_VERBOSE (or drop the --verbose flag) to disable it.",
-        end=""
+        end="",
     )
     print("\033[32m")
     print("=" * 80)
