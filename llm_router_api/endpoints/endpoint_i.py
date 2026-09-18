@@ -970,7 +970,7 @@ class EndpointI(SecureEndpointI, abc.ABC):
         if _handler and _handler.api_model_config:
             _cfg = _handler.api_model_config.safe_active_models_config
 
-        return self._utils_pipeline.apply(payload,  model_config=_cfg)
+        return self._utils_pipeline.apply(payload, model_config=_cfg)
 
     # ------------------------------------------------------------------
     # Parameter validation and helper methods
@@ -1296,7 +1296,9 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         )
 
         if self._verbose_mode:
-            self.logger.info(json.dumps(orig_params or {}, indent=2, ensure_ascii=False))
+            self.logger.info(
+                json.dumps(orig_params or {}, indent=2, ensure_ascii=False)
+            )
 
         self._start_time = time.time()
         try:
