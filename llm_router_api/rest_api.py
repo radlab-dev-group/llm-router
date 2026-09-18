@@ -43,8 +43,8 @@ from llm_router_api.base.constants import (
 
 logger = logging.getLogger(__name__)
 
-#: How long to wait after the verbose‑mode warning, so that an accidental
-#: production start can still be aborted. Deliberately hardcoded.
+# How long to wait after the verbose‑mode warning, so that an accidental
+# production start can still be aborted. Deliberately hardcoded.
 VERBOSE_STARTUP_DELAY_SECONDS = 3
 
 
@@ -58,11 +58,21 @@ def _warn_verbose_mode():
     if not VERBOSE_MODE:
         return
 
-    logger.warning(
-        "VERBOSE MODE IS ON: raw, UNMASKED request parameters are written to "
-        "the log. This exposes PII and must never be used in production. "
-        "Unset LLM_ROUTER_VERBOSE (or drop the --verbose flag) to disable it."
+    print("\033[32m")
+    print("=" * 80)
+    print(
+        "\033[31m"
+        "VERBOSE MODE IS ON: "
+        "\033[33m"
+        "raw, UNMASKED request parameters are written to the log.\n"
+        "This exposes PII and must never be used in production.\n"
+        "Unset LLM_ROUTER_VERBOSE (or drop the --verbose flag) to disable it.",
+        end=""
     )
+    print("\033[32m")
+    print("=" * 80)
+    print("\033[0m")
+
     time.sleep(VERBOSE_STARTUP_DELAY_SECONDS)
 
 
