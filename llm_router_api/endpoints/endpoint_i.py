@@ -962,7 +962,12 @@ class EndpointI(SecureEndpointI, abc.ABC):
         """
         if not self._utils_pipeline:
             return payload
-        return self._utils_pipeline.apply(payload)
+
+        _cfg = None
+        if self.model_handler:
+            _cfg = self.model_handler.api_model_config
+
+        return self._utils_pipeline.apply(payload,  model_config=_cfg)
 
     # ------------------------------------------------------------------
     # Parameter validation and helper methods
