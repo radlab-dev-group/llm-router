@@ -191,4 +191,4 @@ export TOKENIZERS_PARALLELISM=${TOKENIZERS_PARALLELISM:-true}
 # ==================================================================================
 # RUN MAIN APPLICATION
 # ==================================================================================
-llm-router server start -i localhost-dev --foreground
+llm-router server start -i localhost-dev --foreground --save-config
