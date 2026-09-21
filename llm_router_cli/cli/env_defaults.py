@@ -26,6 +26,7 @@ DEFAULT_LOG_FILENAME = "llm-router.log"
 DEFAULT_ENV: Dict[str, str] = {
     # Logging
     "LLM_ROUTER_IN_DEBUG": "1",
+    "LLM_ROUTER_VERBOSE": "0",
     "LLM_ROUTER_MINIMUM": "1",
     "LLM_ROUTER_LOG_FILENAME": DEFAULT_LOG_FILENAME,
     "LLM_ROUTER_LOG_TO_FILE": "1",

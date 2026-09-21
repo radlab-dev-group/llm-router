@@ -16,6 +16,7 @@ Typical usage
 
 import logging
 import argparse
+import time
 
 from logging.handlers import RotatingFileHandler
 
@@ -37,9 +38,42 @@ from llm_router_api.base.constants import (
     SERVER_TYPE,
     SERVER_WORKERS_CLASS,
     SERVER_WORKERS_COUNT,
+    VERBOSE_MODE,
 )
 
 logger = logging.getLogger(__name__)
+
+# How long to wait after the verbose‑mode warning, so that an accidental
+# production start can still be aborted. Deliberately hardcoded.
+VERBOSE_STARTUP_DELAY_SECONDS = 3
+
+
+def _warn_verbose_mode():
+    """Warn loudly when verbose mode is on, then pause the startup briefly.
+
+    ``LLM_ROUTER_VERBOSE`` makes endpoints log **raw, unmasked** request
+    parameters, so the application log may contain PII. The delay gives
+    someone a chance to kill the process before it serves real traffic.
+    """
+    if not VERBOSE_MODE:
+        return
+
+    print("\033[32m")
+    print("=" * 80)
+    print(
+        "\033[31m"
+        "VERBOSE MODE IS ON: "
+        "\033[33m"
+        "raw, UNMASKED request parameters are written to the log.\n"
+        "This exposes PII and must never be used in production.\n"
+        "Unset LLM_ROUTER_VERBOSE (or drop the --verbose flag) to disable it.",
+        end="",
+    )
+    print("\033[32m")
+    print("=" * 80)
+    print("\033[0m")
+
+    time.sleep(VERBOSE_STARTUP_DELAY_SECONDS)
 
 
 def _setup_dual_logging():
@@ -131,6 +165,9 @@ def main() -> None:
     tests or other entry‑points.
     """
     args = _parse_args()
+
+    # Verbose mode dumps unmasked params -- warn and wait before serving.
+    _warn_verbose_mode()
 
     # Choose server – CLI flags have priority over the ``SERVER_TYPE`` env variable.
     server_choice: str = (

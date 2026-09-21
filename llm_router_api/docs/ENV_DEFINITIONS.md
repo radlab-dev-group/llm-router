@@ -24,6 +24,7 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_EP_PREFIX`             | `/api`                                 | Prefix for all API endpoints.                                                                                    |
 | `LLM_ROUTER_MINIMUM`               | `False`                                | Run service in proxy-only mode.                                                                                  |
 | `LLM_ROUTER_IN_DEBUG`              | `False`                                | Run server in debug mode; also forces log level to DEBUG.                                                        |
+| `LLM_ROUTER_VERBOSE`               | `False`                                | Log RAW, **unmasked** request params (PII!). Startup logs a warning and waits 3 s. Never use in production.      |
 | `LLM_ROUTER_BALANCE_STRATEGY`      | `balanced`                             | Load-balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`. |
 | `LLM_ROUTER_SERVER_TYPE`           | `flask`                                | Server implementation: flask, gunicorn, waitress.                                                                |
 | `LLM_ROUTER_SERVER_PORT`           | `8080`                                 | Port on which the server listens.                                                                                |
@@ -34,6 +35,13 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_USE_PROMETHEUS`        | `False`                                | Enable Prometheus metrics collection (`/metrics` endpoint).                                                      |
 
 > See also `PROMETHEUS_MULTIPROC_DIR` for the directory where Prometheus multiprocess worker data files are stored.
+
+> **`LLM_ROUTER_VERBOSE` is a debugging aid, not a logging level.** With this variable on, `SecureEndpointI` stores it
+> as `self._verbose_mode` and `run_ep` writes the **raw, unmasked** request payload (JSON) to the log *before* masking,
+> so the log contains exactly the PII that masking would otherwise strip. On top of that, `rest_api.main()` emits a
+> `WARNING` and sleeps 3 s (`VERBOSE_STARTUP_DELAY_SECONDS`) before the server binds its port, so an accidental
+> production start can still be aborted. Enable it only for local troubleshooting (`LLM_ROUTER_VERBOSE=1`,
+> `llm-router server start --verbose`) and never in production or on shared log storage.
 
 ---
 

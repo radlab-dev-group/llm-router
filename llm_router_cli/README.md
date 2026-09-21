@@ -416,7 +416,7 @@ Every sub-command takes `-i/--instance NAME`, so a host can run several routers 
 [Instances](#instances--running-several-servers-side-by-side).
 
 `start` accepts the usual tuning flags (`--foreground`, `--host`, `--port`, `--server
-{gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`,
+{gunicorn,waitress,flask}`, `--models-config`, `--lb-strategy`, `--default-lang`, `--debug`, `--verbose`,
 `--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
 `--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`), plus `--instance NAME` (which
 instance to start), `--no-port-check` (skip the port pre-flight check), `--no-config-check` (skip the models-config
@@ -428,6 +428,11 @@ application log always lives in `~/.llm-router/instances/NAME/`, and the daemon 
 `--log-file` says otherwise (see [Instances](#instances--running-several-servers-side-by-side)). Every `LLM_ROUTER_*`
 variable in effect at launch — defaults + shell env + CLI overrides — is snapshotted into the run record
 (`<pid-file>.run`) so `status` can show exactly how the server was started.
+
+`--verbose` sets `LLM_ROUTER_VERBOSE=1` and makes the endpoints log the **raw, unmasked** request parameters, so the
+log contains the PII that masking would normally strip. It is a troubleshooting switch only: when verbose mode is on,
+the server prints a `WARNING` and waits 3 seconds before it starts serving, and it must never be enabled in
+production. Leaving the flag out keeps the shipped default (`LLM_ROUTER_VERBOSE=0`).
 
 ### Instances — running several servers side by side
 

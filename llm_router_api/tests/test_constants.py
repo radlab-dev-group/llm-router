@@ -356,6 +356,7 @@ EXPECTED_DEFAULTS = {
     "SERVER_WORKERS_CLASS": None,
     "SERVER_HOST": "localhost",
     "RUN_IN_DEBUG_MODE": False,
+    "VERBOSE_MODE": False,
     "USE_PROMETHEUS": False,
     "SERVER_BALANCE_STRATEGY": "balanced",
     "REDIS_HOST": "",
@@ -458,6 +459,7 @@ class TestEnvDrivenBehaviour:
                 "LLM_ROUTER_SERVER_WORKER_CLASS": "gevent",
                 "LLM_ROUTER_SERVER_TYPE": "GUNICORN",
                 "LLM_ROUTER_IN_DEBUG": "1",
+                "LLM_ROUTER_VERBOSE": "1",
                 "LLM_ROUTER_MAX_REQUEST_BODY_SIZE": "1234",
             },
             [
@@ -465,6 +467,7 @@ class TestEnvDrivenBehaviour:
                 "SERVER_WORKERS_CLASS",
                 "SERVER_TYPE",
                 "RUN_IN_DEBUG_MODE",
+                "VERBOSE_MODE",
                 "REST_API_LOG_LEVEL",
                 "MAX_REQUEST_BODY_SIZE",
             ],
@@ -474,6 +477,7 @@ class TestEnvDrivenBehaviour:
             "SERVER_WORKERS_CLASS": "gevent",
             "SERVER_TYPE": "gunicorn",
             "RUN_IN_DEBUG_MODE": True,
+            "VERBOSE_MODE": True,
             "REST_API_LOG_LEVEL": "DEBUG",
             "MAX_REQUEST_BODY_SIZE": 1234,
         }

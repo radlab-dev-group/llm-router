@@ -6,6 +6,9 @@ set -e
 # General logging setup
 # Debug mode (dont use on production, is really verbose)
 export LLM_ROUTER_IN_DEBUG=${LLM_ROUTER_IN_DEBUG:-1}
+# Verbose mode: logs RAW (unmasked) request params — PII! Dev only, never on production.
+# The server waits a few seconds after printing a warning when it is enabled.
+export LLM_ROUTER_VERBOSE=${LLM_ROUTER_VERBOSE:-0}
 export LLM_ROUTER_MINIMUM=${LLM_ROUTER_MINIMUM:-1}
 # Filename of logging (in case when log to file)
 export LLM_ROUTER_LOG_FILENAME=${LLM_ROUTER_LOG_FILENAME:-"llm-router.log"}
@@ -188,4 +191,4 @@ export TOKENIZERS_PARALLELISM=${TOKENIZERS_PARALLELISM:-true}
 # ==================================================================================
 # RUN MAIN APPLICATION
 # ==================================================================================
-llm-router server start -i localhost-dev --foreground
+llm-router server start -i localhost-dev --foreground --save-config

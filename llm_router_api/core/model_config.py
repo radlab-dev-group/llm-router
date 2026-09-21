@@ -46,6 +46,7 @@ class ApiModelConfig:
 
         self.active_models = self._read_active_models()
         self.models_configs = self._active_models_configuration()
+        self.safe_active_models_config = self._safe_active_models_configuration()
 
         self._validate_unique_identifiers()
 
@@ -100,6 +101,19 @@ class ApiModelConfig:
                     raise KeyError(f"{m_type}:{m_name} has no providers!")
                 models_configuration[m_name] = model_config
         return models_configuration
+
+    def _safe_active_models_configuration(self):
+        """
+        Build a safe copy of the active models configuration.
+        Sensitive fields (``api_token``) are masked with an empty string,
+        so the result can be safely used in logs or debug output.
+        Returns:
+            Dict[str, Dict]: Mapping of model name to a sanitized configuration dict.
+        """
+        return {
+            name: {**cfg, "api_token": ""}
+            for name, cfg in self.models_configs.items()
+        }
 
     def _validate_unique_identifiers(self) -> None:
         """
