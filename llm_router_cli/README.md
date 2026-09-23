@@ -406,7 +406,7 @@ Unless your environment already sets them, `start` applies the same `LLM_ROUTER_
 |--------------------|----------------------------------------------------------------------------------------|
 | `start`            | Start in the background (daemon) or `--foreground` for debugging                       |
 | `stop`             | SIGTERM (with a grace period), or SIGKILL with `--force`; `--all` stops every instance |
-| `reload`           | Gracefully reload the running Gunicorn master (SIGHUP)                                 |
+| `reload`           | Restart the server: stop it, then start it again (`--graceful` = SIGHUP only)          |
 | `status`           | Show whether it is running, with a colored status card; `--all` for a fleet table      |
 | `log`              | Follow the server log (tail -f style, colorized levels)                                |
 | `list`             | List every instance with status / PID / port (`--json` for scripting)                  |
@@ -433,6 +433,28 @@ variable in effect at launch — defaults + shell env + CLI overrides — is sna
 log contains the PII that masking would normally strip. It is a troubleshooting switch only: when verbose mode is on,
 the server prints a `WARNING` and waits 3 seconds before it starts serving, and it must never be enabled in
 production. Leaving the flag out keeps the shipped default (`LLM_ROUTER_VERBOSE=0`).
+
+### Reloading: `server reload`
+
+`reload` **restarts** the instance: it stops the running server and starts it again, so everything the process holds
+in memory is rebuilt — another models config, another port/host/engine, or changed code. A plain `SIGHUP` (what
+`--graceful` still does) only makes Gunicorn recycle its workers; the master keeps whatever it loaded at startup,
+which is why it is not enough after most configuration edits.
+
+```bash
+llm-router server reload                # SIGTERM (15 s grace), wait for exit, then start again
+llm-router server reload --force        # SIGKILL a server that ignores SIGTERM, then start again
+llm-router server reload --graceful     # previous behavior: SIGHUP to the master, no restart
+```
+
+The start half replays the flags of the previous `start` from the run record (`<pid-file>.run`): `--host`, `--port`,
+`--server`, `--models-config`, the Redis/auth flags, `--verbose`, plus the log file the server was writing to — so it
+comes back exactly the way it went down. On top of those, `start` applies its usual precedence again
+(`config.env > shell environment > built-in defaults`), so an edit to `config.env` takes effect on reload.
+`reload` fails when no server is running (use `start`). It also aborts **before** stopping anything when the models
+config recorded for the instance is missing or unparsable, so a typo never takes a working server down; if the stop
+times out it aborts too (retry with `--force`), and if the start half fails the instance stays down while the message
+repeats the `start` hint.
 
 ### Instances — running several servers side by side
 
@@ -693,7 +715,8 @@ llm-router server log --log-file ~/.llm-router/server.log   # daemon's console l
 | `--pid-file`  | `~/.llm-router/server.pid` | PID file (run record) location for the app-log lookup       |
 
 `stop`, `reload` and `status` additionally accept `--pid-file` (default
-`~/.llm-router/server.pid`), and `stop` accepts `--force` to skip the SIGTERM grace period and send SIGKILL. As
+`~/.llm-router/server.pid`), and `stop`/`reload` accept `--force` to skip the SIGTERM grace period and send SIGKILL
+(for `reload`, the server is still started again afterwards). As
 every other `server` sub-command, they all take `-i/--instance NAME` (see
 [Instances](#instances--running-several-servers-side-by-side)); `stop` and `status` also take `--all`.
 

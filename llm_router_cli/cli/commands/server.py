@@ -9,7 +9,7 @@ managed background daemon with a PID file, so the same lifecycle operations
     llm-router server status   # show whether the server is running
     llm-router server log      # follow the log (tail -f style, colored levels)
     llm-router server stop    # SIGTERM (with grace period), or SIGKILL --force
-    llm-router server reload  # graceful SIGHUP to the Gunicorn master
+    llm-router server reload  # stop the running server, then start it again
     llm-router server list     # list every known instance (--json for scripts)
     llm-router server rm-instance NAME  # drop a named instance's state
 
@@ -23,6 +23,11 @@ instance keeps the historical single-instance layout in ``~/.llm-router``.
 Unless the user's environment already defines them, the command applies the
 same ``LLM_ROUTER_*`` defaults as ``run-rest-api-gunicorn.sh``.
 """
+
+# The module owns the whole lifecycle of one command (start / stop / reload /
+# status / log / list / rm-instance) and its on-disk state format, so it is
+# deliberately kept in one place.
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 
@@ -41,7 +46,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, Dict, IO, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, FrozenSet, IO, List, Optional, Tuple
 
 from llm_router_cli.cli.commands.base import BaseCommand
 from llm_router_cli.cli.config_env import (
@@ -606,6 +611,11 @@ def _is_sensitive(key: str) -> bool:
 #: Placeholder printed in place of a masked secret value.
 _MASKED = "****"
 
+#: Spellings of a recorded boolean value that mean "on" / "off" when a run
+#: record is turned back into ``start`` flags by ``reload``.
+_TRUE_TOKENS = frozenset({"1", "true", "yes", "on"})
+_FALSE_TOKENS = frozenset({"0", "false", "no", "off"})
+
 
 # -------------------------------------------------------------------------- #
 # Command
@@ -629,7 +639,7 @@ class ServerCommand(BaseCommand):
     RM_INSTANCE_NAME = "rm-instance"
     START_HELP = "Start the REST API server in the background (daemon)"
     STOP_HELP = "Stop the running REST API server"
-    RELOAD_HELP = "Gracefully reload the running Gunicorn master (SIGHUP)"
+    RELOAD_HELP = "Restart the server (stop it, then start it again)"
     STATUS_HELP = "Show server status (pid, log, launch parameters)"
     LOG_HELP = "Follow the server log (tail -f style, colorized levels)"
     LIST_HELP = "List all known server instances (running or not)"
@@ -665,6 +675,33 @@ class ServerCommand(BaseCommand):
         "first_available",
         "first_available_optim",
     ]
+
+    #: Engines accepted by ``start --server`` (also validated when ``reload``
+    #: replays the flags of a previous launch).
+    _SERVER_TYPES: ClassVar[List[str]] = ["gunicorn", "waitress", "flask"]
+
+    #: ``start`` flags whose value argparse parses as an int.
+    _NUMERIC_FLAGS: ClassVar[FrozenSet[str]] = frozenset(
+        {
+            "debug",
+            "port",
+            "redis_port",
+            "redis_db",
+            "auth_redis_port",
+            "auth_redis_db",
+        }
+    )
+
+    #: ``start`` flags that argparse restricts to ``0``/``1``.
+    _BOOL_FLAGS: ClassVar[FrozenSet[str]] = frozenset({"debug", "auth"})
+
+    #: Reverse of :attr:`_ENV_OVERRIDES` used by ``reload`` to rebuild the
+    #: ``start`` command line from a run record:
+    #: environment variable -> (flag, namespace attribute, converter).
+    _RELOAD_FLAGS: ClassVar[Dict[str, Tuple[str, str, Optional[str]]]] = {
+        env_key: (f"--{attr.replace('_', '-')}", attr, convert)
+        for attr, env_key, convert in _ENV_OVERRIDES
+    }
 
     # ---- Instance helpers ------------------------------------------------ #
     @classmethod
@@ -826,6 +863,37 @@ class ServerCommand(BaseCommand):
         return "built-in default"
 
     @classmethod
+    def _models_config_problem(cls, path: str) -> str:
+        """
+        Explain why the models config at *path* cannot be loaded, or ``""``.
+
+        What is accepted mirrors how
+        :meth:`llm_router_api.core.model_config.ModelConfig` reads the file: a
+        JSON object whose sections are all empty is fine (that simply means
+        "no models"), while one with any model defined must have an
+        ``active_models`` section.
+        """
+        if not path:
+            return "is not set"
+        candidate = Path(path)
+        if not candidate.exists():
+            return "was not found"
+        if not candidate.is_file():
+            return "is not a file"
+        try:
+            with open(candidate, "rt", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except OSError as exc:
+            return f"cannot be read: {exc}"
+        except json.JSONDecodeError as exc:
+            return f"is not valid JSON: {exc}"
+        if not isinstance(data, dict):
+            return "must contain a JSON object"
+        if (not data or any(data.values())) and "active_models" not in data:
+            return "has no 'active_models' section"
+        return ""
+
+    @classmethod
     def _check_models_config(
         cls,
         args: argparse.Namespace,
@@ -837,39 +905,13 @@ class ServerCommand(BaseCommand):
 
         A daemon publishes its PID *before* execing the server, so a missing
         or broken models config would otherwise be reported as a successful
-        start with the real failure buried in the daemon log. What is accepted
-        mirrors :meth:`llm_router_api.core.model_config.ModelConfig` reading
-        the file: a JSON object whose sections are all empty is fine (that
-        simply means "no models"), while one with any model defined must have
-        an ``active_models`` section.
+        start with the real failure buried in the daemon log (see
+        :meth:`_models_config_problem` for what counts as loadable).
 
         Returns the error text, or ``None`` when the server can start.
         """
         path = resolve_models_config_path(os.environ)
-        reason = ""
-        if not path:
-            reason = "is not set"
-        else:
-            candidate = Path(path)
-            if not candidate.exists():
-                reason = "was not found"
-            elif not candidate.is_file():
-                reason = "is not a file"
-            else:
-                try:
-                    with open(candidate, "rt", encoding="utf-8") as handle:
-                        data = json.load(handle)
-                except OSError as exc:
-                    reason = f"cannot be read: {exc}"
-                except json.JSONDecodeError as exc:
-                    reason = f"is not valid JSON: {exc}"
-                else:
-                    if not isinstance(data, dict):
-                        reason = "must contain a JSON object"
-                    elif (not data or any(data.values())) and (
-                        "active_models" not in data
-                    ):
-                        reason = "has no 'active_models' section"
+        reason = cls._models_config_problem(path)
         if not reason:
             return None
 
@@ -1002,7 +1044,7 @@ class ServerCommand(BaseCommand):
         )
         start.add_argument(
             "--server",
-            choices=["gunicorn", "waitress", "flask"],
+            choices=cls._SERVER_TYPES,
             default=None,
             help="WSGI server engine (default: LLM_ROUTER_SERVER_TYPE or gunicorn)",
         )
@@ -1131,6 +1173,19 @@ class ServerCommand(BaseCommand):
         cls._add_instance_arg(stop)
 
         reload = subparsers.add_parser(cls.RELOAD_NAME, help=cls.RELOAD_HELP)
+        reload.add_argument(
+            "--force",
+            action="store_true",
+            help="Skip the SIGTERM grace period when stopping (send SIGKILL).",
+        )
+        reload.add_argument(
+            "--graceful",
+            action="store_true",
+            help=(
+                "Only send SIGHUP to the running master, so Gunicorn recycles "
+                "its workers without a restart (no stop, no new process)."
+            ),
+        )
         cls._add_pid_file_arg(reload)
         cls._add_instance_arg(reload)
 
@@ -1546,8 +1601,146 @@ class ServerCommand(BaseCommand):
         return cls._stop_instance(cls._pid_file_for(args, instance), args.force)
 
     @classmethod
+    def _restart_tokens(cls, record: Dict[str, Any]) -> List[str]:
+        """
+        Rebuild the ``start`` flags of a previous launch from its run record.
+
+        Only the flags the original command line carried (``env_overrides``)
+        are replayed: ``start`` applies the built-in defaults, the shell
+        environment and the instance ``config.env`` again on its own, so an
+        edit made to ``config.env`` still takes effect on a reload.
+        ``--models-config`` comes from the record's absolute path, which keeps
+        pointing at the file the running server actually loaded even when the
+        reload is issued from a different directory.
+        """
+        overrides = record.get("env_overrides")
+        if not isinstance(overrides, dict):
+            overrides = {}
+
+        tokens: List[str] = []
+        for env_key, value in overrides.items():
+            entry = cls._RELOAD_FLAGS.get(str(env_key))
+            if entry is None or env_key == "LLM_ROUTER_MODELS_CONFIG":
+                continue
+            flag, attr, convert = entry
+            token = cls._flag_token(attr, convert, value)
+            if token is None:
+                continue
+            tokens.append(flag)
+            if token:
+                tokens.append(token)
+
+        models_config = record.get("models_config") or overrides.get(
+            "LLM_ROUTER_MODELS_CONFIG"
+        )
+        if models_config:
+            tokens += ["--models-config", str(models_config)]
+        return tokens
+
+    @classmethod
+    def _flag_token(
+        cls, attr: str, convert: Optional[str], value: Any
+    ) -> Optional[str]:
+        """
+        Render a recorded environment *value* as the token of its ``start`` flag.
+
+        ``None`` drops the flag, ``""`` stands for a valueless one
+        (``--verbose``). Every value is checked against what the flag itself
+        accepts, so a stale or hand-edited run record degrades into "flag
+        omitted" instead of an argparse error after the server is already down.
+        """
+        text = str(value).strip()
+        lowered = text.lower()
+        if attr == "verbose":
+            return "" if lowered in _TRUE_TOKENS else None
+        if attr == "server":
+            return text if text in cls._SERVER_TYPES else None
+        if attr == "lb_strategy":
+            return text if text in cls._LB_STRATEGIES else None
+        if convert == "bool":
+            if lowered in _TRUE_TOKENS:
+                return "1"
+            return "0" if lowered in _FALSE_TOKENS else None
+        if not text:
+            return None
+        if attr in cls._NUMERIC_FLAGS and not text.isdigit():
+            return None
+        if attr in cls._BOOL_FLAGS and text not in ("0", "1"):
+            return None
+        return text
+
+    @classmethod
+    def _restart_argv(
+        cls,
+        instance: InstancePaths,
+        pid_file: Path,
+        record: Dict[str, Any],
+    ) -> List[str]:
+        """Build the complete ``server start`` command line that restarts *record*."""
+        argv = [cls.START_NAME, *cls._restart_tokens(record)]
+        if pid_file != instance.pid_file:
+            # The instance was addressed through an explicit --pid-file, which
+            # the restart has to honor or it would start a second server.
+            argv += ["--pid-file", str(pid_file)]
+        if record.get("log_file"):
+            argv += ["--log-file", str(record["log_file"])]
+        return argv
+
+    @classmethod
+    def _restart(
+        cls,
+        instance: InstancePaths,
+        pid_file: Path,
+        record: Dict[str, Any],
+    ) -> int:
+        """
+        Start the server again with the settings *record* was launched with.
+
+        The namespace comes from the real ``start`` parser, so a restart can
+        never drift from what ``server start`` itself accepts.
+        """
+        argv = cls._restart_argv(instance, pid_file, record)
+        try:
+            start_args = cls.build_parser().parse_args(argv)
+        except SystemExit:  # pragma: no cover - defensive, tokens are validated
+            return cls.fail(
+                "reload could not rebuild the start command from "
+                f"{run_file_for(pid_file)}; start the server yourself:\n"
+                f"  llm-router {' '.join(argv)}"
+            )
+        code = cls._start(start_args)
+        if code != 0:
+            print(
+                f"Reload incomplete: {instance.name} is stopped. Fix the "
+                f"problem and start it again: {cls._hint('start', instance)}",
+                file=sys.stderr,
+            )
+        return code
+
+    @classmethod
+    def _reload_graceful(cls, pid: int) -> int:
+        """Send SIGHUP to the running master (Gunicorn recycles its workers)."""
+        try:
+            os.kill(pid, signal.SIGHUP)
+        except ProcessLookupError:
+            return cls.fail(f"the server (pid={pid}) exited before the signal")
+        print(
+            f"Graceful reload requested: SIGHUP sent to pid={pid}; "
+            "Gunicorn is recycling workers."
+        )
+        return 0
+
+    @classmethod
     def _reload(cls, args: argparse.Namespace) -> int:
-        """Send SIGHUP to the server (Gunicorn master recycles workers)."""
+        """
+        Reload the server: stop the running one, then start it again.
+
+        A restart is the only reload that picks up what Gunicorn cannot:
+        another models config, another port or engine, or code changes. The
+        flags of the previous launch are replayed from the run record, so the
+        server comes back the way it went down. ``--force`` skips the SIGTERM
+        grace period, ``--graceful`` keeps the old SIGHUP-only behavior.
+        """
         instance, error = cls._instance(args)
         if error:
             return cls.fail(error)
@@ -1556,17 +1749,46 @@ class ServerCommand(BaseCommand):
         pid = get_alive_pid(pid_file)
         if pid is None:
             print(
-                f"No running server found (pid file: {pid_file}).",
+                f"No running server found (pid file: {pid_file}).\n"
+                f"Start one: {cls._hint('start', instance)}",
                 file=sys.stderr,
             )
             return 1
 
-        os.kill(pid, signal.SIGHUP)
+        if getattr(args, "graceful", False):
+            return cls._reload_graceful(pid)
+
+        # The run record goes away with the PID file, so the launch settings
+        # have to be read while the server is still up.
+        record = read_run_file(run_file_for(pid_file)) or {}
+
+        # Restarting with a models config that cannot be loaded would take a
+        # working instance down for nothing (and a failed start removes a named
+        # instance's state directory), so check the recorded path first.
+        recorded_config = str(record.get("models_config") or "")
+        if recorded_config:
+            problem = cls._models_config_problem(recorded_config)
+            if problem:
+                return cls.fail(
+                    f"reload aborted: the models config {problem}: "
+                    f"{recorded_config}{cls._scope(instance)}. The server is "
+                    "left running — fix the configuration and reload again."
+                )
+
+        print(f"Reloading: stopping the server (pid={pid}) ...", flush=True)
+        if cls._stop_instance(pid_file, bool(getattr(args, "force", False))) != 0:
+            return cls.fail(
+                "reload aborted: the server is still running"
+                f"{cls._scope(instance)}. Stop it with "
+                f"'{cls._hint('stop', instance)} --force', then start it "
+                f"with '{cls._hint('start', instance)}'"
+            )
+
         print(
-            f"Graceful reload requested: SIGHUP sent to pid={pid}; "
-            "Gunicorn is recycling workers."
+            f"Reloading: starting the server again{cls._scope(instance)} ...",
+            flush=True,
         )
-        return 0
+        return cls._restart(instance, pid_file, record)
 
     @classmethod
     def _status_all(cls, color: bool) -> int:
