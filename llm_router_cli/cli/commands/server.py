@@ -249,9 +249,23 @@ def acquire_start_lock(instance: InstancePaths) -> Optional[Path]:
 
 
 def release_start_lock(lock_file: Optional[Path]) -> None:
-    """Release the start lock held by :func:`acquire_start_lock`."""
-    if lock_file is not None:
-        _remove_quietly(lock_file)
+    """
+    Release the start lock, but only while it is still ours.
+
+    The lock carries the PID of the ``start`` that took it. A command that is
+    on its way out must not delete a lock that a newer ``start`` created in the
+    meantime -- that would hand a third one a free pass to spawn a second
+    server for the instance.
+    """
+    if lock_file is None:
+        return
+    try:
+        owner = Path(lock_file).read_text(encoding="utf-8").strip()
+    except OSError:
+        return
+    if owner != str(os.getpid()):
+        return
+    _remove_quietly(lock_file)
 
 
 def discover_instances() -> List[InstancePaths]:
@@ -1629,6 +1643,7 @@ class ServerCommand(BaseCommand):
                     pid_file,
                     cmd,
                     log_file_for(args, instance, shell_log_filename),
+                    lock=lock,
                 )
 
             return cls._run_daemon(
@@ -1637,7 +1652,6 @@ class ServerCommand(BaseCommand):
                 pid_file,
                 cmd,
                 log_file_for(args, instance, shell_log_filename),
-                lock=lock,
             )
         finally:
             release_start_lock(lock)
@@ -1650,6 +1664,8 @@ class ServerCommand(BaseCommand):
         pid_file: Path,
         cmd: List[str],
         log_file: Path,
+        *,
+        lock: Optional[Path] = None,
     ) -> int:
         """Run the server as a child of the CLI until it exits."""
         # Keep the PID file and run record in sync in foreground mode too,
@@ -1665,6 +1681,12 @@ class ServerCommand(BaseCommand):
         # pylint: disable-next=consider-using-with
         proc = subprocess.Popen(cmd)
         write_pid_file(pid_file, proc.pid)
+        # The lock exists to close the gap between "is it alive?" and "write
+        # the PID"; now that the PID is out, holding it would keep the instance
+        # locked for the whole life of a foreground server and make a later
+        # ``reload`` (which starts as soon as this one is stopped) read its own
+        # instance as "a start is already in progress".
+        release_start_lock(lock)
         print(
             f"Running in foreground (pid={proc.pid}).\n"
             f"  stop: {cls._hint('stop', instance)}  (or Ctrl-C)",
@@ -1715,10 +1737,13 @@ class ServerCommand(BaseCommand):
         pid_file: Path,
         cmd: List[str],
         log_file: Path,
-        *,
-        lock: Optional[Path] = None,
     ) -> int:
-        """Spawn the classic double-fork daemon and report its PID."""
+        """
+        Spawn the classic double-fork daemon and report its PID.
+
+        The start lock stays with the caller: it is released by the ``finally``
+        of :meth:`_start`, once the daemon has published its PID here.
+        """
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Record the launch parameters next to the PID file so
@@ -1732,7 +1757,9 @@ class ServerCommand(BaseCommand):
         # daemon to publish its PID and reports it; the daemon then execs
         # the server, so the PID file keeps pointing at the Gunicorn master.
         if os.fork() > 0:
-            release_start_lock(lock)
+            # The lock is kept until the daemon has published its PID, so a
+            # concurrent ``start`` can neither pass the "is it alive?" check
+            # here nor find the instance free while the daemon is still booting.
             pid = _wait_for_pid(pid_file)
             if pid is None:
                 return cls.fail(
@@ -1758,9 +1785,9 @@ class ServerCommand(BaseCommand):
             )
             return 0
 
-        # Child: it must not touch the start lock owned by the CLI process.
-        lock = None
-
+        # Child: the start lock belongs to the CLI process, and neither this
+        # fork nor the daemon it spawns can take it away -- the lock records
+        # the PID of whoever acquired it, and that is not a descendant.
         os.setsid()
         if os.fork() > 0:
             os._exit(0)
