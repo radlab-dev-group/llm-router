@@ -432,6 +432,7 @@ def test_option_choices_are_complete_and_unambiguous():
         "weighted",
         "first_available",
         "first_available_optim",
+        "first_available_optim_nworkers",
     }
     seen: dict = {}
     for path, info in _collect_by_path(tree).items():
