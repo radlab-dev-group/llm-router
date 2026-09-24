@@ -9,7 +9,10 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false,
+          "nworkers": 4
         },
         {
           "id": "gemma3_12b-vllm-71:7001",
@@ -18,7 +21,10 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false,
+          "nworkers": 4
         }
       ],
       "providers_sleep": []
@@ -31,7 +37,10 @@
           "api_token": "",
           "api_type": "openai",
           "input_size": 512000,
-          "model_path": "gemini-2.5-flash-lite"
+          "model_path": "gemini-2.5-flash-lite",
+          "keep_alive": null,
+          "tool_calling": true,
+          "nworkers": 4
         }
       ]
     }
@@ -45,7 +54,9 @@
           "api_token": "",
           "api_type": "openai",
           "input_size": 256000,
-          "model_path": "gpt-3.5-turbo-0125"
+          "model_path": "gpt-3.5-turbo-0125",
+          "keep_alive": null,
+          "tool_calling": true
         }
       ]
     },
@@ -58,7 +69,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "google/gemma-3-12b-it",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false
         },
         {
           "id": "gpt_35_turbo-gemma3_12b-vllm-71:7001",
@@ -67,7 +80,9 @@
           "api_type": "vllm",
           "input_size": 4096,
           "model_path": "google/gemma-3-12b-it",
-          "weight": 1.0
+          "weight": 1.0,
+          "keep_alive": null,
+          "tool_calling": false
         }
       ]
     },
@@ -79,7 +94,10 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": "gpt-oss:120b"
+          "model_path": "gpt-oss:120b",
+          "keep_alive": "45m",
+          "tool_calling": true,
+          "nworkers": 1
         }
       ]
     },
@@ -91,7 +109,10 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "45m",
+          "tool_calling": true,
+          "nworkers": 1
         }
       ]
     },
@@ -111,7 +132,10 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "45m",
+          "tool_calling": true,
+          "nworkers": 1
         }
       ],
       "providers_sleep": [
@@ -127,7 +151,10 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "45m",
+          "tool_calling": true,
+          "nworkers": 1
         }
       ]
     },
@@ -139,7 +166,10 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "45m",
+          "tool_calling": true,
+          "nworkers": 1
         },
         {
           "id": "qwen3-coder-30b-70:11434",
@@ -147,7 +177,10 @@
           "api_token": "",
           "api_type": "ollama",
           "input_size": 256000,
-          "model_path": ""
+          "model_path": "",
+          "keep_alive": "45m",
+          "tool_calling": true,
+          "nworkers": 1
         }
       ]
     }

@@ -11,7 +11,8 @@
           "model_path": "",
           "weight": 1.0,
           "keep_alive": null,
-          "tool_calling": false
+          "tool_calling": false,
+          "nworkers": 4
         },
         {
           "id": "gemma3_12b-vllm-X:7001",
@@ -22,7 +23,8 @@
           "model_path": "",
           "weight": 1.0,
           "keep_alive": null,
-          "tool_calling": false
+          "tool_calling": false,
+          "nworkers": 4
         }
       ],
       "providers_sleep": []
@@ -37,7 +39,8 @@
           "input_size": 512000,
           "model_path": "gemini-2.5-flash-lite",
           "keep_alive": null,
-          "tool_calling": true
+          "tool_calling": true,
+          "nworkers": 10
         }
       ]
     }
@@ -53,7 +56,8 @@
           "input_size": 256000,
           "model_path": "gpt-3.5-turbo-0125",
           "keep_alive": null,
-          "tool_calling": false
+          "tool_calling": false,
+          "nworkers": 10
         }
       ]
     },
@@ -67,7 +71,8 @@
           "input_size": 256000,
           "model_path": "",
           "keep_alive": "35m",
-          "tool_calling": true
+          "tool_calling": true,
+          "nworkers": 1
         }
       ],
       "providers_sleep": []
