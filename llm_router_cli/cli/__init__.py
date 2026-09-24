@@ -78,6 +78,29 @@ def _version() -> str:
         return "unknown"
 
 
+def build_parser() -> argparse.ArgumentParser:
+    """
+    Build the top-level parser (single source of truth).
+
+    Shared by :func:`main` and the completion generator, so the shell
+    completion can never drift away from the real command line.
+    """
+    parser = argparse.ArgumentParser(
+        prog="llm-router",
+        description="LLM Router CLI — manage API keys, policies, and more",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {_version()}",
+        help="Show program version and exit",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+    for command in COMMANDS:
+        command.register(subparsers)
+    return parser
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """
     Top-level CLI entry point.
@@ -94,20 +117,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     """
     argv = argv if argv is not None else sys.argv[1:]
 
-    parser = argparse.ArgumentParser(
-        prog="llm-router",
-        description="LLM Router CLI — manage API keys, policies, and more",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"%(prog)s {_version()}",
-        help="Show program version and exit",
-    )
-    subparsers = parser.add_subparsers(dest="command")
-    for command in COMMANDS:
-        command.register(subparsers)
-
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     if args.command is None:

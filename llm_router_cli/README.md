@@ -751,11 +751,23 @@ every other `server` sub-command, they all take `-i/--instance NAME` (see
 
 ## `llm-router completion` — Shell Tab-Completion (bash / zsh)
 
-Generates a tab-completion script from the live CLI tree — commands, sub-commands at **every nesting level** (e.g.
-`auth key generate`,
-`anonymizer run`, `config discover`) and every option in **both spellings**: the long one (`--instance`) and the short
-one (`-i`), long options listed first. Options keep being offered **mid-command**, also after a value has been typed,
-so `llm-router server start --port 8081 <TAB>` still completes `--models-config`, `-i` and the rest.
+Generates a tab-completion script from the live CLI tree — the very parser `llm-router --help` prints — so commands,
+sub-commands at **every nesting level** (e.g. `auth key generate`,
+`anonymizer run`, `config discover`), every option in **both spellings** — the long one (`--instance`) and the short
+one (`-i`), long options listed first — and the top-level `--version` can never drift away from the real command line.
+Options keep being offered **mid-command**, also after a value has been typed, so
+`llm-router server start --port 8081 <TAB>` still completes `--models-config`, `-i` and the rest.
+
+Arguments and option **values** complete as well:
+
+| Value of                                                                                          | `<TAB>` offers                                                                 |
+|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------|
+| `--color`, `--store`, `--lb-strategy`, `--algorithm`, `--server`, `--dataset-type`, `--debug`, `--auth`, `--auth-redis-protocol` | the declared `choices` (`auto` / `always` / `never`, …)                          |
+| `-i` / `--instance`, `server rm-instance <name>`                                                    | `default` plus the instances found under `~/.llm-router/instances`              |
+| path options (`--log-file`, `--pid-file`, `--models-config`, `-o`, `--output-dir`, …) and the file arguments of `config merge <files>` / `anonymizer run [input]` | file names, directories with a trailing slash                |
+
+Anything else that takes a value (`--host`, `--port`, `<key-id>`, `config discover <hosts> …`) is left alone rather
+than completed with file names.
 
 | Sub-command | Description                              |
 |-------------|------------------------------------------|
