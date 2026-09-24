@@ -25,7 +25,7 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_MINIMUM`               | `False`                                | Run service in proxy-only mode.                                                                                  |
 | `LLM_ROUTER_IN_DEBUG`              | `False`                                | Run server in debug mode; also forces log level to DEBUG.                                                        |
 | `LLM_ROUTER_VERBOSE`               | `False`                                | Log RAW, **unmasked** request params (PII!). Startup logs a warning and waits 3 s. Never use in production.      |
-| `LLM_ROUTER_BALANCE_STRATEGY`      | `balanced`                             | Load-balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`. |
+| `LLM_ROUTER_BALANCE_STRATEGY`      | `balanced`                             | Load-balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`, `first_available_optim_nworkers`. |
 | `LLM_ROUTER_SERVER_TYPE`           | `flask`                                | Server implementation: flask, gunicorn, waitress.                                                                |
 | `LLM_ROUTER_SERVER_PORT`           | `8080`                                 | Port on which the server listens.                                                                                |
 | `LLM_ROUTER_SERVER_HOST`           | `localhost`                            | Host address for the server.                                                                                     |

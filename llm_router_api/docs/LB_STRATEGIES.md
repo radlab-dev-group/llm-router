@@ -85,7 +85,90 @@ coordination is performed via Redis, ensuring safe concurrent operation across m
 
 ---
 
-### 6. `AdaptiveStrategy` (beta)
+### 6. `first_available_optim_nworkers`
+
+**What it is**  
+`first_available_optim_nworkers` is a permissive extension of
+[`first_available_optim`](#5-first_available_optim).  It keeps the same host-reuse
+flow (steps 1-3) and keep-alive bookkeeping, but replaces the binary
+one-consumer lock per provider with a **worker-slot counter**: every
+provider may serve up to `nworkers` concurrent requests at the same time
+(optional provider field in `models-config.json`, default `1`).
+
+**Provider configuration**
+
+| Field      | Type                      | Description                                                                                              | Default |
+|------------|---------------------------|------------------------------------------------------------------------------------------------------------|---------|
+| `nworkers` | `int` (or numeric string) | Maximum number of parallel requests allowed on this provider. Missing/invalid/non-positive values fall back to `1` with a warning logged. | `1`     |
+
+**How it works**
+
+| Step                                    | Purpose                                                                                         | Behaviour                                                                                                                                                                                                                                                                     |
+|-----------------------------------------|-------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **1️⃣ Re‑use the last host**              | Reuse the host of the previous selection when it still has a free slot.                         | Same as `first_available_optim`, but the acquisition now claims one worker slot instead of a binary lock.                                                                                                                                                                       |
+| **2️⃣ Re‑use any known host**             | Prefer hosts that already have the model loaded.                                                 | Same as above – providers on known hosts are skipped once their slot counter reaches `nworkers`.                                                                                                                                      |
+| **3️⃣ Pick an unused host**               | Spread the load to a fresh host when no “known” host has capacity.                               | Same as above.                                                                                                                                                                                                                                                                |
+| **4️⃣ Least loaded with a free slot**     | Load‑aware selection before giving up.                                                          | A single `HGETALL` snapshot of the `model:<model>:in_use` hash is taken; active (healthy) providers whose host is free for the model are ranked by `(busy, busy / nworkers, config order)` and acquired atomically – a lost race simply moves to the next candidate. |
+| **5️⃣ Fallback to plain first‑available** | Guarantees a result even when nothing was acquired.                                             | Delegates to the base `FirstAvailableStrategy`, which waits until a slot is released and raises `TimeoutError` after the configured `timeout` (default 60 s) if no slot frees up.                                                                                             |
+| **6️⃣ Book‑keeping**                      | Keep the optimisation data up‑to‑date.                                                          | As in `first_available_optim`: `:last_host`, `:hosts` and `:occupancy` are updated after a successful acquisition.                                                                                                                                                             |
+
+**Redis state**
+
+* `model:<model>:in_use` – hash with one field per provider; the value is the
+  number of busy workers (missing field = 0).  Counters are managed by two
+  locally registered Lua scripts (atomic acquire: increment only below the
+  limit; atomic release: decrement and delete the field at zero), so multiple
+  router workers/instances share one capacity view.
+* The classic `:is_chosen` lock fields are **not** used by this strategy.
+* With `clear_buffers=True` (the default) all `*:in_use` keys are removed on
+  router start, the same way the classic locks are cleared.
+* Host occupancy semantics (`host:<host>` → `model`) and the KeepAliveMonitor
+  are unchanged – a host occupied by *another* model is still skipped.
+
+**Example**
+
+```json
+{
+  "google_models": {
+    "google/gemma-3-12b-it": {
+      "providers": [
+        {
+          "id": "gemma3_12b-vllm-71:7000",
+          "api_host": "http://192.168.100.71:7000/",
+          "api_type": "vllm",
+          "nworkers": 4
+        },
+        {
+          "id": "qwen3-coder-ollama",
+          "api_host": "http://192.168.100.66:11434",
+          "api_type": "ollama",
+          "nworkers": 1
+        }
+      ]
+    }
+  }
+}
+```
+
+**When to use it**
+
+* **Backends that support parallel requests** – vLLM / llama.cpp servers with
+  several concurrent slots; set `nworkers` to the real parallelism of the
+  engine so the router never overloads it.
+* **Higher throughput on a limited host pool** – the same host can absorb
+  several simultaneous requests instead of one.
+* Everything from `first_available_optim` still applies (Redis required,
+  multi‑worker safe, reliable timeout fallback).
+
+**Summary**  
+`first_available_optim_nworkers` is drop‑in compatible with
+`first_available_optim` (`nworkers` defaults to `1`, which reproduces the
+classic binary lock one‑to‑one) and adds per‑provider concurrency with a
+least‑loaded selection step, shared atomically through Redis.
+
+---
+
+### 7. `AdaptiveStrategy` (beta)
 
 * **Description:** An experimental strategy that extends `DynamicWeightedStrategy` with online learning. It dynamically
   adjusts weights to minimize the intervals between consecutive provider selections, with strong penalties for failures
@@ -103,7 +186,7 @@ The connection details for Redis can be configured using environment variables:
 
 | Environment variable          | Default    | Description                                                                                                        |
 |-------------------------------|------------|--------------------------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_BALANCE_STRATEGY` | `balanced` | Load‑balancing strategy name (e.g., balanced, weighted, dynamic_weighted, first_available, first_available_optim). |
+| `LLM_ROUTER_BALANCE_STRATEGY` | `balanced` | Load‑balancing strategy name (e.g., balanced, weighted, dynamic_weighted, first_available, first_available_optim, first_available_optim_nworkers). |
 | `LLM_ROUTER_REDIS_HOST`       | –          | Hostname of the Redis server (mandatory).                                                                          |
 | `LLM_ROUTER_REDIS_PORT`       | –          | Port of the Redis server (mandatory).                                                                              |
 | `LLM_ROUTER_REDIS_DB`         | `0`        | Optional Redis database index.                                                                                     |

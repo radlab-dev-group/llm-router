@@ -55,6 +55,7 @@ Having a single source of truth for model definitions makes it easy to:
 | `input_size`   | `int` (or numeric string) | Maximum context length the provider accepts. The `ApiModel.from_config` helper converts it to `int`.                                | `4096`                          |
 | `model_path`   | `str`                     | Path or name of the model on the provider side (used by Ollama, vLLM, etc.). May be empty for providers that infer it from the URL. | `"gpt-3.5-turbo-0125"`          |
 | `weight`       | `float`                   | Relative weight for **weighted‑random** load‑balancing strategies. Default `1.0`.                                                   | `0.1`                           |
+| `nworkers`     | `int` (or numeric string) | Maximum number of **concurrent requests** allowed on the provider. Used only by the `first_available_optim_nworkers` load‑balancing strategy; a missing, invalid or non‑positive value falls back to `1`. | `4`                             |
 | `keep_alive`   | `str`                     | Optional keep‑alive duration (e.g. `"35m"`). Empty or `null` means the provider is not kept alive.                                  | `"35m"`                         |
 | `tool_calling` | `bool`                    | Whether the provider supports tool‑calling (function calling).                                                                      | `true`                          |
 | `is_embedding` | `bool`                    | Whether the model is an embedding model (determines use of embedding endpoints).                                                    | `true`                          |
@@ -140,6 +141,7 @@ Copy it to your own configuration directory and adjust the values to match your 
           "input_size": 4096,
           "model_path": "",
           "weight": 1.0,
+          "nworkers": 4,
           "keep_alive": null,
           "tool_calling": false
         },
@@ -151,6 +153,7 @@ Copy it to your own configuration directory and adjust the values to match your 
           "input_size": 4096,
           "model_path": "",
           "weight": 1.0,
+          "nworkers": 4,
           "keep_alive": null,
           "tool_calling": false
         }
@@ -224,6 +227,7 @@ Copy it to your own configuration directory and adjust the values to match your 
           "api_type": "ollama",
           "input_size": 256000,
           "model_path": "",
+          "nworkers": 1,
           "keep_alive": "35m",
           "tool_calling": true
         }
