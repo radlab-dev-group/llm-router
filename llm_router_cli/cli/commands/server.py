@@ -58,6 +58,7 @@ from llm_router_cli.cli.config_env import (
 )
 from llm_router_cli.cli.env_defaults import (
     apply_default_env,
+    apply_recorded_env,
     collect_env,
     DEFAULT_LOG_FILENAME,
 )
@@ -288,6 +289,10 @@ def discover_instances() -> List[InstancePaths]:
 
 #: How long to wait for SIGTERM before telling the user to use ``--force``.
 _STOP_GRACE_SECONDS = 15
+#: How much longer the worker forks get once the master is already down. They
+#: had the master's whole grace to drain, so this only covers the fork that is
+#: slow to die -- waiting another full grace period would stall a reload.
+_WORKER_GRACE_SECONDS = 5
 _STOP_POLL_INTERVAL = 0.2
 _KILL_POLL_SECONDS = 5
 #: How long a freshly spawned daemon has to stay alive before we trust it.
@@ -366,6 +371,232 @@ def _wait_gone(pid: int, timeout: float) -> bool:
             return True
         time.sleep(_STOP_POLL_INTERVAL)
     return not pid_alive(pid)
+
+
+# -------------------------------------------------------------------------- #
+# Process-tree helpers
+#
+# Gunicorn forks its workers from the master and they inherit the listening
+# socket, so a fork that outlives the master keeps the port bound. Waiting for
+# the PID file's process alone therefore is not enough before starting a
+# server again -- the whole tree has to be gone.
+# -------------------------------------------------------------------------- #
+#: Indices into the ``/proc/<pid>/stat`` field tail, which starts at *state*.
+_STATE_FIELD = 0  # status field 3
+_PPID_FIELD = 1  # status field 4
+_START_TIME_FIELD = 19  # status field 22, clock ticks since boot
+
+#: Guard for the ``/proc`` walk, so a malformed tree cannot spin forever.
+_PROCESS_TREE_MAX_DEPTH = 10
+
+
+def _proc_stat_tail(pid: int) -> Optional[List[str]]:
+    """
+    Return the fields of ``/proc/<pid>/stat`` that follow the command name.
+
+    The command name is parenthesized and may itself contain spaces and
+    parentheses, so the fixed fields are only addressable after the **last**
+    ``)`` of the line.
+    """
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        return None
+    end = stat.rfind(")")
+    if end < 0:
+        return None
+    fields = stat[end + 1 :].split()
+    return fields or None
+
+
+def _proc_state(pid: int) -> Optional[str]:
+    """One-letter process state of *pid*, or ``None`` when it cannot be read."""
+    fields = _proc_stat_tail(pid)
+    return fields[_STATE_FIELD] if fields else None
+
+
+#: How often :func:`_has_exited` re-reads a status that cannot be parsed.
+_EXIT_PROBES = 3
+
+#: ``/proc`` states in which a task holds nothing any more: ``Z`` is a zombie
+#: whose parent has not reaped it yet, ``X`` the instant the kernel tears the
+#: task down. Both have released their file descriptors already.
+_EXITED_STATES = frozenset({"Z", "X"})
+
+
+def _has_exited(pid: int) -> bool:
+    """
+    True once *pid* released everything it held, zombie included.
+
+    A process whose parent has not reaped it yet still answers ``kill(pid,
+    0)``, but its address space and file descriptors -- the inherited
+    listening socket among them -- are already gone. Counting that zombie as
+    running would make the stop wait for a reap that is not its business, and
+    a parent that never calls ``wait()`` would hang it until the timeout.
+
+    While a task is being torn down its ``/proc`` entry is dismantled piece by
+    piece: the status can be gone, come back empty with the command name
+    already stripped, or report ``X`` for the moment the kernel is still
+    deleting the task. Re-reading settles whether that is teardown or a process
+    that is merely hard to read, and only a state outside
+    :data:`_EXITED_STATES` keeps the caller waiting. A verdict that is wrong
+    the friendly way costs one port pre-flight check in ``start``; the other
+    way costs a full stop timeout.
+    """
+    for attempt in range(_EXIT_PROBES):
+        if not pid_alive(pid):
+            return True
+        state = _proc_state(pid)
+        if state is not None:
+            return state in _EXITED_STATES
+        if attempt + 1 < _EXIT_PROBES:
+            time.sleep(_STOP_POLL_INTERVAL)
+    return True
+
+
+def _proc_ppid(pid: int) -> Optional[int]:
+    """Parent PID of *pid*, or ``None`` when it cannot be read."""
+    fields = _proc_stat_tail(pid)
+    if not fields or len(fields) <= _PPID_FIELD:
+        return None
+    try:
+        return int(fields[_PPID_FIELD])
+    except ValueError:
+        return None
+
+
+def _proc_start_ticks(pid: int) -> Optional[int]:
+    """
+    Start time of *pid* in clock ticks since boot, or ``None``.
+
+    A PID on its own is not safe to signal later: the kernel hands the numbers
+    out again. The start time pins an entry to the process it was captured
+    for, so a signal can never land on an unrelated process that merely
+    inherited the number.
+    """
+    fields = _proc_stat_tail(pid)
+    if not fields or len(fields) <= _START_TIME_FIELD:
+        return None
+    try:
+        return int(fields[_START_TIME_FIELD])
+    except ValueError:
+        return None
+
+
+def _children_by_ppid(parent: int) -> List[int]:
+    """Scan ``/proc`` for processes whose recorded parent is *parent*."""
+    children: List[int] = []
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return children
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        candidate = int(entry)
+        if candidate != parent and _proc_ppid(candidate) == parent:
+            children.append(candidate)
+    return children
+
+
+def _direct_children(pid: int) -> List[int]:
+    """
+    Return the direct children of *pid*, read from ``/proc``.
+
+    ``task/*/children`` is the cheap and authoritative source; kernels built
+    without it (or a thread we may not read) fall back to scanning every
+    process' parent. An unreadable ``/proc`` yields an empty list, which makes
+    the caller behave exactly like before the tree was tracked.
+    """
+    children: List[int] = []
+    try:
+        threads = os.listdir(f"/proc/{pid}/task")
+    except OSError:
+        threads = []
+    readable = False
+    for thread in threads:
+        try:
+            listed = Path(f"/proc/{pid}/task/{thread}/children").read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            continue
+        readable = True
+        children.extend(int(token) for token in listed.split() if token.isdigit())
+    return children if readable else _children_by_ppid(pid)
+
+
+@dataclass(frozen=True)
+class TrackedPid:
+    """
+    A process captured while it was still reachable, with its start time.
+
+    Children of a dying master are reparented to init, so after the master is
+    gone their parent no longer leads back to the server and they can only be
+    found through a set taken earlier. Keeping the start time next to the PID
+    keeps that set safe to signal.
+    """
+
+    pid: int
+    start_ticks: Optional[int]
+
+    @classmethod
+    def capture(cls, pid: int) -> "TrackedPid":
+        """Remember *pid* together with the start time it has right now."""
+        return cls(pid, _proc_start_ticks(pid))
+
+    def still_same(self) -> bool:
+        """True while the PID still stands for the process that was captured."""
+        if _has_exited(self.pid):
+            return False
+        if self.start_ticks is None:
+            return True
+        return _proc_start_ticks(self.pid) == self.start_ticks
+
+
+def process_tree(pid: int) -> List[TrackedPid]:
+    """
+    Return every descendant of *pid*, nearest generation first.
+
+    Must be called while the master still lives: once it exits, its workers
+    belong to init and nothing links them to the server any more.
+    """
+    found: Dict[int, TrackedPid] = {}
+    frontier = [pid]
+    for _ in range(_PROCESS_TREE_MAX_DEPTH):
+        next_frontier: List[int] = []
+        for parent in frontier:
+            for child in _direct_children(parent):
+                if child in found or child == pid:
+                    continue
+                found[child] = TrackedPid.capture(child)
+                next_frontier.append(child)
+        if not next_frontier:
+            break
+        frontier = next_frontier
+    return list(found.values())
+
+
+def _signal_tracked(process: TrackedPid, sig: int) -> None:
+    """Signal *process*, but only while its PID still belongs to it."""
+    if not process.still_same():
+        return
+    try:
+        os.kill(process.pid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _wait_tracked_gone(processes: List[TrackedPid], timeout: float) -> bool:
+    """Wait up to *timeout* seconds for every entry to die; True if all gone."""
+    remaining = [item for item in processes if item.still_same()]
+    deadline = time.monotonic() + timeout
+    while remaining and time.monotonic() < deadline:
+        time.sleep(_STOP_POLL_INTERVAL)
+        remaining = [item for item in remaining if item.still_same()]
+    return not remaining
 
 
 # -------------------------------------------------------------------------- #
@@ -749,8 +980,10 @@ class ServerCommand(BaseCommand):
         """
         Build the environment a server for *instance* starts with.
 
-        Order of application (last wins): built-in defaults, the shell
-        environment, the instance ``config.env``, explicit CLI flags. Named
+        Order of application (last wins): built-in defaults, the environment
+        a reload is restarting (``args.restart_env``, see :meth:`_restart`),
+        the shell environment, the instance ``config.env``, explicit CLI
+        flags. Named
         instances additionally get their own application log and Prometheus
         multiproc directory, so concurrent instances cannot corrupt each
         other's metrics or logs. A named instance always gets its application
@@ -765,6 +998,11 @@ class ServerCommand(BaseCommand):
         if instance.named:
             scaffold_config_env(instance.config_env, instance.name)
         apply_instance_config(parse_env_file(instance.config_env))
+
+        # Below the shell env and config.env, above the defaults: it only
+        # stands in for what nothing else says, so a reload cannot resurrect
+        # a setting the user has just changed.
+        apply_recorded_env(getattr(args, "restart_env", None) or {})
 
         user_log = os.environ.get("LLM_ROUTER_LOG_FILENAME")
         apply_default_env()
@@ -1435,11 +1673,14 @@ class ServerCommand(BaseCommand):
         try:
             return proc.wait()
         finally:
-            remove_pid_file(pid_file)
-            try:
-                run_file_for(pid_file).unlink()
-            except OSError:
-                pass
+            # A reload that already started the next server owns the files by
+            # now; only the process that wrote them may take them away.
+            if read_pid_file(pid_file) == proc.pid:
+                remove_pid_file(pid_file)
+                try:
+                    run_file_for(pid_file).unlink()
+                except OSError:
+                    pass
 
     @classmethod
     def _log_tail(cls, log_file: Path, n: int = 15) -> str:
@@ -1530,9 +1771,73 @@ class ServerCommand(BaseCommand):
         os.execvpe(sys.executable, cmd, os.environ)
         return 127  # pragma: no cover - execvpe never returns
 
+    @staticmethod
+    def _survivor_message(pid: int, survivors: List[TrackedPid]) -> None:
+        """Report processes that outlived the server and may still hold a port."""
+        pids = ", ".join(str(item.pid) for item in survivors)
+        print(
+            f"Server (pid={pid}) left process(es) {pids} alive; the port may "
+            "still be in use.",
+            file=sys.stderr,
+        )
+
+    @staticmethod
+    def _wait_master_gone(pid: int, timeout: float) -> Dict[int, TrackedPid]:
+        """
+        Wait up to *timeout* for the master *pid* to exit, collecting children.
+
+        The child set is refreshed on every tick, because a worker the master
+        restarts during its shutdown would otherwise be missed by a snapshot
+        taken before the signal went out.
+        """
+        children: Dict[int, TrackedPid] = {}
+        deadline = time.monotonic() + timeout
+        while True:
+            for entry in process_tree(pid):
+                children.setdefault(entry.pid, entry)
+            if _has_exited(pid) or time.monotonic() >= deadline:
+                return children
+            time.sleep(_STOP_POLL_INTERVAL)
+
+    @classmethod
+    def _stop_orphaned_workers(
+        cls, children: Dict[int, TrackedPid]
+    ) -> List[TrackedPid]:
+        """
+        Make the master's workers follow it down; return the unkilleable ones.
+
+        Every fork is signalled directly rather than trusted to receive what
+        the master forwards, because a master that exits immediately never
+        passes the signal on. One that then ignores it is force-killed after
+        :data:`_WORKER_GRACE_SECONDS`, exactly as the Gunicorn master itself
+        does once its ``graceful_timeout`` runs out: a surviving fork would
+        keep the inherited listening socket -- and with it the port -- bound
+        against the next ``start``.
+        """
+        stragglers = [item for item in children.values() if item.still_same()]
+        if not stragglers or _wait_tracked_gone(stragglers, _WORKER_GRACE_SECONDS):
+            return []
+        stragglers = [item for item in stragglers if item.still_same()]
+        for child in stragglers:
+            print(
+                f"Worker (pid={child.pid}) outlived the master; sending SIGKILL.",
+                file=sys.stderr,
+            )
+            _signal_tracked(child, signal.SIGKILL)
+        _wait_tracked_gone(stragglers, _KILL_POLL_SECONDS)
+        return [item for item in stragglers if item.still_same()]
+
     @classmethod
     def _stop_instance(cls, pid_file: Path, force: bool) -> int:
-        """Stop the single server recorded in *pid_file*."""
+        """
+        Stop the single server recorded in *pid_file*, forks included.
+
+        Waiting for the master process alone is not enough: its workers inherit
+        the listening socket, so a fork that outlives it keeps the port bound
+        and the next ``start`` (``reload``) fails on ``EADDRINUSE``. Success
+        here means the whole process tree is gone, and the state files are
+        removed only once that is true.
+        """
         pid = get_alive_pid(pid_file)
         if pid is None:
             print(
@@ -1541,21 +1846,46 @@ class ServerCommand(BaseCommand):
             )
             return 1
 
-        try:
-            if force:
+        # The tree is only findable through its parent while the master lives,
+        # so it has to be sampled before the first signal.
+        children: Dict[int, TrackedPid] = {
+            entry.pid: entry for entry in process_tree(pid)
+        }
+
+        if force:
+            try:
                 os.kill(pid, signal.SIGKILL)
-                _wait_gone(pid, _KILL_POLL_SECONDS)
-            else:
+            except ProcessLookupError:
+                pass
+            for child in children.values():
+                _signal_tracked(child, signal.SIGKILL)
+            # ``start_ticks`` is left out for the master: the PID alone is what
+            # the PID file ever claimed, so that is what gets waited for.
+            tracked = [TrackedPid(pid, None), *children.values()]
+            if not _wait_tracked_gone(tracked, _KILL_POLL_SECONDS):
+                cls._survivor_message(
+                    pid, [item for item in tracked if item.still_same()]
+                )
+                return 1
+        else:
+            try:
                 os.kill(pid, signal.SIGTERM)
-                if not _wait_gone(pid, _STOP_GRACE_SECONDS):
-                    print(
-                        f"Server (pid={pid}) did not exit within "
-                        f"{_STOP_GRACE_SECONDS}s; retry with --force to SIGKILL.",
-                        file=sys.stderr,
-                    )
-                    return 1
-        except ProcessLookupError:
-            pass
+            except ProcessLookupError:
+                pass
+            for child in children.values():
+                _signal_tracked(child, signal.SIGTERM)
+            children.update(cls._wait_master_gone(pid, _STOP_GRACE_SECONDS))
+            if not _has_exited(pid):
+                print(
+                    f"Server (pid={pid}) did not exit within "
+                    f"{_STOP_GRACE_SECONDS}s; retry with --force to SIGKILL.",
+                    file=sys.stderr,
+                )
+                return 1
+            survivors = cls._stop_orphaned_workers(children)
+            if survivors:
+                cls._survivor_message(pid, survivors)
+                return 1
 
         remove_pid_file(pid_file)
         try:
@@ -1678,6 +2008,11 @@ class ServerCommand(BaseCommand):
     ) -> List[str]:
         """Build the complete ``server start`` command line that restarts *record*."""
         argv = [cls.START_NAME, *cls._restart_tokens(record)]
+        if instance.named:
+            # Without the name the restart resolves ``default``: another
+            # config.env, another PID file, another log and metrics tree --
+            # a second, wrongly configured server next to this instance.
+            argv += ["--instance", instance.name]
         if pid_file != instance.pid_file:
             # The instance was addressed through an explicit --pid-file, which
             # the restart has to honor or it would start a second server.
@@ -1708,6 +2043,11 @@ class ServerCommand(BaseCommand):
                 f"{run_file_for(pid_file)}; start the server yourself:\n"
                 f"  llm-router {' '.join(argv)}"
             )
+        # Flags replay only what was typed as a flag. A launch that configured
+        # itself through LLM_ROUTER_* variables (the run scripts do exactly
+        # that) leaves no flag behind, so the recorded environment goes along
+        # as the fallback layer of ``_apply_start_env``.
+        start_args.restart_env = cls._env_from_record(record)
         code = cls._start(start_args)
         if code != 0:
             print(
@@ -1740,6 +2080,10 @@ class ServerCommand(BaseCommand):
         flags of the previous launch are replayed from the run record, so the
         server comes back the way it went down. ``--force`` skips the SIGTERM
         grace period, ``--graceful`` keeps the old SIGHUP-only behavior.
+
+        The stop waits for the master *and* its worker forks, because a worker
+        outlives the master only while it still holds the inherited listening
+        socket -- starting on top of it would fail on ``EADDRINUSE``.
         """
         instance, error = cls._instance(args)
         if error:
@@ -1778,8 +2122,9 @@ class ServerCommand(BaseCommand):
         print(f"Reloading: stopping the server (pid={pid}) ...", flush=True)
         if cls._stop_instance(pid_file, bool(getattr(args, "force", False))) != 0:
             return cls.fail(
-                "reload aborted: the server is still running"
-                f"{cls._scope(instance)}. Stop it with "
+                "reload aborted: the server could not be fully stopped"
+                f"{cls._scope(instance)}, and a leftover worker may still hold "
+                f"its port. Stop it with "
                 f"'{cls._hint('stop', instance)} --force', then start it "
                 f"with '{cls._hint('start', instance)}'"
             )

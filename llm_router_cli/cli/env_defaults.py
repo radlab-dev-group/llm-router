@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-from typing import Dict
+from typing import Any, Dict
 
 from llm_router_lib.core.constants import ENV_PREFIX
 
@@ -125,6 +125,23 @@ def apply_default_env() -> None:
     """Apply :data:`DEFAULT_ENV` without overriding variables already set."""
     for key, value in DEFAULT_ENV.items():
         os.environ.setdefault(key, value)
+
+
+def apply_recorded_env(values: Dict[str, Any]) -> None:
+    """
+    Fill in the environment a previously running server was started with.
+
+    Used by ``server reload``: the run record snapshots every variable the
+    server actually ran with, which is the only trace of a launch that passed
+    its settings as environment variables instead of ``start`` flags. It is
+    applied with ``setdefault``, so it stays below the shell environment and
+    the instance ``config.env`` and only replaces what the built-in defaults
+    would otherwise have filled.
+    """
+    for key, value in values.items():
+        if not isinstance(key, str) or not key or value is None:
+            continue
+        os.environ.setdefault(key, str(value))
 
 
 def collect_env() -> Dict[str, str]:
