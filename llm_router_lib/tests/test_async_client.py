@@ -90,9 +90,13 @@ def _client(
     captured: Optional[List[Dict[str, Any]]] = None,
     **kwargs: Any,
 ) -> AsyncLLMRouterClient:
-    kwargs.setdefault(
-        "transport", httpx.MockTransport(_json_handler(captured))
-    )
+    if "transport" not in kwargs and "payload" not in kwargs:
+        kwargs["transport"] = httpx.MockTransport(_json_handler(captured))
+    elif "payload" in kwargs:
+        payload = kwargs.pop("payload")
+        kwargs["transport"] = httpx.MockTransport(
+            _json_handler(captured, payload=payload)
+        )
     return AsyncLLMRouterClient(api="http://router.test", **kwargs)
 
 
@@ -248,9 +252,7 @@ CASES: List[EndpointCase] = [
 # construction & lifecycle
 # ---------------------------------------------------------------------- #
 def test_base_url_trailing_slash_stripped() -> None:
-    client = _client(transport=httpx.MockTransport(
-        lambda r: httpx.Response(200)
-    ), api=None) if False else AsyncLLMRouterClient(
+    client = AsyncLLMRouterClient(
         api="http://r.test///",
         transport=httpx.MockTransport(lambda r: httpx.Response(200)),
     )
@@ -304,12 +306,9 @@ def test_aclose_closes_client() -> None:
 # ---------------------------------------------------------------------- #
 def test_ping_returns_typed_response() -> None:
     captured: List[Dict[str, Any]] = []
-    client = _client(captured)
-    client.http.client = httpx.AsyncClient(
-        transport=httpx.MockTransport(_json_handler(captured, payload={
-            "status": True,
-            "body": "pong",
-        }))
+    client = _client(
+        captured,
+        payload={"status": True, "body": "pong"},
     )
     resp = _run(client.ping())
     assert isinstance(resp, PingResponse)
@@ -320,12 +319,7 @@ def test_ping_returns_typed_response() -> None:
 
 def test_version_returns_typed_response() -> None:
     captured: List[Dict[str, Any]] = []
-    client = _client(captured)
-    client.http.client = httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            _json_handler(captured, payload={"version": "1.2.3"})
-        )
-    )
+    client = _client(captured, payload={"version": "1.2.3"})
     resp = _run(client.version())
     assert isinstance(resp, VersionResponse)
     assert resp.version == "1.2.3"
@@ -334,17 +328,12 @@ def test_version_returns_typed_response() -> None:
 
 def test_models_returns_typed_response_with_ids() -> None:
     captured: List[Dict[str, Any]] = []
-    client = _client(captured)
-    client.http.client = httpx.AsyncClient(
-        transport=httpx.MockTransport(
-            _json_handler(
-                captured,
-                payload={
-                    "object": "list",
-                    "data": [{"id": "model-a"}, {"id": "model-b"}],
-                },
-            )
-        )
+    client = _client(
+        captured,
+        payload={
+            "object": "list",
+            "data": [{"id": "model-a"}, {"id": "model-b"}],
+        },
     )
     resp = _run(client.models())
     assert isinstance(resp, ModelsListResponse)

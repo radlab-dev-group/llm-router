@@ -175,20 +175,10 @@ async def test_iter_events_yields_meaningful_events_only() -> None:
 # ---------------------------------------------------------------------- #
 # AsyncLLMRouterClient streaming methods
 # ---------------------------------------------------------------------- #
-def _sse_client(body: bytes, **kwargs: Any) -> AsyncLLMRouterClient:
-    """Build an async client whose conversation endpoints stream *body*."""
-    captured: List[Dict[str, Any]] = []
-    kwargs.setdefault("captured", captured)
+def _sse_client(body: bytes) -> AsyncLLMRouterClient:
+    """Build an async client whose endpoints stream *body*."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        body_dict = json.loads(request.content) if request.content else None
-        captured.append(
-            {
-                "path": request.url.path,
-                "body": body_dict,
-                "auth": request.headers.get("Authorization"),
-            }
-        )
         return httpx.Response(
             200,
             content=_aiter(body),
@@ -198,7 +188,6 @@ def _sse_client(body: bytes, **kwargs: Any) -> AsyncLLMRouterClient:
     return AsyncLLMRouterClient(
         api="http://r.test",
         transport=httpx.MockTransport(handler),
-        **{k: v for k, v in kwargs.items() if k != "captured"},
     )
 
 
