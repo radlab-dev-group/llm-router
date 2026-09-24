@@ -60,6 +60,7 @@ from llm_router_lib.data_models.response import (
     GenerateArticleFromTextResponse,
     CreateFullArticleFromTextsResponse,
     GenerateArticleFromTextsResponse,
+    StreamEvent,
 )
 from llm_router_lib.data_models.openai import OpenAIChatModel
 
@@ -115,4 +116,5 @@ __all__ = [
     "GenerateArticleFromTextResponse",
     "CreateFullArticleFromTextsResponse",
     "GenerateArticleFromTextsResponse",
+    "StreamEvent",
 ]

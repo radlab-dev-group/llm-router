@@ -33,6 +33,45 @@ from llm_router_lib.exceptions import (
 )
 
 
+def raise_for_status(status_code: int, text: str) -> None:
+    """
+    Translate an HTTP status code into the library‑specific exception hierarchy.
+
+    Shared by the synchronous (:class:`HttpRequester`) and the asynchronous
+    (``llm_router_lib.utils.http_async.AsyncHttpRequester``) transport layers so
+    both map error codes to exceptions in exactly the same way:
+
+    * :class:`AuthenticationError` for ``401 Unauthorized``.
+    * :class:`RateLimitError` for ``429 Too Many Requests``.
+    * :class:`LLMRouterError` for any other 4xx/5xx status.
+
+    Successful (2xx/3xx) status codes return without raising.
+
+    Parameters
+    ----------
+    status_code : int
+        The HTTP status code of the response.
+    text : str
+        The response body (used only to build the :class:`LLMRouterError`
+        message for generic 4xx/5xx failures).
+
+    Raises
+    ------
+    AuthenticationError
+        When the status code is ``401``.
+    RateLimitError
+        When the status code is ``429``.
+    LLMRouterError
+        For any other status code in the 4xx/5xx range.
+    """
+    if status_code == 401:
+        raise AuthenticationError("Invalid or missing token")
+    if status_code == 429:
+        raise RateLimitError("Rate limit exceeded")
+    if 400 <= status_code < 600:
+        raise LLMRouterError(f"HTTP {status_code}: {text}")
+
+
 class HttpRequester:
     """
     Helper for making HTTP calls with built‑in retries and error translation.
@@ -131,12 +170,7 @@ class HttpRequester:
         LLMRouterError
             For any other client or server error (status code 4xx/5xx).
         """
-        if resp.status_code == 401:
-            raise AuthenticationError("Invalid or missing token")
-        if resp.status_code == 429:
-            raise RateLimitError("Rate limit exceeded")
-        if 400 <= resp.status_code < 600:
-            raise LLMRouterError(f"HTTP {resp.status_code}: {resp.text}")
+        raise_for_status(resp.status_code, resp.text)
         return resp
 
     def get(self, path: str, **kwargs) -> requests.Response:

@@ -24,7 +24,7 @@ that typed model rather than a free‑form ``dict``.
 
 import logging
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from typing import Dict, List, Optional, Type, Union
 
 from llm_router_lib.core.constants import (
@@ -33,6 +33,7 @@ from llm_router_lib.core.constants import (
 )
 from llm_router_lib.services.health import PingService, VersionService, ModelsService
 from llm_router_lib.utils.http import HttpRequester
+from llm_router_lib.utils.payload import build_payload
 from llm_router_lib.exceptions import NoArgsAndNoPayloadError
 from llm_router_lib.services.utils import (
     Polarity3cService,
@@ -1096,44 +1097,19 @@ class LLMRouterClient:
         """
         Normalise a payload argument to the ``dict`` sent over the wire.
 
-        Handles the three supported input shapes:
+        Thin delegation to :func:`llm_router_lib.utils.payload.build_payload`,
+        the single source of truth for the shared payload contract used by
+        both the synchronous and the asynchronous clients:
 
         1. **Pydantic model instance** – serialised via ``model_dump()``.
-        2. **Dict** – rejected with :class:`TypeError` (raw‑dict payloads were
-           removed in favour of explicit Pydantic models).
-        3. **``None``** – constructed from the *extra* keyword arguments using
-           the provided *model_cls*; :class:`NoArgsAndNoPayloadError` is
-           raised when the arguments are missing or fail model validation
-           (e.g. a required field is absent).
-
-        Keyword values explicitly set to ``None`` are dropped so that the
-        Pydantic model's own defaults apply.
+        2. **Dict** – rejected with :class:`TypeError` (raw‑dict payloads
+           were removed in favour of explicit Pydantic models).
+        3. **``None``** – constructed from the named keyword arguments using
+           *model_cls*; :class:`NoArgsAndNoPayloadError` is raised when the
+           arguments are missing or fail model validation.
         """
-        if isinstance(payload_arg, BaseModel):
-            return payload_arg.model_dump()
-
-        if isinstance(payload_arg, dict):
-            raise TypeError(
-                "Passing a raw dict as `payload` is no longer supported. "
-                "Instantiate the matching Pydantic request model explicitly "
-                "(e.g. `<RequestModel>(**payload)`) and pass that instance, "
-                "or use the named keyword arguments instead."
-            )
-
-        # payload_arg is None — build the request model from named arguments.
-        if model_cls is None:
-            raise NoArgsAndNoPayloadError("No payload and no arguments were passed!")
-
-        # Drop explicit Nones so optional fields fall back to model defaults.
-        fields = {key: value for key, value in extra.items() if value is not None}
-        if not fields:
-            raise NoArgsAndNoPayloadError("No payload and no arguments were passed!")
-
-        try:
-            return model_cls(**fields).model_dump()
-        except ValidationError as exc:
-            raise NoArgsAndNoPayloadError(
-                "No valid payload could be built from the given arguments "
-                f"({exc.error_count()} validation problem(s)); pass a complete "
-                "payload model instance or all required named arguments."
-            ) from exc
+        return build_payload(
+            model_cls=model_cls,
+            payload_arg=payload_arg,
+            **extra,
+        )
