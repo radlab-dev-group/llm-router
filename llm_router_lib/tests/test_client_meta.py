@@ -198,6 +198,7 @@ def test_base_exception_catches_all_specific_errors() -> None:
 def test_package_exports() -> None:
     expected = {
         "LLMRouterClient",
+        "AsyncLLMRouterClient",
         "LLMRouterError",
         "AuthenticationError",
         "RateLimitError",
@@ -207,6 +208,7 @@ def test_package_exports() -> None:
     for name in llm_router_lib.__all__:
         assert hasattr(llm_router_lib, name)
     assert llm_router_lib.LLMRouterClient is _Client
+    assert llm_router_lib.AsyncLLMRouterClient is not None
 
 
 # ---------------------------------------------------------------------- #

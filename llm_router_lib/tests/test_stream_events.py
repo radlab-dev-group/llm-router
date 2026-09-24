@@ -243,8 +243,9 @@ async def test_stream_conversation_yields_openai_events() -> None:
             )
         ]
 
-    assert [ev.text for ev in events] == ["He", "llo"]
-    assert events[-1].done is True
+    assert [ev.text for ev in events] == ["He", "llo", ""]
+    assert events[-1].done is True  # the finish_reason chunk
+    assert not events[0].done and not events[1].done
     # stream flag is injected into the wire payload
     assert captured[0]["path"] == "/api/conversation_with_model"
     assert captured[0]["body"]["stream"] is True
@@ -262,8 +263,8 @@ async def test_stream_conversation_ollama_ndjson() -> None:
             )
         ]
 
-    assert [ev.text for ev in events] == ["He", "llo"]
-    assert events[-1].done is True
+    assert [ev.text for ev in events] == ["He", "llo", ""]
+    assert events[-1].done is True  # the Ollama `done: true` chunk
 
 
 @pytest.mark.asyncio
@@ -287,7 +288,8 @@ async def test_stream_extended_conversation_sends_system_prompt() -> None:
             )
         ]
 
-    assert [ev.text for ev in events] == ["He", "llo"]
+    assert [ev.text for ev in events] == ["He", "llo", ""]
+    assert events[-1].done is True
     assert captured[0]["stream"] is True
     assert captured[0]["system_prompt"] == "Be brief."
     assert captured[0]["model_name"] == "gemma"
