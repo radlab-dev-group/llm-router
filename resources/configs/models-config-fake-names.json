@@ -6,7 +6,10 @@
       "api_token": "",
       "api_type": "vllm",
       "input_size": 4096,
-      "model_path": "google/gemma-3-12b-it"
+      "model_path": "google/gemma-3-12b-it",
+      "keep_alive": null,
+      "tool_calling": false,
+      "nworkers": 4
     },
     "google/cloud": {
       "id": "google-cloud-gemini",
@@ -14,7 +17,10 @@
       "api_token": "YOUR_API_KEY",
       "api_type": "openai",
       "input_size": 512000,
-      "model_path": "gemini-2.5-flash-lite"
+      "model_path": "gemini-2.5-flash-lite",
+      "keep_alive": null,
+      "tool_calling": true,
+      "nworkers": 4
     }
   },
   "openai_models": {
@@ -24,7 +30,10 @@
       "api_token": "",
       "api_type": "ollama",
       "input_size": 256000,
-      "model_path": "gpt-oss:120b"
+      "model_path": "gpt-oss:120b",
+      "keep_alive": "45m",
+      "tool_calling": true,
+      "nworkers": 1
     }
   },
   "active_models": {

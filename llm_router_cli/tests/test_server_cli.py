@@ -359,6 +359,13 @@ def test_invalid_lb_strategy_rejected(capsys):
     assert "invalid choice" in capsys.readouterr().err
 
 
+def test_nworkers_lb_strategy_accepted():
+    args = ServerCommand.build_parser().parse_args(
+        ["start", "--lb-strategy", "first_available_optim_nworkers"]
+    )
+    assert args.lb_strategy == "first_available_optim_nworkers"
+
+
 def test_invalid_debug_value_rejected(capsys):
     assert ServerCommand.run(["start", "--debug", "2"]) == 2
     assert "invalid choice" in capsys.readouterr().err

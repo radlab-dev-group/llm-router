@@ -41,7 +41,7 @@ export LLM_ROUTER_EP_PREFIX=${LLM_ROUTER_EP_PREFIX:-"/api"}
 export LLM_ROUTER_DEFAULT_EP_LANGUAGE=${LLM_ROUTER_DEFAULT_EP_LANGUAGE:-"pl"}
 
 # ==================================================================================
-# Routing strategies: [balanced, weighted, first_available, first_available_optim]
+# Routing strategies: [balanced, weighted, first_available, first_available_optim, first_available_optim_nworkers]
 export LLM_ROUTER_BALANCE_STRATEGY=${LLM_ROUTER_BALANCE_STRATEGY:-"balanced"}
 
 # ==================================================================================

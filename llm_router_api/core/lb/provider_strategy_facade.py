@@ -30,6 +30,9 @@ from llm_router_api.core.lb.strategies.first_available import FirstAvailableStra
 from llm_router_api.core.lb.strategies.first_available_optim import (
     FirstAvailableOptimStrategy,
 )
+from llm_router_api.core.lb.strategies.first_available_optim_nworkers import (
+    FirstAvailableOptimNWorkersStrategy,
+)
 
 from llm_router_api.core.lb.strategies.balanced import LoadBalancedStrategy
 from llm_router_api.core.lb.strategies.weighted import (
@@ -43,6 +46,7 @@ STRATEGIES = {
     BalanceStrategies.DYNAMIC_WEIGHTED: DynamicWeightedStrategy,
     BalanceStrategies.FIRST_AVAILABLE: FirstAvailableStrategy,
     BalanceStrategies.FIRST_AVAILABLE_OPTIM: FirstAvailableOptimStrategy,
+    BalanceStrategies.FIRST_AVAILABLE_NWORKERS: FirstAvailableOptimNWorkersStrategy,
 }
 
 

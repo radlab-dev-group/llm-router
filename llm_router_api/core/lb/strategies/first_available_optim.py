@@ -47,6 +47,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         clear_buffers: bool = True,
         logger: Optional[logging.Logger] = None,
         ka_monitor_check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
+        strategy_prefix: Optional[str] = None,
     ) -> None:
         """
         Initialise the optimized first‑available strategy.
@@ -75,6 +76,9 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             Logger instance to use; a default logger is created if omitted.
         ka_monitor_check_interval: float, optional
             Interval (seconds) for the internal keep‑alive monitor thread.
+        strategy_prefix: Optional[str], optional
+            Prefix namespacing the Redis keys of this strategy. Defaults to
+            ``"fa_optim_"``.
         """
         super().__init__(
             models_config_path=models_config_path,
@@ -87,7 +91,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             monitor_check_interval=monitor_check_interval,
             clear_buffers=clear_buffers,
             logger=logger,
-            strategy_prefix="fa_optim_",
+            strategy_prefix=strategy_prefix or "fa_optim_",
         )
         if clear_buffers:
             self._clear_buffer()
@@ -160,29 +164,14 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             )
             return any(p["id"] == act["id"] for act in active)
 
-        # ---- Step 1 -------------------------------------------------
-        provider = self._step1_last_host(model_name, providers)
-        if provider:
-            if _is_active(provider):
-                self._record_selection(model_name, provider)
-                return provider
-            self.put_provider(model_name, provider)
-
-        # ---- Step 2 -------------------------------------------------
-        provider = self._step2_existing_hosts(model_name, providers)
-        if provider:
-            if _is_active(provider):
-                self._record_selection(model_name, provider)
-                return provider
-            self.put_provider(model_name, provider)
-
-        # ---- Step 3 -------------------------------------------------
-        provider = self._step3_unused_host(model_name, providers)
-        if provider:
-            if _is_active(provider):
-                self._record_selection(model_name, provider)
-                return provider
-            self.put_provider(model_name, provider)
+        # ---- Optimisation steps (extend via _optimization_steps) ----
+        for step in self._optimization_steps():
+            provider = step(model_name, providers)
+            if provider:
+                if _is_active(provider):
+                    self._record_selection(model_name, provider)
+                    return provider
+                self.put_provider(model_name, provider)
 
         # ---- Fallback -----------------------------------------------
         provider = super().get_provider(
@@ -192,6 +181,27 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             self._record_selection(model_name, provider)
 
         return provider
+
+    def _optimization_steps(self) -> tuple:
+        """
+        Ordered selection steps executed before the plain first‑available
+        fallback.
+
+        Subclasses may extend the tuple to insert additional steps (e.g. a
+        load‑aware selection) without duplicating the bookkeeping logic of
+        :meth:`get_provider`.
+
+        Returns
+        -------
+        tuple
+            Bound step methods; each takes ``(model_name, providers)`` and
+            returns an acquired provider dictionary or ``None``.
+        """
+        return (
+            self._step1_last_host,
+            self._step2_existing_hosts,
+            self._step3_unused_host,
+        )
 
     def stop_idle_monitor(self) -> None:
         """
@@ -229,42 +239,6 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         """
 
         return self._host_key(host_name)
-
-    def _try_acquire(self, model_name: str, provider: Dict) -> Optional[Dict]:
-        """
-        Attempt to acquire the provider for *model_name* using the Lua script.
-
-        On success, the provider dict is enriched with ``__chosen_field`` and
-        returned; otherwise ``None`` is returned.
-
-        Parameters
-        ----------
-        model_name: str
-            The model for which the provider is being acquired.
-        provider: dict
-            Provider description dictionary.
-
-        Returns
-        -------
-        Optional[dict]
-            The enriched provider dictionary if acquisition succeeded,
-            otherwise ``None``.
-        """
-        field = self._provider_field(provider)
-        try:
-            ok = int(
-                self._acquire_script(
-                    keys=[self._get_redis_key(model_name)], args=[field]
-                )
-            )
-            if ok == 1:
-                provider["__chosen_field"] = field
-                return provider
-        except Exception:
-            # intentional: acquisition errors are non-fatal; this provider is
-            # simply skipped and the next candidate is tried by the caller.
-            pass
-        return None
 
     def _select_provider(
         self,

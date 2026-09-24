@@ -272,72 +272,99 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
     # ----------------------------------------------------------------------
     # Helper methods
     # ----------------------------------------------------------------------
-    def _try_acquire_random_provider(
-        self, redis_key: str, providers: List[Dict]
-    ) -> Optional[Dict]:
+    def _try_acquire(self, model_name: str, provider: Dict) -> Optional[Dict]:
         """
-        Attempt to lock a provider chosen at random.
+        Atomically try to acquire *provider* for *model_name*.
 
-        The method works in three stages:
+        This is the acquisition hook shared by every Redis‑based selection
+        loop (``_acquire_provider_step``, :meth:`_try_acquire_random_provider`,
+        …).  The default implementation uses the classic boolean lock: the
+        ``_acquire_script`` Lua script marks the provider's
+        ``:is_chosen`` field ``'true'`` in the ``model:<model_name>`` hash
+        only when the field is currently free (``'false'`` or missing).
 
-        1. **Shuffle** – a shallow copy of ``providers`` is shuffled so that each
-           provider has an equal probability of being tried first.  The original
-           list is left untouched.
-        2. **Atomic acquisition** – each shuffled provider is passed to the
-           ``_acquire_script`` Lua script which atomically sets the corresponding
-           Redis hash field to ``'true'`` *only if* it is currently ``'false'`` or
-           missing.  The first provider for which the script returns ``1`` is
-           considered successfully acquired.
-        3. **Fallback** – if none of the providers can be locked (e.g., all are
-           currently in use), the method falls back to the *first* provider in the
-           original ``providers`` list, marks its ``"__chosen_field"`` for
-           consistency, and returns it.  This fallback mirrors the behaviour of
-           the non‑random acquisition path and ensures the caller always receives
-           a provider dictionary (or ``None`` when ``providers`` is empty).
+        On success the provider dictionary is enriched with the
+        ``__chosen_field`` entry and returned; ``None`` is returned when the
+        provider is already taken or the acquisition raises (acquisition
+        errors are non‑fatal – the caller simply tries the next candidate).
+
+        Subclasses may override this hook to implement different
+        concurrency models (e.g. per‑provider worker slots) without touching
+        the selection loops.
 
         Parameters
         ----------
+        model_name: str
+            The model for which the provider is being acquired.
+        provider: dict
+            Provider description dictionary.
+
+        Returns
+        -------
+        Optional[dict]
+            The enriched provider dictionary if acquisition succeeded,
+            otherwise ``None``.
+        """
+        provider_field = self._provider_field(provider)
+        try:
+            ok = int(
+                self._acquire_script(
+                    keys=[self._get_redis_key(model_name)], args=[provider_field]
+                )
+            )
+            if ok == 1:
+                provider["__chosen_field"] = provider_field
+                return provider
+        except Exception:
+            # intentional: acquisition errors are non-fatal; this provider is
+            # simply skipped and the next candidate is tried by the caller.
+            pass
+        return None
+
+    def _try_acquire_random_provider(
+        self, model_name: str, redis_key: str, providers: List[Dict]
+    ) -> Optional[Dict]:
+        """
+        Attempt to acquire a provider chosen at random.
+
+        A shallow copy of ``providers`` is shuffled so that each provider has
+        an equal probability of being tried first; the original list is left
+        untouched.  Each shuffled provider is then passed through the
+        :meth:`_try_acquire` hook.  The first successfully acquired provider
+        is returned.
+
+        Parameters
+        ----------
+        model_name : str
+            The model for which a provider is being acquired.
         redis_key : str
-            The Redis hash key associated with the model (e.g., ``model:<name>``).
+            The Redis hash key associated with the model (e.g.,
+            ``model:<name>``); kept for signature compatibility.
         providers : List[Dict]
-            A list of provider configuration dictionaries.  Each dictionary must
-            contain sufficient information for :meth:`_provider_field` to generate
-            a unique field name within the Redis hash.
+            A list of provider configuration dictionaries.  Each dictionary
+            must contain sufficient information for :meth:`_provider_field`
+            to generate a unique field name within the Redis hash.
 
         Returns
         -------
         Optional[Dict]
-            The selected provider dictionary with an additional ``"__chosen_field"``
-            entry indicating the Redis hash field that was locked.  Returns ``None``
-            only when the input ``providers`` list is empty.
-
-        Raises
-        ------
-        Exception
-            Propagates any unexpected exceptions raised by the Lua script execution;
-            callers may catch these to implement retry or logging logic.
+            The selected provider dictionary with an additional
+            ``"__chosen_field"`` entry indicating the Redis hash field that
+            was locked.  Returns ``None`` when no provider could be acquired
+            (e.g. all are currently in use) or the list is empty.
 
         Notes
         -----
-        * The random selection is *non‑deterministic* on each call; however, the
-          fallback to the first provider ensures deterministic behaviour when
-          all providers are currently busy.
-        * The method does **not** block; it returns immediately after trying all
-          shuffled providers.
+        * The random selection is *non‑deterministic* on each call.
+        * The method does **not** block; it returns immediately after trying
+          all shuffled providers.
         """
         shuffled = providers[:]
         random.shuffle(shuffled)
         for provider in shuffled:
-            provider_field = self._provider_field(provider)
-            try:
-                ok = int(
-                    self._acquire_script(keys=[redis_key], args=[provider_field])
-                )
-                if ok == 1:
-                    provider["__chosen_field"] = provider_field
-                    return provider
-            except Exception:
-                continue
+            acquired = self._try_acquire(model_name, provider)
+            if acquired:
+                return acquired
         return None
 
     def _get_active_providers(

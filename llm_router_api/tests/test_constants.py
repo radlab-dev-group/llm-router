@@ -138,6 +138,7 @@ class TestVerifyBalancingStrategy:
             "dynamic_weighted",
             "first_available",
             "first_available_optim",
+            "first_available_optim_nworkers",
         ],
     )
     def test_accepts_every_known_strategy(self, monkeypatch, strategy):

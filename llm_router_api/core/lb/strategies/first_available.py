@@ -247,25 +247,15 @@ class FirstAvailableStrategy(RedisBasedStrategy):
 
         if is_random:
             provider = self._try_acquire_random_provider(
-                redis_key=redis_key, providers=_providers
+                model_name=model_name, redis_key=redis_key, providers=_providers
             )
             if provider:
-                provider_field = self._provider_field(provider)
-                provider["__chosen_field"] = provider_field
                 return provider
         else:
             for provider in _providers:
-                provider_field = self._provider_field(provider)
-                try:
-                    ok = int(
-                        self._acquire_script(keys=[redis_key], args=[provider_field])
-                    )
-                    if ok == 1:
-                        provider["__chosen_field"] = provider_field
-                        return provider
-                except Exception:
-                    # Silently ignore acquisition errors for this provider.
-                    pass
+                acquired = self._try_acquire(model_name, provider)
+                if acquired:
+                    return acquired
 
         # Nothing acquired.
         return None
