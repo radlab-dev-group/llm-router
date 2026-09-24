@@ -43,6 +43,10 @@ class TestBalanceStrategies:
         assert BalanceStrategies.DYNAMIC_WEIGHTED == "dynamic_weighted"
         assert BalanceStrategies.FIRST_AVAILABLE == "first_available"
         assert BalanceStrategies.FIRST_AVAILABLE_OPTIM == "first_available_optim"
+        assert (
+            BalanceStrategies.FIRST_AVAILABLE_NWORKERS
+            == "first_available_optim_nworkers"
+        )
 
     def test_possible_balance_strategies_order_and_membership(self):
         assert POSSIBLE_BALANCE_STRATEGIES == [
@@ -51,6 +55,7 @@ class TestBalanceStrategies:
             BalanceStrategies.DYNAMIC_WEIGHTED,
             BalanceStrategies.FIRST_AVAILABLE,
             BalanceStrategies.FIRST_AVAILABLE_OPTIM,
+            BalanceStrategies.FIRST_AVAILABLE_NWORKERS,
         ]
 
     def test_no_duplicate_strategy_identifiers(self):

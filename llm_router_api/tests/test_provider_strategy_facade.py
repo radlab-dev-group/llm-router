@@ -38,6 +38,9 @@ from llm_router_api.core.lb.strategies.first_available import (  # noqa: E402
 from llm_router_api.core.lb.strategies.first_available_optim import (  # noqa: E402
     FirstAvailableOptimStrategy,
 )
+from llm_router_api.core.lb.strategies.first_available_optim_nworkers import (  # noqa: E402
+    FirstAvailableOptimNWorkersStrategy,
+)
 from llm_router_api.core.lb.strategies.weighted import (  # noqa: E402
     DynamicWeightedStrategy,
     WeightedStrategy,
@@ -60,7 +63,7 @@ def _facade(tmp_path, **kwargs) -> ProviderStrategyFacade:
 
 
 class TestStrategiesRegistry:
-    def test_all_five_strategies_registered(self):
+    def test_all_six_strategies_registered(self):
         assert STRATEGIES[BalanceStrategies.BALANCED] is LoadBalancedStrategy
         assert STRATEGIES[BalanceStrategies.WEIGHTED] is WeightedStrategy
         assert (
@@ -72,6 +75,10 @@ class TestStrategiesRegistry:
         assert (
             STRATEGIES[BalanceStrategies.FIRST_AVAILABLE_OPTIM]
             is FirstAvailableOptimStrategy
+        )
+        assert (
+            STRATEGIES[BalanceStrategies.FIRST_AVAILABLE_NWORKERS]
+            is FirstAvailableOptimNWorkersStrategy
         )
 
 

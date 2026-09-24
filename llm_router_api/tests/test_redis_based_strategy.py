@@ -126,7 +126,7 @@ class TestTryAcquireRandomProvider:
     def test_success_sets_chosen_field(self):
         strategy = _make(acquire_result=1)
         providers = _providers()
-        chosen = strategy._try_acquire_random_provider("model:m", providers)
+        chosen = strategy._try_acquire_random_provider("m", "model:m", providers)
         assert chosen is not None
         assert chosen["__chosen_field"].endswith(":is_chosen")
         strategy._acquire_script.assert_called()
@@ -134,7 +134,9 @@ class TestTryAcquireRandomProvider:
     def test_all_locked_returns_none(self):
         strategy = _make(acquire_result=0)
         providers = _providers()
-        assert strategy._try_acquire_random_provider("model:m", providers) is None
+        assert (
+            strategy._try_acquire_random_provider("m", "model:m", providers) is None
+        )
 
     def test_script_exception_skips_provider(self):
         def side_effect(keys=None, args=None):
@@ -144,7 +146,7 @@ class TestTryAcquireRandomProvider:
 
         strategy = _make(acquire_side_effect=side_effect)
         providers = _providers()
-        chosen = strategy._try_acquire_random_provider("model:m", providers)
+        chosen = strategy._try_acquire_random_provider("m", "model:m", providers)
         # p1 raises → skipped, p2 acquired
         assert chosen is not None
         assert chosen["id"] == "p2"
@@ -153,7 +155,7 @@ class TestTryAcquireRandomProvider:
         strategy = _make(acquire_result=1)
         providers = _providers()
         snapshot = [p["id"] for p in providers]
-        strategy._try_acquire_random_provider("model:m", providers)
+        strategy._try_acquire_random_provider("m", "model:m", providers)
         assert [p["id"] for p in providers] == snapshot
 
 
