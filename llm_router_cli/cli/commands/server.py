@@ -919,6 +919,7 @@ class ServerCommand(BaseCommand):
         "weighted",
         "first_available",
         "first_available_optim",
+        "first_available_optim_nworkers",
     ]
 
     #: Engines accepted by ``start --server`` (also validated when ``reload``
