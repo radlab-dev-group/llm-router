@@ -386,7 +386,7 @@ All environment variables are documented in **[ENV_DEFINITIONS.md](llm_router_ap
 The current list of available strategies, the interface description, and an example extension can be found
 at: [Load‑Balancing Strategies](llm_router_api/docs/LB_STRATEGIES.md#load-balancing-strategies)
 
-Strategies: **balanced**, **weighted**, **dynamic_weighted**, **first_available**, **first_available_optim**.
+Strategies: **balanced**, **weighted**, **dynamic_weighted**, **first_available**, **first_available_optim**, **first_available_optim_nworkers**.
 
 ---
 
