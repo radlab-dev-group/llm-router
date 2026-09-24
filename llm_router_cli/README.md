@@ -402,15 +402,15 @@ Start / stop / reload the REST API server (a managed daemon with a PID file), in
 Unless your environment already sets them, `start` applies the same `LLM_ROUTER_*` defaults as
 `run-rest-api-gunicorn.sh`.
 
-| Sub-command        | Description                                                                            |
-|--------------------|----------------------------------------------------------------------------------------|
-| `start`            | Start in the background (daemon) or `--foreground` for debugging                       |
-| `stop`             | SIGTERM (with a grace period), or SIGKILL with `--force`; `--all` stops every instance |
-| `reload`           | Restart the server: stop it, then start it again (`--graceful` = SIGHUP only)          |
-| `status`           | Show whether it is running, with a colored status card; `--all` for a fleet table      |
-| `log`              | Follow the server log (tail -f style, colorized levels)                                |
-| `list`             | List every instance with status / PID / port (`--json` for scripting)                  |
-| `rm-instance NAME` | Delete a stopped instance's state directory                                            |
+| Sub-command          | Description                                                                                   |
+| -------------------- | --------------------------------------------------------------------------------------------- |
+| `start`              | Start in the background (daemon) or `--foreground` for debugging                              |
+| `stop`               | SIGTERM the master **and its worker forks**, waits for the tree; `--force` SIGKILLs           |
+| `reload`             | Restart the server: stop it, then start it again (`--graceful` = SIGHUP only)                 |
+| `status`             | Show whether it is running, with a colored status card; `--all` for a fleet table             |
+| `log`                | Follow the server log (tail -f style, colorized levels)                                       |
+| `list`               | List every instance with status / PID / port (`--json` for scripting)                         |
+| `rm-instance NAME`   | Delete a stopped instance's state directory                                                   |
 
 Every sub-command takes `-i/--instance NAME`, so a host can run several routers at once — see
 [Instances](#instances--running-several-servers-side-by-side).
@@ -441,8 +441,26 @@ in memory is rebuilt — another models config, another port/host/engine, or cha
 `--graceful` still does) only makes Gunicorn recycle its workers; the master keeps whatever it loaded at startup,
 which is why it is not enough after most configuration edits.
 
+The stop half waits for the **whole process tree**, not just the process named in the PID file. Gunicorn's workers are
+forks that inherit the master's listening socket, so a worker still running after the master exited keeps the port bound
+and the start half would fail on `EADDRINUSE`. Every fork is therefore captured while the master still lives (after that
+they are reparented to init and nothing links them back to the server), gets the SIGTERM itself, has the same 15 s to
+drain, and is SIGKILLed when it ignores it — the same escalation the Gunicorn master applies once its own
+`graceful_timeout` runs out. Once the master is down its forks get a further 5 s before they are force-killed, since the
+master's grace was already their chance to drain. `stop` prints `Server stopped` and removes the PID file and run record
+only when master and workers are all gone; a fork that somehow survives the SIGKILL makes it fail, naming the PIDs, and
+leaves the state files in place so a retry (or `--force`) still knows what to clear. A process that has exited but has
+not been reaped yet (a zombie, or a task the kernel is still deleting) counts as stopped: it released its side of the
+socket the moment it exited, and waiting for somebody else's `wait()` would only stall the reload.
+
+The start half restarts **the same instance** — `-i NAME` is replayed, so it reads that instance's `config.env` and
+writes its PID file, log and metrics into the instance's own state tree. It also replays the environment the server was
+really running with, taken from the run record. That matters for a launch configured through `LLM_ROUTER_*` variables
+(the `run-rest-api-gunicorn.sh` wrapper does exactly that) rather than through `start` flags: flags alone would come back
+with built-in defaults, e.g. port `8080` instead of the `8081` the instance was serving on.
+
 ```bash
-llm-router server reload                # SIGTERM (15 s grace), wait for exit, then start again
+llm-router server reload                # SIGTERM master + workers (15 s grace), then start again
 llm-router server reload --force        # SIGKILL a server that ignores SIGTERM, then start again
 llm-router server reload --graceful     # previous behavior: SIGHUP to the master, no restart
 ```
@@ -450,11 +468,13 @@ llm-router server reload --graceful     # previous behavior: SIGHUP to the maste
 The start half replays the flags of the previous `start` from the run record (`<pid-file>.run`): `--host`, `--port`,
 `--server`, `--models-config`, the Redis/auth flags, `--verbose`, plus the log file the server was writing to — so it
 comes back exactly the way it went down. On top of those, `start` applies its usual precedence again
-(`config.env > shell environment > built-in defaults`), so an edit to `config.env` takes effect on reload.
+(`config.env > shell environment > recorded launch environment > built-in defaults`), so an edit to `config.env` — or a
+variable exported in the shell running the reload — still wins over what the previous server ran with.
 `reload` fails when no server is running (use `start`). It also aborts **before** stopping anything when the models
 config recorded for the instance is missing or unparsable, so a typo never takes a working server down; if the stop
-times out it aborts too (retry with `--force`), and if the start half fails the instance stays down while the message
-repeats the `start` hint.
+does not empty the process tree it aborts too (retry with `--force`), so `start` is never launched against a port a
+leftover worker still holds, and if the start half fails the instance stays down while the message repeats the `start`
+hint.
 
 ### Instances — running several servers side by side
 
@@ -553,6 +573,12 @@ Use --port/--host or set LLM_ROUTER_SERVER_PORT in /home/user/.llm-router/instan
 Pass `--no-port-check` to skip the probe (a port held by a socket-activated service, or a check against a different
 interface than the one the server binds). Concurrent `start` calls for the same instance are serialized by
 `server.start.lock`; a lock older than 60 s (a killed `start`) is broken automatically.
+
+The lock covers the gap between *"is it alive?"* and *"write the PID"* only. It is released as soon as the PID file is
+published, so a `--foreground` server does not sit on it for its whole lifetime — otherwise `reload`, which starts the
+moment the running server is gone, would read its own instance as "a start is already in progress". From then on the live
+PID file is what keeps a second `start` out. A lock also carries the PID of the `start` that took it, and a command
+leaving the scene removes it only if that PID is still its own, so a dying `start` cannot unlock a newer one.
 
 #### Models-config pre-flight
 
@@ -716,7 +742,8 @@ llm-router server log --log-file ~/.llm-router/server.log   # daemon's console l
 
 `stop`, `reload` and `status` additionally accept `--pid-file` (default
 `~/.llm-router/server.pid`), and `stop`/`reload` accept `--force` to skip the SIGTERM grace period and send SIGKILL
-(for `reload`, the server is still started again afterwards). As
+(for `reload`, the server is still started again afterwards). Both wait for the master's worker forks as well as the
+master itself, because a surviving fork keeps the listening socket bound. As
 every other `server` sub-command, they all take `-i/--instance NAME` (see
 [Instances](#instances--running-several-servers-side-by-side)); `stop` and `status` also take `--all`.
 
