@@ -9,7 +9,7 @@ managed background daemon with a PID file, so the same lifecycle operations
     llm-router server status   # show whether the server is running
     llm-router server log      # follow the log (tail -f style, colored levels)
     llm-router server stop    # SIGTERM (with grace period), or SIGKILL --force
-    llm-router server reload  # graceful SIGHUP to the Gunicorn master
+    llm-router server reload  # stop the running server, then start it again
     llm-router server list     # list every known instance (--json for scripts)
     llm-router server rm-instance NAME  # drop a named instance's state
 
@@ -23,6 +23,11 @@ instance keeps the historical single-instance layout in ``~/.llm-router``.
 Unless the user's environment already defines them, the command applies the
 same ``LLM_ROUTER_*`` defaults as ``run-rest-api-gunicorn.sh``.
 """
+
+# The module owns the whole lifecycle of one command (start / stop / reload /
+# status / log / list / rm-instance) and its on-disk state format, so it is
+# deliberately kept in one place.
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 
@@ -41,7 +46,7 @@ import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ClassVar, Dict, IO, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, FrozenSet, IO, List, Optional, Tuple
 
 from llm_router_cli.cli.commands.base import BaseCommand
 from llm_router_cli.cli.config_env import (
@@ -53,6 +58,7 @@ from llm_router_cli.cli.config_env import (
 )
 from llm_router_cli.cli.env_defaults import (
     apply_default_env,
+    apply_recorded_env,
     collect_env,
     DEFAULT_LOG_FILENAME,
 )
@@ -243,9 +249,23 @@ def acquire_start_lock(instance: InstancePaths) -> Optional[Path]:
 
 
 def release_start_lock(lock_file: Optional[Path]) -> None:
-    """Release the start lock held by :func:`acquire_start_lock`."""
-    if lock_file is not None:
-        _remove_quietly(lock_file)
+    """
+    Release the start lock, but only while it is still ours.
+
+    The lock carries the PID of the ``start`` that took it. A command that is
+    on its way out must not delete a lock that a newer ``start`` created in the
+    meantime -- that would hand a third one a free pass to spawn a second
+    server for the instance.
+    """
+    if lock_file is None:
+        return
+    try:
+        owner = Path(lock_file).read_text(encoding="utf-8").strip()
+    except OSError:
+        return
+    if owner != str(os.getpid()):
+        return
+    _remove_quietly(lock_file)
 
 
 def discover_instances() -> List[InstancePaths]:
@@ -283,6 +303,10 @@ def discover_instances() -> List[InstancePaths]:
 
 #: How long to wait for SIGTERM before telling the user to use ``--force``.
 _STOP_GRACE_SECONDS = 15
+#: How much longer the worker forks get once the master is already down. They
+#: had the master's whole grace to drain, so this only covers the fork that is
+#: slow to die -- waiting another full grace period would stall a reload.
+_WORKER_GRACE_SECONDS = 5
 _STOP_POLL_INTERVAL = 0.2
 _KILL_POLL_SECONDS = 5
 #: How long a freshly spawned daemon has to stay alive before we trust it.
@@ -361,6 +385,232 @@ def _wait_gone(pid: int, timeout: float) -> bool:
             return True
         time.sleep(_STOP_POLL_INTERVAL)
     return not pid_alive(pid)
+
+
+# -------------------------------------------------------------------------- #
+# Process-tree helpers
+#
+# Gunicorn forks its workers from the master and they inherit the listening
+# socket, so a fork that outlives the master keeps the port bound. Waiting for
+# the PID file's process alone therefore is not enough before starting a
+# server again -- the whole tree has to be gone.
+# -------------------------------------------------------------------------- #
+#: Indices into the ``/proc/<pid>/stat`` field tail, which starts at *state*.
+_STATE_FIELD = 0  # status field 3
+_PPID_FIELD = 1  # status field 4
+_START_TIME_FIELD = 19  # status field 22, clock ticks since boot
+
+#: Guard for the ``/proc`` walk, so a malformed tree cannot spin forever.
+_PROCESS_TREE_MAX_DEPTH = 10
+
+
+def _proc_stat_tail(pid: int) -> Optional[List[str]]:
+    """
+    Return the fields of ``/proc/<pid>/stat`` that follow the command name.
+
+    The command name is parenthesized and may itself contain spaces and
+    parentheses, so the fixed fields are only addressable after the **last**
+    ``)`` of the line.
+    """
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        return None
+    end = stat.rfind(")")
+    if end < 0:
+        return None
+    fields = stat[end + 1 :].split()
+    return fields or None
+
+
+def _proc_state(pid: int) -> Optional[str]:
+    """One-letter process state of *pid*, or ``None`` when it cannot be read."""
+    fields = _proc_stat_tail(pid)
+    return fields[_STATE_FIELD] if fields else None
+
+
+#: How often :func:`_has_exited` re-reads a status that cannot be parsed.
+_EXIT_PROBES = 3
+
+#: ``/proc`` states in which a task holds nothing any more: ``Z`` is a zombie
+#: whose parent has not reaped it yet, ``X`` the instant the kernel tears the
+#: task down. Both have released their file descriptors already.
+_EXITED_STATES = frozenset({"Z", "X"})
+
+
+def _has_exited(pid: int) -> bool:
+    """
+    True once *pid* released everything it held, zombie included.
+
+    A process whose parent has not reaped it yet still answers ``kill(pid,
+    0)``, but its address space and file descriptors -- the inherited
+    listening socket among them -- are already gone. Counting that zombie as
+    running would make the stop wait for a reap that is not its business, and
+    a parent that never calls ``wait()`` would hang it until the timeout.
+
+    While a task is being torn down its ``/proc`` entry is dismantled piece by
+    piece: the status can be gone, come back empty with the command name
+    already stripped, or report ``X`` for the moment the kernel is still
+    deleting the task. Re-reading settles whether that is teardown or a process
+    that is merely hard to read, and only a state outside
+    :data:`_EXITED_STATES` keeps the caller waiting. A verdict that is wrong
+    the friendly way costs one port pre-flight check in ``start``; the other
+    way costs a full stop timeout.
+    """
+    for attempt in range(_EXIT_PROBES):
+        if not pid_alive(pid):
+            return True
+        state = _proc_state(pid)
+        if state is not None:
+            return state in _EXITED_STATES
+        if attempt + 1 < _EXIT_PROBES:
+            time.sleep(_STOP_POLL_INTERVAL)
+    return True
+
+
+def _proc_ppid(pid: int) -> Optional[int]:
+    """Parent PID of *pid*, or ``None`` when it cannot be read."""
+    fields = _proc_stat_tail(pid)
+    if not fields or len(fields) <= _PPID_FIELD:
+        return None
+    try:
+        return int(fields[_PPID_FIELD])
+    except ValueError:
+        return None
+
+
+def _proc_start_ticks(pid: int) -> Optional[int]:
+    """
+    Start time of *pid* in clock ticks since boot, or ``None``.
+
+    A PID on its own is not safe to signal later: the kernel hands the numbers
+    out again. The start time pins an entry to the process it was captured
+    for, so a signal can never land on an unrelated process that merely
+    inherited the number.
+    """
+    fields = _proc_stat_tail(pid)
+    if not fields or len(fields) <= _START_TIME_FIELD:
+        return None
+    try:
+        return int(fields[_START_TIME_FIELD])
+    except ValueError:
+        return None
+
+
+def _children_by_ppid(parent: int) -> List[int]:
+    """Scan ``/proc`` for processes whose recorded parent is *parent*."""
+    children: List[int] = []
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return children
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        candidate = int(entry)
+        if candidate != parent and _proc_ppid(candidate) == parent:
+            children.append(candidate)
+    return children
+
+
+def _direct_children(pid: int) -> List[int]:
+    """
+    Return the direct children of *pid*, read from ``/proc``.
+
+    ``task/*/children`` is the cheap and authoritative source; kernels built
+    without it (or a thread we may not read) fall back to scanning every
+    process' parent. An unreadable ``/proc`` yields an empty list, which makes
+    the caller behave exactly like before the tree was tracked.
+    """
+    children: List[int] = []
+    try:
+        threads = os.listdir(f"/proc/{pid}/task")
+    except OSError:
+        threads = []
+    readable = False
+    for thread in threads:
+        try:
+            listed = Path(f"/proc/{pid}/task/{thread}/children").read_text(
+                encoding="utf-8"
+            )
+        except OSError:
+            continue
+        readable = True
+        children.extend(int(token) for token in listed.split() if token.isdigit())
+    return children if readable else _children_by_ppid(pid)
+
+
+@dataclass(frozen=True)
+class TrackedPid:
+    """
+    A process captured while it was still reachable, with its start time.
+
+    Children of a dying master are reparented to init, so after the master is
+    gone their parent no longer leads back to the server and they can only be
+    found through a set taken earlier. Keeping the start time next to the PID
+    keeps that set safe to signal.
+    """
+
+    pid: int
+    start_ticks: Optional[int]
+
+    @classmethod
+    def capture(cls, pid: int) -> "TrackedPid":
+        """Remember *pid* together with the start time it has right now."""
+        return cls(pid, _proc_start_ticks(pid))
+
+    def still_same(self) -> bool:
+        """True while the PID still stands for the process that was captured."""
+        if _has_exited(self.pid):
+            return False
+        if self.start_ticks is None:
+            return True
+        return _proc_start_ticks(self.pid) == self.start_ticks
+
+
+def process_tree(pid: int) -> List[TrackedPid]:
+    """
+    Return every descendant of *pid*, nearest generation first.
+
+    Must be called while the master still lives: once it exits, its workers
+    belong to init and nothing links them to the server any more.
+    """
+    found: Dict[int, TrackedPid] = {}
+    frontier = [pid]
+    for _ in range(_PROCESS_TREE_MAX_DEPTH):
+        next_frontier: List[int] = []
+        for parent in frontier:
+            for child in _direct_children(parent):
+                if child in found or child == pid:
+                    continue
+                found[child] = TrackedPid.capture(child)
+                next_frontier.append(child)
+        if not next_frontier:
+            break
+        frontier = next_frontier
+    return list(found.values())
+
+
+def _signal_tracked(process: TrackedPid, sig: int) -> None:
+    """Signal *process*, but only while its PID still belongs to it."""
+    if not process.still_same():
+        return
+    try:
+        os.kill(process.pid, sig)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def _wait_tracked_gone(processes: List[TrackedPid], timeout: float) -> bool:
+    """Wait up to *timeout* seconds for every entry to die; True if all gone."""
+    remaining = [item for item in processes if item.still_same()]
+    deadline = time.monotonic() + timeout
+    while remaining and time.monotonic() < deadline:
+        time.sleep(_STOP_POLL_INTERVAL)
+        remaining = [item for item in remaining if item.still_same()]
+    return not remaining
 
 
 # -------------------------------------------------------------------------- #
@@ -606,6 +856,11 @@ def _is_sensitive(key: str) -> bool:
 #: Placeholder printed in place of a masked secret value.
 _MASKED = "****"
 
+#: Spellings of a recorded boolean value that mean "on" / "off" when a run
+#: record is turned back into ``start`` flags by ``reload``.
+_TRUE_TOKENS = frozenset({"1", "true", "yes", "on"})
+_FALSE_TOKENS = frozenset({"0", "false", "no", "off"})
+
 
 # -------------------------------------------------------------------------- #
 # Command
@@ -629,7 +884,7 @@ class ServerCommand(BaseCommand):
     RM_INSTANCE_NAME = "rm-instance"
     START_HELP = "Start the REST API server in the background (daemon)"
     STOP_HELP = "Stop the running REST API server"
-    RELOAD_HELP = "Gracefully reload the running Gunicorn master (SIGHUP)"
+    RELOAD_HELP = "Restart the server (stop it, then start it again)"
     STATUS_HELP = "Show server status (pid, log, launch parameters)"
     LOG_HELP = "Follow the server log (tail -f style, colorized levels)"
     LIST_HELP = "List all known server instances (running or not)"
@@ -665,6 +920,33 @@ class ServerCommand(BaseCommand):
         "first_available",
         "first_available_optim",
     ]
+
+    #: Engines accepted by ``start --server`` (also validated when ``reload``
+    #: replays the flags of a previous launch).
+    _SERVER_TYPES: ClassVar[List[str]] = ["gunicorn", "waitress", "flask"]
+
+    #: ``start`` flags whose value argparse parses as an int.
+    _NUMERIC_FLAGS: ClassVar[FrozenSet[str]] = frozenset(
+        {
+            "debug",
+            "port",
+            "redis_port",
+            "redis_db",
+            "auth_redis_port",
+            "auth_redis_db",
+        }
+    )
+
+    #: ``start`` flags that argparse restricts to ``0``/``1``.
+    _BOOL_FLAGS: ClassVar[FrozenSet[str]] = frozenset({"debug", "auth"})
+
+    #: Reverse of :attr:`_ENV_OVERRIDES` used by ``reload`` to rebuild the
+    #: ``start`` command line from a run record:
+    #: environment variable -> (flag, namespace attribute, converter).
+    _RELOAD_FLAGS: ClassVar[Dict[str, Tuple[str, str, Optional[str]]]] = {
+        env_key: (f"--{attr.replace('_', '-')}", attr, convert)
+        for attr, env_key, convert in _ENV_OVERRIDES
+    }
 
     # ---- Instance helpers ------------------------------------------------ #
     @classmethod
@@ -712,8 +994,10 @@ class ServerCommand(BaseCommand):
         """
         Build the environment a server for *instance* starts with.
 
-        Order of application (last wins): built-in defaults, the shell
-        environment, the instance ``config.env``, explicit CLI flags. Named
+        Order of application (last wins): built-in defaults, the environment
+        a reload is restarting (``args.restart_env``, see :meth:`_restart`),
+        the shell environment, the instance ``config.env``, explicit CLI
+        flags. Named
         instances additionally get their own application log and Prometheus
         multiproc directory, so concurrent instances cannot corrupt each
         other's metrics or logs. A named instance always gets its application
@@ -728,6 +1012,11 @@ class ServerCommand(BaseCommand):
         if instance.named:
             scaffold_config_env(instance.config_env, instance.name)
         apply_instance_config(parse_env_file(instance.config_env))
+
+        # Below the shell env and config.env, above the defaults: it only
+        # stands in for what nothing else says, so a reload cannot resurrect
+        # a setting the user has just changed.
+        apply_recorded_env(getattr(args, "restart_env", None) or {})
 
         user_log = os.environ.get("LLM_ROUTER_LOG_FILENAME")
         apply_default_env()
@@ -826,6 +1115,37 @@ class ServerCommand(BaseCommand):
         return "built-in default"
 
     @classmethod
+    def _models_config_problem(cls, path: str) -> str:
+        """
+        Explain why the models config at *path* cannot be loaded, or ``""``.
+
+        What is accepted mirrors how
+        :meth:`llm_router_api.core.model_config.ModelConfig` reads the file: a
+        JSON object whose sections are all empty is fine (that simply means
+        "no models"), while one with any model defined must have an
+        ``active_models`` section.
+        """
+        if not path:
+            return "is not set"
+        candidate = Path(path)
+        if not candidate.exists():
+            return "was not found"
+        if not candidate.is_file():
+            return "is not a file"
+        try:
+            with open(candidate, "rt", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except OSError as exc:
+            return f"cannot be read: {exc}"
+        except json.JSONDecodeError as exc:
+            return f"is not valid JSON: {exc}"
+        if not isinstance(data, dict):
+            return "must contain a JSON object"
+        if (not data or any(data.values())) and "active_models" not in data:
+            return "has no 'active_models' section"
+        return ""
+
+    @classmethod
     def _check_models_config(
         cls,
         args: argparse.Namespace,
@@ -837,39 +1157,13 @@ class ServerCommand(BaseCommand):
 
         A daemon publishes its PID *before* execing the server, so a missing
         or broken models config would otherwise be reported as a successful
-        start with the real failure buried in the daemon log. What is accepted
-        mirrors :meth:`llm_router_api.core.model_config.ModelConfig` reading
-        the file: a JSON object whose sections are all empty is fine (that
-        simply means "no models"), while one with any model defined must have
-        an ``active_models`` section.
+        start with the real failure buried in the daemon log (see
+        :meth:`_models_config_problem` for what counts as loadable).
 
         Returns the error text, or ``None`` when the server can start.
         """
         path = resolve_models_config_path(os.environ)
-        reason = ""
-        if not path:
-            reason = "is not set"
-        else:
-            candidate = Path(path)
-            if not candidate.exists():
-                reason = "was not found"
-            elif not candidate.is_file():
-                reason = "is not a file"
-            else:
-                try:
-                    with open(candidate, "rt", encoding="utf-8") as handle:
-                        data = json.load(handle)
-                except OSError as exc:
-                    reason = f"cannot be read: {exc}"
-                except json.JSONDecodeError as exc:
-                    reason = f"is not valid JSON: {exc}"
-                else:
-                    if not isinstance(data, dict):
-                        reason = "must contain a JSON object"
-                    elif (not data or any(data.values())) and (
-                        "active_models" not in data
-                    ):
-                        reason = "has no 'active_models' section"
+        reason = cls._models_config_problem(path)
         if not reason:
             return None
 
@@ -1002,7 +1296,7 @@ class ServerCommand(BaseCommand):
         )
         start.add_argument(
             "--server",
-            choices=["gunicorn", "waitress", "flask"],
+            choices=cls._SERVER_TYPES,
             default=None,
             help="WSGI server engine (default: LLM_ROUTER_SERVER_TYPE or gunicorn)",
         )
@@ -1131,6 +1425,19 @@ class ServerCommand(BaseCommand):
         cls._add_instance_arg(stop)
 
         reload = subparsers.add_parser(cls.RELOAD_NAME, help=cls.RELOAD_HELP)
+        reload.add_argument(
+            "--force",
+            action="store_true",
+            help="Skip the SIGTERM grace period when stopping (send SIGKILL).",
+        )
+        reload.add_argument(
+            "--graceful",
+            action="store_true",
+            help=(
+                "Only send SIGHUP to the running master, so Gunicorn recycles "
+                "its workers without a restart (no stop, no new process)."
+            ),
+        )
         cls._add_pid_file_arg(reload)
         cls._add_instance_arg(reload)
 
@@ -1336,6 +1643,7 @@ class ServerCommand(BaseCommand):
                     pid_file,
                     cmd,
                     log_file_for(args, instance, shell_log_filename),
+                    lock=lock,
                 )
 
             return cls._run_daemon(
@@ -1344,7 +1652,6 @@ class ServerCommand(BaseCommand):
                 pid_file,
                 cmd,
                 log_file_for(args, instance, shell_log_filename),
-                lock=lock,
             )
         finally:
             release_start_lock(lock)
@@ -1357,6 +1664,8 @@ class ServerCommand(BaseCommand):
         pid_file: Path,
         cmd: List[str],
         log_file: Path,
+        *,
+        lock: Optional[Path] = None,
     ) -> int:
         """Run the server as a child of the CLI until it exits."""
         # Keep the PID file and run record in sync in foreground mode too,
@@ -1372,6 +1681,12 @@ class ServerCommand(BaseCommand):
         # pylint: disable-next=consider-using-with
         proc = subprocess.Popen(cmd)
         write_pid_file(pid_file, proc.pid)
+        # The lock exists to close the gap between "is it alive?" and "write
+        # the PID"; now that the PID is out, holding it would keep the instance
+        # locked for the whole life of a foreground server and make a later
+        # ``reload`` (which starts as soon as this one is stopped) read its own
+        # instance as "a start is already in progress".
+        release_start_lock(lock)
         print(
             f"Running in foreground (pid={proc.pid}).\n"
             f"  stop: {cls._hint('stop', instance)}  (or Ctrl-C)",
@@ -1380,11 +1695,14 @@ class ServerCommand(BaseCommand):
         try:
             return proc.wait()
         finally:
-            remove_pid_file(pid_file)
-            try:
-                run_file_for(pid_file).unlink()
-            except OSError:
-                pass
+            # A reload that already started the next server owns the files by
+            # now; only the process that wrote them may take them away.
+            if read_pid_file(pid_file) == proc.pid:
+                remove_pid_file(pid_file)
+                try:
+                    run_file_for(pid_file).unlink()
+                except OSError:
+                    pass
 
     @classmethod
     def _log_tail(cls, log_file: Path, n: int = 15) -> str:
@@ -1419,10 +1737,13 @@ class ServerCommand(BaseCommand):
         pid_file: Path,
         cmd: List[str],
         log_file: Path,
-        *,
-        lock: Optional[Path] = None,
     ) -> int:
-        """Spawn the classic double-fork daemon and report its PID."""
+        """
+        Spawn the classic double-fork daemon and report its PID.
+
+        The start lock stays with the caller: it is released by the ``finally``
+        of :meth:`_start`, once the daemon has published its PID here.
+        """
         log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Record the launch parameters next to the PID file so
@@ -1436,7 +1757,9 @@ class ServerCommand(BaseCommand):
         # daemon to publish its PID and reports it; the daemon then execs
         # the server, so the PID file keeps pointing at the Gunicorn master.
         if os.fork() > 0:
-            release_start_lock(lock)
+            # The lock is kept until the daemon has published its PID, so a
+            # concurrent ``start`` can neither pass the "is it alive?" check
+            # here nor find the instance free while the daemon is still booting.
             pid = _wait_for_pid(pid_file)
             if pid is None:
                 return cls.fail(
@@ -1462,9 +1785,9 @@ class ServerCommand(BaseCommand):
             )
             return 0
 
-        # Child: it must not touch the start lock owned by the CLI process.
-        lock = None
-
+        # Child: the start lock belongs to the CLI process, and neither this
+        # fork nor the daemon it spawns can take it away -- the lock records
+        # the PID of whoever acquired it, and that is not a descendant.
         os.setsid()
         if os.fork() > 0:
             os._exit(0)
@@ -1475,9 +1798,73 @@ class ServerCommand(BaseCommand):
         os.execvpe(sys.executable, cmd, os.environ)
         return 127  # pragma: no cover - execvpe never returns
 
+    @staticmethod
+    def _survivor_message(pid: int, survivors: List[TrackedPid]) -> None:
+        """Report processes that outlived the server and may still hold a port."""
+        pids = ", ".join(str(item.pid) for item in survivors)
+        print(
+            f"Server (pid={pid}) left process(es) {pids} alive; the port may "
+            "still be in use.",
+            file=sys.stderr,
+        )
+
+    @staticmethod
+    def _wait_master_gone(pid: int, timeout: float) -> Dict[int, TrackedPid]:
+        """
+        Wait up to *timeout* for the master *pid* to exit, collecting children.
+
+        The child set is refreshed on every tick, because a worker the master
+        restarts during its shutdown would otherwise be missed by a snapshot
+        taken before the signal went out.
+        """
+        children: Dict[int, TrackedPid] = {}
+        deadline = time.monotonic() + timeout
+        while True:
+            for entry in process_tree(pid):
+                children.setdefault(entry.pid, entry)
+            if _has_exited(pid) or time.monotonic() >= deadline:
+                return children
+            time.sleep(_STOP_POLL_INTERVAL)
+
+    @classmethod
+    def _stop_orphaned_workers(
+        cls, children: Dict[int, TrackedPid]
+    ) -> List[TrackedPid]:
+        """
+        Make the master's workers follow it down; return the unkilleable ones.
+
+        Every fork is signalled directly rather than trusted to receive what
+        the master forwards, because a master that exits immediately never
+        passes the signal on. One that then ignores it is force-killed after
+        :data:`_WORKER_GRACE_SECONDS`, exactly as the Gunicorn master itself
+        does once its ``graceful_timeout`` runs out: a surviving fork would
+        keep the inherited listening socket -- and with it the port -- bound
+        against the next ``start``.
+        """
+        stragglers = [item for item in children.values() if item.still_same()]
+        if not stragglers or _wait_tracked_gone(stragglers, _WORKER_GRACE_SECONDS):
+            return []
+        stragglers = [item for item in stragglers if item.still_same()]
+        for child in stragglers:
+            print(
+                f"Worker (pid={child.pid}) outlived the master; sending SIGKILL.",
+                file=sys.stderr,
+            )
+            _signal_tracked(child, signal.SIGKILL)
+        _wait_tracked_gone(stragglers, _KILL_POLL_SECONDS)
+        return [item for item in stragglers if item.still_same()]
+
     @classmethod
     def _stop_instance(cls, pid_file: Path, force: bool) -> int:
-        """Stop the single server recorded in *pid_file*."""
+        """
+        Stop the single server recorded in *pid_file*, forks included.
+
+        Waiting for the master process alone is not enough: its workers inherit
+        the listening socket, so a fork that outlives it keeps the port bound
+        and the next ``start`` (``reload``) fails on ``EADDRINUSE``. Success
+        here means the whole process tree is gone, and the state files are
+        removed only once that is true.
+        """
         pid = get_alive_pid(pid_file)
         if pid is None:
             print(
@@ -1486,21 +1873,46 @@ class ServerCommand(BaseCommand):
             )
             return 1
 
-        try:
-            if force:
+        # The tree is only findable through its parent while the master lives,
+        # so it has to be sampled before the first signal.
+        children: Dict[int, TrackedPid] = {
+            entry.pid: entry for entry in process_tree(pid)
+        }
+
+        if force:
+            try:
                 os.kill(pid, signal.SIGKILL)
-                _wait_gone(pid, _KILL_POLL_SECONDS)
-            else:
+            except ProcessLookupError:
+                pass
+            for child in children.values():
+                _signal_tracked(child, signal.SIGKILL)
+            # ``start_ticks`` is left out for the master: the PID alone is what
+            # the PID file ever claimed, so that is what gets waited for.
+            tracked = [TrackedPid(pid, None), *children.values()]
+            if not _wait_tracked_gone(tracked, _KILL_POLL_SECONDS):
+                cls._survivor_message(
+                    pid, [item for item in tracked if item.still_same()]
+                )
+                return 1
+        else:
+            try:
                 os.kill(pid, signal.SIGTERM)
-                if not _wait_gone(pid, _STOP_GRACE_SECONDS):
-                    print(
-                        f"Server (pid={pid}) did not exit within "
-                        f"{_STOP_GRACE_SECONDS}s; retry with --force to SIGKILL.",
-                        file=sys.stderr,
-                    )
-                    return 1
-        except ProcessLookupError:
-            pass
+            except ProcessLookupError:
+                pass
+            for child in children.values():
+                _signal_tracked(child, signal.SIGTERM)
+            children.update(cls._wait_master_gone(pid, _STOP_GRACE_SECONDS))
+            if not _has_exited(pid):
+                print(
+                    f"Server (pid={pid}) did not exit within "
+                    f"{_STOP_GRACE_SECONDS}s; retry with --force to SIGKILL.",
+                    file=sys.stderr,
+                )
+                return 1
+            survivors = cls._stop_orphaned_workers(children)
+            if survivors:
+                cls._survivor_message(pid, survivors)
+                return 1
 
         remove_pid_file(pid_file)
         try:
@@ -1546,8 +1958,160 @@ class ServerCommand(BaseCommand):
         return cls._stop_instance(cls._pid_file_for(args, instance), args.force)
 
     @classmethod
+    def _restart_tokens(cls, record: Dict[str, Any]) -> List[str]:
+        """
+        Rebuild the ``start`` flags of a previous launch from its run record.
+
+        Only the flags the original command line carried (``env_overrides``)
+        are replayed: ``start`` applies the built-in defaults, the shell
+        environment and the instance ``config.env`` again on its own, so an
+        edit made to ``config.env`` still takes effect on a reload.
+        ``--models-config`` comes from the record's absolute path, which keeps
+        pointing at the file the running server actually loaded even when the
+        reload is issued from a different directory.
+        """
+        overrides = record.get("env_overrides")
+        if not isinstance(overrides, dict):
+            overrides = {}
+
+        tokens: List[str] = []
+        for env_key, value in overrides.items():
+            entry = cls._RELOAD_FLAGS.get(str(env_key))
+            if entry is None or env_key == "LLM_ROUTER_MODELS_CONFIG":
+                continue
+            flag, attr, convert = entry
+            token = cls._flag_token(attr, convert, value)
+            if token is None:
+                continue
+            tokens.append(flag)
+            if token:
+                tokens.append(token)
+
+        models_config = record.get("models_config") or overrides.get(
+            "LLM_ROUTER_MODELS_CONFIG"
+        )
+        if models_config:
+            tokens += ["--models-config", str(models_config)]
+        return tokens
+
+    @classmethod
+    def _flag_token(
+        cls, attr: str, convert: Optional[str], value: Any
+    ) -> Optional[str]:
+        """
+        Render a recorded environment *value* as the token of its ``start`` flag.
+
+        ``None`` drops the flag, ``""`` stands for a valueless one
+        (``--verbose``). Every value is checked against what the flag itself
+        accepts, so a stale or hand-edited run record degrades into "flag
+        omitted" instead of an argparse error after the server is already down.
+        """
+        text = str(value).strip()
+        lowered = text.lower()
+        if attr == "verbose":
+            return "" if lowered in _TRUE_TOKENS else None
+        if attr == "server":
+            return text if text in cls._SERVER_TYPES else None
+        if attr == "lb_strategy":
+            return text if text in cls._LB_STRATEGIES else None
+        if convert == "bool":
+            if lowered in _TRUE_TOKENS:
+                return "1"
+            return "0" if lowered in _FALSE_TOKENS else None
+        if not text:
+            return None
+        if attr in cls._NUMERIC_FLAGS and not text.isdigit():
+            return None
+        if attr in cls._BOOL_FLAGS and text not in ("0", "1"):
+            return None
+        return text
+
+    @classmethod
+    def _restart_argv(
+        cls,
+        instance: InstancePaths,
+        pid_file: Path,
+        record: Dict[str, Any],
+    ) -> List[str]:
+        """Build the complete ``server start`` command line that restarts *record*."""
+        argv = [cls.START_NAME, *cls._restart_tokens(record)]
+        if instance.named:
+            # Without the name the restart resolves ``default``: another
+            # config.env, another PID file, another log and metrics tree --
+            # a second, wrongly configured server next to this instance.
+            argv += ["--instance", instance.name]
+        if pid_file != instance.pid_file:
+            # The instance was addressed through an explicit --pid-file, which
+            # the restart has to honor or it would start a second server.
+            argv += ["--pid-file", str(pid_file)]
+        if record.get("log_file"):
+            argv += ["--log-file", str(record["log_file"])]
+        return argv
+
+    @classmethod
+    def _restart(
+        cls,
+        instance: InstancePaths,
+        pid_file: Path,
+        record: Dict[str, Any],
+    ) -> int:
+        """
+        Start the server again with the settings *record* was launched with.
+
+        The namespace comes from the real ``start`` parser, so a restart can
+        never drift from what ``server start`` itself accepts.
+        """
+        argv = cls._restart_argv(instance, pid_file, record)
+        try:
+            start_args = cls.build_parser().parse_args(argv)
+        except SystemExit:  # pragma: no cover - defensive, tokens are validated
+            return cls.fail(
+                "reload could not rebuild the start command from "
+                f"{run_file_for(pid_file)}; start the server yourself:\n"
+                f"  llm-router {' '.join(argv)}"
+            )
+        # Flags replay only what was typed as a flag. A launch that configured
+        # itself through LLM_ROUTER_* variables (the run scripts do exactly
+        # that) leaves no flag behind, so the recorded environment goes along
+        # as the fallback layer of ``_apply_start_env``.
+        start_args.restart_env = cls._env_from_record(record)
+        code = cls._start(start_args)
+        if code != 0:
+            print(
+                f"Reload incomplete: {instance.name} is stopped. Fix the "
+                f"problem and start it again: {cls._hint('start', instance)}",
+                file=sys.stderr,
+            )
+        return code
+
+    @classmethod
+    def _reload_graceful(cls, pid: int) -> int:
+        """Send SIGHUP to the running master (Gunicorn recycles its workers)."""
+        try:
+            os.kill(pid, signal.SIGHUP)
+        except ProcessLookupError:
+            return cls.fail(f"the server (pid={pid}) exited before the signal")
+        print(
+            f"Graceful reload requested: SIGHUP sent to pid={pid}; "
+            "Gunicorn is recycling workers."
+        )
+        return 0
+
+    @classmethod
     def _reload(cls, args: argparse.Namespace) -> int:
-        """Send SIGHUP to the server (Gunicorn master recycles workers)."""
+        """
+        Reload the server: stop the running one, then start it again.
+
+        A restart is the only reload that picks up what Gunicorn cannot:
+        another models config, another port or engine, or code changes. The
+        flags of the previous launch are replayed from the run record, so the
+        server comes back the way it went down. ``--force`` skips the SIGTERM
+        grace period, ``--graceful`` keeps the old SIGHUP-only behavior.
+
+        The stop waits for the master *and* its worker forks, because a worker
+        outlives the master only while it still holds the inherited listening
+        socket -- starting on top of it would fail on ``EADDRINUSE``.
+        """
         instance, error = cls._instance(args)
         if error:
             return cls.fail(error)
@@ -1556,17 +2120,47 @@ class ServerCommand(BaseCommand):
         pid = get_alive_pid(pid_file)
         if pid is None:
             print(
-                f"No running server found (pid file: {pid_file}).",
+                f"No running server found (pid file: {pid_file}).\n"
+                f"Start one: {cls._hint('start', instance)}",
                 file=sys.stderr,
             )
             return 1
 
-        os.kill(pid, signal.SIGHUP)
+        if getattr(args, "graceful", False):
+            return cls._reload_graceful(pid)
+
+        # The run record goes away with the PID file, so the launch settings
+        # have to be read while the server is still up.
+        record = read_run_file(run_file_for(pid_file)) or {}
+
+        # Restarting with a models config that cannot be loaded would take a
+        # working instance down for nothing (and a failed start removes a named
+        # instance's state directory), so check the recorded path first.
+        recorded_config = str(record.get("models_config") or "")
+        if recorded_config:
+            problem = cls._models_config_problem(recorded_config)
+            if problem:
+                return cls.fail(
+                    f"reload aborted: the models config {problem}: "
+                    f"{recorded_config}{cls._scope(instance)}. The server is "
+                    "left running — fix the configuration and reload again."
+                )
+
+        print(f"Reloading: stopping the server (pid={pid}) ...", flush=True)
+        if cls._stop_instance(pid_file, bool(getattr(args, "force", False))) != 0:
+            return cls.fail(
+                "reload aborted: the server could not be fully stopped"
+                f"{cls._scope(instance)}, and a leftover worker may still hold "
+                f"its port. Stop it with "
+                f"'{cls._hint('stop', instance)} --force', then start it "
+                f"with '{cls._hint('start', instance)}'"
+            )
+
         print(
-            f"Graceful reload requested: SIGHUP sent to pid={pid}; "
-            "Gunicorn is recycling workers."
+            f"Reloading: starting the server again{cls._scope(instance)} ...",
+            flush=True,
         )
-        return 0
+        return cls._restart(instance, pid_file, record)
 
     @classmethod
     def _status_all(cls, color: bool) -> int:

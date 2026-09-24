@@ -10,11 +10,15 @@ environment-defaults helper are tested directly.
 
 from __future__ import annotations
 
+import argparse
 import os
 import signal
+import subprocess
+import sys
 import time
 
 from pathlib import Path
+from typing import Tuple
 
 import pytest
 
@@ -39,6 +43,25 @@ from llm_router_cli.cli.env_defaults import (
 )
 
 # ---- fixtures / helpers ----------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _restore_env():
+    """``_apply_start_env`` mutates ``os.environ``; never leak that into a test."""
+    original = dict(os.environ)
+    yield
+    os.environ.clear()
+    os.environ.update(original)
+
+
+@pytest.fixture
+def state_home(tmp_path, monkeypatch):
+    """Keep every instance's state inside *tmp_path*."""
+    monkeypatch.setattr(server_module, "_STATE_DIR", tmp_path)
+    monkeypatch.setattr(server_module, "DEFAULT_PID_FILE", tmp_path / "server.pid")
+    monkeypatch.setattr(server_module, "DEFAULT_LOG_FILE", tmp_path / "server.log")
+    monkeypatch.delenv(server_module.INSTANCE_ENV_VAR, raising=False)
+    return tmp_path
 
 
 @pytest.fixture
@@ -75,6 +98,60 @@ def _kill(pid: int) -> None:
         time.sleep(0.05)
 
 
+def _wait_for(path: Path, timeout: float = 5.0) -> bool:
+    """Wait until *path* shows up; used to sync with a spawned dummy process."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.exists():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _spawn_master_with_worker(
+    tmp_path: Path, worker_traps_term: bool = False
+) -> Tuple[int, int]:
+    """
+    Spawn a detached master that backgrounds a worker, like a Gunicorn tree.
+
+    The worker keeps running when the master exits on SIGTERM (it is reparented
+    to init), which is exactly the state in which a fork still holds the
+    listening socket it inherited. With *worker_traps_term* the worker also
+    ignores SIGTERM, standing in for a worker stuck in a request. Returns
+    ``(master_pid, worker_pid)``.
+    """
+    worker = (
+        "bash -c \"trap '' TERM; sleep 300\"" if worker_traps_term else "sleep 300"
+    )
+    ready = tmp_path / "master-ready"
+    worker_pid_file = tmp_path / "worker.pid"
+    script = (
+        f'{worker} & worker=$!; echo "$worker" > {worker_pid_file}; '
+        f": > {ready}; trap 'exit 0' TERM; wait"
+    )
+    master = _spawn_detached(["bash", "-c", script], tmp_path / "master.pid")
+    assert _wait_for(ready)
+    worker_pid = int(worker_pid_file.read_text(encoding="utf-8").strip())
+    return master, worker_pid
+
+
+def _assert_gone(*pids: int) -> None:
+    """Assert *pids* released everything they held (an unreaped zombie has too)."""
+    for pid in pids:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not server_module._has_exited(pid):
+            time.sleep(0.05)
+        assert server_module._has_exited(pid) is True
+
+
+def _kill_all(*pids: int) -> None:
+    """SIGKILL every one of *pids* that is still alive (test cleanup)."""
+    for pid in pids:
+        # 0 would mean "my whole process group" -- never signal that.
+        if pid > 0 and pid_alive(pid):
+            _kill(pid)
+
+
 def _spawn_dead_pid() -> int:
     """Fork a child that exits immediately; return its (now dead) PID."""
     pid = os.fork()
@@ -82,6 +159,16 @@ def _spawn_dead_pid() -> int:
         os._exit(0)
     os.waitpid(pid, 0)
     return pid
+
+
+def _recording_start(seen: dict):
+    """Stand in for ``_start``: remember the launch args instead of spawning."""
+
+    def fake_start(args):
+        seen["args"] = args
+        return 0
+
+    return staticmethod(fake_start)
 
 
 # ---- help / dispatch ------------------------------------------------------
@@ -132,6 +219,15 @@ def test_stop_help_lists_flags(capsys):
     assert "--force" in out
     assert "--pid-file" in out
     assert "--all" in out
+    assert "-i" in out
+
+
+def test_reload_help_lists_flags(capsys):
+    assert ServerCommand.run(["reload", "--help"]) == 0
+    out = capsys.readouterr().out
+    assert "--force" in out
+    assert "--graceful" in out
+    assert "--pid-file" in out
     assert "-i" in out
 
 
@@ -571,18 +667,185 @@ def test_stop_force_sigkills_uncooperative_process(pid_file, tmp_path):
     assert not pid_file.exists()
 
 
-# ---- reload ---------------------------------------------------------------
+def test_stop_waits_for_the_worker_processes(pid_file, tmp_path, capsys):
+    """The master is not enough: the fork that inherited the socket must go."""
+    master, worker = _spawn_master_with_worker(tmp_path)
+    write_pid_file(pid_file, master)
+
+    try:
+        assert ServerCommand.run(["stop", "--pid-file", str(pid_file)]) == 0
+        # "stopped" is only true once the whole tree is gone.
+        _assert_gone(master, worker)
+        assert not pid_file.exists()
+        assert "Server stopped" in capsys.readouterr().out
+    finally:
+        _kill_all(master, worker)
 
 
-def test_reload_sends_sighup_but_process_survives(pid_file, tmp_path, capsys):
-    # HUP-tolerant dummy stands in for the Gunicorn master.
-    pid = _spawn_detached(
-        ["bash", "-c", "trap '' HUP; sleep 300"], tmp_path / "d.pid"
+def test_stop_sigkills_workers_that_ignore_sigterm(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(server_module, "_WORKER_GRACE_SECONDS", 0.5)
+    master, worker = _spawn_master_with_worker(tmp_path, worker_traps_term=True)
+    write_pid_file(pid_file, master)
+
+    try:
+        assert ServerCommand.run(["stop", "--pid-file", str(pid_file)]) == 0
+        _assert_gone(master, worker)
+        assert not pid_file.exists()
+        assert "outlived the master; sending SIGKILL" in capsys.readouterr().err
+    finally:
+        _kill_all(master, worker)
+
+
+def test_stop_treats_an_unreaped_zombie_as_stopped(pid_file, monkeypatch, capsys):
+    """A zombie holds no file descriptor, so waiting for its reap is pointless.
+
+    The dummy stays a child of the test process, which never calls ``wait()``,
+    standing in for a launcher that backgrounds the server and leaves it
+    unreaped: the master would answer ``kill(pid, 0)`` forever otherwise.
+    """
+    monkeypatch.setattr(server_module, "_STOP_GRACE_SECONDS", 10)
+    proc = subprocess.Popen(["sleep", "300"])
+    write_pid_file(pid_file, proc.pid)
+
+    started = time.monotonic()
+    try:
+        assert ServerCommand.run(["stop", "--pid-file", str(pid_file)]) == 0
+        assert not pid_file.exists()
+        assert "Server stopped" in capsys.readouterr().out
+        assert time.monotonic() - started < 5
+    finally:
+        proc.wait()
+
+
+def test_has_exited_distinguishes_running_from_zombie():
+    proc = subprocess.Popen(["sleep", "300"])
+    try:
+        assert server_module._has_exited(proc.pid) is False
+        proc.kill()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if server_module._has_exited(proc.pid):
+                break
+            time.sleep(0.05)
+        assert server_module._has_exited(proc.pid) is True
+    finally:
+        proc.wait()
+    assert server_module._has_exited(proc.pid) is True
+
+
+def test_stop_keeps_the_state_files_when_a_worker_survives(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        server_module, "_wait_tracked_gone", lambda processes, timeout: False
     )
+    master, worker = _spawn_master_with_worker(tmp_path, worker_traps_term=True)
+    write_pid_file(pid_file, master)
+
+    try:
+        assert ServerCommand.run(["stop", "--pid-file", str(pid_file)]) == 1
+        err = capsys.readouterr().err
+        assert "the port may still be in use" in err
+        assert str(worker) in err
+        # A server that is not fully down keeps its state, so a retry (or a
+        # --force stop) still knows which PID it has to clear.
+        assert pid_file.exists()
+    finally:
+        _kill_all(master, worker)
+
+
+# ---- reload (stop, then start again) ---------------------------------------
+
+
+def test_reload_stops_the_server_and_starts_it_again(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
     write_pid_file(pid_file, pid)
+    models_config = tmp_path / "models.json"
+    models_config.write_text('{"active_models": {}}', encoding="utf-8")
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "log_file": str(tmp_path / "daemon.log"),
+            "models_config": str(models_config),
+            "env_overrides": {
+                "LLM_ROUTER_SERVER_PORT": "9111",
+                "LLM_ROUTER_MODELS_CONFIG": "resources/models.json",
+                "LLM_ROUTER_VERBOSE": "1",
+            },
+        },
+    )
+    seen: dict = {}
+    monkeypatch.setattr(ServerCommand, "_start", _recording_start(seen))
 
     try:
         assert ServerCommand.run(["reload", "--pid-file", str(pid_file)]) == 0
+    finally:
+        if pid_alive(pid):  # pragma: no cover - safety net
+            _kill(pid)
+
+    out = capsys.readouterr().out
+    assert f"Server stopped (pid={pid})" in out
+    assert not pid_alive(pid)
+    assert not pid_file.exists()
+
+    started = seen["args"]
+    assert started.server_command == "start"
+    # the run record is deleted by the stop, so these can only come from it
+    assert started.port == 9111
+    assert started.verbose == 1
+    assert started.models_config == str(models_config)
+    assert started.log_file == str(tmp_path / "daemon.log")
+    assert started.pid_file == str(pid_file)
+
+
+def test_reload_keeps_the_server_up_when_the_models_config_is_broken(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    seen: dict = {}
+    monkeypatch.setattr(ServerCommand, "_start", _recording_start(seen))
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+    server_module.write_run_file(
+        server_module.run_file_for(pid_file),
+        {
+            "models_config": str(tmp_path / "gone.json"),
+            "env_overrides": {},
+        },
+    )
+
+    try:
+        assert ServerCommand.run(["reload", "--pid-file", str(pid_file)]) == 1
+        err = capsys.readouterr().err
+        assert "reload aborted" in err
+        assert "models config" in err
+        assert pid_alive(pid) is True
+        assert pid_file.exists()
+        assert seen == {}
+    finally:
+        _kill(pid)
+
+
+def test_reload_graceful_sends_sighup_but_process_survives(
+    pid_file, tmp_path, capsys
+):
+    # HUP-tolerant dummy stands in for the Gunicorn master; the marker tells
+    # us the trap is in place before the signal goes out.
+    ready = tmp_path / "trap-ready"
+    pid = _spawn_detached(
+        ["bash", "-c", f"trap '' HUP; : > {ready}; sleep 300"], tmp_path / "d.pid"
+    )
+    assert _wait_for(ready)
+    write_pid_file(pid_file, pid)
+
+    try:
+        assert (
+            ServerCommand.run(["reload", "--graceful", "--pid-file", str(pid_file)])
+            == 0
+        )
         out = capsys.readouterr().out
         assert "SIGHUP" in out
         assert str(pid) in out
@@ -593,7 +856,333 @@ def test_reload_sends_sighup_but_process_survives(pid_file, tmp_path, capsys):
 
 def test_reload_missing_pid_file(pid_file, capsys):
     assert ServerCommand.run(["reload", "--pid-file", str(pid_file)]) == 1
-    assert "No running server found" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "No running server found" in err
+    assert "server start" in err
+
+
+def test_reload_aborts_when_the_server_refuses_to_stop(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(server_module, "_STOP_GRACE_SECONDS", 0.2)
+    seen: dict = {}
+    monkeypatch.setattr(ServerCommand, "_start", _recording_start(seen))
+    # The marker is written *after* the trap is installed, so the reload can
+    # never catch the dummy while SIGTERM still kills it (a lost race here
+    # would make the stop succeed and the restart run).
+    ready = tmp_path / "trap-ready"
+    pid = _spawn_detached(
+        ["bash", "-c", f"trap '' TERM; : > {ready}; sleep 300"], tmp_path / "d.pid"
+    )
+    assert _wait_for(ready)
+    write_pid_file(pid_file, pid)
+
+    try:
+        assert ServerCommand.run(["reload", "--pid-file", str(pid_file)]) == 1
+        err = capsys.readouterr().err
+        assert "reload aborted" in err
+        assert "--force" in err
+        assert seen == {}
+        assert pid_alive(pid) is True
+    finally:
+        _kill(pid)
+
+
+def test_reload_force_sigkills_and_starts_the_server_again(
+    pid_file, tmp_path, monkeypatch
+):
+    seen: dict = {}
+    monkeypatch.setattr(ServerCommand, "_start", _recording_start(seen))
+    pid = _spawn_detached(
+        ["bash", "-c", "trap '' TERM; sleep 300"], tmp_path / "d.pid"
+    )
+    write_pid_file(pid_file, pid)
+
+    try:
+        assert (
+            ServerCommand.run(["reload", "--force", "--pid-file", str(pid_file)])
+            == 0
+        )
+    finally:
+        if pid_alive(pid):  # pragma: no cover - safety net
+            _kill(pid)
+
+    assert not pid_alive(pid)
+    assert seen["args"].server_command == "start"
+
+
+def test_reload_reports_a_failing_start_and_leaves_the_server_down(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    pid = _spawn_detached(["sleep", "300"], tmp_path / "d.pid")
+    write_pid_file(pid_file, pid)
+    monkeypatch.setattr(ServerCommand, "_start", staticmethod(lambda args: 1))
+
+    try:
+        assert ServerCommand.run(["reload", "--pid-file", str(pid_file)]) == 1
+        err = capsys.readouterr().err
+        assert "Reload incomplete" in err
+        assert "server start" in err
+        assert not pid_alive(pid)
+    finally:
+        if pid_alive(pid):  # pragma: no cover - safety net
+            _kill(pid)
+
+
+def test_restart_tokens_replay_the_recorded_start_flags():
+    tokens = ServerCommand._restart_tokens(
+        {
+            "models_config": "/abs/models.json",
+            "env_overrides": {
+                "LLM_ROUTER_SERVER_HOST": "127.0.0.1",
+                "LLM_ROUTER_SERVER_PORT": "8081",
+                "LLM_ROUTER_SERVER_TYPE": "waitress",
+                "LLM_ROUTER_AUTH_ENABLED": "true",
+                "LLM_ROUTER_IN_DEBUG": "0",
+                "LLM_ROUTER_VERBOSE": "1",
+                "LLM_ROUTER_BALANCE_STRATEGY": "weighted",
+                "LLM_ROUTER_REDIS_PORT": "6380",
+                "LLM_ROUTER_MODELS_CONFIG": "relative/models.json",
+            },
+        }
+    )
+    args = ServerCommand.build_parser().parse_args(["start", *tokens])
+    assert (args.host, args.port) == ("127.0.0.1", 8081)
+    assert args.server == "waitress"
+    assert args.auth == 1
+    assert args.debug == 0
+    assert args.verbose == 1
+    assert args.lb_strategy == "weighted"
+    assert args.redis_port == 6380
+    # the absolute path from the record wins over the relative flag value
+    assert args.models_config == "/abs/models.json"
+
+
+def test_restart_tokens_drop_values_the_flags_would_reject():
+    assert (
+        ServerCommand._restart_tokens(
+            {
+                "env_overrides": {
+                    "LLM_ROUTER_SERVER_PORT": "not-a-port",
+                    "LLM_ROUTER_SERVER_TYPE": "uwsgi",
+                    "LLM_ROUTER_BALANCE_STRATEGY": "round_robin",
+                    "LLM_ROUTER_AUTH_ENABLED": "maybe",
+                    "LLM_ROUTER_VERBOSE": "0",
+                    "LLM_ROUTER_IN_DEBUG": "7",
+                    "LLM_ROUTER_UNRELATED": "x",
+                }
+            }
+        )
+        == []
+    )
+
+
+def test_restart_argv_keeps_explicit_pid_file_and_daemon_log(tmp_path):
+    instance = server_module.resolve_instance(argparse.Namespace())
+    pid_file = tmp_path / "other.pid"
+    argv = ServerCommand._restart_argv(
+        instance,
+        pid_file,
+        {
+            "log_file": str(tmp_path / "daemon.log"),
+            "env_overrides": {"LLM_ROUTER_SERVER_PORT": "9000"},
+        },
+    )
+    assert argv == [
+        "start",
+        "--port",
+        "9000",
+        "--pid-file",
+        str(pid_file),
+        "--log-file",
+        str(tmp_path / "daemon.log"),
+    ]
+
+
+def test_reload_waits_for_the_workers_before_starting(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    """``start`` must not run while a fork could still be holding the port."""
+    master, worker = _spawn_master_with_worker(tmp_path)
+    write_pid_file(pid_file, master)
+    observed: dict = {}
+
+    def fake_start(args):
+        # Nothing may still hold the port when the start half begins.
+        observed["master_holds_on"] = not server_module._has_exited(master)
+        observed["worker_holds_on"] = not server_module._has_exited(worker)
+        return 0
+
+    monkeypatch.setattr(ServerCommand, "_start", staticmethod(fake_start))
+
+    try:
+        assert ServerCommand.run(["reload", "--pid-file", str(pid_file)]) == 0
+    finally:
+        _kill_all(master, worker)
+
+    assert observed == {"master_holds_on": False, "worker_holds_on": False}
+    assert "starting the server again" in capsys.readouterr().out
+
+
+def test_reload_aborts_when_a_worker_survives_the_stop(
+    pid_file, tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        server_module, "_wait_tracked_gone", lambda processes, timeout: False
+    )
+    seen: dict = {}
+    monkeypatch.setattr(ServerCommand, "_start", _recording_start(seen))
+    master, worker = _spawn_master_with_worker(tmp_path, worker_traps_term=True)
+    write_pid_file(pid_file, master)
+
+    try:
+        assert ServerCommand.run(["reload", "--pid-file", str(pid_file)]) == 1
+        err = capsys.readouterr().err
+        assert "reload aborted" in err
+        assert "--force" in err
+        assert seen == {}
+    finally:
+        _kill_all(master, worker)
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="needs /proc")
+def test_process_tree_reaches_grandchildren(tmp_path):
+    """A two-level fork is captured in full, start time included."""
+    ready = tmp_path / "grandchild-ready"
+    worker_pid_file = tmp_path / "grandchild.pid"
+    proc = subprocess.Popen(
+        [
+            "bash",
+            "-c",
+            f"sleep 300 & echo $! > {worker_pid_file}; : > {ready}; wait",
+        ]
+    )
+    grandchild = 0
+    try:
+        assert _wait_for(ready)
+        grandchild = int(worker_pid_file.read_text(encoding="utf-8").strip())
+        tree = {item.pid: item for item in server_module.process_tree(os.getpid())}
+        assert proc.pid in tree
+        assert grandchild in tree
+        assert tree[grandchild].start_ticks is not None
+        assert tree[grandchild].still_same() is True
+        # A PID that changed hands is no longer the process that was captured.
+        assert server_module.TrackedPid(grandchild, -1).still_same() is False
+    finally:
+        _kill_all(grandchild, proc.pid)
+        proc.wait()
+
+
+def test_restart_argv_carries_the_named_instance(tmp_path):
+    """Losing ``-i`` would restart ``default``: another config.env and PID file."""
+    named = server_module.resolve_instance(argparse.Namespace(instance="dev1"))
+    argv = ServerCommand._restart_argv(named, named.pid_file, {"env_overrides": {}})
+    assert argv == ["start", "--instance", "dev1"]
+
+    default = server_module.resolve_instance(argparse.Namespace())
+    assert ServerCommand._restart_argv(
+        default, default.pid_file, {"env_overrides": {}}
+    ) == ["start"]
+
+
+def test_reload_restarts_the_same_instance_with_the_recorded_environment(
+    state_home, monkeypatch, capsys
+):
+    """A launch configured by env vars has no flags to replay -- the recorded
+    environment is all ``reload`` has to go by."""
+    instance = server_module.resolve_instance(
+        argparse.Namespace(instance="localhost-dev")
+    )
+    pid = _spawn_detached(["sleep", "300"], state_home / "d.pid")
+    write_pid_file(instance.pid_file, pid)
+    server_module.write_run_file(
+        instance.run_file,
+        {
+            "env_overrides": {},
+            "env": {
+                "LLM_ROUTER_SERVER_PORT": "8081",
+                "LLM_ROUTER_MODELS_CONFIG": "/srv/models.json",
+                "LLM_ROUTER_AUTH_ENABLED": "1",
+            },
+        },
+    )
+    seen: dict = {}
+
+    def fake_start(args):
+        seen["args"] = args
+        return 0
+
+    monkeypatch.setattr(ServerCommand, "_start", staticmethod(fake_start))
+
+    try:
+        code = ServerCommand.run(["reload", "-i", "localhost-dev"])
+    finally:
+        _kill_all(pid)
+
+    assert code == 0
+    restarted = seen["args"]
+    assert restarted.instance == "localhost-dev"
+    assert restarted.restart_env["LLM_ROUTER_SERVER_PORT"] == "8081"
+    assert restarted.restart_env["LLM_ROUTER_AUTH_ENABLED"] == "1"
+
+
+def test_reloaded_environment_stays_below_config_env_and_the_shell(
+    state_home, monkeypatch
+):
+    """The recorded env only fills what nothing else declares."""
+    instance = server_module.resolve_instance(argparse.Namespace(instance="dev1"))
+    instance.ensure_dir()
+    instance.config_env.write_text("LLM_ROUTER_SERVER_PORT=9100\n", encoding="utf-8")
+    monkeypatch.setenv("LLM_ROUTER_REDIS_HOST", "shell-host")
+    monkeypatch.delenv("LLM_ROUTER_BALANCE_STRATEGY", raising=False)
+    args = ServerCommand.build_parser().parse_args(["start", "-i", "dev1"])
+    args.restart_env = {
+        "LLM_ROUTER_SERVER_PORT": "8081",
+        "LLM_ROUTER_REDIS_HOST": "record-host",
+        "LLM_ROUTER_BALANCE_STRATEGY": "first_available_optim",
+    }
+
+    ServerCommand._apply_start_env(args, instance)
+
+    assert os.environ["LLM_ROUTER_SERVER_PORT"] == "9100"
+    assert os.environ["LLM_ROUTER_REDIS_HOST"] == "shell-host"
+    assert os.environ["LLM_ROUTER_BALANCE_STRATEGY"] == "first_available_optim"
+
+
+def test_start_without_a_record_ignores_the_recorded_layer(state_home, monkeypatch):
+    """Plain ``start`` has no ``restart_env`` and keeps the plain defaults."""
+    instance = server_module.resolve_instance(argparse.Namespace(instance="dev2"))
+    monkeypatch.delenv("LLM_ROUTER_SERVER_PORT", raising=False)
+    args = ServerCommand.build_parser().parse_args(["start", "-i", "dev2"])
+
+    ServerCommand._apply_start_env(args, instance)
+
+    assert (
+        os.environ["LLM_ROUTER_SERVER_PORT"] == DEFAULT_ENV["LLM_ROUTER_SERVER_PORT"]
+    )
+
+
+def test_foreground_run_leaves_a_successor_pid_file_alone(
+    monkeypatch, tmp_path, capsys
+):
+    """A reload that already started the next server must not be cleaned up."""
+    pid_file = tmp_path / "server.pid"
+
+    class FakeProc:
+        pid = 4242
+
+        def wait(self):
+            # The reload of this instance wrote its own PID while we waited.
+            write_pid_file(pid_file, 9999)
+            return 0
+
+    monkeypatch.setattr(
+        server_module.subprocess, "Popen", lambda cmd, **kwargs: FakeProc()
+    )
+    rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
+
+    assert rc == 0
+    assert read_pid_file(pid_file) == 9999
 
 
 # ---- status ---------------------------------------------------------------

@@ -979,6 +979,49 @@ def test_acquire_start_lock_is_exclusive(state_home):
     assert reacquired is not None
 
 
+def test_foreground_start_releases_the_lock_before_serving(state_home, monkeypatch):
+    """The lock guards the PID-file race, not the life of a foreground server.
+
+    ``reload`` starts as soon as the running server is gone, so a lock held for
+    a whole foreground session made the reload of that instance fail with
+    "a start is already in progress".
+    """
+    instance = _instance("dev")
+    seen: Dict[str, Any] = {}
+
+    class FakeProc:
+        pid = 4242
+
+        def wait(self) -> int:
+            # While the server runs, the PID must already exclude a second
+            # start -- the lock must not be what protects the instance.
+            seen["lock_held"] = instance.lock_file.exists()
+            seen["pid_published"] = read_pid_file(instance.pid_file)
+            return 0
+
+    monkeypatch.setattr(
+        server_module.subprocess, "Popen", lambda cmd, **kwargs: FakeProc()
+    )
+
+    assert (
+        ServerCommand.run(["start", "--foreground", "-i", "dev", "--no-port-check"])
+        == 0
+    )
+
+    assert seen == {"lock_held": False, "pid_published": 4242}
+    assert not instance.lock_file.exists()
+
+
+def test_release_start_lock_leaves_a_lock_of_another_start(state_home):
+    instance = _instance("dev")
+    instance.ensure_dir()
+    instance.lock_file.write_text("999999\n", encoding="utf-8")
+
+    release_start_lock(instance.lock_file)
+
+    assert instance.lock_file.exists()
+
+
 # ---- discovery -------------------------------------------------------------
 
 
