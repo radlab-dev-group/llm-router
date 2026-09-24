@@ -33,6 +33,7 @@ class BalanceStrategies:
     DYNAMIC_WEIGHTED = "dynamic_weighted"
     FIRST_AVAILABLE = "first_available"
     FIRST_AVAILABLE_OPTIM = "first_available_optim"
+    FIRST_AVAILABLE_NWORKERS = "first_available_optim_nworkers"
 
 
 # List of all valid balance‑strategy identifiers.
@@ -44,6 +45,7 @@ POSSIBLE_BALANCE_STRATEGIES = [
     BalanceStrategies.DYNAMIC_WEIGHTED,
     BalanceStrategies.FIRST_AVAILABLE,
     BalanceStrategies.FIRST_AVAILABLE_OPTIM,
+    BalanceStrategies.FIRST_AVAILABLE_NWORKERS,
 ]
 
 #
