@@ -36,7 +36,9 @@ API requirements)::
 
     from llm_router_lib import AsyncLLMRouterClient
 
-    async with AsyncLLMRouterClient(api="http://localhost:8080", token="my-token") as client:
+    async with AsyncLLMRouterClient(
+        api="http://localhost:8080", token="my-token"
+    ) as client:
         async for event in client.stream_conversation_with_model(
             user_last_statement="Hello!",
             model="google/gemma-3-12b-it",

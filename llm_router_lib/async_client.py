@@ -34,7 +34,10 @@ from llm_router_lib.core.constants import (
 from llm_router_lib.utils.http_async import AsyncHttpRequester
 from llm_router_lib.utils.payload import build_payload
 from llm_router_lib.utils.stream import iter_events
-from llm_router_lib.exceptions import LLMRouterError, NoArgsAndNoPayloadError
+from llm_router_lib.exceptions import LLMRouterError
+from llm_router_lib.services.service_interface import (
+    BaseConversationServiceInterface,
+)
 from llm_router_lib.services.conversation import (
     ConversationWithModelService,
     ExtendedConversationWithModelService,
@@ -127,7 +130,7 @@ class AsyncLLMRouterClient:
         logger: Optional[logging.Logger] = None,
         default_model: Optional[str] = None,
         stream_timeout: Optional[float] = None,
-        transport: Optional[httpx.BaseTransport] = None,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
     ) -> None:
         """
         Initialise the async client with connection settings.
@@ -154,7 +157,7 @@ class AsyncLLMRouterClient:
             requests.  ``None`` disables the read timeout so that long
             generations are not interrupted; the connect timeout stays
             ``timeout``.
-        transport : Optional[httpx.BaseTransport]
+        transport : Optional[httpx.AsyncBaseTransport]
             Custom ``httpx`` transport (e.g. ``httpx.MockTransport`` in
             tests); if omitted, the default transport is used.
         """
@@ -202,19 +205,24 @@ class AsyncLLMRouterClient:
     def _parse_json(resp: httpx.Response, endpoint: str) -> Dict[str, Any]:
         """Parse the response as JSON, raising ``LLMRouterError`` on failure."""
         try:
-            return resp.json()
+            data: Dict[str, Any] = resp.json()
+            return data
         except ValueError as inner_exc:
             raise LLMRouterError(
                 f"Invalid JSON response from {endpoint}: {inner_exc}"
             ) from inner_exc
 
-    async def _get_json(self, service_cls: type) -> Dict[str, Any]:
+    async def _get_json(
+        self, service_cls: Type[BaseConversationServiceInterface]
+    ) -> Dict[str, Any]:
         """Perform a GET against ``service_cls.endpoint`` and parse the JSON body."""
         resp = await self.http.get(service_cls.endpoint)
         return self._parse_json(resp, service_cls.endpoint)
 
     async def _post_json(
-        self, service_cls: type, payload: Dict[str, Any]
+        self,
+        service_cls: Type[BaseConversationServiceInterface],
+        payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Perform a POST against ``service_cls.endpoint`` and parse the JSON body."""
         resp = await self.http.post(service_cls.endpoint, json=payload)
@@ -232,9 +240,7 @@ class AsyncLLMRouterClient:
         PingResponse
             Validated :class:`PingResponse` (``status`` and ``body`` fields).
         """
-        return PingResponse.model_validate(
-            await self._get_json(PingService)
-        )
+        return PingResponse.model_validate(await self._get_json(PingService))
 
     async def version(self) -> VersionResponse:
         """
@@ -245,9 +251,7 @@ class AsyncLLMRouterClient:
         VersionResponse
             Validated :class:`VersionResponse` exposing the router version.
         """
-        return VersionResponse.model_validate(
-            await self._get_json(VersionService)
-        )
+        return VersionResponse.model_validate(await self._get_json(VersionService))
 
     async def models(self) -> ModelsListResponse:
         """
@@ -259,9 +263,7 @@ class AsyncLLMRouterClient:
             Validated :class:`ModelsListResponse`; read the ``data`` field for
             the full entries or the ``ids`` property for just the names.
         """
-        return ModelsListResponse.model_validate(
-            await self._get_json(ModelsService)
-        )
+        return ModelsListResponse.model_validate(await self._get_json(ModelsService))
 
     # ------------------------------------------------------------------ #
     # Conversation endpoints
@@ -344,9 +346,7 @@ class AsyncLLMRouterClient:
             max_new_tokens=max_new_tokens,
         )
         return ExtendedConversationResponse.model_validate(
-            await self._post_json(
-                ExtendedConversationWithModelService, request
-            )
+            await self._post_json(ExtendedConversationWithModelService, request)
         )
 
     # ------------------------------------------------------------------ #
@@ -686,9 +686,7 @@ class AsyncLLMRouterClient:
             max_new_tokens=max_new_tokens,
         )
         return CreateFullArticleFromTextsResponse.model_validate(
-            await self._post_json(
-                CreateFullArticleFromTextsService, request
-            )
+            await self._post_json(CreateFullArticleFromTextsService, request)
         )
 
     async def generate_questions(
