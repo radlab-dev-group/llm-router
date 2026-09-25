@@ -53,7 +53,7 @@ class AsyncHttpRequester:
         seconds, mirroring the synchronous requester.
     logger : Optional[logging.Logger]
         Logger instance; if omitted, a module‑level logger is created.
-    transport : Optional[httpx.BaseTransport]
+    transport : Optional[httpx.AsyncBaseTransport]
         Custom transport (e.g. ``httpx.MockTransport`` in tests); if
         omitted, a default ``httpx.AsyncClient`` is created internally.
     client : Optional[httpx.AsyncClient]
@@ -68,7 +68,7 @@ class AsyncHttpRequester:
         timeout: int = 10,
         retries: int = 2,
         logger: Optional[logging.Logger] = None,
-        transport: Optional[httpx.BaseTransport] = None,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
         client: Optional[httpx.AsyncClient] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -194,9 +194,7 @@ class AsyncHttpRequester:
         **kwargs: Any,
     ) -> httpx.Response:
         """Perform a ``GET`` request (see :meth:`request`)."""
-        return await self.request(
-            "GET", path, timeout=timeout, **kwargs
-        )
+        return await self.request("GET", path, timeout=timeout, **kwargs)
 
     async def post(
         self,
@@ -206,9 +204,7 @@ class AsyncHttpRequester:
         **kwargs: Any,
     ) -> httpx.Response:
         """Perform a ``POST`` request with a JSON body (see :meth:`request`)."""
-        return await self.request(
-            "POST", path, json=json, timeout=timeout, **kwargs
-        )
+        return await self.request("POST", path, json=json, timeout=timeout, **kwargs)
 
     @asynccontextmanager
     async def stream(
@@ -259,9 +255,7 @@ class AsyncHttpRequester:
         url = self._full_url(path)
         self.logger.debug("%s (stream) %s", method, url)
 
-        effective_timeout = httpx.Timeout(
-            timeout, connect=self.timeout
-        )
+        effective_timeout = httpx.Timeout(timeout, connect=self.timeout)
 
         async with self.client.stream(
             method,

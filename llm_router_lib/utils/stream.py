@@ -6,19 +6,20 @@ downstream provider, a builtin endpoint may emit OpenAI‑compatible SSE chunks
 (``data: {"choices": [{"delta": {"content": ...}}]}``), Ollama NDJSON chunks
 (``{"response": "...", "done": false}``), or an error chunk
 (``data: {"error": "..."}``).  The helpers in this module turn every one of
-those wire formats into a single, typed :class:`~llm_router_lib.data_models.response.StreamEvent`
+those wire formats into a single, typed
+:class:`~llm_router_lib.data_models.response.StreamEvent`
 stream so that callers do not need to know the provider details:
 
 * :func:`parse_stream_line` – converts a single raw line into a
   :class:`StreamEvent` (or ``None`` for bookkeeping lines such as ``[DONE]``),
   raising :class:`~llm_router_lib.exceptions.LLMRouterError` for error chunks;
 * :func:`iter_events` – async iterator over an open
-  :class:`httpx.Response` that yields only meaningful events.
+  :class:`httpx.Response` that yields only the meaningful events.
 """
 
 import json
 import logging
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 
 import httpx
 
@@ -53,14 +54,14 @@ def _sse_payload(line: str) -> Optional[str]:
     if stripped.startswith(_IGNORED_PREFIXES):
         return None
     if stripped.startswith(_DATA_PREFIX):
-        payload = stripped[len(_DATA_PREFIX):].lstrip()
+        payload = stripped[len(_DATA_PREFIX) :].lstrip()
         if payload == _DONE_MARKER:
             return None
         return payload
     return stripped
 
 
-def _extract_text(chunk: dict) -> str:
+def _extract_text(chunk: Dict[str, Any]) -> str:
     """
     Extract the text delta from a single parsed chunk.
 
@@ -95,7 +96,7 @@ def _extract_text(chunk: dict) -> str:
     return ""
 
 
-def _is_done(chunk: dict) -> bool:
+def _is_done(chunk: Dict[str, Any]) -> bool:
     """Return ``True`` when the chunk marks the end of the generation."""
     choices = chunk.get("choices")
     if isinstance(choices, list) and choices:
