@@ -29,9 +29,7 @@ from llm_router_lib.utils import AsyncHttpRequester
 from llm_router_lib.utils.http import raise_for_status
 
 
-def _requester(
-    handler: Any, **kwargs: Any
-) -> AsyncHttpRequester:
+def _requester(handler: Any, **kwargs: Any) -> AsyncHttpRequester:
     """Build an :class:`AsyncHttpRequester` on top of a mock transport."""
     return AsyncHttpRequester(
         base_url=kwargs.pop("base_url", "http://r.test"),
@@ -47,16 +45,12 @@ def _requester(
 def test_base_url_trailing_slash_is_stripped() -> None:
     req = _requester(lambda r: httpx.Response(200))
     assert req.base_url == "http://r.test"
-    req2 = _requester(
-        lambda r: httpx.Response(200), base_url="http://r.test///"
-    )
+    req2 = _requester(lambda r: httpx.Response(200), base_url="http://r.test///")
     assert req2.base_url == "http://r.test"
 
 
 def test_timeout_and_retries_are_stored() -> None:
-    req = _requester(
-        lambda r: httpx.Response(200), timeout=42, retries=7
-    )
+    req = _requester(lambda r: httpx.Response(200), timeout=42, retries=7)
     assert req.timeout == 42
     assert req.retries == 7
 

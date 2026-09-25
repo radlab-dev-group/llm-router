@@ -31,9 +31,7 @@ from llm_router_lib.utils.stream import iter_events, parse_stream_line
 # parse_stream_line
 # ---------------------------------------------------------------------- #
 def test_openai_sse_delta_line() -> None:
-    event = parse_stream_line(
-        'data: {"choices": [{"delta": {"content": "He"}}]}'
-    )
+    event = parse_stream_line('data: {"choices": [{"delta": {"content": "He"}}]}')
     assert event is not None
     assert event.text == "He"
     assert event.done is False
@@ -42,9 +40,7 @@ def test_openai_sse_delta_line() -> None:
 
 def test_openai_sse_role_only_line_is_skipped() -> None:
     assert (
-        parse_stream_line(
-            'data: {"choices": [{"delta": {"role": "assistant"}}]}'
-        )
+        parse_stream_line('data: {"choices": [{"delta": {"role": "assistant"}}]}')
         is None
     )
 
@@ -133,7 +129,7 @@ def test_non_dict_json_values_are_skipped() -> None:
 
 
 def test_data_prefix_with_extra_spaces() -> None:
-    event = parse_stream_line("data:    {\"response\": \"x\", \"done\": false}")
+    event = parse_stream_line('data:    {"response": "x", "done": false}')
     assert event is not None
     assert event.text == "x"
 
@@ -145,7 +141,7 @@ def test_data_prefix_with_extra_spaces() -> None:
 async def test_iter_events_yields_meaningful_events_only() -> None:
     body = (
         b'data: {"choices": [{"delta": {"role": "assistant"}}]}\n'
-        b'\n'
+        b"\n"
         b'data: {"choices": [{"delta": {"content": "A"}}]}\n'
         b"\n"
         b"data: [DONE]\n"

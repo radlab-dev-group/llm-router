@@ -140,9 +140,7 @@ CASES: List[EndpointCase] = [
         response_cls=Polarity3cResponse,
         domain_kwargs={"texts": ["I love this"]},
         response_value={
-            "response": [
-                {"original": "I love this", "polarity": "positive"}
-            ],
+            "response": [{"original": "I love this", "polarity": "positive"}],
             "generation_time": 0.2,
         },
     ),
@@ -153,9 +151,7 @@ CASES: List[EndpointCase] = [
         response_cls=TranslateResponse,
         domain_kwargs={"texts": ["Hello"]},
         response_value={
-            "response": [
-                {"original": "Hello", "translated": "Cześć"}
-            ],
+            "response": [{"original": "Hello", "translated": "Cześć"}],
             "generation_time": 0.2,
         },
     ),
@@ -355,9 +351,7 @@ def test_payload_model_is_serialised_via_model_dump(
             _json_handler(captured, payload=case.response_value)
         ),
     )
-    request = case.request_model(
-        model_name="test-model", **case.domain_kwargs
-    )
+    request = case.request_model(model_name="test-model", **case.domain_kwargs)
     resp = _run(getattr(client, case.method)(payload=request))
     assert isinstance(resp, case.response_cls)
     assert captured[0]["path"] == case.endpoint
@@ -442,12 +436,13 @@ def test_none_kwargs_fall_back_to_model_defaults(case: EndpointCase) -> None:
         )
     )
     body = captured[0]["body"]
-    assert body["temperature"] == case.request_model.model_fields[
-        "temperature"
-    ].default
-    assert body["max_new_tokens"] == case.request_model.model_fields[
-        "max_new_tokens"
-    ].default
+    assert (
+        body["temperature"] == case.request_model.model_fields["temperature"].default
+    )
+    assert (
+        body["max_new_tokens"]
+        == case.request_model.model_fields["max_new_tokens"].default
+    )
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c.method for c in CASES])
@@ -481,11 +476,7 @@ def test_401_raises_authentication_error(case: EndpointCase) -> None:
         ),
     )
     with pytest.raises(AuthenticationError):
-        _run(
-            getattr(client, case.method)(
-                **case.domain_kwargs, model="test-model"
-            )
-        )
+        _run(getattr(client, case.method)(**case.domain_kwargs, model="test-model"))
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c.method for c in CASES])
@@ -497,11 +488,7 @@ def test_429_raises_rate_limit_error(case: EndpointCase) -> None:
         ),
     )
     with pytest.raises(RateLimitError):
-        _run(
-            getattr(client, case.method)(
-                **case.domain_kwargs, model="test-model"
-            )
-        )
+        _run(getattr(client, case.method)(**case.domain_kwargs, model="test-model"))
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c.method for c in CASES])
@@ -513,11 +500,7 @@ def test_400_raises_llm_router_error(case: EndpointCase) -> None:
         ),
     )
     with pytest.raises(LLMRouterError) as ctx:
-        _run(
-            getattr(client, case.method)(
-                **case.domain_kwargs, model="test-model"
-            )
-        )
+        _run(getattr(client, case.method)(**case.domain_kwargs, model="test-model"))
     assert "400" in str(ctx.value)
 
 
@@ -529,8 +512,4 @@ def test_invalid_json_response_raises_llm_router_error(
         transport=httpx.MockTransport(_json_handler(status=200, payload=None))
     )
     with pytest.raises(LLMRouterError):
-        _run(
-            getattr(client, case.method)(
-                **case.domain_kwargs, model="test-model"
-            )
-        )
+        _run(getattr(client, case.method)(**case.domain_kwargs, model="test-model"))

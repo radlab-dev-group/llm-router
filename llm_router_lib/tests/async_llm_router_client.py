@@ -43,11 +43,7 @@ async def main() -> None:
             result = await coro
             print("--" * 50)
             print(f" =========== {label} =========== ")
-            print(
-                json.dumps(
-                    result.model_dump(), indent=1, ensure_ascii=False
-                )
-            )
+            print(json.dumps(result.model_dump(), indent=1, ensure_ascii=False))
 
         # ---------------------------------------------------------------- #
         # non-streaming conversation
