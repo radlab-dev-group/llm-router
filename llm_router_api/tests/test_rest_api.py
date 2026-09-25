@@ -16,7 +16,6 @@ os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 import sys  # noqa: E402
 from unittest import mock  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
-import logging  # noqa: E402
 
 import pytest  # noqa: E402
 
@@ -147,30 +146,29 @@ class TestVerboseModeStartup:
         assert slept == []
         gunicorn.assert_called_once()
 
-    def test_warn_verbose_mode_off_is_silent(self, monkeypatch, caplog):
+    def test_warn_verbose_mode_off_is_silent(self, monkeypatch, capsys):
         monkeypatch.setattr(rest_api_module, "VERBOSE_MODE", False)
         slept = []
         monkeypatch.setattr(
             rest_api_module, "time", SimpleNamespace(sleep=slept.append)
         )
-        with caplog.at_level(logging.WARNING, logger="llm_router_api.rest_api"):
-            rest_api_module._warn_verbose_mode()
+        rest_api_module._warn_verbose_mode()
         assert slept == []
-        assert "UNMASKED" not in caplog.text
+        assert "UNMASKED" not in capsys.readouterr().out
 
     def test_warn_verbose_mode_warns_about_unmasked_params(
-        self, monkeypatch, caplog
+        self, monkeypatch, capsys
     ):
         monkeypatch.setattr(rest_api_module, "VERBOSE_MODE", True)
         slept = []
         monkeypatch.setattr(
             rest_api_module, "time", SimpleNamespace(sleep=slept.append)
         )
-        with caplog.at_level(logging.WARNING, logger="llm_router_api.rest_api"):
-            rest_api_module._warn_verbose_mode()
+        rest_api_module._warn_verbose_mode()
         assert slept == [rest_api_module.VERBOSE_STARTUP_DELAY_SECONDS]
-        assert "UNMASKED" in caplog.text
-        assert "LLM_ROUTER_VERBOSE" in caplog.text
+        captured = capsys.readouterr().out
+        assert "UNMASKED" in captured
+        assert "LLM_ROUTER_VERBOSE" in captured
 
     def test_verbose_on_delays_the_server_startup(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["rest_api", "--gunicorn"])

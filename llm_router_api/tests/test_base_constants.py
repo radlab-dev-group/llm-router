@@ -76,11 +76,8 @@ class TestProviderLists:
 
     def test_all_providers_composition(self):
         # ``ALL_PROVIDERS`` extends the OpenAI‑compatible list with Ollama
-        # (and repeats ``anthropic`` — pin the exact composition).
-        assert ALL_PROVIDERS == OPENAI_COMPATIBLE_PROVIDERS + [
-            "ollama",
-            "anthropic",
-        ]
+        # (pin the exact composition).
+        assert ALL_PROVIDERS == OPENAI_COMPATIBLE_PROVIDERS + ["ollama"]
 
     def test_ollama_is_not_openai_compatible(self):
         assert "ollama" not in OPENAI_COMPATIBLE_PROVIDERS
