@@ -8,12 +8,16 @@ LLM‑Router service.
 - The **data models** live in `llm_router_lib/data_models` and describe every request payload the router accepts.
 - The **client** (`LLMRouterClient`) offers a high‑level, Pythonic API that hides HTTP details, retries, and error
   handling.
+- The **async client** (`AsyncLLMRouterClient`, `httpx`‑based) offers the same API for `asyncio` applications
+  (e.g. FastAPI), plus streaming conversation methods.
 - Low‑level **service classes** (`ConversationWithModelService`, `ExtendedConversationWithModelService`,
   `TranslateService`,
   `GenerativeAnswerService`, health services) perform the actual HTTP calls and can be used directly when finer‑grained
   control is required.
 - `HttpRequester` (in `utils/http.py`) is a small wrapper around `requests` that adds logging, configurable retries, and
   unified error translation.
+- `AsyncHttpRequester` (in `utils/http_async.py`) is its `httpx`‑based asynchronous counterpart with the same retry
+  and error‑translation contract (plus a `stream()` helper for SSE responses).
 - A dedicated **exception hierarchy** (`exceptions.py`) maps HTTP errors to meaningful Python exceptions.
 
 In short, `llm_router_lib` provides **both** the contract (the “schema”) **and** a convenient client to consume the
@@ -238,11 +242,97 @@ with LLMRouterClient(api="http://localhost:8080", token="...") as client:
 
 :::
 
+## Async client (`AsyncLLMRouterClient`)
+
+`AsyncLLMRouterClient` (in `async_client.py`, backed by `httpx`) is a drop‑in `async` alternative to
+`LLMRouterClient` for `asyncio` applications (e.g. FastAPI): **the same 14 methods, the same keyword‑only calling
+contract and the same typed response models**, plus streaming support. It shares the retry policy (status codes and
+exponential back‑off), the bearer‑token handling and the error translation of the synchronous client, and the
+payload‑building contract (`utils/payload.py`) is the single source of truth for both clients.
+
+```python
+import asyncio
+from llm_router_lib import AsyncLLMRouterClient
+
+async def main():
+    async with AsyncLLMRouterClient(
+        api="http://localhost:8080",  # router host URL
+        token="YOUR_ROUTER_TOKEN",
+    ) as client:  # client closed automatically
+        # same unified contract as the sync client:
+        response = await client.conversation_with_model(
+            user_last_statement="Hello, how are you?",
+            model="google/gemma-3-12b-it",
+        )
+        print(response.response)
+
+asyncio.run(main())
+```
+
+### Streaming
+
+The two conversation endpoints have streaming variants that send the request with `stream: true` and yield
+normalised `StreamEvent` objects (`text` – the text delta, `raw` – the original parsed chunk, `done` – end of the
+generation). The router forwards provider streams as‑is, so the client transparently handles both
+OpenAI‑compatible SSE chunks and Ollama NDJSON chunks:
+
+```python
+async def main():
+    async with AsyncLLMRouterClient(api="http://localhost:8080", token="...") as client:
+        async for event in client.stream_conversation_with_model(
+            user_last_statement="Hello!",
+            model="google/gemma-3-12b-it",
+        ):
+            if event.text:
+                print(event.text, end="", flush=True)
+            if event.done:
+                break
+        print()
+
+        # or aggregate the whole stream into the final text:
+        text = await client.collect_stream_text(
+            client.stream_conversation_with_model(
+                user_last_statement="Hello!",
+                model="google/gemma-3-12b-it",
+            )
+        )
+
+asyncio.run(main())
+```
+
+Notes:
+
+- `stream_timeout` (constructor argument, default `None`) is the read timeout for streamed bodies; `None` disables
+  it so long generations are not cut off by the short default request timeout.
+- Streaming requests are **never retried** (a partial body would make a blind retry unsafe); unary requests follow
+  the same retry policy as the synchronous client.
+- A streamed `{"error": ...}` chunk raises `LLMRouterError`.
+- `httpx` is a runtime dependency of the async client (installed with the API requirements – see `requirements.txt`).
+
+| Streaming method                              | Endpoint                                     | Domain arguments (all keyword‑only)                                                                     |
+|-----------------------------------------------|----------------------------------------------|---------------------------------------------------------------------------------------------------------|
+| `stream_conversation_with_model(...)`         | `POST /api/conversation_with_model`          | `user_last_statement`, `historical_messages`, `model`, `temperature`, `max_new_tokens`                  |
+| `stream_extended_conversation_with_model(...)`| `POST /api/extended_conversation_with_model` | `user_last_statement`, `historical_messages`, `system_prompt`, `model`, `temperature`, `max_new_tokens` |
+
+All 14 unary methods of the async client are async equivalents of the sync ones listed above
+(`conversation_with_model`, `extended_conversation_with_model`, the nine utility methods and `ping` / `version` /
+`models`).
+
 ## Utilities
 
 - **`utils/http.py` – `HttpRequester`**  
   Handles URL construction, bearer‑token injection, configurable retries (via `urllib3.Retry`), and unified error
   mapping. It returns the raw `requests.Response` after validation.
+
+- **`utils/http_async.py` – `AsyncHttpRequester`**
+  The `httpx`‑based async counterpart: same URL construction, bearer‑token injection, retry policy and error mapping,
+  plus `stream()` (an async context manager for SSE responses).
+
+- **`utils/payload.py` – `build_payload`**
+  The shared payload‑building contract (Pydantic model / named arguments / dict rejection) used by both clients.
+
+- **`utils/stream.py` – `parse_stream_line` / `iter_events`**
+  Normalise raw stream lines (OpenAI SSE, Ollama NDJSON, error chunks, `data: [DONE]`) into typed `StreamEvent`s.
 
 - **`exceptions.py`** – centralised exception definitions (see above).
 
@@ -256,3 +346,12 @@ python -m llm_router_lib.tests.llm_router_client
 
 This script spins up a `LLMRouterClient` instance and runs a suite of end‑to‑end tests covering conversation, extended
 conversation, translation, generative answering, and health checks.
+
+The asynchronous equivalent (`python -m llm_router_lib.tests.async_llm_router_client`) exercises
+`AsyncLLMRouterClient` against a live router, including a token‑by‑token streaming conversation.
+
+The unit tests (including the async ones – `pytest-asyncio`) are run with the regular test suite:
+
+```bash
+pytest llm_router_lib/tests
+```

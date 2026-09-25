@@ -9,6 +9,7 @@
 #
 ### Test runner + test-only runtime deps
 #pytest==8.2.2
+#pytest-asyncio==1.4.0
 #openai==1.109.1
 #nest_asyncio==1.6.0
 
@@ -25,9 +26,9 @@ types-tqdm
 ## Test runner + test-only runtime deps
 pytest
 pytest-cov
+pytest-asyncio
 openai
 nest_asyncio
 
 ## fake redis
 fakeredis
-

@@ -16,7 +16,7 @@ as a result, partial responses, or extra book‑keeping keys added by the server
 do not rise during validation.
 """
 
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -272,3 +272,32 @@ class GenerateArticleFromTextsResponse(GenerationResponse):
     """
 
     response: ArticleText = Field(default_factory=ArticleText)
+
+
+# ----------------------------------------------------------------------
+# Streaming endpoints
+# ----------------------------------------------------------------------
+class StreamEvent(BaseResponse):
+    """
+    A single normalised event from a streaming (SSE) response.
+
+    The router forwards provider streams as‑is (passthrough), so a client may
+    receive either OpenAI‑compatible SSE chunks (``choices[0].delta.content``),
+    Ollama NDJSON chunks (``{"response": ...}``) or error chunks
+    (``{"error": ...}``).  :func:`llm_router_lib.utils.stream.parse_stream_line`
+    normalises all of those shapes into this lightweight model:
+
+    * ``text`` – the extracted text delta (may be empty for non‑content
+      bookkeeping events);
+    * ``raw`` – the original parsed JSON chunk (empty dict when the line was
+      not valid JSON);
+    * ``done`` – ``True`` once the model signalled the end of the generation
+      (OpenAI ``finish_reason`` or Ollama ``done: true``).
+
+    Error chunks are not represented as events – they raise
+    :class:`~llm_router_lib.exceptions.LLMRouterError`.
+    """
+
+    text: str = ""
+    raw: Dict[str, Any] = Field(default_factory=dict)
+    done: bool = False
