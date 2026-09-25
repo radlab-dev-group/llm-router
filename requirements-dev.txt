@@ -29,6 +29,9 @@ pytest-cov
 pytest-asyncio
 openai
 nest_asyncio
+## undeclared transitive deps of llm_router_plugins (imported at module load)
+numpy
+pandas
 
 ## fake redis
 fakeredis
