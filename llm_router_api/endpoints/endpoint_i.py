@@ -683,6 +683,23 @@ class EndpointI(SecureEndpointI, abc.ABC):
         """
         return self._model_handler
 
+    @property
+    def call_for_each_user_msg(self) -> bool:
+        """
+        Indicates whether a specific action should be executed for each user message.
+
+        This property provides a way to access the internal flag that determines
+        if certain actions or checks should be performed for every user input message
+        within the application.
+
+        Returns
+        -------
+        bool
+            True if the action is set to execute for each user message,
+            False otherwise.
+        """
+        return self._call_for_each_user_msg
+
     # ------------------------------------------------------------------
     # Core workflow
     # ------------------------------------------------------------------
@@ -1242,6 +1259,21 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         return self._timeout
 
+    @property
+    def http_executor(self) -> HttpRequestExecutor:
+        """
+        Provides access to the HTTP executor responsible for executing HTTP requests.
+
+        This property allows retrieval of the current HTTP executor instance used
+        for managing and executing HTTP operations.
+
+        Returns
+        -------
+        object
+            HttpRequestExecutor instance.
+        """
+        return self._http_executor
+
     # ------------------------------------------------------------------
     # Core execution flow
     # ------------------------------------------------------------------
@@ -1552,6 +1584,11 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     ):
         """
         Dispatch a streaming response (format metrics + executor).
+
+        The dispatcher opens the stream and inspects its first chunk, so a
+        provider that answers the stream request with an error status is
+        swapped for another one (and only then for the ``fallback_model``)
+        before anything reaches the client.
         """
         # ---- Prometheus: response format (streamed) -------------------
         self._record_response_format(
@@ -1563,12 +1600,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             api_model_provider=api_model_provider,
         )
 
-        return self._http_executor.stream_response(
+        return self._http_dispatch.stream_or_rerun(
+            api_model_provider=api_model_provider,
             ep_url=ep_url,
             params=params,
             options=options,
             stream_type=stream_type,
-            api_model_provider=api_model_provider,
+            orig_params=orig_params,
+            reconnect_number=reconnect_number,
         )
 
     def _dispatch_non_streaming(
