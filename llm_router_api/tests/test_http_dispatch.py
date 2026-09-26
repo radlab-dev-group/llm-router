@@ -92,8 +92,10 @@ def _stream(ep, stream_type=StreamConversion.OPENAI, orig_params=None):
 class _FailingStream:
     """Stream iterator that fails like a provider rejecting the request."""
 
-    def __init__(self, status=503, message="Loading model"):
-        self.error = ProviderStreamError(status_code=status, message=message)
+    def __init__(self, status=503, message="Loading model", error_code=None):
+        self.error = ProviderStreamError(
+            status_code=status, message=message, error_code=error_code
+        )
 
     def __iter__(self):
         return self
@@ -102,9 +104,9 @@ class _FailingStream:
         raise self.error
 
 
-def _failing_stream(status=503, message="Loading model"):
+def _failing_stream(status=503, message="Loading model", error_code=None):
     """Stream that fails the way a provider rejects a stream request."""
-    return _FailingStream(status=status, message=message)
+    return _FailingStream(status=status, message=message, error_code=error_code)
 
 
 @pytest.fixture(autouse=True)
@@ -425,6 +427,32 @@ class TestStreamFailover:
         ep.run_ep.assert_not_called()
         rm.record_provider_error.assert_called_once_with(
             provider_type="openai", model_name="m1", error_code="503"
+        )
+
+    def test_unreachable_provider_reruns_the_request(self):
+        """``status_code`` 0 means "never answered" - still replayable."""
+        ep = _make_ep()
+        ep._http_executor.stream_response.return_value = _failing_stream(
+            status=0, message="A connection error occurred"
+        )
+        out = _stream(ep)
+        assert out[0] == "RERUN"
+        assert out[1]["options"][ATTEMPTED_PROVIDERS_KEY] == ("prov-1",)
+
+    def test_unreachable_provider_without_candidates_reports_error_chunk(self):
+        ep = _make_ep()
+        ep._model_handler = _handler_with_candidates(False)
+        ep._http_executor.stream_response.return_value = _failing_stream(
+            status=0, message="A connection error occurred", error_code="timeout"
+        )
+        rm = mock.Mock()
+        ep._get_router_metrics = lambda: rm
+        out = list(_stream(ep))
+        assert json.loads(out[0][len(b"data: ") :].strip()) == {
+            "error": "A connection error occurred"
+        }
+        rm.record_provider_error.assert_called_once_with(
+            provider_type="openai", model_name="m1", error_code="timeout"
         )
 
     def test_ollama_conversion_reports_the_error_as_ndjson(self):
