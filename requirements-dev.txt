@@ -35,3 +35,5 @@ pandas
 
 ## fake redis
 fakeredis
+## lets fakeredis execute the real Lua scripts of the LB strategies
+lupa

@@ -38,6 +38,7 @@ class KeepAliveMonitor:
         check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
         logger: Optional[logging.Logger] = None,
         is_host_free_callback: Optional[Callable[[str, str], bool]] = None,
+        on_tick_callback: Optional[Callable[[], None]] = None,
         clear_buffers: bool = False,
         redis_prefix: str = "keepalive",
     ) -> None:
@@ -56,6 +57,11 @@ class KeepAliveMonitor:
             Logger instance; defaults to a module‑level logger.
         is_host_free_callback: Callable[[str, str], bool], optional
             Callback that determines whether a host is free for a model.
+        on_tick_callback: Callable[[], None], optional
+            Callback invoked once per monitor iteration.  Used by load‑balancing
+            strategies that need a periodic heartbeat to keep their own
+            long‑lived Redis state alive (e.g. worker‑slot leases); an exception
+            raised by it is logged and never interrupts the keep‑alive loop.
         clear_buffers: bool, optional
             If ``True``, clear all monitor‑related keys in Redis on start.
         redis_prefix: str, optional
@@ -69,6 +75,7 @@ class KeepAliveMonitor:
         self._is_host_free = (
             is_host_free_callback if is_host_free_callback else (lambda h, m: False)
         )
+        self._on_tick = on_tick_callback
         self._redis_prefix = redis_prefix
 
         if clear_buffers:
@@ -239,6 +246,15 @@ class KeepAliveMonitor:
         Background loop that triggers keep‑alive requests when due.
         """
         while not self._stop_event.is_set():
+            try:
+                if self._on_tick is not None:
+                    self._on_tick()
+            except Exception as exc:
+                # A failing heartbeat must not stop the keep‑alive loop.
+                self.logger.exception(
+                    "KeepAliveMonitor tick callback error: %s", exc
+                )
+
             try:
                 now = int(time.time())
 

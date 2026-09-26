@@ -421,6 +421,50 @@ PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES = int(
     )
 )
 
+# Lifetime [s] of a single worker slot held by the
+# ``first_available_optim_nworkers`` strategy.  A slot is a Redis lease whose
+# score is refreshed while the owning router process keeps the request alive;
+# when a process dies (OOM kill, container restart) its slots expire on their
+# own and the provider's capacity is recovered without a restart.  It must
+# comfortably exceed the longest expected request (including streaming), and
+# the KeepAlive monitor renews it every ``KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS``.
+LB_SLOT_LEASE_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}LB_SLOT_LEASE_SECONDS",
+        120,
+    )
+)
+
+# Maximum age [s] of a worker slot this process keeps renewing, counted from
+# the moment the slot was acquired.  A lease is meant to be released by
+# ``put_provider`` when the request ends; a request that forgets its token (an
+# abandoned streaming response whose generator is never closed) would otherwise
+# be re-advertised forever and permanently shrink the provider's capacity,
+# because lease expiry alone only covers a *dead* process.  Slots older than
+# this stop being renewed and expire within one ``LB_SLOT_LEASE_SECONDS``, so a
+# running request may briefly share a slot instead of monopolising it.
+# ``0`` or a negative value disables the cap (renew until released).
+LB_SLOT_MAX_AGE_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}LB_SLOT_MAX_AGE_SECONDS",
+        1800,
+    )
+)
+
+# Lifetime [s] of the “this host serves this model” pin (Redis key
+# ``host:<host>``, field ``model``) used by the ``first_available_optim*``
+# strategies.  The pin is refreshed on every selection, so a host that keeps
+# receiving traffic stays reserved for its model indefinitely; only a host that
+# nothing has selected for this long becomes available to another model again.
+# Keep it well above the model reload time and above any traffic gap you expect
+# – reloading a model costs minutes, and re-pinning is free.
+LB_HOST_PIN_TTL_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}LB_HOST_PIN_TTL_SECONDS",
+        3600,
+    )
+)
+
 
 # =============================================================================
 # STARTUP VALIDATION
