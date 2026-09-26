@@ -18,6 +18,10 @@ jobs:
 
   docker:
     needs: tests
+    # Serialise pushes across tags so `latest` can't end up pointing at an older commit
+    concurrency:
+      group: docker-push
+      cancel-in-progress: false
     runs-on:
       - self-hosted
       - builder
@@ -39,18 +43,20 @@ jobs:
 
       - name: Build image
         run: |
-          docker build -f docker/Dockerfile --no-cache --progress plain \
+          docker build -f docker/Dockerfile \
             -t quay.io/radlab/llm-router:${{ steps.vars.outputs.VERSION }} \
             -t quay.io/radlab/llm-router:latest .
 
       - name: Push image
-        if: success()
         run: |
           docker push quay.io/radlab/llm-router:${{ steps.vars.outputs.VERSION }}
           docker push quay.io/radlab/llm-router:latest
 
+      # Untag only this run's image — keeps the local layer cache for the next build
       - name: Cleanup image
-        run: docker images 'quay.io/radlab/llm-router' --format '{{.ID}}' | xargs docker rmi -f || true
+        if: always()
+        run: |
+          docker rmi quay.io/radlab/llm-router:${{ steps.vars.outputs.VERSION }} || true
 
       - name: Logout
         if: always()
