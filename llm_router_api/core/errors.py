@@ -114,3 +114,37 @@ def sanitize_error_message(message: str) -> str:
         return "A connection error occurred"
 
     return msg
+
+
+class ProviderStreamError(Exception):
+    """
+    A provider rejected a **streaming** request before any content was produced.
+
+    The streaming helpers issue the request, check the status and only then
+    start yielding chunks, so a non‑2xx answer always arrives while nothing has
+    been sent to the client yet.  In that situation retrying on another
+    provider is safe, and this exception is the signal that lets the HTTP
+    dispatcher do it (falling back to the model's ``fallback_model`` only once
+    every provider of the model failed too).
+
+    It deliberately does **not** derive from ``requests.RequestException`` —
+    the per‑format generators catch that type to emit their final error chunk,
+    which would swallow the failover signal.
+
+    Attributes
+    ----------
+    status_code : int
+        HTTP status returned by the provider.
+    message : str
+        Client-safe description (same text the stream would have emitted).
+    provider_body : str
+        Raw provider response fragment, for server-side logging only.
+    """
+
+    def __init__(
+        self, status_code: int, message: str, provider_body: str = ""
+    ) -> None:
+        super().__init__(message)
+        self.status_code = int(status_code)
+        self.message = message
+        self.provider_body = provider_body or ""
