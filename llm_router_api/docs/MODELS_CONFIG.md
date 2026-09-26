@@ -123,8 +123,11 @@ A single request walks the chain provider by provider — the fallback model is 
 4. when the whole chain is exhausted, the last provider error is returned to the client
    (`llm_router_retry_exhausted_total` counts it).
 
-Streaming fails over the same way: the first chunk is awaited before the response starts, so a provider that rejects
-the stream request is swapped before the client can see a truncated answer. Attempts are bounded by the retry policy
+Streaming fails over the same way: the first chunk is awaited before the response starts, so a provider
+that rejects the stream request (error status), never answers at all, or answers `200 OK` and drops the
+connection before the first chunk exists, is swapped before the client sees a truncated answer. A failure
+**mid-stream**, after bytes were already delivered, is never replayed: the client gets the provider's final
+error chunk instead. Attempts are bounded by the retry policy
 of the endpoint (`HttpDispatch.RetryPolicy.MAX_RECONNECTIONS`, default `10`); set
 `RETRY_ON_ANY_ERROR_STATUS = False` on an endpoint's `RetryResponse` to restrict retries to the historical allow-list
 (`429`, `500`, `502`, `503`, `504`).

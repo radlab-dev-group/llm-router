@@ -125,7 +125,9 @@ In short, `run_ep(params)` performs the following steps (implementation: `Endpoi
       *different* provider – the failed ones are remembered for the request – with exponential backoff + jitter (see `HttpDispatch`);
     * `stream: true` → `_dispatch_streaming(...)`: returns an **NDJSON iterator**
       (chunked transfer); the first chunk is awaited eagerly, so a provider that rejects the
-      stream with an error status is swapped for another one before the client sees anything.
+      stream with an error status, by never answering, or with a body that dies before the first chunk (a
+      `200 OK` that drops the connection) is swapped for another one before the client sees anything.
+      A failure later, mid-stream, is reported as the usual final error chunk.
       **Not supported** for `call_for_each_user_msg` endpoints – raises
       `ValueError: "Streaming is available only for single message"`;
     * otherwise → `_dispatch_non_streaming(...)`.
