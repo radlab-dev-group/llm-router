@@ -578,8 +578,9 @@ class HttpDispatch:
 
         return status_code in policy.RETRY_WHEN_STATUS
 
+    @staticmethod
     def _failover_options(
-        self, options: Optional[Dict[str, Any]], api_model_provider: Any
+        options: Optional[Dict[str, Any]], api_model_provider: Any
     ) -> Dict[str, Any]:
         """
         Build the options of the next attempt of the same request.
