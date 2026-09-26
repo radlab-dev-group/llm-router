@@ -22,6 +22,7 @@ Having a single source of truth for model definitions makes it easy to:
     "<model_name>": {            # full identifier used by the router, e.g. "google/gemma-3-12b-it"
       "providers": [ … ],        # primary providers (used for normal traffic)
       "providers_sleep": [ … ]   # optional low‑priority providers (used when others are busy)
+      "fallback_model": "…"      # optional model used when no provider can serve this one
     },
     …
   },
@@ -37,6 +38,8 @@ Having a single source of truth for model definitions makes it easy to:
 * **`providers`** – a list of dictionaries, each describing a concrete endpoint.
 * **`providers_sleep`** (optional) – “sleeping” providers that are only used when all primary providers are unavailable
   or overloaded.
+* **`fallback_model`** (optional) – name of another **active** model that takes over when no provider of this model can
+  serve the request. See [Fallback model](#-fallback_model-model-level).
 * **`active_models`** – the only place where a model is marked as *active*. If a model is missing here, the router will
   ignore it even if it is present in the rest of the file.
 
@@ -59,6 +62,51 @@ Having a single source of truth for model definitions makes it easy to:
 | `keep_alive`   | `str`                     | Optional keep‑alive duration (e.g. `"35m"`). Empty or `null` means the provider is not kept alive.                                  | `"35m"`                         |
 | `tool_calling` | `bool`                    | Whether the provider supports tool‑calling (function calling).                                                                      | `true`                          |
 | `is_embedding` | `bool`                    | Whether the model is an embedding model (determines use of embedding endpoints).                                                    | `true`                          |
+
+### 🛟 `fallback_model` (model level)
+
+A model may name another **active** model that takes over when none of its own providers can serve a request.
+The switch happens **before load balancing**: the fallback model is handed to the load-balancing strategy, which then
+picks one of *its* providers exactly like for any other request.
+
+```json
+{
+  "qwen_models": {
+    "qwen/Qwen3.8-Flash-Next": {
+      "fallback_model": "qwen/qwen3-coder:30b",
+      "providers": [
+        {
+          "id": "qwen3.8:flash-next-UD-IQ4_XL-70:7000",
+          "api_host": "http://192.168.100.70:7000",
+          "api_type": "llama.cpp",
+          "input_size": 256000,
+          "model_path": "qwen/Qwen3.8-Flash-Next"
+        }
+      ]
+    },
+    "qwen/qwen3-coder:30b": {
+      "providers": [ "…" ]
+    }
+  }
+}
+```
+
+* **When the fallback kicks in** – the requested model has no `providers` at all, the provider monitor reports no
+  healthy provider for it, every provider stays busy until the strategy timeout (`TimeoutError`), or the strategy
+  returns no provider.
+* **No extra waiting** – the health check that skips a model is used only when there is another model to try, so a
+  model without `fallback_model` behaves exactly as before (it waits for the full strategy timeout and then reports
+  the error).
+* **Chains** – the fallback model may declare a `fallback_model` of its own (`a -> b -> c`). The last model of the
+  chain keeps the normal blocking behaviour; when it fails too, its original error is reported to the client.
+* **What the client sees** – the served model: the selected provider's `model_path`, or the fallback model name when
+  `model_path` is empty.
+* **Validated at startup** – an unknown target, a non-string value, a self reference or a cycle (`a -> b -> a`)
+  abort the start with a `ValueError`; a missing, `null` or empty value simply means “no fallback”.
+* **Observability** – every switch logs a `WARNING`, a fully exhausted chain logs an `ERROR` with the whole chain, and
+  the `llm_router_model_fallback_total{model_name, fallback_model}` counter counts requests served by a fallback.
+* **Not affected** – authentication/authorization (still checked against the model named by the client) and provider
+  failures after a provider was acquired (handled by the retry policy).
 
 ### `active_models` section
 
@@ -109,6 +157,8 @@ api_model = handler.get_model_provider("google/gemma-3-12b-it")
 
 * `handler.api_model_config.models_configs[model_name]` returns the raw dict for the model.
 * The `ProviderStrategyFacade` selects a concrete provider dict (based on the chosen load‑balancing algorithm).
+* If no provider can serve the model (none configured, none healthy, or all busy until the strategy timeout) the
+  handler walks the declared `fallback_model` chain and lets the strategy choose a provider of the next model.
 * `ApiModel.from_config()` turns that dict into an `ApiModel` instance – a lightweight object that stores fields like
   `api_host`, `api_type`, `keep_alive`, etc.
 
@@ -263,6 +313,8 @@ Copy it to your own configuration directory and adjust the values to match your 
 * **`active_models`** decides which models are exposed.
 * **`ModelHandler` + `ApiModelConfig`** read the file, pick a provider according to the configured strategy, and hand
   you a ready‑to‑use `ApiModel` instance.
+* **`fallback_model`** keeps a model servable when its own providers are down: the request is rerouted before load
+  balancing and balanced over the providers of the fallback model.
 * The sample configuration below can be copied and tweaked to fit your own deployment.
 
 Feel free to edit this file whenever you add new providers or change load‑balancing weights – the router picks up the
