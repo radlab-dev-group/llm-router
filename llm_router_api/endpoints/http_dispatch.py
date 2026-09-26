@@ -26,6 +26,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Type
 
 from llm_router_api.core.errors import (
     ProviderStreamError,
+    connection_error_code,
     sanitize_error_message,
 )
 from llm_router_api.core.provider_attempts import with_attempted_provider
@@ -252,8 +253,7 @@ class HttpDispatch:
                     seconds=elapsed,
                 )
                 # Classify the error code for connection‑level failures
-                err_msg = str(error_exc).lower()
-                err_code = "timeout" if "timeout" in err_msg else "connection_error"
+                err_code = connection_error_code(error_exc)
                 rm_err.record_provider_error(
                     provider_type=api_model_provider.api_type,
                     model_name=api_model_provider.name,
@@ -468,8 +468,8 @@ class HttpDispatch:
         error” are left here.
         """
         self._logger().error(
-            "Provider request failed: HTTP %s — %s",
-            exc.status_code,
+            "Provider request failed: %s — %s",
+            exc.reason,
             exc.message,
         )
 
@@ -479,7 +479,7 @@ class HttpDispatch:
                 rm.record_provider_error,
                 provider_type=getattr(api_model_provider, "api_type", "unknown"),
                 model_name=api_model_provider.name,
-                error_code=str(exc.status_code),
+                error_code=exc.error_code,
             )
 
         next_options = self._failover_options(options, api_model_provider)
