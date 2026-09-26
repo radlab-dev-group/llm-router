@@ -19,19 +19,25 @@ surviving processes.
 
 Selection flow:
 
-1. Re-use the last host that served the model (if it has a free slot).
-2. **Least loaded with a free slot** – among all active providers whose host
-   is free for the model, ranked by (busy workers, busy/nworkers, config
-   order), atomically acquire the first candidate that still has a free slot.
-3. Re-use any host that already has the model loaded (free slot).
-4. Pick a host that does not yet have the model (free slot).
+1. **Least loaded with a free slot** – among all active providers whose host
+   is free for the model, ranked by (busy workers, last host, config order),
+   atomically acquire the first candidate that still has a free slot.  The
+   host that served the model last time is a tie-breaker *inside* one load
+   level: it keeps a warm host warm while traffic is light, and never keeps
+   a provider occupied while another one is idle.
+2. Re-use any host that already has the model loaded (free slot).
+3. Pick a host that does not yet have the model (free slot).
 
-Step 2 runs *before* the two host-reuse steps, because those two together
+Step 1 decides *before* the two host-reuse steps, because those two together
 split the provider list on “host already known” / “host not known yet” and
 therefore already consider **every** provider with a free slot – keeping
 them ahead would always return the first configured provider with capacity
 and the load-aware ranking would never decide.  They stay behind it as a
-safety net for providers step 2 filters out.
+safety net for providers step 1 filters out.
+
+Ranking by the absolute number of busy workers – not by ``busy/nworkers`` –
+is what makes the load spread evenly: providers fill in layers, one worker
+at a time, in configuration order.
 
 If every provider is saturated the strategy delegates to the plain
 first-available loop, which waits until a slot is released and raises
@@ -460,19 +466,25 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
             )
 
     # -----------------------------------------------------------------
-    # Step 2 – least loaded provider with a free worker slot
+    # Step 1 – least loaded provider with a free worker slot
     # -----------------------------------------------------------------
     def _optimization_steps(self) -> tuple:
         """
         Optimisation steps of this strategy.
 
-        The load-aware step runs directly after “reuse the last host” and
-        **before** the two host-reuse steps of the parent: those two split
-        ``providers`` on “host already known” / “host not known yet”, so
-        together they consider every provider that has a free slot and would
-        always answer with the first one in configuration order.  Steps 3 and
-        4 are kept behind it as a safety net for providers the load-aware step
-        does not rank.
+        The load-aware step runs first, **before** the two host-reuse steps of
+        the parent: those two split ``providers`` on “host already known” /
+        “host not known yet”, so together they consider every provider that has
+        a free slot and would always answer with the first one in configuration
+        order.  They stay behind it as a safety net for providers the load-aware
+        step does not rank.
+
+        The parent's “reuse the last host” step is deliberately **not** part of
+        the sequence: it answers as soon as the previously used provider has any
+        free slot, which with ``nworkers`` > 1 fills one provider to saturation
+        before the next one is ever considered.  The cache affinity it provided
+        is folded into the ranking of :meth:`_step4_least_loaded` as a
+        tie-breaker, so it survives where it does not distort the load.
 
         Returns
         -------
@@ -481,7 +493,6 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
             returns an acquired provider dictionary or ``None``.
         """
         return (
-            self._step1_last_host,
             self._step4_least_loaded,
             self._step2_existing_hosts,
             self._step3_unused_host,
@@ -494,11 +505,22 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
         Pick the least loaded active provider that still has a free slot.
 
         Every active (healthy) provider whose host is free for *model_name* is
-        ranked by ``(busy, busy / nworkers, config index)`` – the fewest busy
-        workers first, then the largest relative free capacity on a tie, then
-        the order from the configuration.  Candidates are tried in that order
-        with the atomic acquire script; when a candidate loses a race (the
-        slot was taken in between) the next candidate is tried.
+        ranked by ``(busy, last host, config index)`` – the fewest busy workers
+        first, then the host that served this model last, then the order from
+        the configuration.  Candidates are tried in that order with the atomic
+        acquire script; when a candidate loses a race (the slot was taken in
+        between) the next candidate is tried.
+
+        Counting busy workers in absolute terms is what spreads the load: the
+        providers fill in layers, one worker at a time, in configuration order
+        – ``p1`` with 2 slots and ``p2`` with 3 slots serve ``p1, p2, p1, p2,
+        p2``, never ``p1, p1`` first.  A relative measure
+        (``busy / nworkers``) would instead prefer the largest provider on
+        every tie and leave the small ones idle.
+
+        The last host is only a tie-breaker, so a warm host keeps the request
+        while traffic is light, and loses to an idle provider as soon as it is
+        busier than one.
 
         The config index comes from the *caller's* ``providers`` list, not from
         the position in :meth:`_get_active_providers` – that list is rebuilt
@@ -524,10 +546,13 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
         if not active_providers:
             return None
 
+        last_host = StrategyHelpers.decode_redis(
+            self.redis_client.get(self._last_host_key(model_name))
+        )
         config_order = {self._provider_key(p): i for i, p in enumerate(providers)}
         busy = self._busy_counts(model_name, active_providers)
 
-        ranked: List[Tuple[int, float, int, Dict]] = []
+        ranked: List[Tuple[int, int, int, Dict]] = []
         for provider in active_providers:
             host = StrategyHelpers.host_from_provider(provider)
             if not host or not self._is_host_free(host, model_name):
@@ -539,7 +564,7 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
             ranked.append(
                 (
                     held,
-                    held / limit,
+                    0 if last_host and host == last_host else 1,
                     config_order.get(
                         self._provider_key(provider), len(config_order)
                     ),

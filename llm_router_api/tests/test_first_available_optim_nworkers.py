@@ -361,16 +361,17 @@ class TestStepLeastLoaded:
             strategy.redis_client.zcard(strategy._in_use_key("m", {"id": "p3"})) == 0
         )
 
-    def test_tie_break_by_relative_load(self):
+    def test_tie_break_by_configuration_order(self):
         strategy = _make_strategy(active_order=["p1", "p2", "p3"])
-        # p1 saturated; p2 and p3 both busy=1: p2 ratio 1/2=0.5,
-        # p3 ratio 1/4=0.25 -> p3 wins
+        # p1 saturated; p2 and p3 both busy=1 -> the provider configured first
+        # wins.  A relative measure (1/2=0.5 vs 1/4=0.25) would answer p3 and
+        # let it keep filling up while p2's second slot stays unused.
         _hold(strategy, {"id": "p1", "api_host": "h1", "nworkers": 1})
         _hold(strategy, {"id": "p2", "api_host": "h2", "nworkers": 2})
         _hold(strategy, {"id": "p3", "api_host": "h3", "nworkers": 4})
         provider = strategy._step4_least_loaded("m", _providers())
         assert provider is not None
-        assert provider["id"] == "p3"
+        assert provider["id"] == "p2"
 
     def test_tie_break_uses_configuration_not_monitor_order(self):
         # ``_get_active_providers`` reports b before a; the tie must still be
@@ -432,6 +433,11 @@ class TestStepOrdering:
     they consider every provider that has a free slot and always answer with
     the first one in configuration order.  With the load-aware step behind
     them it could never decide anything.
+
+    “Reuse the last host“ is not a step of its own either: it answers as soon
+    as the previously used provider has any free slot, which with
+    ``nworkers`` > 1 fills one provider before touching the next.  It survives
+    as a tie-breaker inside the load-aware ranking.
     """
 
     def test_least_loaded_step_runs_before_the_host_reuse_steps(self):
@@ -439,7 +445,6 @@ class TestStepOrdering:
         steps = strategy._optimization_steps()
         bound = [s.__name__ for s in steps]
         assert bound == [
-            "_step1_last_host",
             "_step4_least_loaded",
             "_step2_existing_hosts",
             "_step3_unused_host",
@@ -467,26 +472,93 @@ class TestStepOrdering:
         assert provider is not None
         assert provider["id"] in {"p2", "p3"}
 
-    def test_free_last_host_still_wins(self):
-        # Cache affinity is kept while the warm host has capacity: p1 is the
-        # last host at 1/3 while the idle p3 would win a pure load ranking.
+    def test_last_host_breaks_ties_but_loses_to_an_idle_provider(self):
+        # Cache affinity is a tie-breaker *inside* one load level.  All three
+        # providers hold exactly one worker and h1 served the model last -> the
+        # warm host keeps the request.
         strategy = _make_strategy(active_order=["p1", "p2", "p3"])
         providers = [
+            {"id": "p1", "api_host": "h1", "nworkers": 3},
+            {"id": "p2", "api_host": "h2", "nworkers": 3},
+            {"id": "p3", "api_host": "h3", "nworkers": 3},
+        ]
+        strategy.redis_client.set(f"{PREFIX}model:m:last_host", "h1")
+        for provider in providers:
+            _hold(strategy, provider)
+        chosen = strategy.get_provider("m", providers)
+        assert chosen is not None
+        assert chosen["id"] == "p1"
+
+        # The warm host at 1/3 loses to an idle provider.  This is what stops
+        # one hot provider from being filled to saturation before the others
+        # are used at all.
+        warm = _make_strategy(active_order=["p1", "p2", "p3"])
+        warm_providers = [
             {"id": "p1", "api_host": "h1", "nworkers": 3},
             {"id": "p2", "api_host": "h2", "nworkers": 4},
             {"id": "p3", "api_host": "h3", "nworkers": 4},
         ]
-        strategy.redis_client.set(f"{PREFIX}model:m:last_host", "h1")
-        _hold(strategy, providers[0])
-        provider = strategy.get_provider("m", providers)
-        assert provider is not None
-        assert provider["id"] == "p1"
+        warm.redis_client.set(f"{PREFIX}model:m:last_host", "h1")
+        _hold(warm, warm_providers[0])
+        chosen = warm.get_provider("m", warm_providers)
+        assert chosen is not None
+        assert chosen["id"] == "p2"
+
+
+class TestAllocationSequence:
+    """
+    The whole point of the strategy: providers fill in layers.
+
+    Regression for the reported misbehaviour – a provider used once stayed the
+    answer until all of its slots were exhausted, instead of every provider
+    taking one worker before any of them takes a second.
+    """
+
+    def test_expected_allocation_sequence_from_the_specification(self):
+        # p1[2 slots] p2[3 slots] p3[1 slot] ->
+        # p1-s1 p2-s1 p3-s1 p1-s2 p2-s2 p2-s3
+        providers = [
+            {"id": "p1", "api_host": "h1", "nworkers": 2},
+            {"id": "p2", "api_host": "h2", "nworkers": 3},
+            {"id": "p3", "api_host": "h3", "nworkers": 1},
+        ]
+        strategy = _make_strategy(timeout=0.3, active_order=["p1", "p2", "p3"])
+
+        taken = []
+        for _ in range(6):
+            provider = strategy.get_provider("m", providers)
+            assert provider is not None
+            slot = len(_leases(strategy, provider))
+            taken.append(f"{provider['id']}-s{slot}")
+
+        assert taken == [
+            "p1-s1",
+            "p2-s1",
+            "p3-s1",
+            "p1-s2",
+            "p2-s2",
+            "p2-s3",
+        ]
+
+    def test_sequence_survives_the_health_monitor_report_order(self):
+        # ``_get_active_providers`` is backed by a Redis set: the same three
+        # providers reported in the opposite order must allocate identically.
+        providers = [
+            {"id": "p1", "api_host": "h1", "nworkers": 2},
+            {"id": "p2", "api_host": "h2", "nworkers": 3},
+            {"id": "p3", "api_host": "h3", "nworkers": 1},
+        ]
+        strategy = _make_strategy(timeout=0.3, active_order=["p3", "p2", "p1"])
+        taken = [
+            strategy.get_provider("m", providers)["id"] for _ in range(6)
+        ]
+        assert taken == ["p1", "p2", "p3", "p1", "p2", "p2"]
 
 
 class TestGetProviderEndToEnd:
     """Full ``get_provider`` flow against the real Redis state."""
 
-    def test_step1_with_free_slot(self):
+    def test_warm_host_used_when_nothing_is_busy(self):
         strategy = _make_strategy(active_order=["p1", "p2", "p3"])
         strategy.redis_client.set(f"{PREFIX}model:m:last_host", "h2")
         provider = strategy.get_provider("m", _providers())
