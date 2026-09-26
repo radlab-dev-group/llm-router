@@ -15,7 +15,9 @@ the KeepAliveMonitor thread, so a process that dies mid‑request (OOM kill,
 container restart) stops renewing and its slots disappear on their own —
 the provider's capacity is recovered without a restart and without a
 collective ``DEL`` that would over-admit the still-running requests of the
-surviving processes.
+surviving processes.  Renewing also stops after ``LB_SLOT_MAX_AGE_SECONDS``,
+which covers the opposite failure: a request that never released its slot
+(an abandoned stream) would otherwise be re-advertised forever.
 
 Selection flow:
 
@@ -68,6 +70,7 @@ from llm_router_api.base.constants import (
     REDIS_PASSWORD,
     REDIS_PROTOCOL,
     LB_SLOT_LEASE_SECONDS,
+    LB_SLOT_MAX_AGE_SECONDS,
     KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
     PROVIDER_MONITOR_INTERVAL_SECONDS,
 )
@@ -154,6 +157,7 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
         logger: Optional[logging.Logger] = None,
         ka_monitor_check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
         slot_lease_seconds: int = LB_SLOT_LEASE_SECONDS,
+        slot_max_age_seconds: int = LB_SLOT_MAX_AGE_SECONDS,
     ) -> None:
         """
         Initialise the nworkers first-available strategy.
@@ -169,12 +173,19 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
             interval between two KeepAliveMonitor ticks by a safe margin to
             keep live slots, while bounding how long a crashed process
             occupies a provider.
+        slot_max_age_seconds: int, optional
+            How long this process keeps renewing a slot it has never released,
+            counted from the acquisition.  Expiry alone only recovers the slots
+            of a *dead* process; a request that forgot its token would be
+            re-advertised forever.  ``0`` or less disables the cap.
         """
         self.slot_lease_seconds = slot_lease_seconds
+        self.slot_max_age_seconds = slot_max_age_seconds
 
-        # Leases held by *this* process: token -> (model_name, lease key).
+        # Leases held by *this* process:
+        # token -> (model_name, lease key, acquired_at from time.monotonic()).
         # Guarded because a router serves requests from many threads.
-        self._held_leases: Dict[str, Tuple[str, str]] = {}
+        self._held_leases: Dict[str, Tuple[str, str, float]] = {}
         self._leases_lock = threading.Lock()
         # monotonic deadline of the next renewal batch (see _renew_held_leases)
         self._next_renew_at = 0.0
@@ -366,7 +377,7 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
 
         acquired[LEASE_FIELD] = token
         with self._leases_lock:
-            self._held_leases[token] = (model_name, lease_key)
+            self._held_leases[token] = (model_name, lease_key, time.monotonic())
         return acquired
 
     def put_provider(
@@ -432,6 +443,13 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
         ``on_tick_callback``).  A process that dies stops renewing, so its
         leases lapse and the providers' capacity comes back by itself.
 
+        Slots older than ``slot_max_age_seconds`` are dropped from the renewal
+        set instead of being renewed.  Lease expiry only recovers the slots of a
+        *dead* process; a request that never released its token (an abandoned
+        streaming response whose generator was not closed) would otherwise be
+        re-advertised for the lifetime of the process and permanently shrink the
+        provider.
+
         The monitor ticks far more often than a lease needs (once a second by
         default against a 120 s lease), so the writes are throttled to every
         third of the lease lifetime.  A slot acquired right after a batch
@@ -444,6 +462,31 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
             return
 
         now = time.monotonic()
+
+        max_age = int(self.slot_max_age_seconds)
+        if max_age > 0:
+            stale = [
+                token for token, (_m, _k, acquired_at) in held.items()
+                if now - acquired_at >= max_age
+            ]
+            if stale:
+                with self._leases_lock:
+                    for token in stale:
+                        self._held_leases.pop(token, None)
+                    held = dict(self._held_leases)
+                self.logger.warning(
+                    "%s: %d worker slot(s) were held for more than %d s without "
+                    "being released and are left to expire within %d s; a "
+                    "request most likely ended without calling put_provider "
+                    "(an abandoned stream?), see LLM_ROUTER_LB_SLOT_MAX_AGE_SECONDS",
+                    self,
+                    len(stale),
+                    max_age,
+                    int(self.slot_lease_seconds),
+                )
+            if not held:
+                return
+
         if now < self._next_renew_at:
             return
         self._next_renew_at = now + max(1.0, self.slot_lease_seconds / 3.0)
@@ -451,7 +494,7 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
         score = self._now_ms() + int(self.slot_lease_seconds) * 1000
         try:
             pipe = self.redis_client.pipeline(transaction=False)
-            for token, (_model_name, lease_key) in held.items():
+            for token, (_model_name, lease_key, _acquired_at) in held.items():
                 pipe.zadd(lease_key, {token: score})
                 pipe.pexpire(lease_key, int(self.slot_lease_seconds) * 2000)
             pipe.execute()
@@ -549,25 +592,42 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
         last_host = StrategyHelpers.decode_redis(
             self.redis_client.get(self._last_host_key(model_name))
         )
-        config_order = {self._provider_key(p): i for i, p in enumerate(providers)}
+        # The health monitor returns the JSON snapshots registered when the
+        # model was first seen, while *providers* is the live configuration.
+        # Ranking and acquisition use the live dictionaries, so changing
+        # ``nworkers`` in ``models-config.json`` takes effect on the next
+        # request instead of only after the ``monitor:providers:<model>`` key is
+        # deleted.  A snapshot with no counterpart in the configuration
+        # describes a provider that is no longer configured and is skipped.
+        configured = {self._provider_key(p): p for p in providers}
+        config_order = {key: i for i, key in enumerate(configured)}
         busy = self._busy_counts(model_name, active_providers)
 
         ranked: List[Tuple[int, int, int, Dict]] = []
-        for provider in active_providers:
+        for snapshot in active_providers:
+            key = self._provider_key(snapshot)
+            provider = configured.get(key)
+            if provider is None:
+                self.logger.debug(
+                    "%s: provider %r is reported as active for model '%s' but is "
+                    "not in the configuration; skipping it",
+                    self,
+                    key,
+                    model_name,
+                )
+                continue
             host = StrategyHelpers.host_from_provider(provider)
             if not host or not self._is_host_free(host, model_name):
                 continue
             limit = StrategyHelpers.nworkers(provider)
-            held = busy.get(self._provider_key(provider), 0)
+            held = busy.get(key, 0)
             if held >= limit:
                 continue
             ranked.append(
                 (
                     held,
                     0 if last_host and host == last_host else 1,
-                    config_order.get(
-                        self._provider_key(provider), len(config_order)
-                    ),
+                    config_order[key],
                     provider,
                 )
             )
@@ -598,7 +658,7 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
           the job of the lease expiry, not of a start-time flush.
         """
         prefix = getattr(self, "strategy_prefix", "") or ""
-        for suffix in (":last_host", ":hosts", ":occupancy"):
+        for suffix in (":last_host", ":hosts"):
             for key in self.redis_client.scan_iter(match=f"{prefix}*{suffix}"):
                 self.logger.debug(f"Removing {self} => {key} from redis")
                 self.redis_client.delete(key)

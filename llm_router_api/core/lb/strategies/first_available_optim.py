@@ -19,6 +19,7 @@ from llm_router_api.base.constants import (
     REDIS_PROTOCOL,
     KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
     PROVIDER_MONITOR_INTERVAL_SECONDS,
+    LB_HOST_PIN_TTL_SECONDS,
 )
 from llm_router_api.core.monitor.keep_alive_monitor import KeepAliveMonitor
 from llm_router_api.core.lb.strategies.first_available import FirstAvailableStrategy
@@ -454,11 +455,16 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         # 2. Add host to the model‑specific set.
         self.redis_client.sadd(self._model_hosts_set_key(model_name), host)
 
-        # 3. Mark the host as occupied by this model.
+        # 3. Mark the host as occupied by this model, for as long as it keeps
+        #    being selected.  The pin has to expire: a host that stopped
+        #    serving *this* model (provider removed from the configuration,
+        #    model retired) would otherwise stay unavailable to every other
+        #    model forever, because nothing else ever deletes the key.
         occ_key = self._host_occupancy_key(host)
         self.redis_client.hset(
             occ_key, "model", StrategyHelpers.normalize_model_name(model_name)
         )
+        self.redis_client.expire(occ_key, LB_HOST_PIN_TTL_SECONDS)
 
         # 4. KeepAlive state is now owned by KeepAliveMonitor.
         keep_alive_value = provider.get("keep_alive")
@@ -474,8 +480,15 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
     def _clear_buffer(self) -> None:
         """
         Remove all Redis keys used by this optimization strategy.
+
+        The host occupancy keys (``host:<host>``) are deliberately **not**
+        scanned: they are shared with the other ``first_available*`` strategies
+        running against the same Redis database, and they now expire on their
+        own (``LLM_ROUTER_LB_HOST_PIN_TTL_SECONDS``, refreshed on every
+        selection).  An earlier version scanned a ``:occupancy`` suffix, which
+        no key has ever carried – that pattern matched nothing.
         """
-        suffixes = (":last_host", ":hosts", ":occupancy")
+        suffixes = (":last_host", ":hosts")
         for suffix in suffixes:
             for key in self.redis_client.scan_iter(match=f"*{suffix}"):
                 self.logger.debug(f"Removing {self} => {key} from redis")
