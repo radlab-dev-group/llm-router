@@ -7,6 +7,10 @@ has no healthy provider, or keeps every provider busy until the strategy
 timeout, the next model of the ``model -> fallback_model -> ...`` chain is
 handed to the load-balancing strategy instead.
 
+Providers a request already failed on are carried in ``options`` and dropped
+from the candidates, so retries rotate over providers first and only then move
+on to the ``fallback_model``.
+
 The provider chooser is a mock; config files are written to ``tmp_path``.
 """
 
@@ -23,6 +27,9 @@ from unittest import mock  # noqa: E402
 
 import pytest  # noqa: E402
 
+from llm_router_api.core.provider_attempts import (  # noqa: E402
+    ATTEMPTED_PROVIDERS_KEY,
+)
 from llm_router_api.core.model_handler import ModelHandler  # noqa: E402
 
 LOGGER_NAME = "llm_router_api.core.model_handler"
@@ -39,13 +46,27 @@ def _provider(pid: str, input_size: int = 1000) -> dict:
 
 def _payload() -> dict:
     return {
-        "active_models": {"models": ["a", "b", "c", "solo", "empty", "empty_leaf"]},
+        "active_models": {
+            "models": [
+                "a",
+                "b",
+                "c",
+                "solo",
+                "multi",
+                "empty",
+                "empty_leaf",
+            ]
+        },
         "models": {
             "a": {"providers": [_provider("pa")], "fallback_model": "b"},
             "b": {"providers": [_provider("pb")], "fallback_model": "c"},
             # "c" deliberately has a smaller context than "a"/"b".
             "c": {"providers": [_provider("pc", input_size=64)]},
             "solo": {"providers": [_provider("ps")]},
+            "multi": {
+                "providers": [_provider("p1"), _provider("p2")],
+                "fallback_model": "solo",
+            },
             "empty": {"providers": [], "fallback_model": "b"},
             "empty_leaf": {"providers": []},
         },
@@ -293,6 +314,81 @@ class TestFallbackBookkeeping:
 
         messages = " ".join(record.getMessage() for record in caplog.records)
         assert "fallback chain: a -> b -> c" in messages
+
+
+class TestAttemptedProvidersAreRotated:
+    """Providers a request failed on are dropped before the strategy chooses."""
+
+    def test_attempted_provider_is_not_offered_again(self, handler, chooser):
+        options = {ATTEMPTED_PROVIDERS_KEY: ("p1",)}
+        model = handler.get_model_provider("multi", options=options)
+        assert model.id == "p2"
+        assert chooser.get_provider.call_args.kwargs["providers"] == [
+            _provider("p2")
+        ]
+
+    def test_fallback_takes_over_when_every_provider_was_tried(
+        self, handler, chooser
+    ):
+        options = {ATTEMPTED_PROVIDERS_KEY: ("p1", "p2")}
+        model = handler.get_model_provider("multi", options=options)
+        assert model.id == "ps"
+        assert model.name == "solo"
+        # "multi" never reaches the strategy: all of its providers were tried.
+        assert _models_consulted(chooser) == ["solo"]
+        chooser.record_model_fallback.assert_called_once_with(
+            model_name="multi", fallback_model="solo"
+        )
+
+    def test_exhausted_chain_returns_none(self, handler, chooser, caplog):
+        options = {ATTEMPTED_PROVIDERS_KEY: ("p1", "p2", "ps")}
+        with caplog.at_level(logging.ERROR, logger=LOGGER_NAME):
+            assert handler.get_model_provider("multi", options=options) is None
+        chooser.get_provider.assert_not_called()
+        messages = " ".join(record.getMessage() for record in caplog.records)
+        assert "all providers already tried" in messages
+        assert "fallback chain: multi -> solo" in messages
+
+    def test_single_provider_model_exhausted_returns_none(self, handler, chooser):
+        options = {ATTEMPTED_PROVIDERS_KEY: ("ps",)}
+        assert handler.get_model_provider("solo", options=options) is None
+        chooser.get_provider.assert_not_called()
+
+    def test_unknown_provider_ids_do_not_hide_candidates(self, handler, chooser):
+        options = {ATTEMPTED_PROVIDERS_KEY: ("other-model",)}
+        assert handler.get_model_provider("multi", options=options).id == "p1"
+        assert _models_consulted(chooser) == ["multi"]
+
+    def test_fake_mode_skips_attempted_providers(self, handler, chooser):
+        options = {ATTEMPTED_PROVIDERS_KEY: ("p1",)}
+        assert (
+            handler.get_model_provider("multi", options=options, fake=True).id
+            == "p2"
+        )
+
+
+class TestHasProviderCandidates:
+    """Non-blocking answer used by the dispatcher to allow a failover."""
+
+    def test_true_while_a_provider_is_untried(self, handler):
+        assert handler.has_provider_candidates("multi") is True
+
+    def test_true_when_only_the_fallback_has_providers_left(self, handler):
+        options = {ATTEMPTED_PROVIDERS_KEY: ("p1", "p2")}
+        assert handler.has_provider_candidates("multi", options=options) is True
+
+    def test_false_when_the_whole_chain_was_tried(self, handler):
+        options = {ATTEMPTED_PROVIDERS_KEY: ("p1", "p2", "ps")}
+        assert handler.has_provider_candidates("multi", options=options) is False
+
+    def test_false_for_a_model_without_providers(self, handler):
+        assert handler.has_provider_candidates("empty_leaf") is False
+
+    def test_false_for_an_unknown_model(self, handler):
+        assert handler.has_provider_candidates("nope") is False
+
+    def test_options_may_be_omitted(self, handler):
+        assert handler.has_provider_candidates("solo") is True
 
 
 class TestChainConstruction:

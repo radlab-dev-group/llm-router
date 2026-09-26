@@ -7,9 +7,11 @@ These tests cover the code path that the Phase‑4 refactor moved out of
 
 * successful dict response,
 * retry on transient status codes (``random_choice`` + ``reconnect_number``),
+* provider failover: every 4xx/5xx is replayed on another provider (attempted
+  providers are recorded) and only the last error reaches the client,
 * retry exhaustion → ``(error_body, status_code)`` with the provider status,
-* non‑retryable provider status (e.g. 400) → status surfaced to the client,
 * transport error → retry on next provider / not‑ok when exhausted,
+* streaming failover (first chunk probed, error chunk when nothing is left),
 * exponential backoff with jitter,
 * late‑binding of endpoint collaborators (overrides resolved at call time),
 * ``RetryResponse`` backward‑compat alias of ``http_dispatch.RetryPolicy``.
@@ -19,6 +21,7 @@ All collaborators are faked — no network, no Flask app, no Prometheus.
 
 from __future__ import annotations
 
+import json
 import os
 from types import SimpleNamespace
 from unittest import mock
@@ -30,6 +33,11 @@ import pytest  # noqa: E402
 
 
 from llm_router_api.endpoints import http_dispatch  # noqa: E402
+from llm_router_api.core.errors import ProviderStreamError  # noqa: E402
+from llm_router_api.core.provider_attempts import (
+    ATTEMPTED_PROVIDERS_KEY,
+)  # noqa: E402
+from llm_router_api.core.stream_handler import StreamConversion  # noqa: E402
 from llm_router_api.endpoints.endpoint_i import (
     EndpointWithHttpRequestI,
 )  # noqa: E402
@@ -62,6 +70,43 @@ class _Resp:
 
 def _provider():
     return SimpleNamespace(name="m1", api_type="openai", id="prov-1")
+
+
+def _handler_with_candidates(available):
+    """Stub model handler whose provider-candidate check answers *available*."""
+    return SimpleNamespace(has_provider_candidates=mock.Mock(return_value=available))
+
+
+def _stream(ep, stream_type=StreamConversion.OPENAI, orig_params=None):
+    """Call the streaming dispatch the way ``_dispatch_streaming`` does."""
+    return ep._http_dispatch.stream_or_rerun(
+        api_model_provider=_provider(),
+        ep_url="u",
+        params={"a": 2},
+        options={},
+        stream_type=stream_type,
+        orig_params=orig_params,
+    )
+
+
+class _FailingStream:
+    """Stream iterator that fails like a provider rejecting the request."""
+
+    def __init__(self, status=503, message="Loading model", error_code=None):
+        self.error = ProviderStreamError(
+            status_code=status, message=message, error_code=error_code
+        )
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise self.error
+
+
+def _failing_stream(status=503, message="Loading model", error_code=None):
+    """Stream that fails the way a provider rejects a stream request."""
+    return _FailingStream(status=status, message=message, error_code=error_code)
 
 
 @pytest.fixture(autouse=True)
@@ -127,7 +172,11 @@ class TestHttpDispatchRetry:
         kw = out[1]
         assert kw["params"] == {"o": 1}  # orig_params are used for the rerun
         assert kw["reconnect_number"] == 4
-        assert kw["options"] == {"random_choice": True}
+        # The failed provider is remembered, so the rerun picks another one.
+        assert kw["options"] == {
+            ATTEMPTED_PROVIDERS_KEY: ("prov-1",),
+            "random_choice": True,
+        }
 
     def test_429_then_200_sequence_returns_success(self):
         """Sequence 429 → 200: the client ends up with the successful body."""
@@ -163,7 +212,8 @@ class TestHttpDispatchRetry:
         assert "boom from provider" in body["error"]["message"]
         ep.run_ep.assert_not_called()
 
-    def test_non_retryable_400_not_retried(self):
+    def test_400_rotates_to_another_provider(self):
+        """A 400 describes one provider: another one is tried before giving up."""
         ep = _make_ep()
         ep._http_executor.call_http_request.return_value = _Resp(
             400, body={"error": {"message": "bad input"}}
@@ -171,10 +221,10 @@ class TestHttpDispatchRetry:
         out = ep._return_response_or_rerun(
             _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
         )
-        body, status = out
-        assert status == 400
-        assert body["error"]["message"] == "bad input"
-        ep.run_ep.assert_not_called()
+        assert out[0] == "RERUN"
+        kw = out[1]
+        assert kw["options"][ATTEMPTED_PROVIDERS_KEY] == ("prov-1",)
+        assert kw["reconnect_number"] == 1
 
     def test_502_is_retryable(self):
         ep = _make_ep()
@@ -216,6 +266,203 @@ class TestHttpDispatchErrors:
             _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
         )
         assert isinstance(out, tuple) and out[0] == "NOT_OK"
+
+
+class TestProviderFailover:
+    """Every 4xx/5xx moves the request to another provider of the model."""
+
+    def test_attempted_provider_recorded_on_transport_error(self):
+        ep = _make_ep()
+        ep._http_executor.call_http_request.side_effect = ConnectionError("down")
+        out = ep._return_response_or_rerun(
+            _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
+        )
+        assert out[0] == "RERUN"
+        assert out[1]["options"][ATTEMPTED_PROVIDERS_KEY] == ("prov-1",)
+
+    def test_attempted_providers_accumulate_without_mutating_options(self):
+        """The second provider sees the first one, and the caller's options stay."""
+        ep = _make_ep()
+        ep._http_executor.call_http_request.return_value = _Resp(503)
+        options = {ATTEMPTED_PROVIDERS_KEY: ("prov-1",)}
+        second = SimpleNamespace(name="m1", api_type="openai", id="prov-2")
+        out = ep._return_response_or_rerun(
+            second, "u", "p", {"o": 1}, {"a": 2}, options, 1
+        )
+        assert out[1]["options"][ATTEMPTED_PROVIDERS_KEY] == ("prov-1", "prov-2")
+        assert options == {ATTEMPTED_PROVIDERS_KEY: ("prov-1",)}
+
+    def test_untried_candidate_available_rotates_the_request(self):
+        ep = _make_ep()
+        handler = _handler_with_candidates(True)
+        ep._model_handler = handler
+        ep._http_executor.call_http_request.return_value = _Resp(503)
+        out = ep._return_response_or_rerun(
+            _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
+        )
+        assert out[0] == "RERUN"
+        handler.has_provider_candidates.assert_called_once_with(
+            model_name="m1",
+            options={ATTEMPTED_PROVIDERS_KEY: ("prov-1",), "random_choice": True},
+        )
+
+    def test_no_candidates_left_reports_the_provider_error(self):
+        """Model and fallback chain exhausted → the provider status is surfaced."""
+        ep = _make_ep()
+        ep._model_handler = _handler_with_candidates(False)
+        ep._http_executor.call_http_request.return_value = _Resp(
+            503, body={"error": {"message": "Loading model"}}
+        )
+        out = ep._return_response_or_rerun(
+            _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
+        )
+        body, status = out
+        assert status == 503
+        assert "Loading model" in body["error"]["message"]
+        ep.run_ep.assert_not_called()
+
+    def test_transport_error_without_candidates_returns_not_ok(self):
+        ep = _make_ep()
+        ep._model_handler = _handler_with_candidates(False)
+        ep._http_executor.call_http_request.side_effect = ConnectionError("down")
+        out = ep._return_response_or_rerun(
+            _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
+        )
+        assert out[0] == "NOT_OK"
+        ep.run_ep.assert_not_called()
+
+    def test_broken_candidate_check_does_not_block_failover(self):
+        ep = _make_ep()
+        ep._model_handler = SimpleNamespace(
+            has_provider_candidates=mock.Mock(side_effect=RuntimeError("no state"))
+        )
+        ep._http_executor.call_http_request.return_value = _Resp(500)
+        out = ep._return_response_or_rerun(
+            _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
+        )
+        assert out[0] == "RERUN"
+
+    def test_allow_list_policy_keeps_unknown_4xx_final(self):
+        """``RETRY_ON_ANY_ERROR_STATUS = False`` restores the old allow-list."""
+
+        class _StrictPolicy(http_dispatch.RetryPolicy):
+            RETRY_ON_ANY_ERROR_STATUS = False
+
+        ep = _make_ep()
+        ep.RetryResponse = _StrictPolicy
+        ep._http_executor.call_http_request.return_value = _Resp(
+            400, body={"error": {"message": "bad input"}}
+        )
+        out = ep._return_response_or_rerun(
+            _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
+        )
+        body, status = out
+        assert status == 400
+        assert body["error"]["message"] == "bad input"
+        ep.run_ep.assert_not_called()
+
+    def test_allow_list_policy_still_retries_listed_status(self):
+        class _StrictPolicy(http_dispatch.RetryPolicy):
+            RETRY_ON_ANY_ERROR_STATUS = False
+
+        ep = _make_ep()
+        ep.RetryResponse = _StrictPolicy
+        ep._http_executor.call_http_request.return_value = _Resp(429)
+        out = ep._return_response_or_rerun(
+            _provider(), "u", "p", {"o": 1}, {"a": 2}, {}, 0
+        )
+        assert out[0] == "RERUN"
+
+
+class TestStreamFailover:
+    """A stream is replayed while its first chunk is still missing."""
+
+    def test_chunks_are_forwarded_unchanged(self):
+        ep = _make_ep()
+        ep._http_executor.stream_response.return_value = iter([b"one", b"two"])
+        out = _stream(ep)
+        assert list(out) == [b"one", b"two"]
+        ep.run_ep.assert_not_called()
+
+    def test_empty_stream_yields_nothing(self):
+        ep = _make_ep()
+        ep._http_executor.stream_response.return_value = iter([])
+        out = _stream(ep)
+        assert not list(out)
+        ep.run_ep.assert_not_called()
+
+    def test_provider_error_reruns_the_request(self):
+        ep = _make_ep()
+        ep._http_executor.stream_response.return_value = _failing_stream()
+        out = _stream(ep, orig_params={"o": 1})
+        assert out[0] == "RERUN"
+        kw = out[1]
+        assert kw["params"] == {"o": 1}
+        assert kw["reconnect_number"] == 1
+        assert kw["options"][ATTEMPTED_PROVIDERS_KEY] == ("prov-1",)
+        assert kw["options"]["random_choice"] is True
+
+    def test_error_while_opening_the_stream_reruns_too(self):
+        ep = _make_ep()
+        ep._http_executor.stream_response.side_effect = ProviderStreamError(
+            status_code=503, message="Loading model"
+        )
+        out = _stream(ep)
+        assert out[0] == "RERUN"
+
+    def test_no_candidates_left_emits_a_single_sse_error_chunk(self):
+        ep = _make_ep()
+        ep._model_handler = _handler_with_candidates(False)
+        ep._http_executor.stream_response.return_value = _failing_stream(
+            message="Provider error (HTTP 503)"
+        )
+        rm = mock.Mock()
+        ep._get_router_metrics = lambda: rm
+        out = list(_stream(ep))
+        assert len(out) == 1
+        assert out[0].startswith(b"data: ")
+        assert json.loads(out[0][len(b"data: ") :].strip()) == {
+            "error": "Provider error (HTTP 503)"
+        }
+        ep.run_ep.assert_not_called()
+        rm.record_provider_error.assert_called_once_with(
+            provider_type="openai", model_name="m1", error_code="503"
+        )
+
+    def test_unreachable_provider_reruns_the_request(self):
+        """``status_code`` 0 means "never answered" - still replayable."""
+        ep = _make_ep()
+        ep._http_executor.stream_response.return_value = _failing_stream(
+            status=0, message="A connection error occurred"
+        )
+        out = _stream(ep)
+        assert out[0] == "RERUN"
+        assert out[1]["options"][ATTEMPTED_PROVIDERS_KEY] == ("prov-1",)
+
+    def test_unreachable_provider_without_candidates_reports_error_chunk(self):
+        ep = _make_ep()
+        ep._model_handler = _handler_with_candidates(False)
+        ep._http_executor.stream_response.return_value = _failing_stream(
+            status=0, message="A connection error occurred", error_code="timeout"
+        )
+        rm = mock.Mock()
+        ep._get_router_metrics = lambda: rm
+        out = list(_stream(ep))
+        assert json.loads(out[0][len(b"data: ") :].strip()) == {
+            "error": "A connection error occurred"
+        }
+        rm.record_provider_error.assert_called_once_with(
+            provider_type="openai", model_name="m1", error_code="timeout"
+        )
+
+    def test_ollama_conversion_reports_the_error_as_ndjson(self):
+        ep = _make_ep()
+        ep._model_handler = _handler_with_candidates(False)
+        ep._http_executor.stream_response.return_value = _failing_stream(
+            message="boom"
+        )
+        out = list(_stream(ep, stream_type=StreamConversion.OPENAI_TO_OLLAMA))
+        assert out == [b'{"error": "boom"}\n']
 
 
 class TestHttpDispatchMetrics:

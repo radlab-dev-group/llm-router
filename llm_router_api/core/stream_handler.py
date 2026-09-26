@@ -17,7 +17,11 @@ from requests import Response
 from typing import Iterator, Dict, Any, Optional
 
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
-from llm_router_api.core.errors import sanitize_error_message
+from llm_router_api.core.errors import (
+    ProviderStreamError,
+    connection_error_code,
+    sanitize_error_message,
+)
 
 
 def _request_error_message(exc: Exception) -> str:
@@ -46,14 +50,18 @@ def _request_error_message(exc: Exception) -> str:
 
 def _raise_for_status(resp: Response) -> None:
     """
-    Raise an ``HTTPError`` for a non‑2xx response **while it is still
-    open**, capturing the provider's response body on the exception
-    (``provider_body``).
+    Raise a :class:`ProviderStreamError` for a non‑2xx response **while the
+    response is still open**, capturing the provider's body for the message.
 
     Plain ``resp.raise_for_status()`` does not work here: it is called
     inside ``with resp:`` blocks, so by the time the surrounding
     ``except`` handler runs the response is already closed and its body
     can no longer be read.
+
+    The failure happens before any chunk was produced, so the dispatcher can
+    still retry the request on another provider; the dedicated exception type
+    (instead of ``requests.HTTPError``) keeps the per‑format generators from
+    turning it into a final error chunk.
     """
     if resp is None or resp.status_code < 400:
         return
@@ -66,7 +74,87 @@ def _raise_for_status(resp: Response) -> None:
         response=resp,
     )
     exc.provider_body = body[:1000]  # type: ignore[attr-defined]
-    raise exc
+    raise ProviderStreamError(
+        status_code=resp.status_code,
+        message=_request_error_message(exc),
+        provider_body=body[:1000],
+    ) from exc
+
+
+def _pre_content_failure(exc: Exception) -> ProviderStreamError:
+    """
+    Wrap a provider failure that happened **before any chunk was produced**.
+
+    Opening the stream is the last moment a provider can still be swapped: the
+    client has not received a single byte yet, so the dispatcher replays the
+    request on another provider of the model (and afterwards on its
+    ``fallback_model``).  Failures raised later - while the stream is being
+    consumed - keep the historical behaviour (a final error chunk), because
+    replaying a partially delivered response would corrupt it.
+    """
+    return ProviderStreamError(
+        status_code=0,
+        message=_request_error_message(exc),
+        error_code=connection_error_code(exc),
+    )
+
+
+def _open_stream(
+    endpoint: Any,
+    method: str,
+    url: str,
+    payload: Dict[str, Any],
+    headers: Dict[str, Any],
+) -> Response:
+    """
+    Issue the streaming request of a provider.
+
+    A transport failure means the provider never answered (connection refused,
+    connect timeout, DNS failure...), i.e. nothing was produced for the client,
+    so it becomes a failover signal (see :func:`_pre_content_failure`) instead
+    of a stream error.
+    """
+    try:
+        if method == "POST":
+            return requests.post(
+                url,
+                json=payload,
+                timeout=endpoint.timeout,
+                stream=True,
+                headers=headers,
+            )
+        return requests.get(
+            url,
+            params=payload,
+            timeout=endpoint.timeout,
+            stream=True,
+            headers=headers,
+        )
+    except requests.RequestException as exc:
+        raise _pre_content_failure(exc) from exc
+
+
+def _guarded_body(items: Iterator[Any]) -> Iterator[Any]:
+    """
+    Relay provider payload items, translating a failure of the **first** read.
+
+    A provider may answer ``200 OK`` and drop the connection before sending a
+    single byte of the body (or fail while producing the very first line).  No
+    chunk exists at that point, so the failure becomes the failover signal of
+    :func:`_pre_content_failure` and the request is replayed on another
+    provider of the model.  From the first item on the response counts as
+    delivered: the original ``requests`` error propagates and the generators
+    end the stream with their usual error chunk.
+    """
+    pending = iter(items)
+    try:
+        first = next(pending)
+    except StopIteration:
+        return
+    except requests.RequestException as exc:
+        raise _pre_content_failure(exc) from exc
+    yield first
+    yield from pending
 
 
 # ------------------------------------------------#
@@ -437,17 +525,20 @@ class StreamHandler:
                 endpoint, payload, api_model_provider, options
             ):
                 try:
-                    response = requests.request(
-                        method=method,
-                        url=url,
-                        json=payload,
-                        headers=headers,
-                        stream=True,
-                        timeout=endpoint.timeout,
-                    )
+                    try:
+                        response = requests.request(
+                            method=method,
+                            url=url,
+                            json=payload,
+                            headers=headers,
+                            stream=True,
+                            timeout=endpoint.timeout,
+                        )
+                    except requests.RequestException as exc:
+                        raise _pre_content_failure(exc) from exc
                     _raise_for_status(response)
 
-                    for line in response.iter_lines():
+                    for line in _guarded_body(response.iter_lines()):
                         if not line:
                             continue
 
@@ -518,21 +609,11 @@ class StreamHandler:
     def _passthrough_stream(
         method, url, endpoint, payload, headers
     ) -> Iterator[bytes]:
-        request_kwargs = {
-            "url": url,
-            "stream": True,
-            "headers": headers,
-        }
-        if method == "POST":
-            request_kwargs["json"] = payload
-            resp = requests.post(**request_kwargs, timeout=endpoint.timeout)
-        else:
-            request_kwargs["params"] = payload
-            resp = requests.get(**request_kwargs, timeout=endpoint.timeout)
+        resp = _open_stream(endpoint, method, url, payload, headers)
 
         with resp as r:
             _raise_for_status(r)
-            for chunk in r.iter_content(chunk_size=None):
+            for chunk in _guarded_body(r.iter_content(chunk_size=None)):
                 if chunk:
                     yield chunk
 
@@ -563,26 +644,11 @@ class StreamHandler:
                 endpoint, payload, api_model_provider, options
             ):
                 try:
-                    if method == "POST":
-                        req = requests.post(
-                            url,
-                            json=payload,
-                            timeout=endpoint.timeout,
-                            stream=True,
-                            headers=headers,
-                        )
-                    else:
-                        req = requests.get(
-                            url,
-                            params=payload,
-                            timeout=endpoint.timeout,
-                            stream=True,
-                            headers=headers,
-                        )
+                    req = _open_stream(endpoint, method, url, payload, headers)
                     with req as resp:
                         _raise_for_status(resp)
-                        yield from self._parse_ollama_stream(
-                            resp, api_model_provider
+                        yield from _guarded_body(
+                            self._parse_ollama_stream(resp, api_model_provider)
                         )
                 except requests.RequestException as exc:
                     self._log_request_error(endpoint, exc)
@@ -623,25 +689,12 @@ class StreamHandler:
                 options=options,
             ):
                 try:
-                    if method == "POST":
-                        ctx = requests.post(
-                            url,
-                            json=payload,
-                            timeout=endpoint.timeout,
-                            stream=True,
-                            headers=headers,
-                        )
-                    else:
-                        ctx = requests.get(
-                            url,
-                            params=payload,
-                            timeout=endpoint.timeout,
-                            stream=True,
-                            headers=headers,
-                        )
+                    ctx = _open_stream(endpoint, method, url, payload, headers)
                     with ctx as resp:
                         _raise_for_status(resp)
-                        for raw_line in resp.iter_lines(decode_unicode=False):
+                        for raw_line in _guarded_body(
+                            resp.iter_lines(decode_unicode=False)
+                        ):
                             if not raw_line:
                                 continue
                             try:
@@ -832,21 +885,13 @@ class StreamHandler:
                 endpoint, payload, api_model_provider, options
             ):
                 try:
-                    req_kwargs = {
-                        "url": url,
-                        "stream": True,
-                        "headers": headers,
-                    }
-                    if method == "POST":
-                        req_kwargs["json"] = payload
-                        resp = requests.post(**req_kwargs, timeout=endpoint.timeout)
-                    else:
-                        req_kwargs["params"] = payload
-                        resp = requests.get(**req_kwargs, timeout=endpoint.timeout)
+                    resp = _open_stream(endpoint, method, url, payload, headers)
 
                     with resp:
                         _raise_for_status(resp)
-                        for raw_line in resp.iter_lines(decode_unicode=False):
+                        for raw_line in _guarded_body(
+                            resp.iter_lines(decode_unicode=False)
+                        ):
                             if not raw_line:
                                 continue
                             line = raw_line.strip()
@@ -949,26 +994,13 @@ class StreamHandler:
                     ).encode("utf-8")
 
                 try:
-                    if method == "POST":
-                        ctx = requests.post(
-                            url,
-                            json=payload,
-                            timeout=endpoint.timeout,
-                            stream=True,
-                            headers=headers,
-                        )
-                    else:
-                        ctx = requests.get(
-                            url,
-                            params=payload,
-                            timeout=endpoint.timeout,
-                            stream=True,
-                            headers=headers,
-                        )
+                    ctx = _open_stream(endpoint, method, url, payload, headers)
 
                     with ctx as resp:
                         _raise_for_status(resp)
-                        for raw_line in resp.iter_lines(decode_unicode=False):
+                        for raw_line in _guarded_body(
+                            resp.iter_lines(decode_unicode=False)
+                        ):
                             if not raw_line:
                                 continue
                             try:

@@ -121,10 +121,14 @@ In short, `run_ep(params)` performs the following steps (implementation: `Endpoi
     `embeddings` select the target; anything else → chat).
 13. **Dispatch**:
     * `simple_proxy` and non‑streaming → `_return_response_or_rerun(...)`:
-      POST/GET to the provider with the final payload; on retryable statuses it retries with a *different* provider
-      (exponential backoff + jitter, see `HttpDispatch`);
+      POST/GET to the provider with the final payload; on **any** 4xx/5xx (or a transport error) it retries with a
+      *different* provider – the failed ones are remembered for the request – with exponential backoff + jitter (see `HttpDispatch`);
     * `stream: true` → `_dispatch_streaming(...)`: returns an **NDJSON iterator**
-      (chunked transfer). **Not supported** for `call_for_each_user_msg` endpoints – raises
+      (chunked transfer); the first chunk is awaited eagerly, so a provider that rejects the
+      stream with an error status, by never answering, or with a body that dies before the first chunk (a
+      `200 OK` that drops the connection) is swapped for another one before the client sees anything.
+      A failure later, mid-stream, is reported as the usual final error chunk.
+      **Not supported** for `call_for_each_user_msg` endpoints – raises
       `ValueError: "Streaming is available only for single message"`;
     * otherwise → `_dispatch_non_streaming(...)`.
 14. **Response normalization** – `return_http_response(response)`:
@@ -389,9 +393,12 @@ Summary of the constructor of `EndpointI` + `EndpointWithHttpRequestI`:
       `"model_name"` (from `llm_router_lib/data_models/constants.py`). Make sure
       `prepare_payload` normalizes the model field (the repo convention is to set `"model"` from
       `"model_name"` before dispatch).
-* **Retries** – outbound calls are orchestrated by `HttpDispatch`: retryable HTTP statuses are re‑issued against a
-  *different* provider with exponential backoff + jitter (see
-  `endpoints/http_dispatch.py`); transport errors are retried the same way.
+* **Retries / provider failover** – outbound calls are orchestrated by `HttpDispatch`: **any** 4xx/5xx answer is
+  re‑issued against a *different* provider (providers already tried by this request are recorded in its options and
+  skipped by `ModelHandler`), with exponential backoff + jitter; transport errors are retried the same way, and
+  streams fail over while their first chunk is still missing. Only when the model has no untried provider left is its
+  `fallback_model` chain tried, and the last provider error is what the client finally gets. Set `RETRY_ON_ANY_ERROR_STATUS = False`
+  on an endpoint's `RetryResponse` to keep the historical allow-list (`429`, `500`, `502`, `503`, `504`).
 * **Guards** – every payload passes the guardrail check and (optionally) PII masking before the provider call, unless
   `EP_DONT_NEED_GUARDRAIL_AND_MASKING = True` is set.
 * **Verbose mode** – the base class keeps the `LLM_ROUTER_VERBOSE` switch as `self._verbose_mode`; when it is on,

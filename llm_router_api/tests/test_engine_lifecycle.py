@@ -9,7 +9,6 @@ is "empty" apart from the main thread and interpreter housekeeping).
 """
 
 import threading
-import time
 
 import pytest
 
@@ -24,6 +23,11 @@ from llm_router_api.core.engine import FlaskEngine
 class _StubMonitor:
     instances = []
 
+    @classmethod
+    def _live_instances(cls) -> list:
+        """Instances whose background thread is still alive."""
+        return [m for m in cls.instances if m._thread.is_alive()]
+
     def __init__(self, **kwargs) -> None:
         self._thread = threading.Thread(
             target=self._run, name="stub-services-monitor", daemon=True
@@ -36,7 +40,10 @@ class _StubMonitor:
 
     def _run(self) -> None:
         while not self._stop.is_set():
-            time.sleep(0.01)
+            # Wait on the stop event instead of polling: a blocked thread holds
+            # no GIL time, so even a monitor that is never stopped cannot slow
+            # the main thread down (e.g. when a test patches ``time.sleep``).
+            self._stop.wait(0.01)
 
     def start(self) -> None:
         self.started = True
@@ -85,6 +92,21 @@ def _stub_engine(monkeypatch):
 
 def _non_main_threads():
     return [t for t in threading.enumerate() if t is not threading.main_thread()]
+
+
+@pytest.fixture(autouse=True)
+def _stop_stub_monitors():
+    """
+    Never leave a stub monitor thread running.
+
+    The threads are daemons, so they cannot hold the interpreter open, but a
+    live one keeps spinning between tests - and once a test (e.g.
+    ``test_http_dispatch.py``) patches ``time.sleep`` globally, that spin
+    starves the main thread and slows the whole run down.
+    """
+    yield
+    for mon in _StubMonitor._live_instances():
+        mon.stop()
 
 
 class TestEngineLifecycle:

@@ -22,6 +22,7 @@ import pytest  # noqa: E402
 import requests  # noqa: E402
 
 import llm_router_api.core.stream_handler as sh  # noqa: E402
+from llm_router_api.core.errors import ProviderStreamError  # noqa: E402
 from llm_router_api.core.stream_handler import (  # noqa: E402
     StreamConversion,
     StreamHandler,
@@ -105,21 +106,31 @@ class TestRaiseForStatus:
 
     def test_4xx_raises_with_provider_body(self):
         resp = _FakeResp(status_code=400, text="bad request detail")
-        with pytest.raises(requests.HTTPError) as ei:
+        with pytest.raises(ProviderStreamError) as ei:
             _raise_for_status(resp)
         assert ei.value.provider_body == "bad request detail"
-        assert "400" in str(ei.value)
+        assert ei.value.status_code == 400
+        assert "400" in ei.value.message
+        assert "provider: bad request detail" in ei.value.message
 
     def test_5xx_raises(self):
         resp = _FakeResp(status_code=503, text="unavailable")
-        with pytest.raises(requests.HTTPError):
+        with pytest.raises(ProviderStreamError) as ei:
             _raise_for_status(resp)
+        assert ei.value.status_code == 503
 
     def test_provider_body_truncated_to_1000(self):
         resp = _FakeResp(status_code=500, text="y" * 1500)
-        with pytest.raises(requests.HTTPError) as ei:
+        with pytest.raises(ProviderStreamError) as ei:
             _raise_for_status(resp)
         assert len(ei.value.provider_body) == 1000
+
+    def test_error_is_not_a_requests_exception(self):
+        """
+        The failover signal must survive the generators, which catch
+        ``requests.RequestException`` to emit their final error chunk.
+        """
+        assert not issubclass(ProviderStreamError, requests.RequestException)
 
 
 class TestForceIterOpenAI:
@@ -386,19 +397,6 @@ class TestStreamOpenAItoOllama:
         assert parsed[0]["message"]["content"] == "forced"
         ep.unset_model.assert_called_once()
 
-    def test_request_exception_yields_error(self, monkeypatch):
-        exc = requests.RequestException("conn refused")
-        patch = _ReqPatch(monkeypatch, side_effect=exc)
-        handler = StreamHandler()
-        out = _consume(
-            handler.stream_openai_to_ollama(
-                "http://u", {}, "POST", {}, None, _endpoint(), _model()
-            )
-        )
-        assert len(out) == 1
-        payload = json.loads(out[0].decode())
-        assert "error" in payload
-
 
 class TestStreamOllamaToOpenAI:
     def test_converts_ndjson_to_sse(self, monkeypatch):
@@ -437,18 +435,6 @@ class TestStreamOllamaToOpenAI:
         )
         assert any(b"garbage-line" in x for x in out)
 
-    def test_request_exception_yields_error(self, monkeypatch):
-        exc = requests.RequestException("nope")
-        _ReqPatch(monkeypatch, side_effect=exc)
-        handler = StreamHandler()
-        out = _consume(
-            handler.stream_ollama_to_openai(
-                "http://u", {}, "POST", {}, None, _endpoint(), _model()
-            )
-        )
-        assert len(out) == 1
-        assert b'"error"' in out[0]
-
 
 class TestStreamAnthropicToOpenAI:
     def test_headers_and_conversion(self, monkeypatch):
@@ -482,18 +468,6 @@ class TestStreamAnthropicToOpenAI:
         ]
         assert content[0]["choices"][0]["delta"]["content"] == "hi"
         patch.request.assert_called_once()
-
-    def test_request_exception_yields_error(self, monkeypatch):
-        exc = requests.RequestException("down")
-        _ReqPatch(monkeypatch, side_effect=exc)
-        handler = StreamHandler()
-        out = _consume(
-            handler.stream_anthropic_to_openai(
-                "http://u", {}, "POST", {}, None, _endpoint(), _model()
-            )
-        )
-        assert len(out) == 1
-        assert b'"error"' in out[0]
 
 
 class TestPassthroughGenerator:
@@ -672,16 +646,6 @@ class TestStreamOpenAitoLMStudio:
         assert any(b"forced" in x for x in out)
         ep.unset_model.assert_called_once()
 
-    def test_request_exception_yields_error(self, monkeypatch):
-        _ReqPatch(monkeypatch, side_effect=requests.RequestException("down"))
-        out = _consume(
-            StreamHandler().stream_openai_to_lmstudio(
-                "http://u", {}, "POST", {}, None, _endpoint(), _model()
-            )
-        )
-        assert len(out) == 1
-        assert b'"error"' in out[0]
-
 
 class TestStreamOllamaToLMStudio:
     def test_converts_ndjson_to_lmstudio_sse(self, monkeypatch):
@@ -770,15 +734,173 @@ class TestStreamOllamaToLMStudio:
         assert any(b"forced" in x for x in out)
         ep.unset_model.assert_called_once()
 
-    def test_request_exception_yields_error(self, monkeypatch):
-        _ReqPatch(monkeypatch, side_effect=requests.RequestException("nope"))
-        out = _consume(
-            StreamHandler().stream_ollama_to_lmstudio(
-                "http://u", {}, "POST", {}, None, _endpoint(), _model()
-            )
+
+# Every generator that opens a provider stream.  A transport failure there
+# happens before a single chunk exists, so it must become a failover signal.
+_STREAM_ENTRY_POINTS = [
+    "stream_openai",
+    "stream_ollama",
+    "stream_lmstudio",
+    "stream_anthropic",
+    "stream_openai_to_anthropic",
+    "stream_openai_to_ollama",
+    "stream_ollama_to_openai",
+    "stream_openai_to_lmstudio",
+    "stream_ollama_to_lmstudio",
+]
+
+
+def _open(entry_point, ep, monkeypatch, side_effect, response=None):
+    """Call one streaming entry point with ``requests`` patched."""
+    _ReqPatch(monkeypatch, response=response, side_effect=side_effect)
+    return _consume(
+        getattr(StreamHandler(), entry_point)(
+            "http://u", {"a": 1}, "POST", {}, None, ep, _model("mp", "nm")
         )
-        assert len(out) == 1
-        assert b'"error"' in out[0]
+    )
+
+
+class TestPreContentConnectionFailure:
+    """An unreachable provider is rotated, not reported to the client."""
+
+    @pytest.mark.parametrize("entry_point", _STREAM_ENTRY_POINTS)
+    def test_connection_error_is_a_failover_signal(self, entry_point, monkeypatch):
+        ep = _endpoint()
+        with pytest.raises(ProviderStreamError) as ei:
+            _open(
+                entry_point,
+                ep,
+                monkeypatch,
+                side_effect=requests.ConnectionError("conn refused"),
+            )
+        assert ei.value.status_code == 0
+        assert ei.value.error_code == "connection_error"
+        assert ei.value.reason == "connection_error"
+        assert "conn refused" in ei.value.message
+        # the provider lock is released while the generator unwinds
+        ep.unset_model.assert_called_once()
+
+    @pytest.mark.parametrize("entry_point", _STREAM_ENTRY_POINTS)
+    def test_timeout_is_labelled_as_timeout(self, entry_point, monkeypatch):
+        with pytest.raises(ProviderStreamError) as ei:
+            _open(
+                entry_point,
+                _endpoint(),
+                monkeypatch,
+                side_effect=requests.ConnectTimeout("Connection timed out"),
+            )
+        assert ei.value.error_code == "timeout"
+        assert ei.value.reason == "timeout"
+
+    def test_mid_stream_failure_still_yields_an_error_chunk(self, monkeypatch):
+        """
+        Once bytes were produced the response cannot be replayed: the client
+        keeps getting the final error chunk instead of a failover signal.
+        """
+
+        class _HalfStreamResp(_FakeResp):
+            def iter_content(self, chunk_size=None):
+                yield b"first"
+                raise requests.ConnectionError("dropped mid stream")
+
+        out = _open(
+            "stream_openai",
+            _endpoint(),
+            monkeypatch,
+            side_effect=None,
+            response=_HalfStreamResp(),
+        )
+        assert out[0] == b"first"
+        assert b'"error"' in out[-1]
+        assert "dropped mid stream" in out[-1].decode()
+
+
+class _BodyThenFailure:
+    """Body iterator: yields *items*, then dies like a dropped connection."""
+
+    def __init__(self, items=None, error=None):
+        self._items = list(items or [])
+        self.error = error or requests.ConnectionError("connection dropped")
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self._items:
+            return self._items.pop(0)
+        raise self.error
+
+
+class _StreamBodyResp(_FakeResp):
+    """``200 OK`` response whose body dies after *items* were delivered."""
+
+    def __init__(self, items=None, error=None, **kwargs):
+        super().__init__(**kwargs)
+        self._items = list(items or [])
+        self.error = error or requests.ConnectionError("connection dropped")
+
+    def iter_lines(self, decode_unicode=False):
+        return _BodyThenFailure(self._items, self.error)
+
+    def iter_content(self, chunk_size=None):
+        return _BodyThenFailure(self._items, self.error)
+
+
+class TestStreamDroppedBeforeFirstChunk:
+    """``200 OK`` with a body that never starts is still a failover signal."""
+
+    @pytest.mark.parametrize("entry_point", _STREAM_ENTRY_POINTS)
+    def test_dropped_body_is_a_failover_signal(self, entry_point, monkeypatch):
+        ep = _endpoint()
+        with pytest.raises(ProviderStreamError) as ei:
+            _open(
+                entry_point,
+                ep,
+                monkeypatch,
+                side_effect=None,
+                response=_StreamBodyResp(),
+            )
+        assert ei.value.status_code == 0
+        assert ei.value.error_code == "connection_error"
+        assert "connection dropped" in ei.value.message
+        ep.unset_model.assert_called_once()
+
+    @pytest.mark.parametrize("entry_point", _STREAM_ENTRY_POINTS)
+    def test_body_timeout_keeps_its_label(self, entry_point, monkeypatch):
+        with pytest.raises(ProviderStreamError) as ei:
+            _open(
+                entry_point,
+                _endpoint(),
+                monkeypatch,
+                side_effect=None,
+                response=_StreamBodyResp(
+                    error=requests.ReadTimeout("Read timed out. (read timeout=5)")
+                ),
+            )
+        assert ei.value.error_code == "timeout"
+
+    def test_empty_body_is_not_a_failure(self, monkeypatch):
+        out = _open(
+            "stream_openai",
+            _endpoint(),
+            monkeypatch,
+            side_effect=None,
+            response=_FakeResp(),
+        )
+        assert not out
+
+    def test_failure_after_the_first_chunk_stays_an_error_chunk(self, monkeypatch):
+        """The stream was already delivered - replaying it is not possible."""
+        resp = _StreamBodyResp(items=[b'data: {"x": 1}\n\n'])
+        out = _open(
+            "stream_openai",
+            _endpoint(),
+            monkeypatch,
+            side_effect=None,
+            response=resp,
+        )
+        assert out[0] == b'data: {"x": 1}\n\n'
+        assert b'"error"' in out[1]
 
 
 class TestLogRequestError:

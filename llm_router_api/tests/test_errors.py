@@ -114,3 +114,52 @@ class TestSanitizeErrorMessage:
             "(Caused by NewConnectionError: 'Connection to 10.0.1.50 timed out.')"
         )
         assert leak not in errors.sanitize_error_message(raw)
+
+
+class TestConnectionErrorCode:
+    """Transport failures need a metric label when there is no HTTP status."""
+
+    def test_plain_connection_error(self):
+        exc = ConnectionError("connection refused")
+        assert errors.connection_error_code(exc) == "connection_error"
+
+    def test_unrelated_exception(self):
+        assert errors.connection_error_code(ValueError("boom")) == "connection_error"
+
+    def test_timeout_recognised_by_exception_type(self):
+        class ConnectTimeout(Exception):
+            """Stand-in for ``requests.ConnectTimeout``."""
+
+        assert errors.connection_error_code(ConnectTimeout("x")) == "timeout"
+
+    def test_timeout_recognised_by_message(self):
+        exc = ConnectionError("Read timed out. (read timeout=5)")
+        assert errors.connection_error_code(exc) == "timeout"
+
+
+class TestProviderStreamError:
+    """The failover signal carries both an HTTP status and a metric label."""
+
+    def test_http_status_labels_itself(self):
+        exc = errors.ProviderStreamError(status_code=503, message="Loading model")
+        assert exc.status_code == 503
+        assert exc.error_code == "503"
+        assert exc.reason == "HTTP 503"
+
+    def test_transport_failure_has_no_status(self):
+        exc = errors.ProviderStreamError(message="A connection error occurred")
+        assert exc.status_code == 0
+        assert exc.error_code == "connection_error"
+        assert exc.reason == "connection_error"
+
+    def test_explicit_error_code_wins(self):
+        exc = errors.ProviderStreamError(
+            status_code=0, message="slow", error_code="timeout"
+        )
+        assert exc.error_code == "timeout"
+        assert exc.reason == "timeout"
+
+    def test_message_is_what_the_client_sees(self):
+        exc = errors.ProviderStreamError(status_code=400, message="bad input")
+        assert str(exc) == "bad input"
+        assert exc.provider_body == ""

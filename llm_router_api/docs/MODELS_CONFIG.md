@@ -93,7 +93,8 @@ picks one of *its* providers exactly like for any other request.
 
 * **When the fallback kicks in** – the requested model has no `providers` at all, the provider monitor reports no
   healthy provider for it, every provider stays busy until the strategy timeout (`TimeoutError`), or the strategy
-  returns no provider.
+  returns no provider, or **every provider of the model already failed this request** (a 4xx/5xx answer or a
+  connection error, see [failover order](#-failover-order-providers-first-then-fallback_model)).
 * **No extra waiting** – the health check that skips a model is used only when there is another model to try, so a
   model without `fallback_model` behaves exactly as before (it waits for the full strategy timeout and then reports
   the error).
@@ -105,8 +106,31 @@ picks one of *its* providers exactly like for any other request.
   abort the start with a `ValueError`; a missing, `null` or empty value simply means “no fallback”.
 * **Observability** – every switch logs a `WARNING`, a fully exhausted chain logs an `ERROR` with the whole chain, and
   the `llm_router_model_fallback_total{model_name, fallback_model}` counter counts requests served by a fallback.
-* **Not affected** – authentication/authorization (still checked against the model named by the client) and provider
-  failures after a provider was acquired (handled by the retry policy).
+* **Not affected** – authentication/authorization, still checked against the model named by the client.
+  Provider errors are not: they first rotate over the providers of the model and only then reach the fallback chain
+  ([failover order](#-failover-order-providers-first-then-fallback_model)).
+
+### 🔁 Failover order (providers first, then `fallback_model`)
+
+A single request walks the chain provider by provider — the fallback model is the **last** resort, not the first:
+
+1. the load-balancing strategy picks a provider of the requested model;
+2. if that provider answers with an error (any 4xx/5xx, streaming included) or is unreachable, the request is
+   replayed on **another provider of the same model**: the failed provider is remembered in the request options
+   (`__attempted_providers`) and dropped from the candidates of every following attempt;
+3. once the model has no untried provider left, the next model of the `fallback_model` chain is served — its own
+   providers are rotated by the same rules;
+4. when the whole chain is exhausted, the last provider error is returned to the client
+   (`llm_router_retry_exhausted_total` counts it).
+
+Streaming fails over the same way: the first chunk is awaited before the response starts, so a provider
+that rejects the stream request (error status), never answers at all, or answers `200 OK` and drops the
+connection before the first chunk exists, is swapped before the client sees a truncated answer. A failure
+**mid-stream**, after bytes were already delivered, is never replayed: the client gets the provider's final
+error chunk instead. Attempts are bounded by the retry policy
+of the endpoint (`HttpDispatch.RetryPolicy.MAX_RECONNECTIONS`, default `10`); set
+`RETRY_ON_ANY_ERROR_STATUS = False` on an endpoint's `RetryResponse` to restrict retries to the historical allow-list
+(`429`, `500`, `502`, `503`, `504`).
 
 ### `active_models` section
 

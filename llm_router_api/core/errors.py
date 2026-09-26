@@ -114,3 +114,78 @@ def sanitize_error_message(message: str) -> str:
         return "A connection error occurred"
 
     return msg
+
+
+class ProviderStreamError(Exception):
+    """
+    A provider rejected a **streaming** request before any content was produced.
+
+    The streaming helpers issue the request, check the status and only then
+    start yielding chunks, so a non‑2xx answer always arrives while nothing has
+    been sent to the client yet.  In that situation retrying on another
+    provider is safe, and this exception is the signal that lets the HTTP
+    dispatcher do it (falling back to the model's ``fallback_model`` only once
+    every provider of the model failed too).
+
+    It deliberately does **not** derive from ``requests.RequestException`` —
+    the per‑format generators catch that type to emit their final error chunk,
+    which would swallow the failover signal.
+
+    Attributes
+    ----------
+    status_code : int
+        HTTP status returned by the provider, or ``0`` when the provider never
+        answered at all (connection refused, connect timeout, ...).
+    message : str
+        Client-safe description (same text the stream would have emitted).
+    provider_body : str
+        Raw provider response fragment, for server-side logging only.
+    error_code : str
+        Metric label: the HTTP status as text, or ``"connection_error"`` /
+        ``"timeout"`` when there was no HTTP answer.
+    """
+
+    def __init__(
+        self,
+        status_code: int = 0,
+        message: str = "",
+        provider_body: str = "",
+        error_code: Optional[str] = None,
+    ) -> None:
+        super().__init__(message)
+        self.status_code = int(status_code)
+        self.message = message
+        self.provider_body = provider_body or ""
+        self.error_code = error_code or (
+            str(self.status_code) if self.status_code else "connection_error"
+        )
+
+    @property
+    def reason(self) -> str:
+        """Short, log‑friendly cause: ``HTTP 503`` or ``connection_error``."""
+        return f"HTTP {self.status_code}" if self.status_code else self.error_code
+
+
+def connection_error_code(exc: BaseException) -> str:
+    """
+    Classify a transport‑level provider failure for the metrics.
+
+    There is no HTTP status to report when the provider never answered, so the
+    error is labelled by its kind instead.  The retry orchestration and the
+    streaming failover share that classification.
+
+    Parameters
+    ----------
+    exc : BaseException
+        The transport failure (``requests`` connection error, timeout, ...).
+
+    Returns
+    -------
+    str
+        ``"timeout"`` for timeouts (including read/connect timeouts),
+        ``"connection_error"`` for everything else.
+    """
+    # The exception type is inspected too: requests phrases timeouts as
+    # "Connection timed out", which carries no "timeout" substring.
+    probe = f"{type(exc).__name__} {exc}".lower()
+    return "timeout" if "timeout" in probe else "connection_error"
