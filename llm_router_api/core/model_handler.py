@@ -5,13 +5,24 @@ This module defines:
 - ApiModel: an immutable representation of a single model loaded from configuration.
 - ModelHandler: a lightweight manager that loads model configuration and exposes
   helpers to retrieve individual model definitions.
+
+A model may declare a ``fallback_model``.  When no provider can serve the
+requested model (no providers configured, no healthy provider, or every
+provider busy until the strategy timeout) the handler walks the
+``model -> fallback_model -> ...`` chain and asks the load-balancing strategy
+for a provider of the next model, so the fallback provider is chosen by the
+very same balancing rules.
 """
 
+import logging
+
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from llm_router_api.core.model_config import ApiModelConfig
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -160,6 +171,15 @@ class ModelHandler:
         """
         Return a model definition for the given name.
 
+        The provider is selected by the configured load-balancing strategy.
+        When the requested model cannot be served — it has no providers, the
+        health monitor reports none of them usable, or every provider stays
+        busy until the strategy timeout — the handler walks the declared
+        ``fallback_model`` chain and lets the strategy pick a provider of the
+        next model.  The returned :class:`ApiModel` always carries the name of
+        the model that actually serves the request, which is also the key used
+        later by :meth:`put_model_provider` to release the provider.
+
         Parameters
         ----------
         model_name : str
@@ -173,23 +193,170 @@ class ModelHandler:
         -------
         Optional[ApiModel]
             ApiModel instance if found; otherwise, None.
+
+        Raises
+        ------
+        KeyError
+            If *model_name* is not an active model.
+        TimeoutError
+            If no provider could be acquired for the last model of the
+            fallback chain within the strategy timeout.
         """
-        providers = self.api_model_config.models_configs[model_name].get(
-            "providers", []
+        models_configs = self.api_model_config.models_configs
+        if model_name not in models_configs:
+            # Unknown models keep failing loudly (unchanged behaviour).
+            raise KeyError(model_name)
+
+        chain = self._fallback_chain(model_name)
+        last_index = len(chain) - 1
+
+        for index, hop in enumerate(chain):
+            is_last_hop = index == last_index
+            providers = self._providers_of(hop)
+
+            if not providers:
+                if is_last_hop:
+                    self._log_chain_failure(chain, "no providers configured")
+                    return None
+                self._log_fallback(hop, chain[index + 1], "no providers configured")
+                continue
+
+            if fake:
+                return ApiModel.from_config(hop, providers[0])
+
+            # Skip a hop that is known (health data) to be unable to serve,
+            # instead of waiting for the strategy selection timeout.
+            if (
+                not is_last_hop
+                and self.provider_chooser.has_available_provider(
+                    model_name=hop, providers=providers
+                )
+                is False
+            ):
+                self._log_fallback(hop, chain[index + 1], "no healthy provider")
+                continue
+
+            try:
+                model_host_cfg = self.provider_chooser.get_provider(
+                    model_name=hop, providers=providers, options=options
+                )
+            except TimeoutError:
+                if is_last_hop:
+                    self._log_chain_failure(chain, "selection timeout")
+                    raise
+                self._log_fallback(hop, chain[index + 1], "all providers busy")
+                continue
+
+            if model_host_cfg is None:
+                if is_last_hop:
+                    self._log_chain_failure(chain, "strategy returned no provider")
+                    return None
+                self._log_fallback(
+                    hop, chain[index + 1], "strategy returned no provider"
+                )
+                continue
+
+            if index > 0:
+                self._record_model_fallback(model_name, hop)
+                self._warn_if_smaller_context(model_name, hop, model_host_cfg)
+
+            return ApiModel.from_config(hop, model_host_cfg)
+
+        return None
+
+    def _fallback_chain(self, model_name: str) -> List[str]:
+        """
+        Build the ``model -> fallback_model -> …`` chain for *model_name*.
+
+        The chain always starts with the requested model and ends with the last
+        model that declares no fallback of its own.  ``ApiModelConfig`` rejects
+        unknown targets and cycles at load time, so the loop below can only
+        terminate; the extra guards keep a hand‑built (unvalidated)
+        configuration from looping forever.
+
+        Parameters
+        ----------
+        model_name : str
+            Model requested by the client.
+
+        Returns
+        -------
+        List[str]
+            Ordered model names to try, most preferred first.
+        """
+        models_configs = self.api_model_config.models_configs
+        chain = [model_name]
+        current = model_name
+
+        while True:
+            target = ApiModelConfig.fallback_model_of(models_configs.get(current))
+            if target is None or target not in models_configs or target in chain:
+                break
+            chain.append(target)
+            current = target
+
+        return chain
+
+    def _providers_of(self, model_name: str) -> List[Dict[str, Any]]:
+        """Return the configured providers of *model_name* (empty if none)."""
+        model_cfg = self.api_model_config.models_configs.get(model_name)
+        if not model_cfg:
+            return []
+        return model_cfg.get("providers", []) or []
+
+    def _record_model_fallback(self, model_name: str, fallback_model: str) -> None:
+        """Count a request served by *fallback_model* instead of *model_name*."""
+        recorder = getattr(self.provider_chooser, "record_model_fallback", None)
+        if recorder is None:
+            return
+        recorder(model_name=model_name, fallback_model=fallback_model)
+
+    def _warn_if_smaller_context(
+        self, model_name: str, fallback_model: str, provider: Dict[str, Any]
+    ) -> None:
+        """Warn when the fallback provider has a smaller context window."""
+        requested_sizes = [
+            self._as_int(p.get("input_size")) for p in self._providers_of(model_name)
+        ]
+        requested_size = max(requested_sizes, default=0)
+        fallback_size = self._as_int(provider.get("input_size"))
+
+        if requested_size and fallback_size and fallback_size < requested_size:
+            logger.warning(
+                "Fallback model '%s' has a smaller context (%s tokens) than "
+                "the requested model '%s' (%s tokens)",
+                fallback_model,
+                fallback_size,
+                model_name,
+                requested_size,
+            )
+
+    @staticmethod
+    def _as_int(value: Any) -> int:
+        """Best-effort integer conversion used for ``input_size`` comparisons."""
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _log_fallback(from_model: str, to_model: str, reason: str) -> None:
+        """Log the switch from *from_model* to its fallback."""
+        logger.warning(
+            "No available provider for model '%s' (%s) - "
+            "falling back to model '%s'",
+            from_model,
+            reason,
+            to_model,
         )
-        if not providers:
-            return None
 
-        if fake:
-            return ApiModel.from_config(model_name, providers[0])
-
-        model_host_cfg = self.provider_chooser.get_provider(
-            model_name=model_name, providers=providers, options=options
-        )
-        if model_host_cfg is None:
-            return None
-
-        return ApiModel.from_config(model_name, model_host_cfg)
+    @staticmethod
+    def _log_chain_failure(chain: List[str], reason: str) -> None:
+        """Log that the whole fallback chain failed to provide a provider."""
+        models = f"'{chain[0]}'"
+        if len(chain) > 1:
+            models = f"{models} (fallback chain: {' -> '.join(chain)})"
+        logger.error("No provider available for model %s: %s", models, reason)
 
     def put_model_provider(
         self,
