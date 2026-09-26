@@ -89,11 +89,13 @@ coordination is performed via Redis, ensuring safe concurrent operation across m
 
 **What it is**  
 `first_available_optim_nworkers` is a permissive extension of
-[`first_available_optim`](#5-first_available_optim).  It keeps the same host-reuse
-flow (steps 1-3) and keep-alive bookkeeping, but replaces the binary
-one-consumer lock per provider with a **worker-slot counter**: every
+[`first_available_optim`](#5-first_available_optim).  It keeps the host-reuse
+flow and keep-alive bookkeeping, but replaces the binary
+one-consumer lock per provider with **worker slots**: every
 provider may serve up to `nworkers` concurrent requests at the same time
-(optional provider field in `models-config.json`, default `1`).
+(optional provider field in `models-config.json`, default `1`).  Unlike
+`first_available_optim`, a saturated hot host spreads to the **least loaded**
+provider rather than to the next one in configuration order.
 
 **Provider configuration**
 
@@ -106,24 +108,48 @@ provider may serve up to `nworkers` concurrent requests at the same time
 | Step                                    | Purpose                                                                                         | Behaviour                                                                                                                                                                                                                                                                     |
 |-----------------------------------------|-------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **1️⃣ Re‑use the last host**              | Reuse the host of the previous selection when it still has a free slot.                         | Same as `first_available_optim`, but the acquisition now claims one worker slot instead of a binary lock.                                                                                                                                                                       |
-| **2️⃣ Re‑use any known host**             | Prefer hosts that already have the model loaded.                                                 | Same as above – providers on known hosts are skipped once their slot counter reaches `nworkers`.                                                                                                                                      |
-| **3️⃣ Pick an unused host**               | Spread the load to a fresh host when no “known” host has capacity.                               | Same as above.                                                                                                                                                                                                                                                                |
-| **4️⃣ Least loaded with a free slot**     | Load‑aware selection before giving up.                                                          | A single `HGETALL` snapshot of the `model:<model>:in_use` hash is taken; active (healthy) providers whose host is free for the model are ranked by `(busy, busy / nworkers, config order)` and acquired atomically – a lost race simply moves to the next candidate. |
+| **2️⃣ Least loaded with a free slot**     | Load‑aware selection, ahead of the host‑reuse steps.                                            | Active (healthy) providers whose host is free for the model are ranked by `(busy, busy / nworkers, config order)` and acquired atomically – a lost race simply moves to the next candidate.  The config index comes from the `providers` argument, not from the health monitor (which reads a Redis set). |
+| **3️⃣ Re‑use any known host**             | Safety net: prefer hosts that already have the model loaded.                                     | As in `first_available_optim`; providers are skipped once their slot count reaches `nworkers`.                                                                                                                                      |
+| **4️⃣ Pick an unused host**               | Safety net: spread the load to a fresh host.                                                     | As in `first_available_optim`.                                                                                                                                                                                                  |
 | **5️⃣ Fallback to plain first‑available** | Guarantees a result even when nothing was acquired.                                             | Delegates to the base `FirstAvailableStrategy`, which waits until a slot is released and raises `TimeoutError` after the configured `timeout` (default 60 s) if no slot frees up.                                                                                             |
-| **6️⃣ Book‑keeping**                      | Keep the optimisation data up‑to‑date.                                                          | As in `first_available_optim`: `:last_host`, `:hosts` and `:occupancy` are updated after a successful acquisition.                                                                                                                                                             |
+| **6️⃣ Book‑keeping**                      | Keep the optimisation data up‑to‑date.                                                          | As in `first_available_optim`: `:last_host`, `:hosts` and host occupancy are updated after a successful acquisition.                                                                                                                                                             |
+
+> **Why step 2 comes before steps 3 and 4.**  Those two split the provider list
+> on “host already known” / “host not known yet”, so together they already
+> consider **every** provider that has a free slot and always answer with the
+> first one in configuration order.  With the load-aware step behind them it
+> could never decide anything.  It is therefore placed directly after the last
+> host, and the two host-reuse steps stay behind it as a safety net.
 
 **Redis state**
 
-* `model:<model>:in_use` – hash with one field per provider; the value is the
-  number of busy workers (missing field = 0).  Counters are managed by two
-  locally registered Lua scripts (atomic acquire: increment only below the
-  limit; atomic release: decrement and delete the field at zero), so multiple
-  router workers/instances share one capacity view.
+* `<prefix>model:<model>:in_use:<provider>` – one **sorted set of live
+  worker-slot leases per (model, provider)**; each member is the token of one
+  held slot and its score is the moment that lease expires.  `ZCARD` is the
+  provider's busy count.  A locally registered Lua script prunes expired
+  leases and claims a slot only below the `nworkers` limit, so several router
+  workers/instances share one capacity view.
+* **A crashed router process heals itself.**  The process that holds a slot
+  renews its leases from the KeepAliveMonitor thread.  If it dies (OOM kill,
+  container restart) it stops renewing, the leases lapse and the provider's
+  capacity comes back on its own — bounded by
+  `LLM_ROUTER_LB_SLOT_LEASE_SECONDS` (default `120`).  Renewal is throttled to
+  every third of the lease lifetime, so a one-second monitor tick does not turn
+  into a Redis write per held slot per second.
+* `<prefix>` is `fa_optim_nworkers_`.  Every model key of this strategy lives
+  under it, so it does **not** share `model:<model>`, `:last_host` or `:hosts`
+  with `first_available` / `first_available_optim` running against the same
+  Redis database.  Host occupancy (`host:<host>` → `model`) is deliberately
+  unprefixed: which model occupies a physical host is a property of the host,
+  not of the strategy looking it up.
 * The classic `:is_chosen` lock fields are **not** used by this strategy.
-* With `clear_buffers=True` (the default) all `*:in_use` keys are removed on
-  router start, the same way the classic locks are cleared.
-* Host occupancy semantics (`host:<host>` → `model`) and the KeepAliveMonitor
-  are unchanged – a host occupied by *another* model is still skipped.
+* Start-up cleanup (`clear_buffers=True`) removes this strategy's
+  `:last_host` / `:hosts` / `:occupancy` keys **within its own prefix only**,
+  and never touches `:in_use`.  Those leases belong to the other, still
+  running worker processes; clearing them would over-admit exactly the
+  requests those processes are serving.
+* Host occupancy semantics and the KeepAliveMonitor are otherwise unchanged –
+  a host occupied by *another* model is still skipped.
 
 **Example**
 
@@ -161,10 +187,13 @@ provider may serve up to `nworkers` concurrent requests at the same time
   multi‑worker safe, reliable timeout fallback).
 
 **Summary**  
-`first_available_optim_nworkers` is drop‑in compatible with
-`first_available_optim` (`nworkers` defaults to `1`, which reproduces the
-classic binary lock one‑to‑one) and adds per‑provider concurrency with a
-least‑loaded selection step, shared atomically through Redis.
+`first_available_optim_nworkers` is a drop‑in replacement for
+`first_available_optim`: with the default `nworkers=1` a provider still admits
+exactly one request at a time.  It is not a bit‑for‑bit reimplementation of
+the classic binary lock — it keeps its state under its own `fa_optim_nworkers_`
+key prefix and in expiring leases instead of the `:is_chosen` fields, so a
+router using it must not be mixed with one using `first_available_optim`
+against the same model set (each would be blind to the other's occupancy).
 
 ---
 
