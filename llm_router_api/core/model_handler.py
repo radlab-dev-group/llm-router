@@ -47,6 +47,7 @@ class ApiModel:
     keep_alive: Optional[str] = None
     tool_calling: Optional[bool] = False
     is_embedding: Optional[bool] = False
+    lease: Optional[str] = None
 
     @staticmethod
     def from_config(name: str, cfg: Dict) -> "ApiModel":
@@ -82,6 +83,10 @@ class ApiModel:
             keep_alive=str(cfg.get("keep_alive", "")),
             tool_calling=bool(cfg.get("tool_calling", False)),
             is_embedding=bool(cfg.get("is_embedding", False)),
+            # Transient worker-slot lease handed over by the load-balancing
+            # strategy; it has to survive the round trip through ``as_dict()``
+            # so ``put_provider`` can release exactly this slot.
+            lease=cfg.get("__lease"),
         )
 
     def as_dict(self) -> Dict[str, Any]:
@@ -93,7 +98,7 @@ class ApiModel:
         Dict[str, Any]
             Dictionary representation of this ApiModelConfig instance.
         """
-        return {
+        config = {
             "id": self.id,
             "name": self.name,
             "api_host": self.api_host,
@@ -105,6 +110,11 @@ class ApiModel:
             "tool_calling": self.tool_calling,
             "is_embedding": self.is_embedding,
         }
+        # Carried back to the strategy that acquired it; omitted when there is
+        # no lease so the dictionary keeps its historical shape.
+        if self.lease:
+            config["__lease"] = self.lease
+        return config
 
 
 class ModelHandler:
