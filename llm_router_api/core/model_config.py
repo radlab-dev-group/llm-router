@@ -4,7 +4,7 @@ Module providing ApiModelConfig for loading model configurations from a JSON fil
 
 import json
 
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 
 class ApiModelConfig:
@@ -22,6 +22,10 @@ class ApiModelConfig:
             Full configuration dictionaries for each active model, built by
             :meth:`_active_models_configuration`.
     """
+
+    ACTIVE_MODELS_KEY = "active_models"
+    FALLBACK_MODEL_KEY = "fallback_model"
+    MODEL_PROVIDERS_KEY = "providers"
 
     def __init__(self, models_config_path: str):
         """
@@ -49,6 +53,7 @@ class ApiModelConfig:
         self.safe_active_models_config = self._safe_active_models_configuration()
 
         self._validate_unique_identifiers()
+        self._validate_fallback_models()
 
     def _try_to_load_config(self) -> Dict:
         """
@@ -82,7 +87,7 @@ class ApiModelConfig:
                     break
             if not exists_model:
                 return {}
-        return models_config["active_models"]
+        return models_config[self.ACTIVE_MODELS_KEY]
 
     def _active_models_configuration(self) -> Dict:
         """
@@ -97,7 +102,7 @@ class ApiModelConfig:
         for m_type, models_list in self.active_models.items():
             for m_name in models_list:
                 model_config = models_json[m_type][m_name]
-                if "providers" not in model_config:
+                if self.MODEL_PROVIDERS_KEY not in model_config:
                     raise KeyError(f"{m_type}:{m_name} has no providers!")
                 models_configuration[m_name] = model_config
         return models_configuration
@@ -130,7 +135,7 @@ class ApiModelConfig:
 
         for model_cfg in self.models_configs.values():
             # Check the main providers list
-            for provider in model_cfg.get("providers", []):
+            for provider in model_cfg.get(self.MODEL_PROVIDERS_KEY, []):
                 pid = provider.get("id")
                 if pid:
                     if pid in seen_ids:
@@ -141,3 +146,83 @@ class ApiModelConfig:
         if duplicates:
             dup_str = ", ".join(sorted(duplicates))
             raise ValueError(f"Duplicate provider identifiers found: {dup_str}")
+
+    @classmethod
+    def fallback_model_of(cls, model_cfg: Optional[Dict[str, Any]]) -> Optional[str]:
+        """
+        Return the ``fallback_model`` declared by *model_cfg*.
+
+        Parameters
+        ----------
+        model_cfg : Dict
+            Configuration dictionary of a single model.  Anything that is not
+            a non-blank string (missing key, ``None``, empty string) means
+            “no fallback configured”.
+
+        Returns
+        -------
+        Optional[str]
+            The trimmed fallback model name, or ``None`` when the model does
+            not declare one.
+        """
+        if not isinstance(model_cfg, dict):
+            return None
+        value = model_cfg.get(cls.FALLBACK_MODEL_KEY)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
+
+    def _validate_fallback_models(self) -> None:
+        """
+        Ensure every declared ``fallback_model`` can be safely followed.
+
+        Two rules are enforced at load time so that the runtime fallback chain
+        never has to guard against misconfiguration:
+
+        * the target must be an active model known to the router;
+        * the chain must be acyclic (a self reference is a cycle too).
+
+        Raises
+        ------
+        ValueError
+            If a ``fallback_model`` is not a string, points at an unknown
+            model, or closes a reference cycle.  The message always contains
+            the offending chain (``a -> b -> a``) for quick triage.
+        """
+        models = self.models_configs
+
+        for name, cfg in models.items():
+            raw = (
+                cfg.get(ApiModelConfig.FALLBACK_MODEL_KEY)
+                if isinstance(cfg, dict)
+                else None
+            )
+            if raw is None or (isinstance(raw, str) and not raw.strip()):
+                continue
+            if not isinstance(raw, str):
+                raise ValueError(
+                    f"Model '{name}' declares a non-string "
+                    f"{ApiModelConfig.FALLBACK_MODEL_KEY}: {raw!r}"
+                )
+
+        for name in models:
+            chain = [name]
+            current = name
+            while True:
+                target = ApiModelConfig.fallback_model_of(models.get(current))
+                if target is None:
+                    break
+                if target not in models:
+                    raise ValueError(
+                        f"Model '{name}' declares unknown "
+                        f"{ApiModelConfig.FALLBACK_MODEL_KEY} '{target}'"
+                    )
+                if target in chain:
+                    chain.append(target)
+                    raise ValueError(
+                        "Circular "
+                        f"{ApiModelConfig.FALLBACK_MODEL_KEY} reference: "
+                        f"{' -> '.join(chain)}"
+                    )
+                chain.append(target)
+                current = target
