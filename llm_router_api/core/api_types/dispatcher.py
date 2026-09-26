@@ -28,6 +28,7 @@ from llm_router_api.core.api_types.types_i import ApiTypesI
 from llm_router_api.core.api_types.vllm import VllmType
 from llm_router_api.core.api_types.ollama import OllamaType
 from llm_router_api.core.api_types.openai import OpenAIApiType
+from llm_router_api.core.api_types.llamacpp import LLamaCPPApiType
 from llm_router_api.core.api_types.lmstudio import LMStudioApiType
 from llm_router_api.core.api_types.anthropic import AnthropicType
 
@@ -65,7 +66,7 @@ class ApiTypesDispatcher:
     # -----------------------------------------------------------------------
     _REGISTRY: Dict[str, Type[ApiTypesI]] = {
         "ollama": OllamaType,
-        "llama.cpp": OpenAIApiType,
+        "llama.cpp": LLamaCPPApiType,
         "vllm": VllmType,
         "openai": OpenAIApiType,
         "lmstudio": LMStudioApiType,
