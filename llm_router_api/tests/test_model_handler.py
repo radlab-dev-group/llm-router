@@ -103,6 +103,50 @@ class TestApiModelAsDict:
         assert as_dict["name"] == "m"
 
 
+class TestApiModelLease:
+    """
+    The worker-slot lease token has to survive the ``as_dict()`` round trip.
+
+    ``EndpointBase.unset_model`` releases the provider it obtains from
+    ``api_model_provider.as_dict()``, not the dictionary the strategy
+    returned, so a token dropped here would leak the slot until it expires.
+    """
+
+    def test_lease_defaults_to_none_and_is_omitted(self):
+        model = ApiModel.from_config(
+            "m", {"id": "p", "api_host": "h", "api_type": "ollama", "input_size": 1}
+        )
+        assert model.lease is None
+        assert "__lease" not in model.as_dict()
+
+    def test_lease_round_trips_through_as_dict(self):
+        cfg = {
+            "id": "p",
+            "api_host": "h",
+            "api_type": "ollama",
+            "input_size": 1,
+            "__lease": "abc123",
+        }
+        model = ApiModel.from_config("m", cfg)
+        assert model.lease == "abc123"
+        assert model.as_dict()["__lease"] == "abc123"
+
+    def test_rebuilt_dict_still_identifies_the_provider(self):
+        # put_provider derives the provider from id / api_host, so the
+        # rebuilt dictionary must keep both.
+        cfg = {
+            "id": "p",
+            "api_host": "http://h:11434",
+            "api_type": "ollama",
+            "input_size": 1,
+            "__lease": "tok",
+        }
+        as_dict = ApiModel.from_config("m", cfg).as_dict()
+        assert as_dict["id"] == "p"
+        assert as_dict["api_host"] == "http://h:11434"
+        assert as_dict["__lease"] == "tok"
+
+
 class TestModelHandler:
     @pytest.fixture
     def handler(self, tmp_path):
