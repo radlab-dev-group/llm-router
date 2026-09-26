@@ -17,7 +17,7 @@ from requests import Response
 from typing import Iterator, Dict, Any, Optional
 
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
-from llm_router_api.core.errors import sanitize_error_message
+from llm_router_api.core.errors import ProviderStreamError, sanitize_error_message
 
 
 def _request_error_message(exc: Exception) -> str:
@@ -46,14 +46,18 @@ def _request_error_message(exc: Exception) -> str:
 
 def _raise_for_status(resp: Response) -> None:
     """
-    Raise an ``HTTPError`` for a non‑2xx response **while it is still
-    open**, capturing the provider's response body on the exception
-    (``provider_body``).
+    Raise a :class:`ProviderStreamError` for a non‑2xx response **while the
+    response is still open**, capturing the provider's body for the message.
 
     Plain ``resp.raise_for_status()`` does not work here: it is called
     inside ``with resp:`` blocks, so by the time the surrounding
     ``except`` handler runs the response is already closed and its body
     can no longer be read.
+
+    The failure happens before any chunk was produced, so the dispatcher can
+    still retry the request on another provider; the dedicated exception type
+    (instead of ``requests.HTTPError``) keeps the per‑format generators from
+    turning it into a final error chunk.
     """
     if resp is None or resp.status_code < 400:
         return
@@ -66,7 +70,11 @@ def _raise_for_status(resp: Response) -> None:
         response=resp,
     )
     exc.provider_body = body[:1000]  # type: ignore[attr-defined]
-    raise exc
+    raise ProviderStreamError(
+        status_code=resp.status_code,
+        message=_request_error_message(exc),
+        provider_body=body[:1000],
+    ) from exc
 
 
 # ------------------------------------------------#
