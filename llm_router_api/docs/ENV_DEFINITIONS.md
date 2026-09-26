@@ -27,6 +27,8 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_VERBOSE`               | `False`                                | Log RAW, **unmasked** request params (PII!). Startup logs a warning and waits 3 s. Never use in production.      |
 | `LLM_ROUTER_BALANCE_STRATEGY`      | `balanced`                             | Load-balancing strategy: `balanced`, `weighted`, `dynamic_weighted`, `first_available`, `first_available_optim`, `first_available_optim_nworkers`. |
 | `LLM_ROUTER_LB_SLOT_LEASE_SECONDS` | `120`                                  | Lifetime of one held worker slot in `first_available_optim_nworkers`. Renewed while the router process lives, so it bounds how long a crashed process keeps occupying a provider. Must exceed the longest expected request only if the KeepAlive monitor cannot keep up. |
+| `LLM_ROUTER_LB_SLOT_MAX_AGE_SECONDS` | `1800`                               | How long an unreleased worker slot keeps being renewed, counted from the acquisition. Covers a request that never released its slot (an abandoned stream): it is left to expire instead of occupying the provider until the router restarts. `0` or negative disables the cap. |
+| `LLM_ROUTER_LB_HOST_PIN_TTL_SECONDS` | `3600`                               | Lifetime of the “this host serves this model” pin used by `first_available_optim` / `first_available_optim_nworkers` (Redis key `host:<host>`). Refreshed on every selection, so only a host nothing has selected for this long becomes available to another model. |
 | `LLM_ROUTER_SERVER_TYPE`           | `flask`                                | Server implementation: flask, gunicorn, waitress.                                                                |
 | `LLM_ROUTER_SERVER_PORT`           | `8080`                                 | Port on which the server listens.                                                                                |
 | `LLM_ROUTER_SERVER_HOST`           | `localhost`                            | Host address for the server.                                                                                     |
@@ -162,6 +164,7 @@ Seed file path (hardcoded): `${HOME}/.llm-router/configs/auth/memory-keys.json`
 | `LLM_ROUTER_AUTH_VAULT_AUTH_METHOD` | `kubernetes`                      | Auth method: kubernetes, approle, or token.                    |
 | `LLM_ROUTER_AUTH_VAULT_ROLE_ID`     | *(empty)*                         | AppRole role ID (or K8s SA token).                             |
 | `LLM_ROUTER_AUTH_VAULT_SECRET_ID`   | *(empty)*                         | AppRole secret ID.                                             |
+| `LLM_ROUTER_AUTH_VAULT_TOKEN`       | *(empty)*                         | Vault token, used with the `token` auth method. Required then; never store a real token in a committed file. |
 
 ### Redis cache for keys
 
@@ -189,6 +192,7 @@ Rate limiting is always applied when authentication is enabled:
 | Variable                             | Default | Description                                                                                                                            |
 |--------------------------------------|---------|----------------------------------------------------------------------------------------------------------------------------------------|
 | `LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT` | `60`    | Default rate limit (requests per minute). Rate limiting is always active when authentication is enabled — there is no separate toggle. |
+| `LLM_ROUTER_RATE_LIMITING_CONFIG` | *(empty)* | Path to a rate-limit presets file or directory (`rate-limiting.json`) used by `llm-router auth`; empty falls back to the user config file, the packaged resource and the builtin presets. |
 
 ### Public endpoints
 

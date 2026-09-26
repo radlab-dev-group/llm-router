@@ -67,7 +67,7 @@ falling back to the classic “pick the first free provider” logic.
 | **2️⃣ Re‑use any known host**             | Prefer any host that already has the model loaded.                                             | A Redis set `:hosts` tracks all hosts where the model is currently loaded. The strategy scans the provider list, picks a free provider on one of those hosts, and locks it atomically.                   |
 | **3️⃣ Pick an unused host**               | Spread the load to a fresh host when no suitable “known” host is available.                    | It looks for a provider whose host is **not** present in the `:hosts` set and is not occupied, then acquires it.                                                                                         |
 | **4️⃣ Fallback to plain first‑available** | Guarantees a result even if the optimisation steps fail.                                       | If none of the previous steps succeed, the strategy delegates to the base `FirstAvailableStrategy`, which simply selects the first free provider.                                                        |
-| **5️⃣ Book‑keeping**                      | Keep the optimisation data up‑to‑date for future requests.                                     | After a provider is successfully acquired, the host is recorded as the *last host* (`:last_host`), added to the model‑specific host set (`:hosts`), and marked as occupied in a Redis hash `:occupancy`. |
+| **5️⃣ Book‑keeping**                      | Keep the optimisation data up‑to‑date for future requests.                                     | After a provider is successfully acquired, the host is recorded as the *last host* (`:last_host`), added to the model‑specific host set (`:hosts`), and marked as occupied for this model in the Redis hash `host:<host>` (field `model`, refreshed on every selection and expiring after `LLM_ROUTER_LB_HOST_PIN_TTL_SECONDS`). |
 
 **When to use it**
 
@@ -149,18 +149,31 @@ than sticking to the first one that still has capacity.
   `LLM_ROUTER_LB_SLOT_LEASE_SECONDS` (default `120`).  Renewal is throttled to
   every third of the lease lifetime, so a one-second monitor tick does not turn
   into a Redis write per held slot per second.
+* **A forgotten slot heals itself too.**  Expiry only covers a *dead* process;
+  a request that never called `put_provider` (an abandoned streaming response
+  whose generator was not closed) would keep a *live* process re-advertising
+  the slot forever.  Renewal therefore stops after
+  `LLM_ROUTER_LB_SLOT_MAX_AGE_SECONDS` (default `1800`) and the lease expires
+  within one lease lifetime — a very long request may briefly share a slot
+  rather than monopolise it.  `0` disables the cap.
 * `<prefix>` is `fa_optim_nworkers_`.  Every model key of this strategy lives
   under it, so it does **not** share `model:<model>`, `:last_host` or `:hosts`
   with `first_available` / `first_available_optim` running against the same
   Redis database.  Host occupancy (`host:<host>` → `model`) is deliberately
   unprefixed: which model occupies a physical host is a property of the host,
   not of the strategy looking it up.
+* **The host pin expires.**  `host:<host>` is refreshed on every selection and
+  carries `LLM_ROUTER_LB_HOST_PIN_TTL_SECONDS` (default `3600`), so a host that
+  stops serving its model — provider removed from the configuration, model
+  retired — becomes available to another model again instead of staying
+  reserved forever.  A host that keeps receiving traffic never loses the pin.
 * The classic `:is_chosen` lock fields are **not** used by this strategy.
 * Start-up cleanup (`clear_buffers=True`) removes this strategy's
-  `:last_host` / `:hosts` / `:occupancy` keys **within its own prefix only**,
-  and never touches `:in_use`.  Those leases belong to the other, still
+  `:last_host` / `:hosts` keys **within its own prefix only**, and never
+  touches `:in_use`.  Those leases belong to the other, still
   running worker processes; clearing them would over-admit exactly the
-  requests those processes are serving.
+  requests those processes are serving.  (An earlier version also scanned a
+  `:occupancy` suffix that no key ever carried.)
 * Host occupancy semantics and the KeepAliveMonitor are otherwise unchanged –
   a host occupied by *another* model is still skipped.
 
