@@ -94,8 +94,9 @@ flow and keep-alive bookkeeping, but replaces the binary
 one-consumer lock per provider with **worker slots**: every
 provider may serve up to `nworkers` concurrent requests at the same time
 (optional provider field in `models-config.json`, default `1`).  Unlike
-`first_available_optim`, a saturated hot host spreads to the **least loaded**
-provider rather than to the next one in configuration order.
+`first_available_optim`, a provider is considered busy only when **all** of its
+slots are taken, and the load spreads over the **least loaded** provider rather
+than sticking to the first one that still has capacity.
 
 **Provider configuration**
 
@@ -107,19 +108,31 @@ provider rather than to the next one in configuration order.
 
 | Step                                    | Purpose                                                                                         | Behaviour                                                                                                                                                                                                                                                                     |
 |-----------------------------------------|-------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **1️⃣ Re‑use the last host**              | Reuse the host of the previous selection when it still has a free slot.                         | Same as `first_available_optim`, but the acquisition now claims one worker slot instead of a binary lock.                                                                                                                                                                       |
-| **2️⃣ Least loaded with a free slot**     | Load‑aware selection, ahead of the host‑reuse steps.                                            | Active (healthy) providers whose host is free for the model are ranked by `(busy, busy / nworkers, config order)` and acquired atomically – a lost race simply moves to the next candidate.  The config index comes from the `providers` argument, not from the health monitor (which reads a Redis set). |
-| **3️⃣ Re‑use any known host**             | Safety net: prefer hosts that already have the model loaded.                                     | As in `first_available_optim`; providers are skipped once their slot count reaches `nworkers`.                                                                                                                                      |
-| **4️⃣ Pick an unused host**               | Safety net: spread the load to a fresh host.                                                     | As in `first_available_optim`.                                                                                                                                                                                                  |
-| **5️⃣ Fallback to plain first‑available** | Guarantees a result even when nothing was acquired.                                             | Delegates to the base `FirstAvailableStrategy`, which waits until a slot is released and raises `TimeoutError` after the configured `timeout` (default 60 s) if no slot frees up.                                                                                             |
-| **6️⃣ Book‑keeping**                      | Keep the optimisation data up‑to‑date.                                                          | As in `first_available_optim`: `:last_host`, `:hosts` and host occupancy are updated after a successful acquisition.                                                                                                                                                             |
+| **1️⃣ Least loaded with a free slot** | Load‑aware selection; the step that decides as long as any provider has capacity. | Active (healthy) providers whose host is free for the model are ranked by `(busy workers, last host, config order)` and acquired atomically – a lost race simply moves to the next candidate.  Busy workers are counted in absolute terms, and the config index comes from the `providers` argument, not from the health monitor (which reads a Redis set). |
+| **2️⃣ Re‑use any known host**         | Safety net: prefer hosts that already have the model loaded. | As in `first_available_optim`; providers are skipped once their slot count reaches `nworkers`. |
+| **3️⃣ Pick an unused host**           | Safety net: spread the load to a fresh host. | As in `first_available_optim`. |
+| **4️⃣ Fallback to plain first‑available** | Guarantees a result even when nothing was acquired. | Delegates to the base `FirstAvailableStrategy`, which waits until a slot is released and raises `TimeoutError` after the configured `timeout` (default 60 s) if no slot frees up. |
+| **5️⃣ Book‑keeping**                  | Keep the optimisation data up‑to‑date. | As in `first_available_optim`: `:last_host`, `:hosts` and host occupancy are updated after a successful acquisition. |
 
-> **Why step 2 comes before steps 3 and 4.**  Those two split the provider list
-> on “host already known” / “host not known yet”, so together they already
-> consider **every** provider that has a free slot and always answer with the
-> first one in configuration order.  With the load-aware step behind them it
-> could never decide anything.  It is therefore placed directly after the last
-> host, and the two host-reuse steps stay behind it as a safety net.
+> **Fill order.** Because the ranking counts busy workers rather than
+> `busy / nworkers`, providers fill in **layers** – one worker each, in
+> configuration order, before any of them takes a second.  With
+> `p1: nworkers=2`, `p2: nworkers=3`, `p3: nworkers=1` and no releases, six
+> requests are served `p1‑s1, p2‑s1, p3‑s1, p1‑s2, p2‑s2, p2‑s3`.  A relative
+> measure would answer with the largest provider on every tie and leave the
+> small ones idle.
+
+> **Why the load-aware step runs first, and why “re-use the last host” is not a
+> step of its own.**  The two host-reuse steps split the provider list on
+> “host already known” / “host not known yet”, so together they already consider
+> **every** provider that has a free slot and always answer with the first one in
+> configuration order; with the load-aware step behind them it could never decide
+> anything.  “Re-use the last host” answers as soon as the previously used
+> provider has *any* free slot, which with `nworkers` > 1 fills one provider to
+> saturation before the next one is considered at all.  It therefore survives as
+> a tie-breaker **inside one load level** of the ranking: a warm host keeps the
+> request while traffic is light, and loses to an idle provider as soon as it is
+> busier than one.
 
 **Redis state**
 
