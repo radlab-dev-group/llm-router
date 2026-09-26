@@ -380,9 +380,10 @@ class TestLeaseMaxAge:
         strategy._renew_held_leases()
 
         assert token in strategy._held_leases
-        assert strategy.redis_client.zscore(
-            strategy._in_use_key("m", provider), token
-        ) > strategy._now_ms()
+        assert (
+            strategy.redis_client.zscore(strategy._in_use_key("m", provider), token)
+            > strategy._now_ms()
+        )
 
     def test_max_age_of_zero_disables_the_cap(self):
         strategy = _make_strategy(
@@ -675,9 +676,7 @@ class TestAllocationSequence:
             {"id": "p3", "api_host": "h3", "nworkers": 1},
         ]
         strategy = _make_strategy(timeout=0.3, active_order=["p3", "p2", "p1"])
-        taken = [
-            strategy.get_provider("m", providers)["id"] for _ in range(6)
-        ]
+        taken = [strategy.get_provider("m", providers)["id"] for _ in range(6)]
         assert taken == ["p1", "p2", "p3", "p1", "p2", "p2"]
 
 

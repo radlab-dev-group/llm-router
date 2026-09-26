@@ -199,3 +199,56 @@ class TestProviderKey:
         for ch in ChooseProviderStrategyI.REPLACE_PROVIDER_KEY:
             assert ch not in provider_key
         assert provider_key == "a_b_c_d_e_f_g"
+
+
+class TestAvailabilityProbe:
+    def test_empty_providers_is_definitely_unavailable(self, tmp_path):
+        facade = _facade(tmp_path)
+        facade.strategy = mock.Mock()
+        assert facade.has_available_provider("m", []) is False
+        facade.strategy.has_available_provider.assert_not_called()
+
+    def test_delegates_to_strategy(self, tmp_path):
+        facade = _facade(tmp_path)
+        facade.strategy = mock.Mock()
+        facade.strategy.has_available_provider.return_value = False
+        providers = [{"id": "p1"}]
+
+        assert facade.has_available_provider("m", providers) is False
+        facade.strategy.has_available_provider.assert_called_once_with(
+            model_name="m", providers=providers
+        )
+
+    def test_strategy_error_degrades_to_unknown(self, tmp_path):
+        facade = _facade(tmp_path)
+        facade.strategy = mock.Mock()
+        facade.strategy.has_available_provider.side_effect = RuntimeError(
+            "redis down"
+        )
+        assert facade.has_available_provider("m", [{"id": "p1"}]) is None
+
+
+class TestModelFallbackMetric:
+    def test_noop_without_injected_router_metrics(self, tmp_path):
+        facade = _facade(tmp_path)
+        facade.strategy = mock.Mock()
+        # Must not raise even though no RouterMetrics was injected.
+        facade.record_model_fallback(model_name="m1", fallback_model="m2")
+
+    def test_records_injected_router_metrics(self, tmp_path):
+        facade = _facade(tmp_path)
+        router_metrics = mock.Mock()
+        facade.set_router_metrics(router_metrics)
+
+        facade.record_model_fallback(model_name="m1", fallback_model="m2")
+        router_metrics.record_model_fallback.assert_called_once_with(
+            model_name="m1", fallback_model="m2"
+        )
+
+    def test_metric_exceptions_are_swallowed(self, tmp_path):
+        facade = _facade(tmp_path)
+        router_metrics = mock.Mock()
+        router_metrics.record_model_fallback.side_effect = RuntimeError("boom")
+        facade.set_router_metrics(router_metrics)
+
+        facade.record_model_fallback(model_name="m1", fallback_model="m2")

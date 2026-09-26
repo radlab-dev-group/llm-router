@@ -4,7 +4,7 @@ Tests for ``llm_router_api.core.router_metrics``.
 Verifies:
 - Metric registration and recording helpers exist with correct attributes
 - No-op behavior when Prometheus is not available
-- All 10 metric types are present and recording works correctly
+- All 11 metric types are present and recording works correctly
 """
 
 from __future__ import annotations
@@ -46,6 +46,7 @@ class TestRouterMetricsNoOp:
         rm.record_provider_latency("openai", "gpt-4", 0.5)
         rm.record_provider_error("openai", "gpt-4", "503")
         rm.record_lb_strategy("balanced", "gpt-4")
+        rm.record_model_fallback("gpt-4", "gpt-4-mini")
         rm.record_pipeline_stage("provider_resolved", "success")
         rm.record_retry("gpt-4", "429")
         rm.record_retry_exhausted("gpt-4", "503")
@@ -98,6 +99,7 @@ class TestRouterMetricsAttributes:
         assert rm.PIPELINE_STAGE is not None
         assert rm.RETRY is not None
         assert rm.RETRY_EXHAUSTED is not None
+        assert rm.MODEL_FALLBACK is not None
         assert rm.TOKENS is not None
         assert rm.RESPONSE_FORMAT is not None
         assert rm.PAYLOAD_CONVERSION is not None
@@ -200,6 +202,18 @@ class TestRouterMetricsRecordingHelpers:
         call_args = mock_counter_obj.labels.call_args
         assert call_args[1]["stage"] == "provider_resolved"
         assert call_args[1]["result"] == "success"
+
+    def test_record_model_fallback(self):
+        from llm_router_api.core.router_metrics import RouterMetrics
+
+        rm = RouterMetrics()
+        rm.record_model_fallback("qwen/Qwen3.8-Flash-Next", "qwen/qwen3-coder")
+
+        mock_counter_obj = rm.MODEL_FALLBACK
+        assert mock_counter_obj.labels.called
+        call_args = mock_counter_obj.labels.call_args
+        assert call_args[1]["model_name"] == "qwen/Qwen3.8-Flash-Next"
+        assert call_args[1]["fallback_model"] == "qwen/qwen3-coder"
 
     def test_record_retry(self):
         from llm_router_api.core.router_metrics import RouterMetrics

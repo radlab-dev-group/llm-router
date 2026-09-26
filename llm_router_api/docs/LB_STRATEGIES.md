@@ -3,6 +3,12 @@
 The `llm-router` supports various strategies for selecting the most suitable provider when multiple options exist for a
 given model. This ensures efficient and reliable routing of requests. The available strategies are:
 
+> **Model‑level `fallback_model` runs before the strategy.** A strategy is always asked to serve the model named by
+> the client. Only when that model cannot be served at all — no providers, no healthy provider, or every provider busy
+> until the selection timeout — `ModelHandler` reroutes the request to the configured `fallback_model` and the very
+> same strategy then balances over the providers *of that model*. Strategies themselves are unaffected; the option is
+> documented in [`MODELS_CONFIG.md`](MODELS_CONFIG.md).
+
 ---
 
 ### 1. `balanced` (Default)

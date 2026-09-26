@@ -104,6 +104,14 @@ class RouterMetrics:
             registry=self._registry,
         )
 
+        self.MODEL_FALLBACK = Counter(
+            "llm_router_model_fallback_total",
+            "Requests rerouted to a fallback model because no provider was "
+            "available for the requested model",
+            ["model_name", "fallback_model"],
+            registry=self._registry,
+        )
+
         # ------------------------------------------------------------------
         # B. Pipeline / Request Funnel
         # ------------------------------------------------------------------
@@ -193,6 +201,14 @@ class RouterMetrics:
             return
         self.LB_STRATEGY_SELECTED.labels(
             strategy=strategy, model_name=model_name
+        ).inc()
+
+    def record_model_fallback(self, model_name: str, fallback_model: str) -> None:
+        """Record that a model was served by its configured fallback model."""
+        if self._registry is None:
+            return
+        self.MODEL_FALLBACK.labels(
+            model_name=model_name, fallback_model=fallback_model
         ).inc()
 
     # ------------------------------------------------------------------

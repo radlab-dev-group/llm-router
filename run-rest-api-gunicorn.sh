@@ -223,16 +223,27 @@ RESET="\e[0m"
 INSTANCE_NAME="${LLM_ROUTER_INSTANCE:-localhost-dev}"
 export LLM_ROUTER_INSTANCE="${INSTANCE_NAME}"
 
-printf '%bStarting LLMRouter server instance %b%s%b ' \
+function start_llm_router()
+{
+  printf '%bStarting LLMRouter server instance %b%s%b ' \
   "$YELLOW" "$BLUE" "$INSTANCE_NAME" "$RESET"
+  printf "\n"
 
-llm-router server start -i "${INSTANCE_NAME}"
+  llm-router server start -i "${INSTANCE_NAME}"
+}
 
-for _ in {1..50}; do
-  printf '%b*%b' "$GREEN" "$RESET"
-  sleep 0.1
-done
+function show_llm_router_logs()
+{
+  for _ in {1..50}; do
+    printf '%b*%b' "$GREEN" "$RESET"
+    sleep 0.1
+  done
+  printf "\n"
 
-printf "\n"
+  llm-router server log -i "${INSTANCE_NAME}"
+}
 
-llm-router server log -i "${INSTANCE_NAME}"
+
+start_llm_router
+
+show_llm_router_logs
