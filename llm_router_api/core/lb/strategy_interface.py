@@ -67,6 +67,37 @@ class ChooseProviderStrategyI(ABC):
         """
         raise NotImplementedError
 
+    def has_available_provider(
+        self,
+        model_name: str,
+        providers: List[Dict],
+    ) -> Optional[bool]:
+        """
+        Report whether the strategy can tell if *model_name* is servable right now.
+
+        The check is **non‑blocking** and purely informational: it lets the
+        caller skip a model that is known to be unable to serve a request
+        instead of waiting for the selection ``timeout`` to expire.
+
+        Parameters
+        ----------
+        model_name: str
+            Name of the model to inspect.
+        providers: List[Dict]
+            Configured providers of the model.
+
+        Returns
+        -------
+        Optional[bool]
+            ``True``  – at least one provider is currently usable;
+            ``False`` – the strategy knows that none is usable;
+            ``None``  – availability is unknown (the default for strategies
+            without health information), so the caller must not change its
+            behaviour.
+        """
+        # Default: strategies without health data cannot answer the question.
+        return None
+
     def put_provider(
         self,
         model_name: str,
