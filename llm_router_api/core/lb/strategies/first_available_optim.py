@@ -48,6 +48,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
         logger: Optional[logging.Logger] = None,
         ka_monitor_check_interval: float = KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS,
         strategy_prefix: Optional[str] = None,
+        on_tick_callback: Optional[Callable[[], None]] = None,
     ) -> None:
         """
         Initialise the optimized first‑available strategy.
@@ -109,6 +110,7 @@ class FirstAvailableOptimStrategy(FirstAvailableStrategy):
             logger=self.logger,
             keep_alive=self._keep_alive,
             is_host_free_callback=self._is_host_free,
+            on_tick_callback=on_tick_callback,
             clear_buffers=clear_buffers,
             redis_prefix="keepalive",
         )
