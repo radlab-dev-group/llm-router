@@ -122,7 +122,9 @@ sum(rate(llm_router_pipeline_stage_total{stage="guardrail_request", result="bloc
 
 ### `llm_router_retry_total` *(Counter)*
 
-Retry attempts per model and HTTP error code that triggered the retry (429, 503, 504, 500).
+Retry attempts per model and HTTP error code that triggered the retry. **Every** 4xx/5xx answer moves the
+request to another provider of the model (and, once all of them were tried, to its `fallback_model`), so any
+error status can appear here.
 
 **Labels:** `model_name`, `error_code`
 
@@ -137,7 +139,8 @@ llm_router_retry_total{model_name="google/gemma-3-12b-it", error_code="503"} 3
 
 ### `llm_router_retry_exhausted_total` *(Counter)*
 
-Requests where all retry attempts were exhausted (final failure after retries).
+Requests where all retry attempts were exhausted: no provider of the model - and of its `fallback_model`
+chain - was left to try, so the last provider error was returned to the client.
 
 **Labels:** `model_name`, `last_error_code`
 

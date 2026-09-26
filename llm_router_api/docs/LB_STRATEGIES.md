@@ -8,6 +8,10 @@ given model. This ensures efficient and reliable routing of requests. The availa
 > until the selection timeout — `ModelHandler` reroutes the request to the configured `fallback_model` and the very
 > same strategy then balances over the providers *of that model*. Strategies themselves are unaffected; the option is
 > documented in [`MODELS_CONFIG.md`](MODELS_CONFIG.md).
+>
+> **Provider errors rotate first.—** A provider that answers with an error (any 4xx/5xx) or is unreachable
+> makes the dispatcher retry the request on *another provider of the same model*; the model's `fallback_model`
+> is reached only once none of its providers is left untried.
 
 ---
 
