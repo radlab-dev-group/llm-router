@@ -191,4 +191,23 @@ export TOKENIZERS_PARALLELISM=${TOKENIZERS_PARALLELISM:-true}
 # ==================================================================================
 # RUN MAIN APPLICATION
 # ==================================================================================
-llm-router server start -i localhost-dev --foreground --save-config
+
+YELLOW="\e[33m"
+BLUE="\e[34m"
+GREEN="\e[32m"
+RESET="\e[0m"
+INSTANCE_NAME="localhost-dev"
+
+printf '%bStarting LLMRouter server instance %b%s%b ' \
+  "$YELLOW" "$BLUE" "$INSTANCE_NAME" "$RESET"
+
+llm-router server start -i "${INSTANCE_NAME}"
+
+for _ in {1..50}; do
+  printf '%b*%b' "$GREEN" "$RESET"
+  sleep 0.1
+done
+
+printf "\n"
+
+llm-router server log -i localhost-dev
