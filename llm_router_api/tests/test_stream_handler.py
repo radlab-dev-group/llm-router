@@ -22,6 +22,7 @@ import pytest  # noqa: E402
 import requests  # noqa: E402
 
 import llm_router_api.core.stream_handler as sh  # noqa: E402
+from llm_router_api.core.errors import ProviderStreamError  # noqa: E402
 from llm_router_api.core.stream_handler import (  # noqa: E402
     StreamConversion,
     StreamHandler,
@@ -105,21 +106,31 @@ class TestRaiseForStatus:
 
     def test_4xx_raises_with_provider_body(self):
         resp = _FakeResp(status_code=400, text="bad request detail")
-        with pytest.raises(requests.HTTPError) as ei:
+        with pytest.raises(ProviderStreamError) as ei:
             _raise_for_status(resp)
         assert ei.value.provider_body == "bad request detail"
-        assert "400" in str(ei.value)
+        assert ei.value.status_code == 400
+        assert "400" in ei.value.message
+        assert "provider: bad request detail" in ei.value.message
 
     def test_5xx_raises(self):
         resp = _FakeResp(status_code=503, text="unavailable")
-        with pytest.raises(requests.HTTPError):
+        with pytest.raises(ProviderStreamError) as ei:
             _raise_for_status(resp)
+        assert ei.value.status_code == 503
 
     def test_provider_body_truncated_to_1000(self):
         resp = _FakeResp(status_code=500, text="y" * 1500)
-        with pytest.raises(requests.HTTPError) as ei:
+        with pytest.raises(ProviderStreamError) as ei:
             _raise_for_status(resp)
         assert len(ei.value.provider_body) == 1000
+
+    def test_error_is_not_a_requests_exception(self):
+        """
+        The failover signal must survive the generators, which catch
+        ``requests.RequestException`` to emit their final error chunk.
+        """
+        assert not issubclass(ProviderStreamError, requests.RequestException)
 
 
 class TestForceIterOpenAI:
