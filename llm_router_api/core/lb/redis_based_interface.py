@@ -367,6 +367,41 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
                 return acquired
         return None
 
+    def has_available_provider(
+        self, model_name: str, providers: List[Dict]
+    ) -> Optional[bool]:
+        """
+        Ask the health monitor whether *model_name* can be served right now.
+
+        The check is non‑blocking and lets the caller skip a model that is
+        known to be unable to serve a request instead of waiting for the
+        selection ``timeout`` to expire.
+
+        Returns
+        -------
+        Optional[bool]
+            ``True``  – at least one registered provider is healthy;
+            ``False`` – the model has registered providers but none of them is
+            currently healthy;
+            ``None``  – nothing is known about the model yet (it has never
+            been registered with the monitor, e.g. cold start, or Redis is
+            unreachable), so the caller must use the normal blocking
+            selection path.
+        """
+        try:
+            registered = self.redis_health_check.get_providers(model_name=model_name)
+            if not registered:
+                return None
+            return bool(
+                self._get_active_providers(
+                    model_name=model_name, providers=providers
+                )
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            # intentional: availability probing is best-effort only; a Redis
+            # outage must never break provider selection.
+            return None
+
     def _get_active_providers(
         self, model_name: str, providers: List[Dict]
     ) -> List[Dict]:  # pylint: disable=unused-argument

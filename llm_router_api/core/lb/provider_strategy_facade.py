@@ -276,12 +276,61 @@ class ProviderStrategyFacade:
 
         return result
 
+    def has_available_provider(
+        self, model_name: str, providers: List[Dict]
+    ) -> Optional[bool]:
+        """
+        Non‑blocking availability probe delegated to the active strategy.
+
+        Parameters
+        ----------
+        model_name : str
+            The model to inspect.
+        providers : List[Dict]
+            Configured providers of the model.
+
+        Returns
+        -------
+        Optional[bool]
+            ``True`` / ``False`` when the strategy knows the answer, ``None``
+            when availability cannot be determined.  Any strategy error is
+            swallowed and reported as ``None`` — the probe is strictly
+            best‑effort and must never break request handling.
+        """
+        if not providers:
+            return False
+        try:
+            return self.strategy.has_available_provider(
+                model_name=model_name, providers=providers
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            # intentional: an unavailable answer must degrade to "unknown".
+            return None
+
     def set_router_metrics(self, router_metrics) -> None:
         """
         Inject the RouterMetrics instance (called from engine.py after init).
         This avoids circular import issues at module load time.
         """
         self._router_metrics = router_metrics
+
+    def record_model_fallback(self, model_name: str, fallback_model: str) -> None:
+        """
+        Record that traffic for *model_name* was rerouted to *fallback_model*.
+
+        No‑op when Prometheus has not been injected, so callers do not need
+        to guard the call.
+        """
+        rm = getattr(self, "_router_metrics", None)
+        if rm is None or not hasattr(rm, "record_model_fallback"):
+            return
+        try:
+            rm.record_model_fallback(
+                model_name=model_name, fallback_model=fallback_model
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            # intentional: metrics must never break provider selection.
+            pass
 
     def put_provider(
         self, model_name: str, provider: Dict, options: Optional[Dict] = None
