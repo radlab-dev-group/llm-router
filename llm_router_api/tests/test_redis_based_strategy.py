@@ -235,3 +235,33 @@ class TestPrintProviderStatus:
         # must not raise; log a warning instead
         strategy._print_provider_status("model:m", _providers())
         strategy.logger.warning.assert_called()
+
+
+class TestHasAvailableProvider:
+    """The availability probe is non-blocking and never raises."""
+
+    def test_unknown_when_monitor_does_not_know_the_model(self):
+        strategy = _make()
+        strategy.redis_health_check.get_providers.return_value = []
+        assert strategy.has_available_provider("m", _providers()) is None
+
+    def test_true_when_a_registered_provider_is_healthy(self):
+        strategy = _make()
+        strategy.redis_health_check.get_providers.side_effect = [
+            [{"id": "p1"}, {"id": "p2"}],
+            [{"id": "p2"}],
+        ]
+        assert strategy.has_available_provider("m", _providers()) is True
+
+    def test_false_when_no_registered_provider_is_healthy(self):
+        strategy = _make()
+        strategy.redis_health_check.get_providers.side_effect = [
+            [{"id": "p1"}, {"id": "p2"}],
+            [],
+        ]
+        assert strategy.has_available_provider("m", _providers()) is False
+
+    def test_monitor_failure_is_reported_as_unknown(self):
+        strategy = _make()
+        strategy.redis_health_check.get_providers.side_effect = RuntimeError("boom")
+        assert strategy.has_available_provider("m", _providers()) is None

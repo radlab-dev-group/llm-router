@@ -101,3 +101,99 @@ class TestErrorPaths:
             ApiModelConfig(path)
         # The offending provider id is listed in the message.
         assert "dup" in str(excinfo.value)
+
+
+class TestFallbackModelValidation:
+    """Model-level ``fallback_model`` targets are validated when loaded."""
+
+    def test_valid_fallback_chain_accepted(self, tmp_path):
+        path = _write_config(
+            tmp_path,
+            {
+                "active_models": {"openapi": ["m1", "m2", "m3"]},
+                "openapi": {
+                    "m1": {"providers": [{"id": "p1"}], "fallback_model": "m2"},
+                    "m2": {"providers": [{"id": "p2"}], "fallback_model": "m3"},
+                    "m3": {"providers": [{"id": "p3"}]},
+                },
+            },
+        )
+        config = ApiModelConfig(path)  # must not raise
+        assert ApiModelConfig.fallback_model_of(config.models_configs["m1"]) == "m2"
+        assert ApiModelConfig.fallback_model_of(config.models_configs["m3"]) is None
+
+    @pytest.mark.parametrize("blank", [None, "", "   "])
+    def test_blank_fallback_is_treated_as_absent(self, tmp_path, blank):
+        path = _write_config(
+            tmp_path,
+            {
+                "active_models": {"openapi": ["m1"]},
+                "openapi": {
+                    "m1": {"providers": [{"id": "p1"}], "fallback_model": blank}
+                },
+            },
+        )
+        config = ApiModelConfig(path)  # must not raise
+        assert ApiModelConfig.fallback_model_of(config.models_configs["m1"]) is None
+
+    @pytest.mark.parametrize("cfg", [None, {}, {"providers": []}])
+    def test_fallback_model_of_handles_missing_values(self, cfg):
+        assert ApiModelConfig.fallback_model_of(cfg) is None
+
+    def test_unknown_fallback_target_rejected(self, tmp_path):
+        path = _write_config(
+            tmp_path,
+            {
+                "active_models": {"openapi": ["m1"]},
+                "openapi": {
+                    "m1": {"providers": [{"id": "p1"}], "fallback_model": "ghost"}
+                },
+            },
+        )
+        with pytest.raises(ValueError, match="unknown fallback_model 'ghost'"):
+            ApiModelConfig(path)
+
+    def test_self_referencing_fallback_rejected(self, tmp_path):
+        path = _write_config(
+            tmp_path,
+            {
+                "active_models": {"openapi": ["m1"]},
+                "openapi": {
+                    "m1": {"providers": [{"id": "p1"}], "fallback_model": "m1"}
+                },
+            },
+        )
+        with pytest.raises(ValueError) as excinfo:
+            ApiModelConfig(path)
+        assert "Circular fallback_model reference: m1 -> m1" in str(excinfo.value)
+
+    def test_fallback_cycle_rejected(self, tmp_path):
+        path = _write_config(
+            tmp_path,
+            {
+                "active_models": {"openapi": ["m1", "m2", "m3"]},
+                "openapi": {
+                    "m1": {"providers": [{"id": "p1"}], "fallback_model": "m2"},
+                    "m2": {"providers": [{"id": "p2"}], "fallback_model": "m3"},
+                    "m3": {"providers": [{"id": "p3"}], "fallback_model": "m1"},
+                },
+            },
+        )
+        with pytest.raises(ValueError) as excinfo:
+            ApiModelConfig(path)
+        assert "Circular fallback_model reference" in str(excinfo.value)
+        assert "m1 -> m2 -> m3 -> m1" in str(excinfo.value)
+
+    @pytest.mark.parametrize("value", [123, ["m2"], True])
+    def test_non_string_fallback_rejected(self, tmp_path, value):
+        path = _write_config(
+            tmp_path,
+            {
+                "active_models": {"openapi": ["m1"]},
+                "openapi": {
+                    "m1": {"providers": [{"id": "p1"}], "fallback_model": value}
+                },
+            },
+        )
+        with pytest.raises(ValueError, match="non-string fallback_model"):
+            ApiModelConfig(path)
