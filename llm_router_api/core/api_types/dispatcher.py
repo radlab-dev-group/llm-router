@@ -65,6 +65,7 @@ class ApiTypesDispatcher:
     # -----------------------------------------------------------------------
     _REGISTRY: Dict[str, Type[ApiTypesI]] = {
         "ollama": OllamaType,
+        "llama.cpp": OpenAIApiType,
         "vllm": VllmType,
         "openai": OpenAIApiType,
         "lmstudio": LMStudioApiType,
