@@ -466,7 +466,8 @@ class FirstAvailableOptimNWorkersStrategy(FirstAvailableOptimStrategy):
         max_age = int(self.slot_max_age_seconds)
         if max_age > 0:
             stale = [
-                token for token, (_m, _k, acquired_at) in held.items()
+                token
+                for token, (_m, _k, acquired_at) in held.items()
                 if now - acquired_at >= max_age
             ]
             if stale:
