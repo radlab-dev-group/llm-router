@@ -421,6 +421,20 @@ PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES = int(
     )
 )
 
+# Lifetime [s] of a single worker slot held by the
+# ``first_available_optim_nworkers`` strategy.  A slot is a Redis lease whose
+# score is refreshed while the owning router process keeps the request alive;
+# when a process dies (OOM kill, container restart) its slots expire on their
+# own and the provider's capacity is recovered without a restart.  It must
+# comfortably exceed the longest expected request (including streaming), and
+# the KeepAlive monitor renews it every ``KEEPALIVE_MODEL_MONITOR_INTERVAL_SECONDS``.
+LB_SLOT_LEASE_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}LB_SLOT_LEASE_SECONDS",
+        120,
+    )
+)
+
 
 # =============================================================================
 # STARTUP VALIDATION
