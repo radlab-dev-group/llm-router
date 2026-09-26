@@ -18,9 +18,10 @@ from unittest import mock  # noqa: E402
 import fakeredis  # noqa: E402
 import pytest  # noqa: E402
 
-from llm_router_api.core.lb.strategies.first_available_optim import (
+from llm_router_api.core.lb.strategies.first_available_optim import (  # noqa: E402
+    LB_HOST_PIN_TTL_SECONDS,
     FirstAvailableOptimStrategy,
-)  # noqa: E402
+)
 
 
 def _make_strategy(acquire_result: int = 1) -> FirstAvailableOptimStrategy:
@@ -177,6 +178,33 @@ class TestRecordSelection:
         strategy._record_selection("m", {"id": "p"})
         assert strategy.redis_client.get("model:m:last_host") is None
         strategy.keep_alive_monitor.record_usage.assert_not_called()
+
+    def test_host_pin_expires(self):
+        # A pin that never expires keeps a host unavailable to every other
+        # model forever: the provider can disappear from the configuration, the
+        # model can be retired, and nothing else ever deletes the key.
+        strategy = _make_strategy()
+        strategy._record_selection("m", {"id": "p1", "api_host": "h9"})
+        assert 0 < strategy.redis_client.ttl("host:h9") <= LB_HOST_PIN_TTL_SECONDS
+
+    def test_selection_refreshes_the_pin(self):
+        # A host that keeps being selected stays reserved for its model.
+        strategy = _make_strategy()
+        strategy._record_selection("m", {"id": "p1", "api_host": "h9"})
+        strategy.redis_client.expire("host:h9", 5)
+
+        strategy._record_selection("m", {"id": "p1", "api_host": "h9"})
+
+        assert strategy.redis_client.ttl("host:h9") > 5
+
+    def test_other_model_may_take_a_host_whose_pin_lapsed(self):
+        strategy = _make_strategy()
+        strategy._record_selection("m", {"id": "p1", "api_host": "h9"})
+        assert strategy._is_host_free("h9", "other-model") is False
+
+        strategy.redis_client.delete("host:h9")  # what the expiry does
+
+        assert strategy._is_host_free("h9", "other-model") is True
 
 
 class TestGetProvider:

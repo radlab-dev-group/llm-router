@@ -50,6 +50,7 @@ PREFIX = "fa_optim_nworkers_"
 def _make_strategy(
     timeout: float = 60,
     slot_lease_seconds: int = 120,
+    slot_max_age_seconds: int = 1800,
     active_order=None,
 ):
     """
@@ -60,6 +61,9 @@ def _make_strategy(
 
     Parameters
     ----------
+    slot_lease_seconds / slot_max_age_seconds: int, optional
+        Lifetime of a held slot, and how long an unreleased slot keeps being
+        renewed.
     active_order: list, optional
         Provider ids in the order the health monitor reports them.  Defaults
         to the reverse of the configuration order, which is what a Redis
@@ -73,6 +77,7 @@ def _make_strategy(
     strategy.logger = mock.Mock()
     strategy.timeout = timeout
     strategy.slot_lease_seconds = slot_lease_seconds
+    strategy.slot_max_age_seconds = slot_max_age_seconds
     strategy.strategy_prefix = PREFIX
     strategy.redis_health_check = SimpleNamespace(check_interval=0.02)
     strategy.keep_alive_monitor = mock.Mock()
@@ -329,6 +334,127 @@ class TestLeaseRenewal:
             strategy.redis_client.zscore(strategy._in_use_key("m", provider), token)
             > 1
         )
+
+
+class TestLeaseMaxAge:
+    """
+    A slot that is never released must stop being renewed.
+
+    Lease expiry only recovers the slots of a *dead* process.  A request that
+    forgot its token (an abandoned streaming response whose generator is never
+    closed) keeps a live process re-advertising the slot forever, permanently
+    shrinking the provider – ``slot_max_age_seconds`` is the self-healing path.
+    """
+
+    @staticmethod
+    def _backdate(strategy, provider, seconds):
+        token = provider[LEASE_FIELD]
+        model_name, lease_key, _acquired_at = strategy._held_leases[token]
+        strategy._held_leases[token] = (
+            model_name,
+            lease_key,
+            time.monotonic() - seconds,
+        )
+        strategy._next_renew_at = 0.0
+        return token, lease_key
+
+    def test_older_than_the_max_age_is_dropped_and_left_to_expire(self):
+        strategy = _make_strategy(slot_max_age_seconds=5, active_order=["p1"])
+        provider = _hold(strategy, {"id": "p1", "api_host": "h1", "nworkers": 1})
+        token, lease_key = self._backdate(strategy, provider, 6)
+        score_before = strategy.redis_client.zscore(lease_key, token)
+
+        strategy._renew_held_leases()
+
+        assert token not in strategy._held_leases
+        # the slot was not pushed into the future – it now expires on its own
+        assert strategy.redis_client.zscore(lease_key, token) == score_before
+        assert strategy.logger.warning.called
+
+    def test_younger_than_the_max_age_is_still_renewed(self):
+        strategy = _make_strategy(slot_lease_seconds=120, active_order=["p1"])
+        provider = _hold(strategy, {"id": "p1", "api_host": "h1", "nworkers": 1})
+        token = provider[LEASE_FIELD]
+        strategy._next_renew_at = 0.0
+
+        strategy._renew_held_leases()
+
+        assert token in strategy._held_leases
+        assert strategy.redis_client.zscore(
+            strategy._in_use_key("m", provider), token
+        ) > strategy._now_ms()
+
+    def test_max_age_of_zero_disables_the_cap(self):
+        strategy = _make_strategy(
+            slot_lease_seconds=120, slot_max_age_seconds=0, active_order=["p1"]
+        )
+        provider = _hold(strategy, {"id": "p1", "api_host": "h1", "nworkers": 1})
+        token, lease_key = self._backdate(strategy, provider, 10_000)
+
+        strategy._renew_held_leases()
+
+        assert token in strategy._held_leases
+        assert strategy.redis_client.zscore(lease_key, token) > strategy._now_ms()
+
+    def test_capacity_of_a_forgotten_slot_comes_back(self):
+        strategy = _make_strategy(
+            slot_lease_seconds=1,
+            slot_max_age_seconds=1,
+            timeout=0.3,
+            active_order=["p1"],
+        )
+        provider = {
+            "id": "p1",
+            "api_host": "h1",
+            "nworkers": 1,
+        }
+        held = _hold(strategy, provider)
+        self._backdate(strategy, held, 2)
+
+        strategy._renew_held_leases()  # drops it instead of renewing
+        time.sleep(1.2)  # the lease expires
+
+        assert strategy._busy_count("m", provider) == 0
+        assert strategy._try_acquire("m", provider) is not None
+
+
+class TestConfigurationIsSourceOfTruth:
+    """
+    Slot limits come from the live configuration, not from the health
+    monitor's registration snapshot (which is only written once per model).
+    """
+
+    def test_nworkers_changed_in_the_config_takes_effect_immediately(self):
+        strategy = _make_strategy()
+        configuration = [{"id": "p1", "api_host": "h1", "nworkers": 2}]
+        # the monitor still reports the old registration: one slot
+        strategy._get_active_providers = lambda model_name, providers: [
+            {"id": "p1", "api_host": "h1", "nworkers": 1}
+        ]
+
+        first = strategy._step4_least_loaded("m", configuration)
+        second = strategy._step4_least_loaded("m", configuration)
+
+        assert first is not None and second is not None
+        assert first["id"] == "p1" and second["id"] == "p1"
+        assert len(_leases(strategy, first)) == 2
+
+    def test_provider_removed_from_the_config_is_not_selected(self):
+        strategy = _make_strategy()
+        configuration = [{"id": "p1", "api_host": "h1", "nworkers": 1}]
+        ghost = {"id": "ghost", "api_host": "h9", "nworkers": 8}
+        strategy._get_active_providers = lambda model_name, providers: [
+            ghost,
+            configuration[0],
+        ]
+
+        first = strategy._step4_least_loaded("m", configuration)
+        # p1 is full now; the stale snapshot must not be used as a fallback
+        second = strategy._step4_least_loaded("m", configuration)
+
+        assert first is not None and first["id"] == "p1"
+        assert second is None
+        assert strategy.redis_client.zcard(strategy._in_use_key("m", ghost)) == 0
 
 
 class TestStepLeastLoaded:

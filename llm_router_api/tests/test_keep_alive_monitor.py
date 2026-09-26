@@ -2,9 +2,9 @@
 Unit tests for ``llm_router_api.core.monitor.keep_alive_monitor``.
 
 Covers duration parsing, Redis key/member helpers, ``record_usage``
-scheduling behaviour (valid, invalid and falsy keep-alive values) and
-buffer cleanup.  Uses ``fakeredis``; the background thread is never
-started.
+scheduling behaviour (valid, invalid and falsy keep-alive values), buffer
+cleanup and the ``on_tick_callback`` heartbeat.  Uses ``fakeredis``; the
+background thread is never started.
 """
 
 from __future__ import annotations
@@ -158,3 +158,47 @@ class TestLifecycle:
             == 0
         )
         assert redis_client.zrange("keepalive:providers:next_wakeup", 0, -1) == []
+
+
+class TestOnTickCallback:
+    """
+    ``on_tick_callback`` is the heartbeat the ``nworkers`` strategy uses to
+    renew the worker-slot leases it holds.  It runs on every tick of the
+    monitor loop, and a failing heartbeat must not take the loop down with it.
+    """
+
+    def test_callback_runs_on_every_tick(self):
+        calls = []
+        monitor = None
+
+        def _tick():
+            calls.append(1)
+            if len(calls) >= 3:
+                monitor._stop_event.set()
+
+        monitor = _make_monitor(check_interval=0.001, on_tick_callback=_tick)
+        monitor._run()
+
+        assert len(calls) == 3
+
+    def test_without_a_callback_the_loop_just_runs(self):
+        monitor = _make_monitor(check_interval=0.001)
+        monitor._stop_event.set()
+        monitor._run()  # must not raise
+
+    def test_failing_callback_is_logged_and_the_loop_survives(self):
+        calls = []
+        monitor = None
+
+        def _tick():
+            calls.append(1)
+            if len(calls) == 1:
+                raise RuntimeError("heartbeat exploded")
+            monitor._stop_event.set()
+
+        monitor = _make_monitor(check_interval=0.001, on_tick_callback=_tick)
+        monitor._run()  # must not propagate
+
+        assert len(calls) == 2
+        monitor.logger.exception.assert_called_once()
+        assert "heartbeat exploded" in str(monitor.logger.exception.call_args)
