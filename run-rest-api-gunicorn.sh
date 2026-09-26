@@ -65,6 +65,20 @@ export LLM_ROUTER_REDIS_PASSWORD=${LLM_ROUTER_REDIS_PASSWORD:-""}
 export LLM_ROUTER_REDIS_PROTOCOL=${LLM_ROUTER_REDIS_PROTOCOL:-3}
 
 # ==================================================================================
+# Worker slots of the first_available_optim_nworkers strategy (requires Redis)
+# Lifetime [s] of a held worker slot. It must exceed the longest expected request
+# (including streaming); a crashed process keeps its slots for this long.
+export LLM_ROUTER_LB_SLOT_LEASE_SECONDS=${LLM_ROUTER_LB_SLOT_LEASE_SECONDS:-120}
+# How long [s] an unreleased slot keeps being renewed. Covers a request that
+# forgot its slot (an abandoned stream) - it is left to expire instead of
+# occupying the provider until the router restarts. 0/negative disables the cap.
+export LLM_ROUTER_LB_SLOT_MAX_AGE_SECONDS=${LLM_ROUTER_LB_SLOT_MAX_AGE_SECONDS:-1800}
+# Lifetime [s] of the "this host serves this model" pin (first_available_optim*),
+# refreshed on every selection. Only a host nothing has selected for this long
+# becomes available to another model again.
+export LLM_ROUTER_LB_HOST_PIN_TTL_SECONDS=${LLM_ROUTER_LB_HOST_PIN_TTL_SECONDS:-3600}
+
+# ==================================================================================
 # LLM Router services monitoring (if any services will be used)
 export LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS=${LLM_ROUTER_SERVICES_MONITOR_INTERVAL_SECONDS:-5}
 # Keep alive model monitor interval
@@ -123,6 +137,14 @@ export LLM_ROUTER_AUTH_VAULT_PATH=${LLM_ROUTER_AUTH_VAULT_PATH:-"secret/data/llm
 export LLM_ROUTER_AUTH_VAULT_AUTH_METHOD=${LLM_ROUTER_AUTH_VAULT_AUTH_METHOD:-"kubernetes"}
 export LLM_ROUTER_AUTH_VAULT_ROLE_ID=${LLM_ROUTER_AUTH_VAULT_ROLE_ID:-""}
 export LLM_ROUTER_AUTH_VAULT_SECRET_ID=${LLM_ROUTER_AUTH_VAULT_SECRET_ID:-""}
+# Vault token (auth method "token"); never commit a real value here
+export LLM_ROUTER_AUTH_VAULT_TOKEN=${LLM_ROUTER_AUTH_VAULT_TOKEN:-""}
+
+# Custom authorization policies (JSON file); empty = builtin policies only
+export LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE=${LLM_ROUTER_AUTH_CUSTOM_POLICIES_FILE:-""}
+
+# Rate-limit presets file or directory used by `llm-router auth`; empty = packaged/builtin presets
+export LLM_ROUTER_RATE_LIMITING_CONFIG=${LLM_ROUTER_RATE_LIMITING_CONFIG:-""}
 
 # Redis cache for key lookups (used with any backend)
 export LLM_ROUTER_AUTH_KEY_CACHE_TTL=${LLM_ROUTER_AUTH_KEY_CACHE_TTL:-300}
@@ -196,7 +218,10 @@ YELLOW="\e[33m"
 BLUE="\e[34m"
 GREEN="\e[32m"
 RESET="\e[0m"
-INSTANCE_NAME="localhost-dev"
+# Instance name: LLM_ROUTER_INSTANCE wins, "localhost-dev" otherwise. It is
+# exported so every child process and the log command see the same instance.
+INSTANCE_NAME="${LLM_ROUTER_INSTANCE:-localhost-dev}"
+export LLM_ROUTER_INSTANCE="${INSTANCE_NAME}"
 
 printf '%bStarting LLMRouter server instance %b%s%b ' \
   "$YELLOW" "$BLUE" "$INSTANCE_NAME" "$RESET"
@@ -210,4 +235,4 @@ done
 
 printf "\n"
 
-llm-router server log -i localhost-dev
+llm-router server log -i "${INSTANCE_NAME}"

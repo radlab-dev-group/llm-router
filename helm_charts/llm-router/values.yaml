@@ -35,6 +35,12 @@ config:
   #LLM_ROUTER_GUARDRAIL_WITH_AUDIT_REQUEST: "False"
   #LLM_ROUTER_GUARDRAIL_WITH_AUDIT_RESPONSE: "False"
   #LLM_ROUTER_IN_DEBUG: "False"
+  # Worker slot lifetime [s] of the first_available_optim_nworkers strategy
+  #LLM_ROUTER_LB_SLOT_LEASE_SECONDS: "120"
+  # How long [s] an unreleased worker slot keeps being renewed (0 = no cap)
+  #LLM_ROUTER_LB_SLOT_MAX_AGE_SECONDS: "1800"
+  # Lifetime [s] of the "host serves this model" pin of the first_available_optim* strategies
+  #LLM_ROUTER_LB_HOST_PIN_TTL_SECONDS: "3600"
   #LLM_ROUTER_LOG_FILENAME: llm-router.log
   #LLM_ROUTER_LOG_LEVEL: INFO
   #LLM_ROUTER_MASKING_STRATEGY_PIPELINE: "['fast_masker']"
