@@ -17,10 +17,14 @@ very same balancing rules.
 import logging
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from llm_router_api.core.model_config import ApiModelConfig
 from llm_router_api.core.lb.provider_strategy_facade import ProviderStrategyFacade
+from llm_router_api.core.provider_attempts import (
+    attempted_provider_ids,
+    provider_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +184,11 @@ class ModelHandler:
         the model that actually serves the request, which is also the key used
         later by :meth:`put_model_provider` to release the provider.
 
+        Providers that this request already tried (recorded in ``options`` by
+        the HTTP dispatcher after a provider error) are dropped from the
+        candidates, so every retry lands on a *different* provider and the
+        ``fallback_model`` is used only once the model's own providers failed.
+
         Parameters
         ----------
         model_name : str
@@ -209,16 +218,17 @@ class ModelHandler:
 
         chain = self._fallback_chain(model_name)
         last_index = len(chain) - 1
+        attempted = attempted_provider_ids(options)
 
         for index, hop in enumerate(chain):
             is_last_hop = index == last_index
-            providers = self._providers_of(hop)
+            providers, skip_reason = self._candidates_of(hop, attempted)
 
             if not providers:
                 if is_last_hop:
-                    self._log_chain_failure(chain, "no providers configured")
+                    self._log_chain_failure(chain, skip_reason)
                     return None
-                self._log_fallback(hop, chain[index + 1], "no providers configured")
+                self._log_fallback(hop, chain[index + 1], skip_reason)
                 continue
 
             if fake:
@@ -296,6 +306,68 @@ class ModelHandler:
             current = target
 
         return chain
+
+    def _candidates_of(
+        self, model_name: str, attempted: Set[str]
+    ) -> Tuple[List[Dict[str, Any]], str]:
+        """
+        Providers of *model_name* that this request has not tried yet.
+
+        Failing providers are rotated over by marking them as attempted in the
+        request options; once a model has no untried provider left, the caller
+        moves on to its ``fallback_model``.
+
+        Parameters
+        ----------
+        model_name : str
+            Model whose providers should be filtered.
+        attempted : Set[str]
+            Provider ids already used by the current request.
+
+        Returns
+        -------
+        Tuple[List[Dict[str, Any]], str]
+            The candidate providers and, when the list is empty, the reason to
+            log (``"no providers configured"`` or
+            ``"all providers already tried"``).
+        """
+        providers = self._providers_of(model_name)
+        if not providers:
+            return [], "no providers configured"
+
+        candidates = [p for p in providers if provider_id(p) not in attempted]
+        if not candidates:
+            return [], "all providers already tried"
+        return candidates, ""
+
+    def has_provider_candidates(
+        self, model_name: str, options: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Report whether the fallback chain still has a provider to offer.
+
+        Used by the HTTP dispatcher to decide whether failing over makes sense:
+        once every provider of the requested model *and* of every model of its
+        ``fallback_model`` chain was tried for this request, another attempt
+        would only repeat a known failure.
+
+        Parameters
+        ----------
+        model_name : str
+            Model requested by the client.
+        options : Optional[Dict[str, Any]], default ``None``
+            Request options carrying the attempted provider ids.
+
+        Returns
+        -------
+        bool
+            ``True`` when at least one provider is still untried.
+        """
+        attempted = attempted_provider_ids(options)
+        for hop in self._fallback_chain(model_name):
+            if any(provider_id(p) not in attempted for p in self._providers_of(hop)):
+                return True
+        return False
 
     def _providers_of(self, model_name: str) -> List[Dict[str, Any]]:
         """Return the configured providers of *model_name* (empty if none)."""
