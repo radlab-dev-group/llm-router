@@ -34,7 +34,7 @@ The LLM‑Router project is split across five dedicated repositories:
 | **Dynamic model configuration**     | JSON file (`models-config.json`) defines providers, model name, default options and per‑model overrides.                                                                                                                                    |
 | **Request validation**              | Pydantic models guarantee correct payloads; errors are returned with clear messages.                                                                                                                                                        |
 | **Structured logging**              | Configurable log level, filename, and optional JSON formatting.                                                                                                                                                                             |
-| **Health & metadata endpoints**     | `/ping` (simple 200 OK) and `/tags` (available model tags/metadata).                                                                                                                                                                        |
+| **Health & metadata endpoints**     | `/health` and `/api/ping` (liveness), `/api/version` (build), `/models`, `/v1/models` and `/api/tags` (metadata), `/` for the Ollama probe.                                                                                                                                                                        |
 | **Built‑in article generation**     | Two builtin endpoints were added: `/api/generate_article_from_texts` — generate a short (~A4) Polish article summarising a list of texts; and `/api/create_full_article_from_texts` — create a fuller article framed by `user_query`.       |
 | **Embeddings support**              | Dedicated endpoints for generating text embeddings across all supported providers.                                                                                                                                                          |
 | **Simple deployment**               | One‑liner run script, Docker image, or Helm chart for Kubernetes.                                                                                                                                                                           |
@@ -42,7 +42,7 @@ The LLM‑Router project is split across five dedicated repositories:
 | **Multi‑provider model support**    | Each model can be backed by multiple providers (VLLM, Ollama, OpenAI, Anthropic) defined in `models-config.json`.                                                                                                                           |
 | **Model‑level fallback**            | A model can declare `fallback_model`: when none of its own providers can serve a request, the router reroutes it — before load balancing — to the fallback model, whose providers are balanced by the same strategy ([Models configuration](llm_router_api/docs/MODELS_CONFIG.md)). |
 | **Provider failover**               | Any 4xx/5xx answer (or an unreachable provider) re-issues the request on the next provider of the same model — streaming included; only after every provider of the model was tried does `fallback_model` take over. |
-| **Load‑balanced default strategy**  | `LoadBalancedStrategy` distributes requests evenly across providers using in‑memory usage counters.                                                                                                                                         |
+| **Load‑balanced default strategy**  | `LoadBalancedStrategy` picks the least‑used provider; the usage counters live in Redis so every gunicorn worker and every replica shares them, degrading to in‑process counters when Redis is unavailable (`llm_router_api/core/lb/lb_counters.py`).                                                                                                                                         |
 | **Dynamic model handling**          | `ModelHandler` loads model definitions at runtime and resolves the appropriate provider per request.                                                                                                                                        |
 | **Pluggable endpoint architecture** | Automatic discovery and registration of all concrete `EndpointI` implementations via `EndpointAutoLoader`.                                                                                                                                  |
 | **Prometheus metrics integration**  | Optional `/metrics` endpoint for latency, error counts, and provider usage statistics.                                                                                                                                                      |
@@ -207,9 +207,11 @@ Then start the application with the environment variable set:
 export LLM_ROUTER_USE_PROMETHEUS=1
 ```
 
-When `LLM_ROUTER_USE_PROMETHEUS` is enabled, the router automatically registers a **`/metrics`** endpoint (under the API
-prefix, e.g. `/api/metrics`). This endpoint exposes Prometheus‑compatible metrics such as request counts, latencies, and
-any custom counters defined by the application.
+When `LLM_ROUTER_USE_PROMETHEUS` is enabled, the router automatically registers a **`/metrics`** endpoint. It is served
+at the literal `/metrics` — registered straight on the Flask app, so it is **not** prefixed with `LLM_ROUTER_EP_PREFIX`
+and `/api/metrics` answers 404. Point the scrape config and the bundled Grafana dashboard at `/metrics`. The endpoint
+exposes Prometheus‑compatible metrics such as request counts, latencies, and any custom counters defined by the
+application.
 
 #### 📊 Grafana dashboard example
 
@@ -404,14 +406,15 @@ class hierarchy, `run_ep` lifecycle, payload hooks, guardrail/masking controls, 
 
 | Endpoint                                | Method | Auth (when `LLM_ROUTER_AUTH_ENABLED=true`) | Description                                                       |
 |-----------------------------------------|--------|--------------------------------------------|-------------------------------------------------------------------|
-| `/ping`                                 | GET    | ✅ Public                                  | Health‑check                                                      |
-| `/version`                              | GET    | ✅ Public                                  | Return router version                                             |
-| `/`                                     | GET    | ✅ Public                                  | Ollama health endpoint                                            |
-| `/models`                               | GET    | ✅ Public                                  | List OpenAI‑compatible models                                     |
+| `/api/ping`                             | GET    | ❌ Requires `builtin` permission           | Health‑check (registered under `LLM_ROUTER_EP_PREFIX`)            |
+| `/api/version`                          | GET    | ❌ Requires `builtin` permission           | Return router version (used by the SDK)                             |
+| `/`                                     | GET    | ❌ Requires `chat` permission              | Ollama health endpoint                                             |
+| `/models`                               | GET    | ❌ Requires `chat` permission              | List OpenAI‑compatible models                                     |
+| `/health`                               | GET    | ✅ Public                                  | Router health check (no token)                                      |
 | `/v1/models`                            | GET    | ❌ Requires `chat` permission              | List OpenAI‑compatible models (v1)                                |
-| `/tags`                                 | GET    | ✅ Public                                  | List Ollama model tags                                            |
+| `/api/tags`                             | GET    | ❌ Requires `chat` permission              | List Ollama model tags                                            |
 | `/api/v0/models`                        | GET    | ❌ Requires `chat` permission              | List LM Studio models                                             |
-| `/metrics`                              | GET    | ✅ Public                                  | Prometheus metrics (requires Redis)                               |
+| `/metrics`                              | GET    | ✅ Public                                  | Prometheus metrics (requires `LLM_ROUTER_USE_PROMETHEUS=1`)       |
 | `/chat/completions`                     | POST   | ❌ Requires `chat` permission              | OpenAI‑style chat completion                                      |
 | `/api/chat/completions`                 | POST   | ❌ Requires `chat` permission              | OpenAI‑style chat completion (with prefix)                        |
 | `/v1/chat/completions`                  | POST   | ❌ Requires `chat` permission              | vLLM‑like chat completion                                         |
@@ -439,8 +442,11 @@ class hierarchy, `run_ep` lifecycle, payload hooks, guardrail/masking controls, 
 | `/api/simplify_text`                    | POST   | ❌ Requires `builtin` permission           | Simplify input texts                                              |
 
 > **Note:** By default `LLM_ROUTER_AUTH_ENABLED=false`, so all endpoints are accessible without authentication. Set it
-> to `"true"` to enforce auth. The `_public` list (default `/ping,/version,/models,/`) can be customized via
-> `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`.
+> to `"true"` to enforce auth. `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS` defaults to **`/metrics,/health`** — those two are
+> the only paths that bypass auth out of the box. Every `/models`, `/`, `/api/ping` and `/api/version` request needs a key
+> (see the table above). Matching is done on the raw request path, so a bare entry never matches a prefixed route: to use
+> `/api/ping` as a key-free probe, add that exact path, e.g.
+> `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS="/metrics,/health,/api/ping"`. For each entry `/v1<entry>` is matched too.
 
 ## 🌐 Web Applications
 

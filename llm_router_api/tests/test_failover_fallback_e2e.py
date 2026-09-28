@@ -289,7 +289,9 @@ class TestExhaustedChain:
         harness = _Harness(tmp_path, recorder)
         harness.run()
 
-        assert len(harness.served()) <= http_dispatch.RetryPolicy.MAX_RECONNECTIONS + 1
+        assert (
+            len(harness.served()) <= http_dispatch.RetryPolicy.MAX_RECONNECTIONS + 1
+        )
 
 
 class TestNoProviderAtAll:
@@ -346,9 +348,7 @@ class TestStrategyHonoursShortlist:
 
         # The handler is the consumer of the record; make sure it accumulated
         # all three by the time the fallback was chosen.
-        final = attempted_provider_ids(
-            {ATTEMPTED_PROVIDERS_KEY: ("p1", "p2")}
-        )
+        final = attempted_provider_ids({ATTEMPTED_PROVIDERS_KEY: ("p1", "p2")})
         assert final == {"p1", "p2"}
 
 

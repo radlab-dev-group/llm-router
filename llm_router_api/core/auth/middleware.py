@@ -40,8 +40,11 @@ class AuthMiddleware:
     4. **Rate-limit** (sliding window check).
 
     Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
-    ``/,/metrics,/health``) bypass all checks — they are
-    always accessible regardless of auth configuration. See
+    ``/metrics,/health``) bypass all checks — they are always accessible regardless
+    of auth configuration. Matching is done on the raw request path, so an entry only
+    matches routes actually registered at that path: endpoints built with
+    ``dont_add_api_prefix=False`` live under ``LLM_ROUTER_EP_PREFIX`` (``/api`` by
+    default) and need the prefixed entry. See
     :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP`
     for the full mapping of authenticated endpoints
     to their required permission types.
@@ -412,8 +415,8 @@ def install_auth_middleware(
     when ``LLM_ROUTER_AUTH_ENABLED`` is ``"true"``.
 
     Public endpoints (listed in ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``, default
-    ``/ping,/version,/models,/,/metrics,/health``) bypass all auth checks.
-    All other endpoints
+    ``/metrics,/health``) bypass all auth checks; the match is against the full
+    request path, so prefixed routes need prefixed entries. All other endpoints
     are mapped to required permission types in
     :data:`~llm_router_api.core.auth.policies.engine._ENDPOINT_PERMISSION_MAP`.
 

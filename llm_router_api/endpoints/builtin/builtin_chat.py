@@ -6,7 +6,6 @@ client payloads into the format expected by the downstream model service and
 post‑process the model’s response into a friendly JSON structure.
 """
 
-
 from typing import Any, Dict, List, Optional
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler

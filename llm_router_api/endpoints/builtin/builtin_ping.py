@@ -22,9 +22,13 @@ class Ping(EndpointWithHttpRequestI):
     """
     Health‑check endpoint that returns a simple *pong* response.
 
-    Registered at ``/ping`` (no prefix).
-    Auth: **public** — in the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` list
-    (``/ping,/version,/models,/,/metrics``).
+    Registered at ``/api/ping`` — ``dont_add_api_prefix`` defaults to ``False``, so
+    ``LLM_ROUTER_EP_PREFIX`` (``/api`` by default) is prepended.
+    Auth: **not public by default** — the shipped
+    ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` lists the bare ``/ping``, which does not
+    match ``/api/ping``, so this route needs a key with the ``builtin`` permission
+    once ``LLM_ROUTER_AUTH_ENABLED`` is on. Add ``/api/ping`` to that variable to
+    use it as an unauthenticated probe.
 
     This endpoint is typically used by monitoring tools to verify that the service
     is up and responding. It does not require any request parameters.

@@ -296,10 +296,12 @@ export LLM_ROUTER_AUTH_DEFAULT_RATE_LIMIT=60  # prod: 1 req/sec
 
 ### 5. Use Public Endpoints for Health Checks
 
-Health checks should not count against rate limits:
+Health checks should not count against rate limits. The default already covers
+`/health` and `/metrics`; add other probe paths (note the `LLM_ROUTER_EP_PREFIX`
+prefix, default `/api` — matching is on the raw request path):
 
 ```bash
-export LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS="/ping,/version,/models,/,/health"
+export LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS="/metrics,/health,/api/ping,/api/version"
 ```
 
 ---
