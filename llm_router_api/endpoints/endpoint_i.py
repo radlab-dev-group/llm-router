@@ -795,7 +795,9 @@ class EndpointI(SecureEndpointI, abc.ABC):
         """
         return {"status": True, "body": body}
 
-    def return_response_not_ok(self, body: Optional[Any]) -> Any:
+    def return_response_not_ok(
+        self, body: Optional[Any], status_code: Optional[int] = None
+    ) -> Any:
         """
         Build an error response payload with an appropriate HTTP status code.
 
@@ -805,6 +807,11 @@ class EndpointI(SecureEndpointI, abc.ABC):
             The error information that may be an exception instance, a string,
             a dictionary, or ``None``. The function attempts to extract an HTTP
             status code from known exception attributes and falls back to heuristics.
+        status_code : Optional[int], default ``None``
+            Explicit status code, used verbatim. Needed when the condition is
+            known from context rather than from the payload — e.g. a provider
+            selection timeout, which carries no status of its own and would
+            otherwise be reported as a bare 500.
 
         Returns
         -------
@@ -814,7 +821,8 @@ class EndpointI(SecureEndpointI, abc.ABC):
             status code. Flask interprets this as ``(Response, Status)``.
         """
         # Attempt to extract a status code from an exception object (if body is one)
-        status_code = 500
+        if status_code is None:
+            status_code = 500
         if hasattr(body, "response") and hasattr(body.response, "status_code"):
             # e.g., for ``requests.exceptions.HTTPError``
             status_code = body.response.status_code
@@ -1520,6 +1528,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # it here would turn it into the generic 500 below.
             clear_chosen_provider_finally = not provider_dispatched
             raise
+        except TimeoutError as te:
+            # Every provider of the chain was busy for longer than the strategy
+            # timeout.  The request was never sent, so this is a gateway
+            # timeout — reporting it as a bare 500 lost both the distinction and
+            # the retryable nature of the condition.
+            self.logger.error("Provider selection timed out: %s", te)
+            clear_chosen_provider_finally = not provider_dispatched
+            return self.return_response_not_ok(te, status_code=504)
         except Exception as e:
             self.logger.exception(e)
             clear_chosen_provider_finally = not provider_dispatched
