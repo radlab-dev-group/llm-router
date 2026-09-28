@@ -16,6 +16,7 @@ Contract (see PLAN_TODO.md, item H‑B):
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 from unittest import mock
 
@@ -31,6 +32,7 @@ from llm_router_api.endpoints.endpoint_i import (
     EndpointWithHttpRequestI,
 )  # noqa: E402
 from llm_router_api.register.register import FlaskEndpointRegistrar  # noqa: E402
+from llm_router_api.core.errors import NoProviderAvailable  # noqa: E402
 from llm_router_api.core.decorators import EP  # noqa: E402
 
 
@@ -145,3 +147,53 @@ class TestValueErrorPropagation:
             spy_prepare({"model_name": "m"})
         # the only recorded payload must be a plain dict, never a tuple
         assert all(isinstance(c, dict) for c in calls)
+
+
+class _DrainedChainEndpoint(_ValidatedEndpoint):
+    """Endpoint whose provider resolution finds nothing anywhere in the chain."""
+
+    def __init__(self):
+        super().__init__()
+        self._model_handler = SimpleNamespace(
+            get_model_provider=lambda **_kw: None
+        )
+
+
+class TestNoProviderAvailableReturns503:
+    """
+    An exhausted ``fallback_model`` chain is a capacity failure, not a bad
+    request.  It used to surface as **400 "Model not found in configuration"**,
+    telling the caller their payload was wrong when the fleet was full.
+    """
+
+    def test_client_gets_503_not_400(self):
+        app = Flask(__name__)
+        registrar = FlaskEndpointRegistrar(app=app)
+
+        class _NoProviderEndpoint(EndpointWithHttpRequestI):
+            def __init__(self):
+                super().__init__(ep_name="drained", api_types=["builtin"])
+                self.REQUIRED_ARGS = []
+
+            def prepare_payload(self, params):
+                raise NoProviderAvailable("some-model", "all providers already tried")
+
+        registrar.register_endpoint(_NoProviderEndpoint())
+        body = app.test_client().post("/api/drained", json={"x": 1}).get_json()
+        assert body["error"]["code"] == 503
+        assert body["status"] is False
+
+    def test_run_ep_does_not_swallow_no_provider_available(self):
+        """
+        ``run_ep`` must not fold it into the generic 500 error tuple — that is
+        what turned a 503 into an opaque internal error.
+        """
+        ep = _DrainedChainEndpoint()
+        ep._get_router_metrics = lambda: None
+        with pytest.raises(NoProviderAvailable):
+            ep.run_ep({"model_name": "m", "prompt": "p"})
+
+    def test_message_names_the_model_and_survives_sanitizing(self):
+        exc = NoProviderAvailable("some-model", "all providers already tried")
+        assert "some-model" in str(exc)
+        assert exc.status_code == 503
