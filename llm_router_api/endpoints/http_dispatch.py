@@ -295,7 +295,9 @@ class HttpDispatch:
                 )
             return self._return_response_not_ok(error_exc)
 
-        if not response:
+        # ``is None`` rather than falsy: a provider may legitimately answer 2xx
+        # with an empty JSON object, which is a response, not a missing one.
+        if response is None:
             self._logger().error("Provider returned no response")
             return self._return_response_not_ok("Provider returned no response")
 

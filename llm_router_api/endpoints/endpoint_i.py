@@ -1369,7 +1369,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Propagates any unexpected error; the Flask registrar will
             translate it into a 500 response.
         """
-        orig_params = params.copy()
+        # ``params or {}`` rather than ``params.copy()``: a caller passing None
+        # must not raise AttributeError before the try block can map it to a
+        # response.
+        orig_params = dict(params or {})
         api_model_provider = None
         clear_chosen_provider_finally = False
         # Set once the dispatcher owns the provider release.  Until then this

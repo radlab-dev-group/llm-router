@@ -161,15 +161,11 @@ class FlaskEndpointRegistrar:
             try:
                 result = endpoint.run_ep(params or {})
                 if isinstance(result, (Generator, Iterator)):
-
-                    def log_stream():
-                        count = 0
-                        for chunk in result:
-                            count += 1
-                            yield chunk
-
+                    # No chunk counting here: nothing consumed the total, and
+                    # wrapping the stream only to count added a generator layer
+                    # between the provider and the wire for no benefit.
                     response = Response(
-                        stream_with_context(log_stream()),
+                        stream_with_context(result),
                         # mimetype="application/x-ndjson",
                         mimetype="text/event-stream",
                         headers={
