@@ -24,6 +24,7 @@ try:
 except ImportError:
     REDIS_IS_AVAILABLE = False
 
+from llm_router_api.core.provider_attempts import provider_id
 from llm_router_api.base.constants import (
     REDIS_PORT,
     REDIS_HOST,
@@ -404,31 +405,42 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
 
     def _get_active_providers(
         self, model_name: str, providers: List[Dict]
-    ) -> List[Dict]:  # pylint: disable=unused-argument
+    ) -> List[Dict]:
         """
-        Retrieve the list of currently active providers for a model.
+        Retrieve the active providers restricted to the caller's shortlist.
 
-        The method delegates to the monitoring component, which tracks the
-        health status of each provider.  Only providers whose health check
-        reports *active* are returned.
+        The health monitor knows every provider registered for the model, but
+        the caller (``ModelHandler``) hands over the candidates this request may
+        still use — every provider it has already tried is excluded.  The
+        shortlist is therefore authoritative: intersecting with it keeps the
+        monitor's health filtering *and* the caller's rotation, in that order.
+
+        Returning the monitor's full set instead would silently undo the
+        rotation: the retry lands back on the provider that just failed, the
+        attempted-provider set gains nothing new, and the model's
+        ``fallback_model`` is never reached.
 
         Parameters
         ----------
         model_name: str
             The logical name of the model.
         providers: List[Dict]
-            The full provider configuration list (kept for signature compatibility;
-            it is not used directly).
+            The candidate providers handed over by the caller. Only the ones
+            that are also reported active are returned.
 
         Returns
         -------
         List[Dict]
-            A list containing the configuration dictionaries of active providers.
+            Configuration dictionaries of the active providers of *providers*.
         """
+        if not providers:
+            return []
+        shortlisted = {provider_id(provider) for provider in providers}
+        shortlisted.discard(None)
         active_providers = self.redis_health_check.get_providers(
             model_name=model_name, only_active=True
         )
-        return active_providers
+        return [p for p in active_providers if provider_id(p) in shortlisted]
 
     def _initialize_providers(self, model_name: str, providers: List[Dict]) -> None:
         """
