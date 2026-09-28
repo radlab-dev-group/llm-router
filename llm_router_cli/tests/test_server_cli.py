@@ -91,8 +91,15 @@ def _spawn_detached(cmd, pid_out: Path) -> int:
 
 
 def _kill(pid: int) -> None:
-    """SIGKILL *pid* and wait until it is gone."""
-    os.kill(pid, signal.SIGKILL)
+    """SIGKILL *pid* and wait until it is gone.
+
+    A ``ProcessLookupError`` means the process already exited (e.g. it
+    honoured an earlier SIGTERM), which is fine for a safety-net kill.
+    """
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline and pid_alive(pid):
         time.sleep(0.05)
