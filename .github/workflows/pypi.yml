@@ -37,16 +37,29 @@ jobs:
         run: |
           echo "VERSION=$(cat .version)" >> $GITHUB_OUTPUT
 
-      - name: Build package
+      - name: Verify PyPI credentials
+        env:
+          PYPI_KEY: ${{ secrets.PYPI_KEY }}
         run: |
-          python3 -m pip install --user --upgrade build
-          python3 -m build --outdir dist .
+          if [ -z "$PYPI_KEY" ]; then
+            echo "::error::PYPI_KEY is empty. Define it in repo/org secrets and keep 'secrets: inherit' on the caller."
+            exit 1
+          fi
+
+      # A venv keeps build/twine out of the runner's ~/.local, where they would
+      # clash with the distro-packaged requests/urllib3 pair.
+      - name: Create build environment
+        run: |
+          python3 -m venv .venv-publish
+          .venv-publish/bin/python -m pip install --upgrade pip build twine
+
+      - name: Build package
+        run: .venv-publish/bin/python -m build --outdir dist .
 
       - name: Publish package
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_KEY }}
         run: |
-          python3 -m pip install --user --upgrade twine
-          python3 -m twine check dist/*
-          python3 -m twine upload dist/* --non-interactive
+          .venv-publish/bin/python -m twine check dist/*
+          .venv-publish/bin/python -m twine upload dist/* --non-interactive

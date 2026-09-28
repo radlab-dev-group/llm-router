@@ -37,6 +37,16 @@ jobs:
         run: |
           echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
+      - name: Verify Quay credentials
+        env:
+          QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+          QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+        run: |
+          if [ -z "$QUAY_USERNAME" ] || [ -z "$QUAY_PASSWORD" ]; then
+            echo "::error::QUAY_USERNAME/QUAY_PASSWORD are empty. Define them in repo/org secrets and keep 'secrets: inherit' on the caller."
+            exit 1
+          fi
+
       - name: Login to Quay
         run: |
           echo "${{ secrets.QUAY_PASSWORD }}" | docker login quay.io \

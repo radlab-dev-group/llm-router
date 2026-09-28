@@ -22,7 +22,10 @@ jobs:
   docker:
     needs: [tests, lint]
     uses: ./.github/workflows/docker.yml
+    # Called workflows do not see the caller's secrets unless they are passed on
+    secrets: inherit
 
   pypi:
     needs: [tests, lint]
     uses: ./.github/workflows/pypi.yml
+    secrets: inherit
