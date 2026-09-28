@@ -19,6 +19,7 @@ methods for performing outbound HTTP requests to an external service.
 """
 
 import abc
+import contextvars
 import time
 import json
 import logging
@@ -1134,6 +1135,17 @@ class EndpointI(SecureEndpointI, abc.ABC):
 # ----------------------------------------------------------------------
 # Proxy‑enabled endpoint – performs outbound HTTP calls.
 # ----------------------------------------------------------------------
+
+# Per‑request wall‑clock start.  The endpoint object is instantiated once at
+# startup and shared by every concurrent request, so a start timestamp kept on
+# ``self`` belongs to whichever request wrote it last: ``generation_time`` was
+# then measured against another request's start.  A ContextVar gives each
+# request (thread / greenlet) its own value, which is what the readers want.
+_request_start_time: "contextvars.ContextVar[Optional[float]]" = (
+    contextvars.ContextVar("llm_router_request_start_time", default=None)
+)
+
+
 class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     """
     Abstract endpoint that forwards a request to an external LLM service.
@@ -1233,20 +1245,40 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Uses lazy caching so that repeated calls during a single request do not
         repeatedly hit Flask's application context.  Returns ``None`` gracefully
         when outside a request context or Prometheus is disabled.
+
+        ``None`` is never cached: outside a request context the lookup fails for
+        environmental reasons, and poisoning the cache would keep every later
+        call blind even once a context exists.
         """
-        if getattr(self, "__rm_cache", None) is None:
-            self._rm_caching = True
-            try:
-                ext = getattr(current_app, "extensions", {})
-                if isinstance(ext, dict):
-                    val = ext.get("router_metrics")
-                    if val is not None:
-                        self._rm_caching = val
-                        return val
-            except RuntimeError:
-                pass  # outside request context
-            self._rm_cache = None
-        return self._rm_cache
+        cached = getattr(self, "_rm_cache", None)
+        if cached is not None:
+            return cached
+        try:
+            ext = getattr(current_app, "extensions", {})
+            if isinstance(ext, dict):
+                val = ext.get("router_metrics")
+                if val is not None:
+                    self._rm_cache = val
+                    return val
+        except RuntimeError:
+            pass  # outside request context
+        return None
+
+    def _generation_time(self) -> float:
+        """
+        Seconds since this request started.
+
+        Reads the per‑request ContextVar first and falls back to the legacy
+        ``self._start_time`` so callers that set the attribute directly (tests,
+        programmatic use) keep working.  Returns ``0.0`` when neither is known,
+        instead of raising ``TypeError`` on ``time.time() - None``.
+        """
+        start = _request_start_time.get()
+        if start is None:
+            start = getattr(self, "_start_time", None)
+        if start is None:
+            return 0.0
+        return time.time() - start
 
     def _record_provider_latency(self, start_ns: float) -> Optional[float]:
         """
@@ -1347,6 +1379,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 json.dumps(orig_params or {}, indent=2, ensure_ascii=False)
             )
 
+        # Per request, not per (shared) instance — see ``_request_start_time``.
+        _request_start_time.set(time.time())
         self._start_time = time.time()
         try:
             # 1. Prepare the payload (endpoint logic, then utils plugins)

@@ -6,7 +6,6 @@ client payloads into the format expected by the downstream model service and
 post‑process the model’s response into a friendly JSON structure.
 """
 
-import time
 
 from typing import Any, Dict, List, Optional
 
@@ -178,7 +177,7 @@ class ConversationWithModel(EndpointWithHttpRequestI):
 
         return {
             "response": assistant_response,
-            "generation_time": time.time() - self._start_time,
+            "generation_time": self._generation_time(),
         }
 
 
