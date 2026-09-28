@@ -197,3 +197,52 @@ class TestNoProviderAvailableReturns503:
         exc = NoProviderAvailable("some-model", "all providers already tried")
         assert "some-model" in str(exc)
         assert exc.status_code == 503
+
+
+class TestStreamFailureStatusReachesTheClient:
+    """
+    A stream refused before its first chunk must not be delivered as ``200``.
+
+    The dispatcher returns an ``(error_body, status)`` pair rather than a
+    generator in that case; this checks the registrar really turns it into a
+    non‑200 response instead of falling into the streaming branch.
+    """
+
+    def _client(self, result):
+        app = Flask(__name__)
+        registrar = FlaskEndpointRegistrar(app=app)
+
+        class _StreamFailingEndpoint(EndpointWithHttpRequestI):
+            def __init__(self):
+                super().__init__(ep_name="stream_fail", api_types=["builtin"])
+                self.REQUIRED_ARGS = []
+
+            def prepare_payload(self, params):
+                return params or {}
+
+        ep = _StreamFailingEndpoint()
+        ep.run_ep = lambda *_a, **_kw: result
+        registrar.register_endpoint(ep)
+        return app.test_client()
+
+    def test_refused_stream_keeps_the_provider_status(self):
+        body = {
+            "error": {
+                "message": "Provider error (HTTP 503)",
+                "type": "api_error",
+                "param": None,
+                "code": 503,
+            },
+            "status": False,
+        }
+        resp = self._client((body, 503)).post("/api/stream_fail", json={})
+        assert resp.status_code == 503
+        assert resp.get_json()["error"]["code"] == 503
+
+    def test_a_working_stream_is_still_streamed(self):
+        """Guard against the fix swallowing real streams."""
+        resp = self._client(iter([b"data: a\n\n", b"data: b\n\n"])).post(
+            "/api/stream_fail", json={}
+        )
+        assert resp.status_code == 200
+        assert b"data: a" in resp.data
