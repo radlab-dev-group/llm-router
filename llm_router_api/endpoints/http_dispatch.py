@@ -17,7 +17,6 @@ time), exactly like the original in‑class method did, so late‑bound
 overrides, monkey‑patches and subclassing keep working unchanged.
 """
 
-import json
 import time
 import random
 import logging
@@ -30,7 +29,6 @@ from llm_router_api.core.errors import (
     sanitize_error_message,
 )
 from llm_router_api.core.provider_attempts import with_attempted_provider
-from llm_router_api.core.stream_handler import StreamConversion
 
 # ---------------------------------------------------------------------------
 # Retry policy (moved verbatim from ``EndpointWithHttpRequestI.RetryResponse``)
@@ -297,7 +295,9 @@ class HttpDispatch:
                 )
             return self._return_response_not_ok(error_exc)
 
-        if not response:
+        # ``is None`` rather than falsy: a provider may legitimately answer 2xx
+        # with an empty JSON object, which is a response, not a missing one.
+        if response is None:
             self._logger().error("Provider returned no response")
             return self._return_response_not_ok("Provider returned no response")
 
@@ -414,10 +414,13 @@ class HttpDispatch:
 
         Returns
         -------
-        Iterable[bytes]
+        Iterable[bytes] or Tuple[Dict, int]
             The stream for the client.  When no provider can serve the request
-            it carries a single error chunk, just like a provider error that
-            happens while a stream is being consumed.
+            the client gets an ``(error_body, status_code)`` pair instead — the
+            same contract as the non‑streaming path — because nothing has been
+            written yet and a ``200`` would hide the failure.  A failure that
+            happens **after** the first chunk keeps producing an error chunk
+            from the generators, as the status line is already on the wire.
         """
         try:
             # A provider answers the stream request *before* the first chunk
@@ -432,13 +435,22 @@ class HttpDispatch:
             )
             first_chunk = next(stream)
         except StopIteration:
-            return iter(())
+            # The provider answered 200 and produced not a single payload item.
+            # Forwarding an empty body would leave the client with a silently
+            # truncated stream and no way to tell it from a successful empty
+            # completion, so it is reported as a gateway failure instead.
+            return self._stream_failure_response(
+                ProviderStreamError(
+                    status_code=0,
+                    message="Provider returned an empty stream",
+                    error_code="empty_stream",
+                )
+            )
         except ProviderStreamError as exc:
             return self._stream_failover(
                 exc=exc,
                 api_model_provider=api_model_provider,
                 options=options,
-                stream_type=stream_type,
                 orig_params=orig_params if orig_params is not None else params,
                 reconnect_number=reconnect_number,
             )
@@ -455,7 +467,6 @@ class HttpDispatch:
         exc: ProviderStreamError,
         api_model_provider: Any,
         options: Optional[Dict[str, Any]],
-        stream_type: Any,
         orig_params: Dict[str, Any],
         reconnect_number: int,
     ) -> Any:
@@ -486,7 +497,11 @@ class HttpDispatch:
         if not self._can_failover(
             api_model_provider, next_options, reconnect_number
         ):
-            return self._stream_error_iter(exc, stream_type)
+            # Nothing has been written to the client yet, so the failure can
+            # still be reported the way the non-streaming path reports it: the
+            # provider's own status (or 502 when it never answered) instead of a
+            # 200 whose body merely mentions an error.
+            return self._stream_failure_response(exc)
 
         self._log_retry(api_model_provider, reconnect_number, exc.status_code)
         self._record_retry(rm, api_model_provider, exc.status_code)
@@ -500,26 +515,32 @@ class HttpDispatch:
         )
 
     @staticmethod
-    def _stream_error_iter(
-        exc: ProviderStreamError, stream_type: Any
-    ) -> Iterator[bytes]:
+    def _stream_failure_response(
+        exc: ProviderStreamError,
+    ) -> Tuple[Dict[str, Any], int]:
         """
-        Build the final error stream in the format the client expects.
+        Build the ``(error_body, status_code)`` pair for an exhausted stream.
 
-        Mirrors the error chunk emitted by the per-format generators of
-        :class:`~llm_router_api.core.stream_handler.StreamHandler`: NDJSON for
-        the OpenAI→Ollama conversion, server-sent events otherwise.
+        Only reachable **before** the first chunk: once content is on the wire
+        the status line is gone and the generators' error chunk is all that is
+        left.  Because nothing was sent, this path can and must match the
+        non-streaming contract — same body shape as
+        :meth:`_build_provider_error` and the provider's status, so a client
+        can react to a refused stream exactly as it reacts to a refused
+        ``stream=False`` request.
         """
-        payload = json.dumps({"error": exc.message})
-        if stream_type is StreamConversion.OPENAI_TO_OLLAMA:
-            chunk = (payload + "\n").encode("utf-8")
-        else:
-            chunk = f"data: {payload}\n\n".encode("utf-8")
-
-        def _iter() -> Iterator[bytes]:
-            yield chunk
-
-        return _iter()
+        status_code = exc.status_code if exc.status_code else 502
+        error_body = {
+            "error": {
+                "message": sanitize_error_message(exc.message)
+                or "Provider returned no response",
+                "type": "api_error",
+                "param": None,
+                "code": status_code,
+            },
+            "status": False,
+        }
+        return error_body, status_code
 
     # ------------------------------------------------------------------
     # Retry helpers

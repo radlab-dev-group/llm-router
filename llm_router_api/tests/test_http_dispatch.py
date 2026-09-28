@@ -384,11 +384,17 @@ class TestStreamFailover:
         assert list(out) == [b"one", b"two"]
         ep.run_ep.assert_not_called()
 
-    def test_empty_stream_yields_nothing(self):
+    def test_empty_stream_is_reported_not_delivered_empty(self):
+        """
+        A provider that answers 200 and yields nothing used to reach the client
+        as an empty 200 — indistinguishable from a successful empty completion.
+        """
         ep = _make_ep()
         ep._http_executor.stream_response.return_value = iter([])
-        out = _stream(ep)
-        assert not list(out)
+        body, status = _stream(ep)
+        assert status == 502
+        assert body["error"]["code"] == 502
+        assert body["status"] is False
         ep.run_ep.assert_not_called()
 
     def test_provider_error_reruns_the_request(self):
@@ -410,7 +416,13 @@ class TestStreamFailover:
         out = _stream(ep)
         assert out[0] == "RERUN"
 
-    def test_no_candidates_left_emits_a_single_sse_error_chunk(self):
+    def test_no_candidates_left_reports_the_provider_status(self):
+        """
+        An exhausted failover used to answer **200** with an SSE chunk that
+        merely mentioned an error, while the same failure with ``stream=False``
+        answered 503.  Nothing has been written yet, so the stream path must
+        honour the provider status exactly like the non-streaming one.
+        """
         ep = _make_ep()
         ep._model_handler = _handler_with_candidates(False)
         ep._http_executor.stream_response.return_value = _failing_stream(
@@ -418,12 +430,12 @@ class TestStreamFailover:
         )
         rm = mock.Mock()
         ep._get_router_metrics = lambda: rm
-        out = list(_stream(ep))
-        assert len(out) == 1
-        assert out[0].startswith(b"data: ")
-        assert json.loads(out[0][len(b"data: ") :].strip()) == {
-            "error": "Provider error (HTTP 503)"
-        }
+        body, status = _stream(ep)
+        assert status == 503
+        assert body["error"]["code"] == 503
+        assert body["error"]["type"] == "api_error"
+        assert "HTTP 503" in body["error"]["message"]
+        assert body["status"] is False
         ep.run_ep.assert_not_called()
         rm.record_provider_error.assert_called_once_with(
             provider_type="openai", model_name="m1", error_code="503"
@@ -439,7 +451,11 @@ class TestStreamFailover:
         assert out[0] == "RERUN"
         assert out[1]["options"][ATTEMPTED_PROVIDERS_KEY] == ("prov-1",)
 
-    def test_unreachable_provider_without_candidates_reports_error_chunk(self):
+    def test_unreachable_provider_without_candidates_reports_502(self):
+        """
+        "Never answered" has no HTTP status of its own, so the client gets 502
+        rather than a 200 carrying an error text.
+        """
         ep = _make_ep()
         ep._model_handler = _handler_with_candidates(False)
         ep._http_executor.stream_response.return_value = _failing_stream(
@@ -447,22 +463,34 @@ class TestStreamFailover:
         )
         rm = mock.Mock()
         ep._get_router_metrics = lambda: rm
-        out = list(_stream(ep))
-        assert json.loads(out[0][len(b"data: ") :].strip()) == {
-            "error": "A connection error occurred"
-        }
+        body, status = _stream(ep)
+        assert status == 502
+        assert body["error"]["code"] == 502
+        assert "connection error" in body["error"]["message"].lower()
         rm.record_provider_error.assert_called_once_with(
             provider_type="openai", model_name="m1", error_code="timeout"
         )
 
-    def test_ollama_conversion_reports_the_error_as_ndjson(self):
-        ep = _make_ep()
-        ep._model_handler = _handler_with_candidates(False)
-        ep._http_executor.stream_response.return_value = _failing_stream(
-            message="boom"
-        )
-        out = list(_stream(ep, stream_type=StreamConversion.OPENAI_TO_OLLAMA))
-        assert out == [b'{"error": "boom"}\n']
+    def test_failure_status_does_not_depend_on_the_stream_format(self):
+        """
+        The error leaves as a JSON body with a status code, so the conversion
+        (SSE vs NDJSON) is no longer the client's concern — a refused stream is
+        a refused request whichever way the content would have been framed.
+        """
+        results = []
+        for stream_type in (
+            StreamConversion.OPENAI,
+            StreamConversion.OPENAI_TO_OLLAMA,
+        ):
+            ep = _make_ep()
+            ep._model_handler = _handler_with_candidates(False)
+            ep._http_executor.stream_response.return_value = _failing_stream(
+                message="boom"
+            )
+            results.append(_stream(ep, stream_type=stream_type))
+
+        assert results[0] == results[1]
+        assert results[0][1] == 503
 
 
 class TestHttpDispatchMetrics:

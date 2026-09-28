@@ -8,7 +8,6 @@ response into a clean JSON payload.
 
 import os
 import re
-import time
 
 from typing import Any, Dict, List, Optional
 
@@ -287,7 +286,7 @@ class TextListUtilityEndpoint(EndpointWithHttpRequestI):
         results = self._build_results(raw_texts, contents)
         return {
             "response": results,
-            "generation_time": time.time() - self._start_time,
+            "generation_time": self._generation_time(),
         }
 
 
@@ -636,7 +635,7 @@ class GenerateArticleFromText(EndpointWithHttpRequestI):
             "response": {
                 "article_text": choices[0].get("message", {}).get("content")
             },
-            "generation_time": time.time() - self._start_time,
+            "generation_time": self._generation_time(),
         }
 
 
@@ -894,7 +893,7 @@ class GenerativeAnswer(GenerateArticleFromText):
 
         return {
             "response": choices[0].get("message", {}).get("content"),
-            "generation_time": time.time() - self._start_time,
+            "generation_time": self._generation_time(),
         }
 
 
@@ -1061,5 +1060,5 @@ class GenerateLabel(EndpointWithHttpRequestI):
             "response": self._clean_label(
                 choices[0].get("message", {}).get("content")
             ),
-            "generation_time": time.time() - self._start_time,
+            "generation_time": self._generation_time(),
         }

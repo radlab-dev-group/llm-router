@@ -166,6 +166,37 @@ class ProviderStreamError(Exception):
         return f"HTTP {self.status_code}" if self.status_code else self.error_code
 
 
+class NoProviderAvailable(Exception):
+    """
+    The whole ``fallback_model`` chain had no provider left to offer.
+
+    Raised by :meth:`ModelHandler.get_model_provider` when every provider of
+    the requested model *and* of every model of its ``fallback_model`` chain was
+    already tried for this request (or none is configured).  That is a capacity
+    failure of the router, not a malformed client request, so the Flask
+    registrar maps it to **503** — reporting it as a 400 would tell the caller
+    their request was wrong when it was the fleet that was full.
+
+    Attributes
+    ----------
+    model_name : str
+        The model the client asked for (the head of the chain, not the last hop).
+    detail : str
+        Why the chain ran out — ``"all providers already tried"`` or
+        ``"no providers configured"`` — for logs and the error body.
+    status_code : int
+        Always ``503``; carried so the registrar needs no exception-type table.
+    """
+
+    status_code = 503
+
+    def __init__(self, model_name: str, detail: str = "") -> None:
+        self.model_name = model_name
+        self.detail = detail or ""
+        message = f"No provider available for model '{model_name}'"
+        super().__init__(f"{message}: {self.detail}" if self.detail else message)
+
+
 def connection_error_code(exc: BaseException) -> str:
     """
     Classify a transport‑level provider failure for the metrics.

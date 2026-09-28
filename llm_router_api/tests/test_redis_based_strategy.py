@@ -215,6 +215,42 @@ class TestGetActiveProviders:
             model_name="m", only_active=True
         )
 
+    def test_shortlist_is_not_replaced_by_the_monitors_full_set(self):
+        """
+        Regression: the strategy used to ignore ``providers`` and return every
+        active provider the monitor knew about.  That silently undid the
+        rotation ``ModelHandler`` had already performed — the retry landed back
+        on the provider that just failed and the ``fallback_model`` was never
+        reached.
+        """
+        strategy = _make()
+        strategy.redis_health_check.get_providers.return_value = [
+            {"id": "p1"},
+            {"id": "p2"},
+            {"id": "p3"},
+        ]
+
+        # p1 was just tried, so the caller withholds it.
+        assert strategy._get_active_providers("m", [{"id": "p2"}]) == [{"id": "p2"}]
+
+    def test_provider_absent_from_the_shortlist_is_dropped(self):
+        """Health cannot re-admit a provider the caller already used."""
+        strategy = _make()
+        strategy.redis_health_check.get_providers.return_value = [
+            {"id": "p1"},
+            {"id": "p2"},
+        ]
+
+        assert strategy._get_active_providers("m", [{"id": "p9"}]) == []
+
+    def test_empty_shortlist_never_falls_back_to_the_full_set(self):
+        """An empty candidate list means nothing may be chosen, not everything."""
+        strategy = _make()
+        strategy.redis_health_check.get_providers.return_value = [{"id": "p1"}]
+
+        assert strategy._get_active_providers("m", []) == []
+        strategy.redis_health_check.get_providers.assert_not_called()
+
 
 class TestPrintProviderStatus:
     def test_logs_free_and_locked(self):

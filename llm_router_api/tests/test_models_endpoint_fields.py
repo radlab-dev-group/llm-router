@@ -7,12 +7,17 @@ when available, and fall back to ``None`` otherwise — never fake values like
 ``"vllm"``, ``"not-loaded"``, ``"mlx"`` or ``"4bit"``.
 """
 
-from typing import Any, Dict, List
+import os
 
-import pytest
+os.environ.setdefault("LLM_ROUTER_MINIMUM", "1")
+os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 
-from llm_router_api.core.api_types.types_i import ApiTypesI
-from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
+from typing import Any, Dict, List  # noqa: E402
+
+import pytest  # noqa: E402
+
+from llm_router_api.core.api_types.types_i import ApiTypesI  # noqa: E402
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher  # noqa: E402
 
 
 # ---------------------------------------------------------------------------

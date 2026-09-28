@@ -27,7 +27,7 @@ from flask import Flask, Blueprint, request, jsonify, Response, stream_with_cont
 from rdl_ml_utils.utils.logger import prepare_logger
 
 from llm_router_api.endpoints.endpoint_i import EndpointI
-from llm_router_api.core.errors import sanitize_error_message
+from llm_router_api.core.errors import NoProviderAvailable, sanitize_error_message
 from llm_router_api.base.constants import DEFAULT_API_PREFIX
 
 
@@ -161,15 +161,11 @@ class FlaskEndpointRegistrar:
             try:
                 result = endpoint.run_ep(params or {})
                 if isinstance(result, (Generator, Iterator)):
-
-                    def log_stream():
-                        count = 0
-                        for chunk in result:
-                            count += 1
-                            yield chunk
-
+                    # No chunk counting here: nothing consumed the total, and
+                    # wrapping the stream only to count added a generator layer
+                    # between the provider and the wire for no benefit.
                     response = Response(
-                        stream_with_context(log_stream()),
+                        stream_with_context(result),
                         # mimetype="application/x-ndjson",
                         mimetype="text/event-stream",
                         headers={
@@ -196,6 +192,27 @@ class FlaskEndpointRegistrar:
                         return jsonify(body or {}), status_code
 
                 return jsonify(result or {}), 200
+            except NoProviderAvailable as npa:
+                # Every provider of the requested model *and* of its whole
+                # ``fallback_model`` chain was tried or is unavailable.  That is
+                # the fleet being full/broken, not the caller's request being
+                # wrong, so it must not be reported as a 400 — the client should
+                # retry (elsewhere), which is what 503 asks for.
+                self._logger.error(str(npa))
+                return (
+                    jsonify(
+                        {
+                            "error": {
+                                "message": sanitize_error_message(str(npa)),
+                                "type": "service_unavailable",
+                                "param": None,
+                                "code": 503,
+                            },
+                            "status": False,
+                        }
+                    ),
+                    503,
+                )
             except ValueError as ve:
                 # Input‑validation error (missing required argument, bad
                 # payload, …) → HTTP 400.  The registrar is the *single

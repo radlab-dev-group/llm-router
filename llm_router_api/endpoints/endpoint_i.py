@@ -19,6 +19,7 @@ methods for performing outbound HTTP requests to an external service.
 """
 
 import abc
+import contextvars
 import time
 import json
 import logging
@@ -44,7 +45,7 @@ from llm_router_lib.data_models.constants import (
 
 from llm_router_api.base.constants_base import ALL_PROVIDERS
 
-from llm_router_api.core.errors import sanitize_error_message
+from llm_router_api.core.errors import NoProviderAvailable, sanitize_error_message
 
 from llm_router_api.base.constants import (
     USE_PROMETHEUS,
@@ -794,7 +795,9 @@ class EndpointI(SecureEndpointI, abc.ABC):
         """
         return {"status": True, "body": body}
 
-    def return_response_not_ok(self, body: Optional[Any]) -> Any:
+    def return_response_not_ok(
+        self, body: Optional[Any], status_code: Optional[int] = None
+    ) -> Any:
         """
         Build an error response payload with an appropriate HTTP status code.
 
@@ -804,6 +807,11 @@ class EndpointI(SecureEndpointI, abc.ABC):
             The error information that may be an exception instance, a string,
             a dictionary, or ``None``. The function attempts to extract an HTTP
             status code from known exception attributes and falls back to heuristics.
+        status_code : Optional[int], default ``None``
+            Explicit status code, used verbatim. Needed when the condition is
+            known from context rather than from the payload — e.g. a provider
+            selection timeout, which carries no status of its own and would
+            otherwise be reported as a bare 500.
 
         Returns
         -------
@@ -813,7 +821,8 @@ class EndpointI(SecureEndpointI, abc.ABC):
             status code. Flask interprets this as ``(Response, Status)``.
         """
         # Attempt to extract a status code from an exception object (if body is one)
-        status_code = 500
+        if status_code is None:
+            status_code = 500
         if hasattr(body, "response") and hasattr(body.response, "status_code"):
             # e.g., for ``requests.exceptions.HTTPError``
             status_code = body.response.status_code
@@ -886,7 +895,12 @@ class EndpointI(SecureEndpointI, abc.ABC):
             model_name=model_name, options=options, fake=fake
         )
         if api_model is None:
-            raise ValueError(f"Model '{model_name}' not found in configuration")
+            # An unknown model already failed loudly with ``KeyError`` inside the
+            # handler, so ``None`` can only mean the whole ``fallback_model``
+            # chain had no provider left — a capacity failure, not a bad request.
+            raise NoProviderAvailable(
+                model_name, detail="all providers already tried or unavailable"
+            )
         return api_model
 
     def unset_model(
@@ -915,6 +929,12 @@ class EndpointI(SecureEndpointI, abc.ABC):
             model was fetched.  They are forwarded unchanged to the ``put`` call.
         """
         if not api_model_provider:
+            return
+        # A provider resolved with ``fake=True`` (a guardrail-blocked response)
+        # was never locked, so there is nothing to release — and the redis
+        # strategies release by field rather than by owner, so calling through
+        # would clear a lock a concurrent request is holding.
+        if getattr(api_model_provider, "fake", False):
             return
         model_name = self._model_name_from_params_or_model(
             params=params, api_model_provider=api_model_provider
@@ -1123,6 +1143,17 @@ class EndpointI(SecureEndpointI, abc.ABC):
 # ----------------------------------------------------------------------
 # Proxy‑enabled endpoint – performs outbound HTTP calls.
 # ----------------------------------------------------------------------
+
+# Per‑request wall‑clock start.  The endpoint object is instantiated once at
+# startup and shared by every concurrent request, so a start timestamp kept on
+# ``self`` belongs to whichever request wrote it last: ``generation_time`` was
+# then measured against another request's start.  A ContextVar gives each
+# request (thread / greenlet) its own value, which is what the readers want.
+_request_start_time: "contextvars.ContextVar[Optional[float]]" = (
+    contextvars.ContextVar("llm_router_request_start_time", default=None)
+)
+
+
 class EndpointWithHttpRequestI(EndpointI, abc.ABC):
     """
     Abstract endpoint that forwards a request to an external LLM service.
@@ -1222,20 +1253,40 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         Uses lazy caching so that repeated calls during a single request do not
         repeatedly hit Flask's application context.  Returns ``None`` gracefully
         when outside a request context or Prometheus is disabled.
+
+        ``None`` is never cached: outside a request context the lookup fails for
+        environmental reasons, and poisoning the cache would keep every later
+        call blind even once a context exists.
         """
-        if getattr(self, "__rm_cache", None) is None:
-            self._rm_caching = True
-            try:
-                ext = getattr(current_app, "extensions", {})
-                if isinstance(ext, dict):
-                    val = ext.get("router_metrics")
-                    if val is not None:
-                        self._rm_caching = val
-                        return val
-            except RuntimeError:
-                pass  # outside request context
-            self._rm_cache = None
-        return self._rm_cache
+        cached = getattr(self, "_rm_cache", None)
+        if cached is not None:
+            return cached
+        try:
+            ext = getattr(current_app, "extensions", {})
+            if isinstance(ext, dict):
+                val = ext.get("router_metrics")
+                if val is not None:
+                    self._rm_cache = val
+                    return val
+        except RuntimeError:
+            pass  # outside request context
+        return None
+
+    def _generation_time(self) -> float:
+        """
+        Seconds since this request started.
+
+        Reads the per‑request ContextVar first and falls back to the legacy
+        ``self._start_time`` so callers that set the attribute directly (tests,
+        programmatic use) keep working.  Returns ``0.0`` when neither is known,
+        instead of raising ``TypeError`` on ``time.time() - None``.
+        """
+        start = _request_start_time.get()
+        if start is None:
+            start = getattr(self, "_start_time", None)
+        if start is None:
+            return 0.0
+        return time.time() - start
 
     def _record_provider_latency(self, start_ns: float) -> Optional[float]:
         """
@@ -1318,9 +1369,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             Propagates any unexpected error; the Flask registrar will
             translate it into a 500 response.
         """
-        orig_params = params.copy()
+        # ``params or {}`` rather than ``params.copy()``: a caller passing None
+        # must not raise AttributeError before the try block can map it to a
+        # response.
+        orig_params = dict(params or {})
         api_model_provider = None
         clear_chosen_provider_finally = False
+        # Set once the dispatcher owns the provider release.  Until then this
+        # frame must release it itself — including when the failure happens
+        # between resolving the provider and actually dispatching it.
+        provider_dispatched = False
         use_streaming = bool((params or {}).get("stream", False))
 
         self.logger.debug(
@@ -1332,6 +1390,8 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 json.dumps(orig_params or {}, indent=2, ensure_ascii=False)
             )
 
+        # Per request, not per (shared) instance — see ``_request_start_time``.
+        _request_start_time.set(time.time())
         self._start_time = time.time()
         try:
             # 1. Prepare the payload (endpoint logic, then utils plugins)
@@ -1397,6 +1457,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
             # 5. Dispatch
             if simple_proxy and not use_streaming:
+                # ``return_response_or_rerun`` releases the provider itself,
+                # before deciding whether to fail over (the next attempt must be
+                # able to acquire it again).  Hand the ownership over so this
+                # frame's ``finally`` does not release it a second time and clear
+                # a lock a concurrent request took in the meantime.
+                clear_chosen_provider_finally = False
+                provider_dispatched = True
                 return self._return_response_or_rerun(
                     api_model_provider=api_model_provider,
                     ep_url=ep_url,
@@ -1417,13 +1484,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
             if use_streaming:
-                # Streaming does not release the provider in ``finally``
-                # (legacy behavior — kept unchanged)
-                clear_chosen_provider_finally = False
+                # Streaming releases the provider in the stream generator's own
+                # ``finally`` (``StreamHandler._model_unsetter``), not here, so
+                # that the release happens when the client stops consuming
+                # rather than when this frame returns.
                 if self._call_for_each_user_msg:
                     raise ValueError(
                         "Streaming is available only for single message"
                     )
+                clear_chosen_provider_finally = False
+                provider_dispatched = True
                 return self._dispatch_streaming(
                     api_model_provider=api_model_provider,
                     ep_url=ep_url,
@@ -1433,6 +1503,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     reconnect_number=reconnect_number or 0,
                 )
 
+            # Ownership of the provider release moves to the dispatcher, which
+            # releases before deciding on a failover (see the note above).
+            clear_chosen_provider_finally = False
+            provider_dispatched = True
             return self._dispatch_non_streaming(
                 api_model_provider=api_model_provider,
                 ep_url=ep_url,
@@ -1446,12 +1520,28 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # Input‑validation failure (e.g. missing required argument):
             # propagate to the Flask registrar, which is the single owner of
             # the exception→HTTP‑code mapping and maps ``ValueError`` to a
-            # 400 response carrying the exception message.
-            clear_chosen_provider_finally = True
+            # 400 response carrying the exception message.  Release only if the
+            # dispatcher has not taken ownership, otherwise the provider would
+            # be released a second time.
+            clear_chosen_provider_finally = not provider_dispatched
             raise
+        except NoProviderAvailable:
+            # A drained fallback chain is a capacity failure, not a client
+            # error: let it reach the registrar, which answers 503. Swallowing
+            # it here would turn it into the generic 500 below.
+            clear_chosen_provider_finally = not provider_dispatched
+            raise
+        except TimeoutError as te:
+            # Every provider of the chain was busy for longer than the strategy
+            # timeout.  The request was never sent, so this is a gateway
+            # timeout — reporting it as a bare 500 lost both the distinction and
+            # the retryable nature of the condition.
+            self.logger.error("Provider selection timed out: %s", te)
+            clear_chosen_provider_finally = not provider_dispatched
+            return self.return_response_not_ok(te, status_code=504)
         except Exception as e:
             self.logger.exception(e)
-            clear_chosen_provider_finally = True
+            clear_chosen_provider_finally = not provider_dispatched
             return self.return_response_not_ok(e)
         finally:
             if clear_chosen_provider_finally and api_model_provider is not None:
