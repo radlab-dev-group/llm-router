@@ -239,9 +239,7 @@ class ModelHandler:
             if fake:
                 # Marked so the caller can tell it was never locked; the
                 # strategies must not see a release for it.
-                return replace(
-                    ApiModel.from_config(hop, providers[0]), fake=True
-                )
+                return replace(ApiModel.from_config(hop, providers[0]), fake=True)
 
             # Skip a hop that is known (health data) to be unable to serve,
             # instead of waiting for the strategy selection timeout.

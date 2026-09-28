@@ -154,9 +154,7 @@ class _DrainedChainEndpoint(_ValidatedEndpoint):
 
     def __init__(self):
         super().__init__()
-        self._model_handler = SimpleNamespace(
-            get_model_provider=lambda **_kw: None
-        )
+        self._model_handler = SimpleNamespace(get_model_provider=lambda **_kw: None)
 
 
 class TestNoProviderAvailableReturns503:
@@ -176,7 +174,9 @@ class TestNoProviderAvailableReturns503:
                 self.REQUIRED_ARGS = []
 
             def prepare_payload(self, params):
-                raise NoProviderAvailable("some-model", "all providers already tried")
+                raise NoProviderAvailable(
+                    "some-model", "all providers already tried"
+                )
 
         registrar.register_endpoint(_NoProviderEndpoint())
         body = app.test_client().post("/api/drained", json={"x": 1}).get_json()
