@@ -7,7 +7,6 @@ from typing import Any, Dict
 
 from rdl_ml_utils.utils.env import bool_env_value
 
-
 DEBUG_ALL = bool_env_value("DEBUG_ALL")
 THREAD_COUNT = int(os.getenv("TEST_THREADS", "4"))
 BASE_URL = os.getenv("LLM_ROUTER_URL", "http://192.168.100.65:8080")

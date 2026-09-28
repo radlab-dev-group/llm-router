@@ -37,7 +37,6 @@ from llm_router_lib.data_models.response import (
     GenerateArticleFromTextsResponse,
 )
 
-
 # ---------------------------------------------------------------------- #
 # tolerant base behaviour
 # ---------------------------------------------------------------------- #

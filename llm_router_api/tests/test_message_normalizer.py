@@ -21,7 +21,6 @@ os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 
 from llm_router_api.endpoints import message_normalizer  # noqa: E402
 
-
 # --------------------------------------------------------------------------- #
 # merge_message_contents
 # --------------------------------------------------------------------------- #

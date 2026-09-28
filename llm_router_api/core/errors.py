@@ -10,7 +10,6 @@ import re
 
 from typing import Dict, Any, Optional
 
-
 # Error code used when a request is missing one or more mandatory parameters.
 ERROR_NO_REQUIRED_PARAMS = "No required parameters!"
 

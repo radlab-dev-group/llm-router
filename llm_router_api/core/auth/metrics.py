@@ -11,7 +11,6 @@ import os
 
 from llm_router_api.core.metrics_handler import MetricsHandler
 
-
 IS_PROMETHEUS_AVAILABLE = False
 try:
     os.environ.setdefault(

@@ -14,7 +14,6 @@ import pytest
 from llm_router_cli.cli import COMMANDS, main
 from llm_router_cli.cli.commands.base import BaseCommand, _exit_code
 
-
 # ---------------------------------------------------------------------- #
 # _exit_code
 # ---------------------------------------------------------------------- #

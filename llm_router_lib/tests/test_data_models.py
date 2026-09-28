@@ -46,7 +46,6 @@ from llm_router_lib.data_models.builtin_chat import (
 )
 from llm_router_lib.data_models import constants as dm_const
 
-
 # ---------------------------------------------------------------------- #
 # BaseModelOptions
 # ---------------------------------------------------------------------- #

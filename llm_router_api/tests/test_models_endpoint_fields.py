@@ -19,7 +19,6 @@ import pytest  # noqa: E402
 from llm_router_api.core.api_types.types_i import ApiTypesI  # noqa: E402
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -11,7 +11,6 @@ from collections import Counter
 from llm_router_api.core.auth.key_generator import KeyGenerator
 from typing import List
 
-
 # ---------------------------------------------------------------------------
 # Format tests
 # ---------------------------------------------------------------------------

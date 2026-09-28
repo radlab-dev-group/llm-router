@@ -27,7 +27,6 @@ from llm_router_api.endpoints.builtin.builtin_utils import (  # noqa: E402
     TextListUtilityEndpoint,
 )
 
-
 # --------------------------------------------------------------------------- #
 # ApiVersion
 # --------------------------------------------------------------------------- #

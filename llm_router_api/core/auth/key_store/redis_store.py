@@ -24,7 +24,6 @@ from llm_router_api.core.auth.key_store._record_helpers import (
     gen_sha256_index,
 )
 
-
 _DEFAULT_REDIS_PREFIX = "secret:llm-router:api-keys"
 
 
