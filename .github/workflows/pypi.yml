@@ -15,7 +15,7 @@ permissions:
 jobs:
   tests:
     if: inputs.run-tests
-    uses: ./.github/workflows/build/tests.yml
+    uses: ./.github/workflows/tests.yml
 
   pypi:
     needs: tests
