@@ -19,7 +19,6 @@ import pytest
 
 from llm_router_cli.cli.commands.config import ConfigCommand as C
 
-
 # ---------------------------------------------------------------------- #
 # _parse_host
 # ---------------------------------------------------------------------- #

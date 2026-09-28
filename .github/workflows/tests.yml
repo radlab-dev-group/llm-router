@@ -1,4 +1,4 @@
-name: Reusable Test Suite
+name: _Reusable Test Suite
 
 on:
   workflow_call:

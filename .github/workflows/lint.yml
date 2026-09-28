@@ -1,0 +1,40 @@
+name: _Lint
+
+on:
+  workflow_call:
+    inputs:
+      run-formatter:
+        description: Check code formatting with black
+        type: boolean
+        default: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  lint:
+    name: Lint (black)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+
+      - name: Install formatter
+        run: pip install --upgrade black
+
+      - name: Check formatting
+        if: inputs.run-formatter
+        run: black --check --diff .

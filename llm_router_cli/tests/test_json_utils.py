@@ -12,7 +12,6 @@ import pytest
 
 from llm_router_cli.util.json_utils import loads_json, strip_code_fence
 
-
 # ---------------------------------------------------------------------- #
 # strip_code_fence
 # ---------------------------------------------------------------------- #

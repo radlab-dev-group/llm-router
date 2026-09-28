@@ -16,7 +16,6 @@ from dataclasses import dataclass
 
 from llm_router_api.base.constants import LLM_ROUTER_AUTH_REDIS_PROTOCOL
 
-
 # Atomic Lua script: remove old entries, check the limit, and optionally
 # add the request. Returns an array {allowed, remaining_or_oldest_ts}:
 #   allowed == 1 -> allowed, remaining is the number

@@ -1,0 +1,52 @@
+name: Build and Publish PyPI Package
+
+on:
+  workflow_call:
+    inputs:
+      run-tests:
+        description: Run the test suite before publishing
+        type: boolean
+        default: true
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    if: inputs.run-tests
+    uses: ./.github/workflows/tests.yml
+
+  pypi:
+    needs: tests
+    if: always() && (inputs.run-tests == false || needs.tests.result == 'success')
+    # Serialise publishes across tags so versions can't be uploaded out of order
+    concurrency:
+      group: pypi-publish
+      cancel-in-progress: false
+    runs-on:
+      - self-hosted
+      - builder
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get package version
+        id: vars
+        run: |
+          echo "VERSION=$(cat .version)" >> $GITHUB_OUTPUT
+
+      - name: Build package
+        run: |
+          python3 -m pip install --user --upgrade build
+          python3 -m build --outdir dist .
+
+      - name: Publish package
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_KEY }}
+        run: |
+          python3 -m pip install --user --upgrade twine
+          python3 -m twine check dist/*
+          python3 -m twine upload dist/* --non-interactive

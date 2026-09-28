@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build (Docker + PyPI)
 
 on:
   push:
@@ -14,50 +14,15 @@ concurrency:
 
 jobs:
   tests:
-    uses: ./.github/workflows/_tests.yml
+    uses: ./.github/workflows/tests.yml
+
+  lint:
+    uses: ./.github/workflows/lint.yml
 
   docker:
-    needs: tests
-    # Serialise pushes across tags so `latest` can't end up pointing at an older commit
-    concurrency:
-      group: docker-push
-      cancel-in-progress: false
-    runs-on:
-      - self-hosted
-      - builder
+    needs: [tests, lint]
+    uses: ./.github/workflows/docker.yml
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Get image version
-        id: vars
-        run: |
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Login to Quay
-        run: |
-          echo "${{ secrets.QUAY_PASSWORD }}" | docker login quay.io \
-            -u "${{ secrets.QUAY_USERNAME }}" \
-            --password-stdin
-
-      - name: Build image
-        run: |
-          docker build -f docker/Dockerfile \
-            -t quay.io/radlab/llm-router:${{ steps.vars.outputs.VERSION }} \
-            -t quay.io/radlab/llm-router:latest .
-
-      - name: Push image
-        run: |
-          docker push quay.io/radlab/llm-router:${{ steps.vars.outputs.VERSION }}
-          docker push quay.io/radlab/llm-router:latest
-
-      # Untag only this run's image — keeps the local layer cache for the next build
-      - name: Cleanup image
-        if: always()
-        run: |
-          docker rmi quay.io/radlab/llm-router:${{ steps.vars.outputs.VERSION }} || true
-
-      - name: Logout
-        if: always()
-        run: docker logout quay.io
+  pypi:
+    needs: [tests, lint]
+    uses: ./.github/workflows/pypi.yml

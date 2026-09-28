@@ -11,7 +11,6 @@ import json
 
 from llm_router_cli.cli.commands.config import ConfigCommand
 
-
 # ---- help / dispatch ------------------------------------------------------
 
 
