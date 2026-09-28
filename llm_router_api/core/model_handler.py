@@ -373,9 +373,27 @@ class ModelHandler:
             ``True`` when at least one provider is still untried.
         """
         attempted = attempted_provider_ids(options)
-        for hop in self._fallback_chain(model_name):
-            if any(provider_id(p) not in attempted for p in self._providers_of(hop)):
-                return True
+        chain = self._fallback_chain(model_name)
+        last_index = len(chain) - 1
+        for index, hop in enumerate(chain):
+            candidates = [
+                p for p in self._providers_of(hop) if provider_id(p) not in attempted
+            ]
+            if not candidates:
+                continue
+            # Mirror :meth:`get_model_provider`: a hop the monitor reports as
+            # unhealthy is not worth another attempt, otherwise this gate
+            # green‑lights a request that then blocks for the full selection
+            # timeout and dies.  The last hop keeps being tried regardless —
+            # the gate must never be stricter than the code it gates.
+            if index < last_index and (
+                self.provider_chooser.has_available_provider(
+                    model_name=hop, providers=candidates
+                )
+                is False
+            ):
+                continue
+            return True
         return False
 
     def _providers_of(self, model_name: str) -> List[Dict[str, Any]]:
