@@ -18,8 +18,11 @@ When `LLM_ROUTER_AUTH_ENABLED=true`, endpoints are divided into **public** and *
 | Public        | Bypass all auth checks — always accessible                  | `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS` |
 | Auth‑required | Return **401 Unauthorized** if no valid API key is provided | `LLM_ROUTER_AUTH_ENABLED=true`     |
 
-Public endpoints (default): `/ping`, `/version`, `/models`, `/`, plus any path matching `/v1{public}` (e.g.
-`/v1/models`). All other endpoints require a valid API key with the appropriate policy permission:
+Public endpoints: `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`, **default `/metrics,/health`** — and for every entry, `/v1{entry}`
+as well. The list is compared against the full request path, so a bare entry never matches a prefixed route: endpoints
+built with `dont_add_api_prefix=False` live under `LLM_ROUTER_EP_PREFIX` (`/api` by default) and need the prefixed entry
+(`LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS="/metrics,/health,/api/ping"`). Everything else requires a valid API key with the
+appropriate policy permission:
 
 | Permission type | What it grants access to                               |
 |-----------------|--------------------------------------------------------|
@@ -33,20 +36,30 @@ API keys are checked in order of priority:
 
 1. `Authorization: Bearer <key>` header
 2. `x-api-key` header
-3. Query parameter `api_key` or `api-key`
+3. Query parameters `api_key` / `api-key` are **rejected** (logged as a warning) — use one of the headers
 
 ---
 
-### Health & Info (public)
+### Health & Info
 
-- **GET** `/ping` – Simple health‑check, returns `"pong"`.
-- **GET** `/version` – Return the router version.
-- **GET** `/` – Ollama health endpoint.
-- **GET** `/tags` – List available Ollama model tags (public).
-- **GET** `/models` – List OpenAI‑compatible models (public).
-- **GET** `/v1/models` – List OpenAI‑compatible models (public).
-- **GET** `/api/v0/models` – List LM Studio models.
-- **GET** `/metrics` – Prometheus metrics endpoint (public; requires `LLM_ROUTER_USE_PROMETHEUS=1`).
+Public by default (`LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS="/metrics,/health"`), reachable without a key whatever
+`LLM_ROUTER_AUTH_ENABLED` says:
+
+- **GET** `/health` – Router health check → `{"status": true, "body": "healthy", "stream": false}`.
+- **GET** `/metrics` – Prometheus metrics (requires `LLM_ROUTER_USE_PROMETHEUS=1`). Registered straight on the app, so the
+  path is literal `/metrics` — `LLM_ROUTER_EP_PREFIX` does not apply.
+
+Everything else below needs a key once auth is on; the permission in brackets comes from
+`_ENDPOINT_PERMISSION_MAP`:
+
+- **GET** `/models` – List OpenAI‑compatible models (`chat`).
+- **GET** `/v1/models` – List OpenAI‑compatible models, v1 (`chat`).
+- **GET** `/` – Ollama health endpoint → `Ollama is running` (`chat`).
+- **GET** `/api/ping` – Simple health‑check → `{"status": true, "body": "pong", "stream": false}` (`builtin`).
+- **GET** `/api/version` – Return the router version → `{"version": "<semver>", "stream": false}` (`builtin`); this is the
+  path `llm_router_lib` clients call.
+- **GET** `/api/tags` – List available Ollama model tags (`chat`).
+- **GET** `/api/v0/models` – List LM Studio models (`chat`).
 
 ### Auth‑required Endpoints
 

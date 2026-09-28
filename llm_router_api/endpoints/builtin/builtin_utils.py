@@ -52,8 +52,12 @@ class ApiVersion(EndpointWithHttpRequestI):
     """
     Endpoint that returns the router version.
 
-    Registered at ``/version`` (no prefix).
-    Auth: **public** — in the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` list.
+    Registered at ``/api/version`` — ``dont_add_api_prefix`` is ``False``, so
+    ``LLM_ROUTER_EP_PREFIX`` (``/api`` by default) is prepended; this is the path
+    ``llm_router_lib`` clients call.
+    Auth: **not public by default** — the default
+    ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` lists the bare ``/version``, which does not
+    match ``/api/version``; add the prefixed path there for an unauthenticated probe.
     """
 
     VERSION_FILE = ".version"

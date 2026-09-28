@@ -378,9 +378,10 @@ class OpenAIModelsHandler(PassthroughI):
     It overrides the HTTP method to ``GET`` and disables the global API
     prefix, exposing the route directly under ``/models``.
 
-    Auth: **public** — listed in the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS``
-    (``/ping,/version,/models,/,/metrics``) and in
-    :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP` as ``"_public"``.
+    Auth: **not public** — the default ``LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS`` is
+    ``/metrics,/health``, and
+    :data:`~.policies.engine._ENDPOINT_PERMISSION_MAP` maps ``get:/models`` to the
+    ``chat`` permission, so a key is required once ``LLM_ROUTER_AUTH_ENABLED`` is on.
     """
 
     EP_DONT_NEED_GUARDRAIL_AND_MASKING = True
