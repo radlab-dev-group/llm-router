@@ -16,14 +16,13 @@ jobs:
   tests:
     uses: ./.github/workflows/build/tests.yml
 
+  lint:
+    uses: ./.github/workflows/build/lint.yml
+
   docker:
-    needs: tests
+    needs: [tests, lint]
     uses: ./.github/workflows/build/docker.yml
-    with:
-      run-tests: false
 
   pypi:
-    needs: tests
+    needs: [tests, lint]
     uses: ./.github/workflows/build/pypi.yml
-    with:
-      run-tests: false

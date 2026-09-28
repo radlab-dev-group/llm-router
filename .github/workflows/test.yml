@@ -16,3 +16,6 @@ concurrency:
 jobs:
   tests:
     uses: ./.github/workflows/build/tests.yml
+
+  lint:
+    uses: ./.github/workflows/build/lint.yml
