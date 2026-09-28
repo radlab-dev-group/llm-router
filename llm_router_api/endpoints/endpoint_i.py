@@ -44,7 +44,7 @@ from llm_router_lib.data_models.constants import (
 
 from llm_router_api.base.constants_base import ALL_PROVIDERS
 
-from llm_router_api.core.errors import sanitize_error_message
+from llm_router_api.core.errors import NoProviderAvailable, sanitize_error_message
 
 from llm_router_api.base.constants import (
     USE_PROMETHEUS,
@@ -886,7 +886,12 @@ class EndpointI(SecureEndpointI, abc.ABC):
             model_name=model_name, options=options, fake=fake
         )
         if api_model is None:
-            raise ValueError(f"Model '{model_name}' not found in configuration")
+            # An unknown model already failed loudly with ``KeyError`` inside the
+            # handler, so ``None`` can only mean the whole ``fallback_model``
+            # chain had no provider left — a capacity failure, not a bad request.
+            raise NoProviderAvailable(
+                model_name, detail="all providers already tried or unavailable"
+            )
         return api_model
 
     def unset_model(
@@ -915,6 +920,12 @@ class EndpointI(SecureEndpointI, abc.ABC):
             model was fetched.  They are forwarded unchanged to the ``put`` call.
         """
         if not api_model_provider:
+            return
+        # A provider resolved with ``fake=True`` (a guardrail-blocked response)
+        # was never locked, so there is nothing to release — and the redis
+        # strategies release by field rather than by owner, so calling through
+        # would clear a lock a concurrent request is holding.
+        if getattr(api_model_provider, "fake", False):
             return
         model_name = self._model_name_from_params_or_model(
             params=params, api_model_provider=api_model_provider
@@ -1321,6 +1332,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         orig_params = params.copy()
         api_model_provider = None
         clear_chosen_provider_finally = False
+        # Set once the dispatcher owns the provider release.  Until then this
+        # frame must release it itself — including when the failure happens
+        # between resolving the provider and actually dispatching it.
+        provider_dispatched = False
         use_streaming = bool((params or {}).get("stream", False))
 
         self.logger.debug(
@@ -1397,6 +1412,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
 
             # 5. Dispatch
             if simple_proxy and not use_streaming:
+                # ``return_response_or_rerun`` releases the provider itself,
+                # before deciding whether to fail over (the next attempt must be
+                # able to acquire it again).  Hand the ownership over so this
+                # frame's ``finally`` does not release it a second time and clear
+                # a lock a concurrent request took in the meantime.
+                clear_chosen_provider_finally = False
+                provider_dispatched = True
                 return self._return_response_or_rerun(
                     api_model_provider=api_model_provider,
                     ep_url=ep_url,
@@ -1417,13 +1439,16 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 )
 
             if use_streaming:
-                # Streaming does not release the provider in ``finally``
-                # (legacy behavior — kept unchanged)
-                clear_chosen_provider_finally = False
+                # Streaming releases the provider in the stream generator's own
+                # ``finally`` (``StreamHandler._model_unsetter``), not here, so
+                # that the release happens when the client stops consuming
+                # rather than when this frame returns.
                 if self._call_for_each_user_msg:
                     raise ValueError(
                         "Streaming is available only for single message"
                     )
+                clear_chosen_provider_finally = False
+                provider_dispatched = True
                 return self._dispatch_streaming(
                     api_model_provider=api_model_provider,
                     ep_url=ep_url,
@@ -1433,6 +1458,10 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                     reconnect_number=reconnect_number or 0,
                 )
 
+            # Ownership of the provider release moves to the dispatcher, which
+            # releases before deciding on a failover (see the note above).
+            clear_chosen_provider_finally = False
+            provider_dispatched = True
             return self._dispatch_non_streaming(
                 api_model_provider=api_model_provider,
                 ep_url=ep_url,
@@ -1446,12 +1475,20 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             # Input‑validation failure (e.g. missing required argument):
             # propagate to the Flask registrar, which is the single owner of
             # the exception→HTTP‑code mapping and maps ``ValueError`` to a
-            # 400 response carrying the exception message.
-            clear_chosen_provider_finally = True
+            # 400 response carrying the exception message.  Release only if the
+            # dispatcher has not taken ownership, otherwise the provider would
+            # be released a second time.
+            clear_chosen_provider_finally = not provider_dispatched
+            raise
+        except NoProviderAvailable:
+            # A drained fallback chain is a capacity failure, not a client
+            # error: let it reach the registrar, which answers 503. Swallowing
+            # it here would turn it into the generic 500 below.
+            clear_chosen_provider_finally = not provider_dispatched
             raise
         except Exception as e:
             self.logger.exception(e)
-            clear_chosen_provider_finally = True
+            clear_chosen_provider_finally = not provider_dispatched
             return self.return_response_not_ok(e)
         finally:
             if clear_chosen_provider_finally and api_model_provider is not None:
