@@ -16,7 +16,7 @@ very same balancing rules.
 
 import logging
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from llm_router_api.core.model_config import ApiModelConfig
@@ -63,6 +63,11 @@ class ApiModel:
     tool_calling: Optional[bool] = False
     is_embedding: Optional[bool] = False
     lease: Optional[str] = None
+    # Marks a provider that was resolved for display only (a guardrail-blocked
+    # response), never acquired from the load-balancing strategy.  Such a
+    # provider must not be released: releasing it would clear a lock held by
+    # another request, since the redis strategies release by field, not by owner.
+    fake: bool = False
 
     @staticmethod
     def from_config(name: str, cfg: Dict) -> "ApiModel":
@@ -232,7 +237,11 @@ class ModelHandler:
                 continue
 
             if fake:
-                return ApiModel.from_config(hop, providers[0])
+                # Marked so the caller can tell it was never locked; the
+                # strategies must not see a release for it.
+                return replace(
+                    ApiModel.from_config(hop, providers[0]), fake=True
+                )
 
             # Skip a hop that is known (health data) to be unable to serve,
             # instead of waiting for the strategy selection timeout.
