@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   tests:
-    uses: ./.github/workflows/build/_tests.yml
+    uses: ./.github/workflows/build/tests.yml
 
   docker:
     needs: tests
