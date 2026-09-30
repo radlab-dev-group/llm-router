@@ -45,7 +45,7 @@ class FakeRedis:
     def ping(self) -> bool:
         return True
 
-    def set(self, key: str, value: str) -> bool:
+    def set(self, key: str, value: str, ex: Optional[int] = None) -> bool:
         self._data[key] = value
         return True
 
@@ -57,10 +57,6 @@ class FakeRedis:
             del self._data[key]
             return 1
         return 0
-
-    def setex(self, key: str, ttl: int, value: str) -> bool:
-        self._data[key] = value
-        return True
 
     def scan(
         self, cursor: int, match: Optional[str] = None, count: int = 100
