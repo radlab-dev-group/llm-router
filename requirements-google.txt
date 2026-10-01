@@ -1,0 +1,6 @@
+## Google Cloud / Vertex AI dependencies (optional — only for providers with
+## `api_type: "vertex_ai"` that authenticate via Google Application Default
+## Credentials: service-account JSON file, metadata server or Workload
+## Identity).  Providers with an explicit `api_token` need nothing here.
+#google-auth==2.43.0
+google-auth
