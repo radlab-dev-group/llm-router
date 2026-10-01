@@ -43,6 +43,25 @@
           "nworkers": 10
         }
       ]
+    },
+    "google/gemini-2.5-flash-vertex": {
+      "providers": [
+        {
+          "id": "vertex-gemini-2_5-flash",
+          "api_host": "https://europe-central2-aiplatform.googleapis.com",
+          "api_token": "YOUR_GOOGLE_ACCESS_TOKEN",
+          "api_type": "vertex_ai",
+          "input_size": 1048576,
+          "model_path": "gemini-2.5-flash",
+          "keep_alive": null,
+          "tool_calling": true,
+          "nworkers": 10,
+          "provider_options": {
+            "project": "YOUR_GCP_PROJECT_ID",
+            "region": "europe-central2"
+          }
+        }
+      ]
     }
   },
   "openai_models": {
@@ -95,7 +114,8 @@
   "active_models": {
     "google_models": [
       "google/gemma-3-12b-it",
-      "google/gemini-2.5-flash-lite"
+      "google/gemini-2.5-flash-lite",
+      "google/gemini-2.5-flash-vertex"
     ],
     "openai_models": [
       "openai/gpt-3.5-turbo-0125",
