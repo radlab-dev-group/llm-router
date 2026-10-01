@@ -58,7 +58,8 @@ class RedisKeyStoreCache(KeyStoreInterface):
         self._redis.delete(self._cache_key_for_id(key_id))
         self._redis.delete(self._cache_key_for_hash(key_hash))
 
-    def _record_to_dict(self, record: dict) -> str:
+    @staticmethod
+    def _record_to_dict(record: dict) -> str:
         """
         Serialize record to JSON string for Redis storage.
         """
