@@ -1,11 +1,27 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from collections.abc import Mapping
+from typing import Any, Dict, Optional
 from abc import ABC, abstractmethod
 
 
 class ApiTypesI(ABC):
-    """ """
+    """
+    Abstract contract for a concrete external LLM API type.
+
+    The contract splits in two parts:
+
+    * **endpoint descriptors** – ``chat_ep`` / ``completions_ep`` /
+      ``responses_ep`` / ``embeddings_ep`` return the canonical paths of the
+      backend API;
+    * **request adapter hooks** – ``request_path`` / ``request_headers`` /
+      ``request_body`` / ``owns_message_normalization`` / ``ping_path`` tell
+      the router how to build the actual HTTP call for a given *provider*.
+      The default implementations reproduce the historical OpenAI‑style
+      behaviour (relative path + ``Bearer <api_token>`` + ``model`` /
+      system‑message injection); provider families with a different wire
+      protocol (e.g. Google Vertex AI) override the hooks they need.
+    """
 
     @staticmethod
     def tags(models_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -145,6 +161,137 @@ class ApiTypesI(ABC):
             "quantization": m.get("quantization"),
             "is_embedding": bool(m.get("is_embedding", False)),
         }
+
+    # ------------------------------------------------------------------
+    # Provider access helper – the provider descriptor is either an
+    # ``ApiModel`` instance (request path) or a plain configuration
+    # mapping (monitor / keep‑alive work with raw dicts).
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _provider_field(provider: Any, field_name: str, default: Any = "") -> Any:
+        """
+        Read ``field_name`` from a provider descriptor of either shape.
+        """
+        if provider is None:
+            return default
+        if isinstance(provider, Mapping):
+            value = provider.get(field_name)
+            return default if value is None else value
+        return getattr(provider, field_name, default)
+
+    # ------------------------------------------------------------------
+    # Request adapter hooks (provider → router seam)
+    # ------------------------------------------------------------------
+    def request_path(
+        self,
+        endpoint_url: str,
+        provider: Any = None,
+        stream: bool = False,
+    ) -> str:
+        """
+        Resolve a router endpoint fragment to the backend request path.
+
+        The default implementation inspects ``endpoint_url`` (after
+        stripping leading/trailing ``/``) for known keywords and forwards
+        to the matching endpoint descriptor: ``"completions"`` →
+        :meth:`completions_ep`, ``"responses"`` → :meth:`responses_ep`,
+        ``"embed"`` → :meth:`embeddings_ep`, ``"messages"`` →
+        :meth:`messages_ep`, anything else → :meth:`chat_ep`.
+
+        Parameters
+        ----------
+        endpoint_url : str
+            The router endpoint name (e.g. ``"v1/chat/completions"``).
+        provider : Any
+            The provider descriptor; unused by the default implementation.
+        stream : bool
+            Whether the request is a streaming one; unused by the default
+            implementation (streaming backends share the chat path).
+
+        Returns
+        -------
+        str
+            The backend path appended to the provider's base URL.
+        """
+        fragment = (endpoint_url or "").strip("/")
+        if "completions" in fragment:
+            return self.completions_ep()
+        if "responses" in fragment:
+            return self.responses_ep()
+        if "embed" in fragment:
+            return self.embeddings_ep()
+        if "messages" in fragment:
+            return self.messages_ep()
+        return self.chat_ep()
+
+    def request_headers(self, provider: Any) -> Dict[str, str]:
+        """
+        Build the HTTP headers for a call to ``provider``.
+
+        The default implementation sends a JSON body and, when the
+        provider carries an ``api_token``, a ``Bearer`` authorization
+        header – the historical behaviour of the router's outbound calls.
+        """
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        token = self._provider_field(provider, "api_token", "")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
+    def request_body(
+        self,
+        payload: Any,
+        provider: Any,
+        system_message: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        """
+        Finalise the request body right before it is sent to ``provider``.
+
+        The default implementation mirrors the historical executor
+        behaviour: it injects the provider's model name (``model_path``
+        when set, otherwise the logical model ``name``) and, when a
+        resolved system prompt is available, prepends it to ``messages``.
+
+        Parameters
+        ----------
+        payload : Any
+            The payload produced by the endpoint layer.
+        provider : Any
+            The provider descriptor.
+        system_message : Optional[Dict[str, str]]
+            A ``{"role": "system", "content": ...}`` message to prepend,
+            or ``None``.
+        """
+        if not isinstance(payload, dict):
+            return payload
+        model = self._provider_field(
+            provider, "model_path", ""
+        ) or self._provider_field(provider, "name", "")
+        payload["model"] = model
+        if system_message:
+            payload["messages"] = [system_message] + payload.get("messages", [])
+        return payload
+
+    def owns_message_normalization(self) -> bool:
+        """
+        Whether the provider type normalises ``messages`` by itself.
+
+        When ``True`` the router skips its own role normalisation
+        (consecutive same‑role merging / user‑turn guarantees) because the
+        type's request‑body hook performs an equivalent, protocol‑aware
+        transformation.
+        """
+        return False
+
+    def ping_path(self, provider: Any) -> Optional[str]:
+        """
+        Return a provider‑specific health‑check path, or ``None`` to fall
+        back to the monitor's generic probe list.
+
+        The returned value is a path appended to the provider's
+        ``api_host`` (leading ``/`` included).
+        """
+        return None
 
     @abstractmethod
     def chat_ep(self) -> str:
