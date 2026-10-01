@@ -50,7 +50,7 @@ class RedisKeyStoreCache(KeyStoreInterface):
         if self._redis is None:
             return
         ttl = self._ttl + secrets.randbelow(self._jitter + 1)
-        self._redis.setex(key, ttl, value)
+        self._redis.set(key, value, ex=ttl)
 
     def _invalidate(self, key_id: str, key_hash: str) -> None:
         if self._redis is None:
