@@ -62,6 +62,7 @@ Having a single source of truth for model definitions makes it easy to:
 | `keep_alive`   | `str`                     | Optional keep‑alive duration (e.g. `"35m"`). Empty or `null` means the provider is not kept alive.                                  | `"35m"`                         |
 | `tool_calling` | `bool`                    | Whether the provider supports tool‑calling (function calling).                                                                      | `true`                          |
 | `is_embedding` | `bool`                    | Whether the model is an embedding model (determines use of embedding endpoints).                                                    | `true`                          |
+| `provider_options` | `object` (optional)    | Provider‑specific options consumed only by the request adapter of the matching `api_type`. For `vertex_ai`: `project`, `region` (or `location`), `api_version` (default `v1`), `publisher` (default `google`), `api_key` (`x-goog-api-key`), `credentials_file` (service‑account JSON for Google ADC), `scopes`, plus `generation_config` / `safety_settings` merged into the Gemini request. Never sent in the downstream payload, hidden from `/models`. | `{"project": "my-proj", "region": "europe-central2"}` |
 
 ### 🛟 `fallback_model` (model level)
 
@@ -131,6 +132,58 @@ error chunk instead. Attempts are bounded by the retry policy
 of the endpoint (`HttpDispatch.RetryPolicy.MAX_RECONNECTIONS`, default `10`); set
 `RETRY_ON_ANY_ERROR_STATUS = False` on an endpoint's `RetryResponse` to restrict retries to the historical allow-list
 (`429`, `500`, `502`, `503`, `504`).
+
+### 🪶 Google Vertex AI (Gemini) providers
+
+`api_type: "vertex_ai"` providers speak the native Vertex AI REST protocol
+(`generateContent` / `streamGenerateContent?alt=sse` / `batchEmbedContents`).
+Clients keep using the OpenAI‑shaped endpoints (`/v1/chat/completions`,
+`/v1/embeddings`, …) — the router translates the request and the response,
+including tool calling (`tools` ↔ `functionDeclarations` / `tool_calls`) and
+multimodal content parts (text, `data:`‑URI images, `fileData` images).
+
+The model resource path is built from `api_host` + `provider_options`:
+
+* `api_host` = `https://REGION-aiplatform.googleapis.com` with
+  `provider_options.project` / `provider_options.region` set, **or**
+* `api_host` = the full
+  `https://REGION-aiplatform.googleapis.com/v1/projects/{p}/locations/{r}`
+  base (the prefix is then detected and not duplicated).
+
+`model_path` is the model name (or a full `publishers/.../models/...`
+resource). Authentication resolution order: `api_token` (`Bearer`) →
+`provider_options.api_key` (`x-goog-api-key`) → Google Application Default
+Credentials (optional `google` dependency — see
+[ENV_DEFINITIONS](ENV_DEFINITIONS.md#google-vertex-ai-variables-optional)).
+The provider health check pings the model resource (`GET`), so a misconfigured
+project/region/credentials is reported as `auth_error` / `not_found` instead
+of keeping the provider in the active pool.
+
+```json
+{
+  "google_models": {
+    "google/gemini-2.5-flash-vertex": {
+      "providers": [
+        {
+          "id": "vertex-gemini-2_5-flash",
+          "api_host": "https://europe-central2-aiplatform.googleapis.com",
+          "api_token": "YOUR_GOOGLE_ACCESS_TOKEN",
+          "api_type": "vertex_ai",
+          "input_size": 1048576,
+          "model_path": "gemini-2.5-flash",
+          "keep_alive": null,
+          "tool_calling": true,
+          "nworkers": 10,
+          "provider_options": {
+            "project": "YOUR_GCP_PROJECT_ID",
+            "region": "europe-central2"
+          }
+        }
+      ]
+    }
+  }
+}
+```
 
 ### `active_models` section
 
