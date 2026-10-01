@@ -14,6 +14,8 @@ import threading
 
 from typing import Dict, List, Optional
 
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
+
 try:
     import redis
 except ImportError:
@@ -354,15 +356,37 @@ class RedisProviderMonitor:
         # the monitor (KeyError used to take the worker down).
         api_type = provider.get("api_type")
         base_url = host.rstrip("/")
-        candidates = self._ping_candidates(api_type)
 
-        # Send the provider token when configured: auth‑required providers
-        # (OpenAI, Anthropic, …) would otherwise 401 on the ping and be
-        # wrongly reported as broken (``auth_error``).
+        # Provider types that know their own probe (e.g. Vertex AI, whose
+        # resource path depends on the provider's project/region) supply a
+        # single canonical ping path plus their full authentication headers;
+        # every other type keeps the historical PING_PATHS + token logic.
+        candidates = None
         headers: Dict[str, str] = {}
-        api_token = provider.get("api_token")
-        if api_token:
-            headers["Authorization"] = f"Bearer {api_token}"
+        if api_type:
+            typed_ping_path = ApiTypesDispatcher.ping_path(
+                str(api_type).strip().lower(), provider
+            )
+            if typed_ping_path:
+                candidates = [typed_ping_path]
+                try:
+                    headers = ApiTypesDispatcher.request_headers(
+                        str(api_type).strip().lower(), provider
+                    )
+                except Exception as exc:  # pylint: disable=broad-exception-caught
+                    self.logger.debug(
+                        "[monitor] provider %s — typed ping headers failed: %s",
+                        provider_id,
+                        exc,
+                    )
+        if candidates is None:
+            candidates = self._ping_candidates(api_type)
+            # Send the provider token when configured: auth‑required
+            # providers (OpenAI, Anthropic, …) would otherwise 401 on the
+            # ping and be wrongly reported as broken (``auth_error``).
+            api_token = provider.get("api_token")
+            if api_token:
+                headers["Authorization"] = f"Bearer {api_token}"
 
         ok = False
         reason = "unreachable"

@@ -16,7 +16,7 @@ very same balancing rules.
 
 import logging
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from llm_router_api.core.model_config import ApiModelConfig
@@ -50,6 +50,11 @@ class ApiModel:
         Optional path to model (in case when local model is used)
     keep_alive : str
         Optional keep alive (time in s or m or h) model
+    provider_options : Dict
+        Optional provider‑specific options (e.g. Vertex AI ``project`` /
+        ``region`` / ``api_version``).  Carried verbatim into the request
+        adapter of the matching ``api_type``; never forwarded to the
+        downstream payload.
     """
 
     id: str
@@ -60,6 +65,7 @@ class ApiModel:
     input_size: int
     model_path: Optional[str] = None
     keep_alive: Optional[str] = None
+    provider_options: Dict[str, Any] = field(default_factory=dict)
     tool_calling: Optional[bool] = False
     is_embedding: Optional[bool] = False
     lease: Optional[str] = None
@@ -103,6 +109,7 @@ class ApiModel:
             keep_alive=str(cfg.get("keep_alive", "")),
             tool_calling=bool(cfg.get("tool_calling", False)),
             is_embedding=bool(cfg.get("is_embedding", False)),
+            provider_options=dict(cfg.get("provider_options") or {}),
             # Transient worker-slot lease handed over by the load-balancing
             # strategy; it has to survive the round trip through ``as_dict()``
             # so ``put_provider`` can release exactly this slot.
@@ -130,6 +137,9 @@ class ApiModel:
             "tool_calling": self.tool_calling,
             "is_embedding": self.is_embedding,
         }
+        # Omitted when empty so the dictionary keeps its historical shape.
+        if self.provider_options:
+            config["provider_options"] = dict(self.provider_options)
         # Carried back to the strategy that acquired it; omitted when there is
         # no lease so the dictionary keeps its historical shape.
         if self.lease:
@@ -155,7 +165,7 @@ class ModelHandler:
         Loader responsible for reading and exposing model configuration.
     """
 
-    LIST_MODEL_FIELDS_REMOVE = ["model_path", "api_token"]
+    LIST_MODEL_FIELDS_REMOVE = ["model_path", "api_token", "provider_options"]
 
     def __init__(
         self, models_config_path: str, provider_chooser: ProviderStrategyFacade

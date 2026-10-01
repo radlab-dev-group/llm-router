@@ -54,6 +54,10 @@ def _provider(**overrides):
         "api_token": "sekret",
         "id": "prov-1",
         "api_host": "http://host:7000",
+        # the executor finalises headers/body through the request‑adapter
+        # hooks of the provider's api type – "openai" keeps the historical
+        # behaviour these tests pin.
+        "api_type": "openai",
     }
     base.update(overrides)
     return SimpleNamespace(**base)

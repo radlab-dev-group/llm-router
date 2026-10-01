@@ -12,6 +12,7 @@ from requests import Response
 from typing import Any, Dict, Iterator, Optional
 
 from llm_router_api.core.model_handler import ApiModel
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
 from llm_router_api.core.stream_handler import StreamHandler, StreamConversion
 from llm_router_api.core.errors import sanitize_error_message
 
@@ -56,28 +57,22 @@ class HttpRequestExecutor:
         """
         Execute a regular (non‑streaming) HTTP request.
         """
-        # inject model name
-        params["model"] = (
-            api_model_provider.model_path
-            if api_model_provider.model_path
-            else api_model_provider.name
-        )
+        api_type = api_model_provider.api_type
 
         full_url = self._prepare_full_url_ep(
             ep_url=ep_url, api_model_provider=api_model_provider
         )
         if not headers:
-            headers = {"Content-Type": "application/json"}
+            headers = ApiTypesDispatcher.request_headers(
+                api_type, api_model_provider
+            )
 
-        # auth header
-        token_str = api_model_provider.api_token
-        if token_str:
-            headers["Authorization"] = f"Bearer {token_str}"
-
-        # prepend system prompt if required
-        system_msg = {}
-        if prompt_str:
-            system_msg = {"role": "system", "content": prompt_str}
+        # resolved system prompt (when any) – the provider type decides how
+        # to attach it to the body (OpenAI-style ``messages`` prepend vs.
+        # protocol-specific fields).
+        system_msg = (
+            {"role": "system", "content": prompt_str} if prompt_str else None
+        )
 
         if call_for_each_user_msg:
             return self._call_for_each_user_message(
@@ -88,8 +83,9 @@ class HttpRequestExecutor:
                 api_model_provider=api_model_provider,
             )
 
-        if prompt_str:
-            params["messages"] = [system_msg] + params.get("messages", [])
+        params = ApiTypesDispatcher.request_body(
+            api_type, params, api_model_provider, system_msg
+        )
 
         try:
             if self._endpoint.method == "POST":
@@ -154,6 +150,8 @@ class HttpRequestExecutor:
                 StreamConversion.OPENAI,
                 StreamConversion.OLLAMA_TO_OPENAI,
                 StreamConversion.ANTHROPIC_TO_OPENAI,
+                StreamConversion.VERTEX,
+                StreamConversion.VERTEX_TO_OPENAI,
             ):
                 return self._stream_handler.stream_openai(
                     url="",
@@ -181,22 +179,24 @@ class HttpRequestExecutor:
                     force_text=force_text,
                 )
 
-        # common preparation
-        params["model"] = (
-            api_model_provider.model_path
-            if api_model_provider.model_path
-            else api_model_provider.name
-        )
+        # common preparation – the provider type finalises the body
+        # (model‑name injection for OpenAI‑style backends, full protocol
+        # translation otherwise) and builds the authentication headers.
+        # The flag is set **before** the body hook: translation providers
+        # (e.g. Vertex AI) drop it from the native body, while the default
+        # hook keeps it for OpenAI‑style streaming.
         params["stream"] = True
+        params = ApiTypesDispatcher.request_body(
+            api_model_provider.api_type, params, api_model_provider, None
+        )
         full_url = self._prepare_full_url_ep(
             ep_url, api_model_provider=api_model_provider
         )
 
         method = (self._endpoint.method or "POST").upper()
-        headers = {"Content-Type": "application/json"}
-        token = api_model_provider.api_token
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        headers = ApiTypesDispatcher.request_headers(
+            api_model_provider.api_type, api_model_provider
+        )
 
         # ----------------------------------------------------------------- #
         # Dispatch to the appropriate StreamHandler method
@@ -303,6 +303,28 @@ class HttpRequestExecutor:
                     api_model_provider=api_model_provider,
                     force_text=force_text,
                 )
+            case StreamConversion.VERTEX:
+                return self._stream_handler.stream_vertex(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
+            case StreamConversion.VERTEX_TO_OPENAI:
+                return self._stream_handler.stream_vertex_to_openai(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
             case StreamConversion.OPENAI | None:
                 return self._stream_handler.stream_openai(
                     url=full_url,
@@ -362,7 +384,7 @@ class HttpRequestExecutor:
     def _call_for_each_user_message(
         self,
         ep_url: str,
-        system_message: Dict[str, Any],
+        system_message: Optional[Dict[str, Any]],
         params: Dict[str, Any],
         headers: Optional[Dict[str, Any]] = None,
         api_model_provider: Optional[ApiModel] = None,
@@ -384,12 +406,26 @@ class HttpRequestExecutor:
                 "_call_http_request_for_each_user_message "
                 'is not implemented for "GET" method'
             )
+        if api_model_provider is None:
+            raise RuntimeError(
+                "_call_for_each_user_message requires an api_model_provider"
+            )
 
         _payloads = []
         for m in params.get("messages", []):
             if m.get("role", "?") == "user":
                 _params = params.copy()
-                _params["messages"] = [system_message, m]
+                _params["messages"] = (
+                    [system_message] if system_message else []
+                ) + [m]
+                # per‑payload body finalisation (model injection /
+                # protocol translation) – one call per user message.
+                _params = ApiTypesDispatcher.request_body(
+                    api_model_provider.api_type,
+                    _params,
+                    api_model_provider,
+                    None,
+                )
                 _payloads.append([_params, m["content"]])
 
         contents = []

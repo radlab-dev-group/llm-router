@@ -42,9 +42,35 @@ SecureEndpointI                 – security scaffolding (masking, guardrails, a
     * `return_response_ok(body)` / `return_response_not_ok(body)` – standardized JSON response envelopes.
 * The constructor validates the endpoint definition at startup:
     * `api_types` must be non‑empty and intersect the global `API_TYPES` list (`"builtin"`, `"openai"`, `"ollama"`,
-      `"lmstudio"`, `"vllm"`, `"anthropic"` — defined in
+      `"lmstudio"`, `"vllm"`, `"anthropic"`, `"vertex_ai"` — defined in
       `llm_router_api/core/api_types/dispatcher.py`), otherwise `RuntimeError`.
     * `method` must be one of `METHODS`, otherwise `ValueError`.
+
+### Provider‑specific backends — the request‑adapter hooks
+
+Backends whose wire protocol is **not** OpenAI‑compatible (e.g. Google
+Vertex AI / Gemini) do not subclass an endpoint at all: they implement an
+`ApiTypesI` whose *request‑adapter hooks* tell the router how to build the
+outbound call for a given provider. The hooks live on
+`llm_router_api/core/api_types/types_i.py` and are dispatched by
+`ApiTypesDispatcher`:
+
+* `request_path(endpoint_url, provider, stream)` — backend path (Vertex
+  builds its `projects/{p}/locations/{r}/…/models/{m}:generateContent`
+  resource path from `provider_options`);
+* `request_headers(provider)` — authentication (Vertex: `api_token` →
+  `provider_options.api_key` → Google ADC);
+* `request_body(payload, provider, system_message)` — protocol translation
+  (OpenAI chat/embeddings → Gemini `contents` / `generationConfig` /
+  `batchEmbedContents`);
+* `owns_message_normalization()` — when `True` the router skips its role
+  normaliser (Vertex merges turns itself, keeping `tool_call_id`);
+* `ping_path(provider)` — provider‑specific health probe for the monitor.
+
+The default hook implementations reproduce the historical OpenAI‑style
+behaviour, so existing backends are unaffected. Adding a new backend is
+therefore: one `ApiTypesI` subclass + a `_REGISTRY` entry + (optionally)
+`StreamConversion` cases for its streaming format.
 
 ### `EndpointWithHttpRequestI` (proxy base)
 

@@ -61,4 +61,9 @@ OPENAI_COMPATIBLE_PROVIDERS = [
     "anthropic",
 ]
 
-ALL_PROVIDERS = OPENAI_COMPATIBLE_PROVIDERS + ["ollama"]
+# Google Vertex AI (Gemini) – native ``generateContent`` wire protocol,
+# reached through the OpenAI‑shaped public endpoints (not OpenAI‑compatible
+# on the wire, hence kept out of ``OPENAI_COMPATIBLE_PROVIDERS``).
+VERTEX_AI_PROVIDER = "vertex_ai"
+
+ALL_PROVIDERS = OPENAI_COMPATIBLE_PROVIDERS + ["ollama", VERTEX_AI_PROVIDER]

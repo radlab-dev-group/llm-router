@@ -76,8 +76,10 @@ class TestProviderLists:
 
     def test_all_providers_composition(self):
         # ``ALL_PROVIDERS`` extends the OpenAI‑compatible list with Ollama
-        # (pin the exact composition).
-        assert ALL_PROVIDERS == OPENAI_COMPATIBLE_PROVIDERS + ["ollama"]
+        # and Vertex AI (pin the exact composition).
+        assert ALL_PROVIDERS == (
+            OPENAI_COMPATIBLE_PROVIDERS + ["ollama", "vertex_ai"]
+        )
 
     def test_ollama_is_not_openai_compatible(self):
         assert "ollama" not in OPENAI_COMPATIBLE_PROVIDERS
@@ -91,4 +93,5 @@ class TestProviderLists:
             "llama.cpp",
             "anthropic",
             "ollama",
+            "vertex_ai",
         }

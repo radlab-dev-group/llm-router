@@ -34,6 +34,9 @@ def _read_requirements(path: Path) -> list:
 
 requirements_api = _read_requirements(BASE_DIR / "requirements.txt")
 
+# Optional Vertex AI / Google Cloud credentials support
+requirements_google = _read_requirements(BASE_DIR / "requirements-google.txt")
+
 # ----------------------------------------------------------------------
 # Extras handling
 # ----------------------------------------------------------------------
@@ -41,6 +44,8 @@ extras = {
     "api": requirements_api,
     "metrics": ["prometheus-client"],  # prometheus-client==0.21.0
     "vault": ["hvac", "bcrypt"],  # "hvac==2.3.0", "bcrypt==5.0.0"
+    # Google ADC token resolution for `vertex_ai` providers
+    "google": requirements_google,  # google-auth
 }
 
 # ----------------------------------------------------------------------

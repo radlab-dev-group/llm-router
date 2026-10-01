@@ -21,7 +21,7 @@ dispatcher itself.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Optional, Type
 
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
@@ -31,11 +31,20 @@ from llm_router_api.core.api_types.openai import OpenAIApiType
 from llm_router_api.core.api_types.llamacpp import LLamaCPPApiType
 from llm_router_api.core.api_types.lmstudio import LMStudioApiType
 from llm_router_api.core.api_types.anthropic import AnthropicType
+from llm_router_api.core.api_types.vertex_ai import VertexAiType
 
 # ----------------------------------------------------------------------------------
 # Public constant – the full list of API‑type identifiers recognised by the library.
 # ----------------------------------------------------------------------------------
-API_TYPES = ["builtin", "openai", "ollama", "lmstudio", "vllm", "anthropic"]
+API_TYPES = [
+    "builtin",
+    "openai",
+    "ollama",
+    "lmstudio",
+    "vllm",
+    "anthropic",
+    "vertex_ai",
+]
 
 
 class ApiTypesDispatcher:
@@ -71,6 +80,7 @@ class ApiTypesDispatcher:
         "openai": OpenAIApiType,
         "lmstudio": LMStudioApiType,
         "anthropic": AnthropicType,
+        "vertex_ai": VertexAiType,
     }
 
     # -----------------------------------------------------------------------
@@ -109,15 +119,23 @@ class ApiTypesDispatcher:
             )
         return impl()
 
-    def get_proper_endpoint(self, api_type: str, endpoint_url: str) -> str:
+    @classmethod
+    def get_proper_endpoint(
+        cls,
+        api_type: str,
+        endpoint_url: str,
+        provider: Any = None,
+        stream: bool = False,
+    ) -> str:
         """
         Resolve a raw endpoint fragment to the canonical endpoint path for the
         specified ``api_type``.
 
-        The method inspects ``endpoint_url`` (after stripping leading/trailing
-        ``/`` characters) for known keywords and forwards the request to the
-        appropriate concrete implementation registered in
-        :class:`ApiTypesDispatcher`.
+        The resolution is delegated to the concrete type's
+        ``request_path`` hook; the default hook inspects ``endpoint_url``
+        (after stripping leading/trailing ``/`` characters) for known
+        keywords and forwards the request to the appropriate endpoint
+        descriptor.
 
         Parameters
         ----------
@@ -136,6 +154,15 @@ class ApiTypesDispatcher:
 
             Leading and trailing ``/`` characters are removed before the check.
 
+        provider : Any
+            Optional provider descriptor (``ApiModel`` or a configuration
+            mapping); types whose backend path depends on the provider
+            (e.g. Vertex AI) use it to build the resource path.
+
+        stream : bool
+            Whether the request is a streaming one; types with a separate
+            streaming operation (e.g. Vertex AI) select it accordingly.
+
         Returns
         -------
         str
@@ -152,24 +179,18 @@ class ApiTypesDispatcher:
 
         Notes
         -----
-        * The check order is: ``"completions"``, then ``"embeddings"``,
-          then ``"responses"``, then fallback to ``chat``.  If multiple
-          appear, the first one in the check order wins.
-        * This method is a thin wrapper around the class methods
-          :meth:`chat_ep`, :meth:`responses_ep`, :meth:`completions_ep`,
-          and :meth:`embeddings_ep`, which each delegates to the concrete
-          ``ApiTypesI`` implementation.
+        * Keyword check order (default hook): ``"completions"``, then
+          ``"responses"``, then ``"embed"``, then ``"messages"``, fallback
+          to ``chat``.  If multiple appear, the first one in the check
+          order wins.
+        * This method is a thin wrapper around the ``request_path`` hook of
+          the concrete ``ApiTypesI`` implementation (whose default mirrors
+          the :meth:`chat_ep`, :meth:`responses_ep`, :meth:`completions_ep`
+          and :meth:`embeddings_ep` descriptors).
         """
-        endpoint_url = endpoint_url.strip("/")
-        if "completions" in endpoint_url:
-            return self.completions_ep(api_type=api_type)
-        if "responses" in endpoint_url:
-            return self.responses_ep(api_type=api_type)
-        if "embed" in endpoint_url:
-            return self.embeddings_ep(api_type=api_type)
-        if "messages" in endpoint_url:
-            return self.messages_ep(api_type=api_type)
-        return self.chat_ep(api_type=api_type)
+        return cls._get_impl(api_type).request_path(
+            endpoint_url=endpoint_url, provider=provider, stream=stream
+        )
 
     @classmethod
     def chat_ep(cls, api_type: str) -> str:
@@ -205,6 +226,54 @@ class ApiTypesDispatcher:
         Delegate to the proper implementation to get messages endpoint path.
         """
         return cls._get_impl(api_type).messages_ep()
+
+    @classmethod
+    def request_headers(cls, api_type: str, provider: Any) -> Dict[str, str]:
+        """
+        Delegate to the proper implementation to build the outbound
+        HTTP headers for ``provider``.
+        """
+        return cls._get_impl(api_type).request_headers(provider)
+
+    @classmethod
+    def request_body(
+        cls,
+        api_type: str,
+        payload: Any,
+        provider: Any,
+        system_message: Optional[Dict[str, str]] = None,
+    ) -> Any:
+        """
+        Delegate to the proper implementation to finalise the request
+        body for ``provider``.
+        """
+        return cls._get_impl(api_type).request_body(
+            payload, provider, system_message
+        )
+
+    @classmethod
+    def owns_message_normalization(cls, api_type: str) -> bool:
+        """
+        Whether the provider type normalises messages by itself.  Unknown
+        ``api_type`` values are treated as ``False`` (the router keeps
+        its historical normalisation).
+        """
+        try:
+            return bool(cls._get_impl(api_type).owns_message_normalization())
+        except ValueError:
+            return False
+
+    @classmethod
+    def ping_path(cls, api_type: str, provider: Any) -> Optional[str]:
+        """
+        Provider‑specific health‑check path (``None`` → the monitor falls
+        back to its generic probe list).  Unknown ``api_type`` values
+        return ``None`` instead of raising.
+        """
+        try:
+            return cls._get_impl(api_type).ping_path(provider)
+        except ValueError:
+            return None
 
     @classmethod
     def tags(

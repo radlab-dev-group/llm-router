@@ -46,6 +46,20 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 > production start can still be aborted. Enable it only for local troubleshooting (`LLM_ROUTER_VERBOSE=1`,
 > `llm-router server start --verbose`) and never in production or on shared log storage.
 
+## Google Vertex AI variables (optional)
+
+Relevant only for providers with `api_type: "vertex_ai"` that do not carry an explicit
+`api_token`; the router then resolves a Google access token through Application Default
+Credentials (service-account JSON via `provider_options.credentials_file` or
+`GOOGLE_APPLICATION_CREDENTIALS`, GCE/GKE metadata server, Workload Identity). This needs
+the optional `google` dependency (`pip install "radlab-llm-router[google]"`, see
+[`requirements-google.txt`](../../requirements-google.txt)).
+
+| Variable                              | Default                                            | Description                                                                                          |
+|---------------------------------------|----------------------------------------------------|------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_GOOGLE_SCOPES`            | `https://www.googleapis.com/auth/cloud-platform`   | Comma‑separated OAuth2 scopes requested when resolving an access token.                              |
+| `LLM_ROUTER_GOOGLE_TOKEN_REFRESH_SKEW`| `120`                                              | Seconds before expiry at which a cached access token is refreshed.                                   |
+
 ---
 
 ## Redis variables

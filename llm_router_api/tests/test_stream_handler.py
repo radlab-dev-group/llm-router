@@ -315,6 +315,10 @@ class TestResolveStreamType:
             (["lmstudio"], "openai", StreamConversion.OPENAI_TO_LMSTUDIO),
             (["lmstudio"], "ollama", StreamConversion.OLLAMA_TO_LMSTUDIO),
             (["lmstudio"], "anthropic", None),
+            (["openai"], "vertex_ai", StreamConversion.VERTEX_TO_OPENAI),
+            (["vertex_ai"], "vertex_ai", StreamConversion.VERTEX),
+            (["ollama"], "vertex_ai", None),
+            (["lmstudio"], "vertex_ai", None),
         ],
     )
     def test_matrix(self, ep, prov, expected):
@@ -468,6 +472,160 @@ class TestStreamAnthropicToOpenAI:
         ]
         assert content[0]["choices"][0]["delta"]["content"] == "hi"
         patch.request.assert_called_once()
+
+
+class TestStreamVertex:
+    def test_passthrough_keeps_raw_sse(self, monkeypatch):
+        resp = _FakeResp(content=[b'data: {"candidates": []}', b"data: [DONE]"])
+        patch = _ReqPatch(monkeypatch, response=resp)
+        handler = StreamHandler()
+        headers = {}
+        out = _consume(
+            handler.stream_vertex(
+                "http://u", {}, "POST", headers, None, _endpoint(), _model()
+            )
+        )
+        assert headers["Accept"] == "text/event-stream"
+        assert b'data: {"candidates": []}' in out
+        assert b"data: [DONE]" in out
+        patch.post.assert_called_once()
+
+    def test_force_text_branch(self, monkeypatch):
+        ep = _endpoint()
+        handler = StreamHandler()
+        out = _consume(
+            handler.stream_vertex(
+                "http://u",
+                {},
+                "POST",
+                {},
+                None,
+                ep,
+                _model(),
+                force_text="forced",
+            )
+        )
+        parsed = [
+            json.loads(x[5:].decode()) for x in out if x.startswith(b"data: {")
+        ]
+        assert parsed[0]["choices"][0]["delta"]["content"] == "forced"
+        assert out[-1] == b"data: [DONE]\n\n"
+        ep.unset_model.assert_called_once()
+
+
+class TestStreamVertexToOpenAI:
+    def _lines(self):
+        return [
+            (
+                b"data: "
+                + json.dumps(
+                    {"candidates": [{"content": {"parts": [{"text": "he"}]}}]}
+                ).encode()
+            ),
+            (
+                b"data: "
+                + json.dumps(
+                    {
+                        "candidates": [
+                            {
+                                "content": {"parts": [{"text": "llo"}]},
+                                "finishReason": "STOP",
+                            }
+                        ],
+                        "usageMetadata": {
+                            "promptTokenCount": 1,
+                            "candidatesTokenCount": 1,
+                            "totalTokenCount": 2,
+                        },
+                    }
+                ).encode()
+            ),
+            b"data: [DONE]",
+        ]
+
+    def test_converts_sse_to_openai(self, monkeypatch):
+        resp = _FakeResp(lines=self._lines())
+        patch = _ReqPatch(monkeypatch, response=resp)
+        handler = StreamHandler()
+        headers = {}
+        out = _consume(
+            handler.stream_vertex_to_openai(
+                "http://u",
+                {"a": 1},
+                "POST",
+                headers,
+                None,
+                _endpoint(),
+                _model("mp", "nm"),
+            )
+        )
+        assert headers["Accept"] == "text/event-stream"
+        assert patch.request.call_args.kwargs["json"] == {"a": 1}
+        assert out[-1] == b"data: [DONE]\n\n"
+        chunks = [
+            json.loads(x[5:].decode()) for x in out if x.startswith(b"data: {")
+        ]
+        assert len(chunks) == 2
+        assert chunks[0]["choices"][0]["delta"]["role"] == "assistant"
+        assert chunks[0]["choices"][0]["delta"]["content"] == "he"
+        assert chunks[1]["choices"][0]["finish_reason"] == "stop"
+        assert chunks[1]["usage"]["total_tokens"] == 2
+
+    def test_pre_content_failure_raises_failover_signal(self, monkeypatch):
+        patch = _ReqPatch(monkeypatch, side_effect=requests.ConnectionError("boom"))
+        handler = StreamHandler()
+        with pytest.raises(ProviderStreamError):
+            _consume(
+                handler.stream_vertex_to_openai(
+                    "http://u", {}, "POST", {}, None, _endpoint(), _model()
+                )
+            )
+        patch.request.assert_called_once()
+
+    def test_http_error_before_content_raises_failover_signal(self, monkeypatch):
+        resp = _FakeResp(status_code=404, text="not found")
+        _ReqPatch(monkeypatch, response=resp)
+        handler = StreamHandler()
+        with pytest.raises(ProviderStreamError):
+            _consume(
+                handler.stream_vertex_to_openai(
+                    "http://u", {}, "POST", {}, None, _endpoint(), _model()
+                )
+            )
+
+    def test_mid_stream_failure_emits_error_chunk(self, monkeypatch):
+        class _BrokenLines:
+            def __init__(self):
+                self._lines = [
+                    b"data: " + json.dumps({"candidates": []}).encode(),
+                    b"__broken__",
+                ]
+                self._i = 0
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                if self._i >= len(self._lines):
+                    raise StopIteration
+                line = self._lines[self._i]
+                self._i += 1
+                if line == b"__broken__":
+                    raise requests.exceptions.ChunkedEncodingError("mid-stream drop")
+                return line
+
+        class _BrokenResp(_FakeResp):
+            def iter_lines(self, decode_unicode=False):
+                return _BrokenLines()
+
+        _ReqPatch(monkeypatch, response=_BrokenResp())
+        handler = StreamHandler()
+        out = _consume(
+            handler.stream_vertex_to_openai(
+                "http://u", {}, "POST", {}, None, _endpoint(), _model()
+            )
+        )
+        assert any(b"error" in x for x in out)
 
 
 class TestPassthroughGenerator:
