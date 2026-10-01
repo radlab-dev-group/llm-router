@@ -17,6 +17,7 @@ from requests import Response
 from typing import Iterator, Dict, Any, Optional
 
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
+from llm_router_api.core.api_types.vertex_ai import VertexAiConverters
 from llm_router_api.core.errors import (
     ProviderStreamError,
     connection_error_code,
@@ -175,6 +176,8 @@ class StreamConversion(Enum):
     LMSTUDIO_PASSTHROUGH = auto()
     ANTHROPIC_TO_OPENAI = auto()
     OPENAI_TO_ANTHROPIC = auto()
+    VERTEX = auto()
+    VERTEX_TO_OPENAI = auto()
 
 
 class StreamHandler:
@@ -604,6 +607,138 @@ class StreamHandler:
             api_model_provider=api_model_provider,
             options=options,
         )
+
+    def stream_vertex(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Optional[Dict[str, Any]],
+        endpoint,
+        api_model_provider,
+        force_text: Optional[str] = None,
+    ) -> Iterator[bytes]:
+        """
+        Vertex AI (Gemini)‑native streaming (SSE) – returns the raw SSE
+        bytes unchanged.
+        """
+        if force_text is not None:
+
+            def _force_iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_openai(
+                        force_text or "", api_model_provider
+                    )
+
+            return _force_iter()
+
+        headers["Accept"] = "text/event-stream"
+        return self._passthrough_generator(
+            method=method,
+            url=url,
+            payload=payload,
+            headers=headers,
+            endpoint=endpoint,
+            api_model_provider=api_model_provider,
+            options=options,
+        )
+
+    def stream_vertex_to_openai(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Optional[Dict[str, Any]],
+        endpoint,
+        api_model_provider,
+        force_text: Optional[str] = None,
+    ) -> Iterator[bytes]:
+        """
+        Convert a Vertex AI (Gemini) ``streamGenerateContent`` SSE stream
+        into an OpenAI‑compatible SSE stream.
+        """
+        if force_text is not None:
+
+            def _force_iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_openai(
+                        force_text or "", api_model_provider
+                    )
+
+            return _force_iter()
+
+        headers["Accept"] = "text/event-stream"
+
+        def _iter() -> Iterator[bytes]:
+            with self._model_unsetter(
+                endpoint, payload, api_model_provider, options
+            ):
+                try:
+                    try:
+                        response = requests.request(
+                            method=method,
+                            url=url,
+                            json=payload,
+                            headers=headers,
+                            stream=True,
+                            timeout=endpoint.timeout,
+                        )
+                    except requests.RequestException as exc:
+                        raise _pre_content_failure(exc) from exc
+                    _raise_for_status(response)
+
+                    ctx = VertexAiConverters.FromGemini.new_stream_ctx(
+                        model=(
+                            (
+                                api_model_provider.model_path
+                                if api_model_provider.model_path
+                                else api_model_provider.name
+                            )
+                            if api_model_provider is not None
+                            else ""
+                        )
+                    )
+                    for line in _guarded_body(response.iter_lines()):
+                        if not line:
+                            continue
+
+                        line_str = line.decode("utf-8")
+                        if not line_str.startswith("data:"):
+                            continue
+
+                        data_str = line_str[5:].strip()
+                        if data_str == "[DONE]":
+                            yield b"data: [DONE]\n\n"
+                            continue
+
+                        try:
+                            chunk = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+
+                        converted = (
+                            VertexAiConverters.FromGemini.convert_stream_chunk(
+                                chunk, ctx
+                            )
+                        )
+                        if converted:
+                            yield f"data: {json.dumps(converted)}\n\n".encode(
+                                "utf-8"
+                            )
+
+                except requests.RequestException as exc:
+                    self._log_request_error(endpoint, exc)
+                    err = {"error": _request_error_message(exc)}
+                    yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+                    return
+
+        return _iter()
 
     @staticmethod
     def _passthrough_stream(
@@ -1212,6 +1347,7 @@ class StreamHandler:
         endpoint_wants_ollama = "ollama" in endpoint_ep_types
         endpoint_wants_anthropic = "anthropic" in endpoint_ep_types
         endpoint_wants_lmstudio = endpoint_ep_types == ["lmstudio"]
+        endpoint_wants_vertex = "vertex_ai" in endpoint_ep_types
         if endpoint_wants_lmstudio:
             endpoint_wants_openai = False
         else:
@@ -1225,6 +1361,7 @@ class StreamHandler:
         provider_is_ollama = provider_type == "ollama"
         provider_is_lmstudio = provider_type == "lmstudio"
         provider_is_anthropic = provider_type == "anthropic"
+        provider_is_vertex = provider_type == "vertex_ai"
         provider_is_openai = (
             provider_type in OPENAI_COMPATIBLE_PROVIDERS
             if not provider_is_lmstudio and not provider_is_anthropic
@@ -1245,6 +1382,8 @@ class StreamHandler:
             StreamConversion.ANTHROPIC_TO_OPENAI: False,
             StreamConversion.OPENAI_TO_ANTHROPIC: False,
             StreamConversion.ANTHROPIC: False,
+            StreamConversion.VERTEX_TO_OPENAI: False,
+            StreamConversion.VERTEX: False,
         }
 
         # ------------------------------------#
@@ -1254,6 +1393,8 @@ class StreamHandler:
             flags[StreamConversion.OLLAMA] = True
         elif endpoint_wants_anthropic and provider_is_anthropic:
             flags[StreamConversion.ANTHROPIC] = True
+        elif endpoint_wants_vertex and provider_is_vertex:
+            flags[StreamConversion.VERTEX] = True
         elif endpoint_wants_openai and provider_is_openai:
             flags[StreamConversion.OPENAI] = True
         elif endpoint_wants_lmstudio and provider_is_lmstudio:
@@ -1279,6 +1420,8 @@ class StreamHandler:
             flags[StreamConversion.ANTHROPIC_TO_OPENAI] = True
         elif endpoint_wants_anthropic and provider_is_openai:
             flags[StreamConversion.OPENAI_TO_ANTHROPIC] = True
+        elif endpoint_wants_openai and provider_is_vertex:
+            flags[StreamConversion.VERTEX_TO_OPENAI] = True
 
         # ------------------------------------#
         # Native LMStudio conversion checks (must be after passthrough)

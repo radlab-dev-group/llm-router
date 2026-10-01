@@ -16,6 +16,7 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 from llm_router_api.core.decorators import EP
 from llm_router_api.core.model_handler import ModelHandler
 from llm_router_api.core.api_types.openai import OpenAIConverters
+from llm_router_api.core.api_types.vertex_ai import VertexAiConverters
 from llm_router_api.base.constants import REST_API_LOG_LEVEL
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
 from llm_router_api.endpoints.passthrough import PassthroughI
@@ -46,6 +47,8 @@ class OpenAIResponseHandler(PassthroughI, abc.ABC):
         resp_json = response.json()
         if "message" in resp_json:
             return OpenAIConverters.FromOllama.convert(response=resp_json)
+        if VertexAiConverters.is_gemini_chat_response(resp_json):
+            return VertexAiConverters.FromGemini.convert_response(resp_json)
         if "content" in resp_json and "role" in resp_json and "id" in resp_json:
             return OpenAIConverters.FromAnthropic.convert_response(resp_json)
         return resp_json
@@ -219,6 +222,8 @@ class OpenAIEmbeddingsHandler(PassthroughI):
             shape.
         """
         response = response.json()
+        if VertexAiConverters.is_gemini_embedding_response(response):
+            return VertexAiConverters.FromGemini.convert_embedding(response=response)
         if "embeddings" in response:
             return OpenAIConverters.FromOllama.convert_embedding(response=response)
         return response
@@ -259,6 +264,21 @@ class OpenAIEmbeddingsV1Handler(PassthroughI):
             direct_return=direct_return,
             method="POST",
         )
+
+        self._prepare_response_function = self.prepare_response_function
+
+    @staticmethod
+    def prepare_response_function(response):
+        """
+        Normalise the downstream embeddings response (Ollama or Vertex AI)
+        into the OpenAI embeddings list format.
+        """
+        response = response.json()
+        if VertexAiConverters.is_gemini_embedding_response(response):
+            return VertexAiConverters.FromGemini.convert_embedding(response=response)
+        if "embeddings" in response:
+            return OpenAIConverters.FromOllama.convert_embedding(response=response)
+        return response
 
 
 class OpenAICompletionHandlerWOApi(OpenAIResponseHandler):
