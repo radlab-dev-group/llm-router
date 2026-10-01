@@ -25,6 +25,9 @@ from llm_router_api.core.api_types.ollama import (  # noqa: E402
     OllamaType,
 )
 from llm_router_api.core.api_types.vllm import VLLMConverters, VllmType  # noqa: E402
+from llm_router_api.core.api_types.vertex_ai import (  # noqa: E402
+    VertexAiType,
+)
 
 
 class TestEndpoints:
@@ -54,9 +57,16 @@ class TestEndpoints:
         assert api.responses_ep() == "v1/responses"
         assert api.embeddings_ep() == "v1/embeddings"
 
+    def test_vertex_endpoints(self):
+        api = VertexAiType()
+        assert api.chat_ep() == ":generateContent"
+        assert api.responses_ep() == ":generateContent"
+        assert api.embeddings_ep() == ":batchEmbedContents"
+        assert api.completions_ep() == api.chat_ep()
+
     @pytest.mark.parametrize(
         "api_type_cls",
-        [VllmType, LMStudioApiType, OllamaType, AnthropicType],
+        [VllmType, LMStudioApiType, OllamaType, AnthropicType, VertexAiType],
     )
     def test_completions_endpoint_equals_chat_endpoint(self, api_type_cls):
         api = api_type_cls()

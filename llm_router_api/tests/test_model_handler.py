@@ -70,6 +70,28 @@ class TestApiModelFromConfig:
         assert model.keep_alive == ""
         assert model.tool_calling is False
         assert model.is_embedding is False
+        assert model.provider_options == {}
+
+    def test_provider_options_read_from_config(self):
+        cfg = {
+            "id": "p",
+            "api_host": "h",
+            "api_type": "vertex_ai",
+            "input_size": 100,
+            "provider_options": {"project": "proj", "region": "r1"},
+        }
+        model = ApiModel.from_config("m", cfg)
+        assert model.provider_options == {"project": "proj", "region": "r1"}
+
+    def test_provider_options_null_defaults_to_empty(self):
+        cfg = {
+            "id": "p",
+            "api_host": "h",
+            "api_type": "vertex_ai",
+            "input_size": 100,
+            "provider_options": None,
+        }
+        assert ApiModel.from_config("m", cfg).provider_options == {}
 
     def test_missing_required_key_raises(self):
         with pytest.raises(KeyError):
@@ -101,6 +123,23 @@ class TestApiModelAsDict:
             "is_embedding",
         }
         assert as_dict["name"] == "m"
+
+    def test_provider_options_round_trip(self):
+        model = ApiModel.from_config(
+            "m",
+            {
+                "id": "p",
+                "api_host": "h",
+                "api_type": "vertex_ai",
+                "input_size": 10,
+                "provider_options": {"project": "p", "region": "r"},
+            },
+        )
+        as_dict = model.as_dict()
+        assert as_dict["provider_options"] == {"project": "p", "region": "r"}
+        # round trip through from_config keeps the options intact
+        rebuilt = ApiModel.from_config("m", as_dict)
+        assert rebuilt.provider_options == model.provider_options
 
 
 class TestApiModelLease:
@@ -162,6 +201,10 @@ class TestModelHandler:
                             "input_size": 8,
                             "model_path": "mp",
                             "api_token": "secret",
+                            "provider_options": {
+                                "project": "p",
+                                "region": "r",
+                            },
                         }
                     ]
                 }
@@ -232,5 +275,6 @@ class TestModelHandler:
         assert m1["id"] == "a"
         assert "model_path" not in m1
         assert "api_token" not in m1
+        assert "provider_options" not in m1
         m2 = listing["ollama"][0]
         assert m2["name"] == "m2"

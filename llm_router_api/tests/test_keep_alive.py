@@ -74,6 +74,28 @@ class TestEndpointFor:
     def test_unknown_api_type_returns_none(self):
         assert KeepAlive._endpoint_for("llama", "http://h") is None
 
+    def test_unknown_api_type_without_provider_model(self):
+        # types resolved through the request adapter need the provider
+        # descriptor; without it there is no endpoint
+        assert KeepAlive._endpoint_for("vertex_ai", "http://h") is None
+
+    def test_vertex_endpoint_from_provider_model(self):
+        provider = {
+            "id": "v1",
+            "api_host": "http://vertex.test",
+            "api_type": "vertex_ai",
+            "api_token": "",
+            "model_path": "gemini-2.5-flash",
+            "provider_options": {"project": "p", "region": "r"},
+        }
+        model = KeepAlive._provider_model("m", provider)
+        assert model is not None
+        assert (
+            KeepAlive._endpoint_for("vertex_ai", "http://vertex.test", model)
+            == "http://vertex.test/v1/projects/p/locations/r/publishers/google/"
+            "models/gemini-2.5-flash:generateContent"
+        )
+
 
 class TestFindProvider:
     def test_model_and_host_match(self):
@@ -172,3 +194,47 @@ class TestSend:
             side_effect=RuntimeError("boom"),
         ):
             keep_alive.send("foo", "http://h1:8000")  # must not raise
+
+
+class TestVertexSend:
+    def _configs(self):
+        return {
+            "model:vertex": {
+                "providers": [
+                    {
+                        "id": "v1",
+                        "api_host": "http://vertex.test",
+                        "api_type": "vertex_ai",
+                        "api_token": "ya29",
+                        "model_path": "gemini-2.5-flash",
+                        "provider_options": {
+                            "project": "p",
+                            "region": "europe-west1",
+                        },
+                    }
+                ]
+            }
+        }
+
+    def test_post_uses_vertex_resource_url_and_gemini_body(self):
+        keep_alive = _make_keep_alive(self._configs())
+        with mock.patch(
+            "llm_router_api.core.monitor.keep_alive.requests.post"
+        ) as fake_post:
+            fake_post.return_value = mock.Mock()
+            keep_alive.send("model:vertex", "http://vertex.test")
+            fake_post.assert_called_once()
+            call = fake_post.call_args
+            assert call.args[0] == (
+                "http://vertex.test/v1/projects/p/locations/europe-west1"
+                "/publishers/google/models/gemini-2.5-flash:generateContent"
+            )
+            payload = call.kwargs["json"]
+            # native Gemini body – no OpenAI keys
+            assert payload["contents"] == [
+                {"role": "user", "parts": [{"text": "ping"}]}
+            ]
+            assert "messages" not in payload
+            assert "model" not in payload
+            assert "stream" not in payload
+            assert call.kwargs["headers"]["Authorization"] == "Bearer ya29"

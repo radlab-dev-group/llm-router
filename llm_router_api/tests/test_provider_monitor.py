@@ -210,6 +210,80 @@ class TestPingPaths:
         assert kwargs["headers"]["Authorization"] == "Bearer secret-token"
 
 
+class TestVertexPing:
+    def _provider(self, **overrides):
+        base = {
+            "id": "prov-1",
+            "api_host": "https://europe-west1-aiplatform.googleapis.com",
+            "api_type": "vertex_ai",
+            "api_token": "ya29.x",
+            "name": "google/gemini-2.5-flash",
+            "model_path": "gemini-2.5-flash",
+            "provider_options": {"project": "p", "region": "europe-west1"},
+        }
+        base.update(overrides)
+        return base
+
+    def test_ping_uses_model_resource_path(self):
+        monitor, redis_client = _make_monitor()
+        with mock.patch(
+            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            return_value=_FakeResp(200),
+        ) as fake_get:
+            monitor._check_and_update_status(self._provider(), "availability:m1")
+        url = fake_get.call_args.args[0]
+        assert url == (
+            "https://europe-west1-aiplatform.googleapis.com"
+            "/v1/projects/p/locations/europe-west1"
+            "/publishers/google/models/gemini-2.5-flash"
+        )
+        assert redis_client.hget("availability:m1", "prov-1") == "true"
+
+    def test_ping_sends_bearer_token_header(self):
+        monitor, _ = _make_monitor()
+        with mock.patch(
+            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            return_value=_FakeResp(200),
+        ) as fake_get:
+            monitor._check_and_update_status(self._provider(), "availability:m1")
+        headers = fake_get.call_args.kwargs["headers"]
+        assert headers["Authorization"] == "Bearer ya29.x"
+        assert headers["Content-Type"] == "application/json"
+
+    def test_ping_403_marks_auth_error(self):
+        monitor, redis_client = _make_monitor()
+        with mock.patch(
+            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            return_value=_FakeResp(403),
+        ):
+            monitor._check_and_update_status(self._provider(), "availability:m1")
+        assert redis_client.hget("availability:m1", "prov-1") == "false"
+
+    def test_adc_header_failure_falls_back_to_no_headers(self):
+        import llm_router_api.core.monitor.provider_monitor as pm
+
+        monitor, _ = _make_monitor()
+        provider = self._provider(api_token="")
+
+        def _boom(api_type, provider_):
+            raise RuntimeError("google-auth is not installed")
+
+        with (
+            mock.patch(
+                "llm_router_api.core.api_types.dispatcher.ApiTypesDispatcher"
+                ".request_headers",
+                _boom,
+            ),
+            mock.patch(
+                "llm_router_api.core.monitor.provider_monitor.requests.get",
+                return_value=_FakeResp(401),
+            ) as fake_get,
+        ):
+            monitor._check_and_update_status(provider, "availability:m1")
+        # ping still ran (with no auth header), marked unavailable
+        assert fake_get.call_args.kwargs["headers"] == {}
+
+
 class TestFallbackProbePaths:
     """A live server that lacks the api_type‑specific health endpoint
     (e.g. ``vllm`` → ``/health`` 404 on an OpenAI‑compatible box) must
