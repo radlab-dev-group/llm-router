@@ -18,7 +18,12 @@ import logging
 import requests
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
+
+if TYPE_CHECKING:  # pragma: no cover - annotation only
+    from llm_router_api.core.model_handler import ApiModel
 
 
 @dataclass(frozen=True)
@@ -99,11 +104,16 @@ class KeepAlive:
 
         api_type = (provider.get("api_type") or "").lower()
         api_host = (provider.get("api_host") or "").rstrip("/")
-        token = provider.get("api_token") or ""
 
-        headers = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+        provider_model = self._provider_model(req.model_name, provider)
+        endpoint = self._endpoint_for(api_type, api_host, provider_model)
+        if not endpoint:
+            self._logger.warning(
+                "[keep-alive] unsupported api_type=%s (model=%s)",
+                api_type,
+                req.model_name,
+            )
+            return
 
         payload = {
             "stream": False,
@@ -113,17 +123,15 @@ class KeepAlive:
             "temperature": self._temperature,
         }
 
-        endpoint = self._endpoint_for(api_type, api_host)
-        if not endpoint:
-            self._logger.warning(
-                "[keep-alive] unsupported api_type=%s (model=%s)",
-                api_type,
-                req.model_name,
-            )
-            return
-
         try:
             timeout = payload.pop("timeout", 60)
+            # The provider type finalises the body (model name for
+            # OpenAI‑style backends, protocol translation otherwise) and
+            # builds the authentication headers.
+            payload = ApiTypesDispatcher.request_body(
+                api_type, payload, provider_model, None
+            )
+            headers = ApiTypesDispatcher.request_headers(api_type, provider_model)
             response = requests.post(
                 endpoint, json=payload, headers=headers, timeout=timeout
             )
@@ -152,16 +160,50 @@ class KeepAlive:
         )
 
     @staticmethod
-    def _endpoint_for(api_type: str, api_host: str) -> Optional[str]:
+    def _provider_model(
+        model_name: str, provider: Dict[str, Any]
+    ) -> Optional["ApiModel"]:
+        """
+        Build an :class:`ApiModel` view of a raw provider configuration
+        dict (the request adapter hooks accept either shape).
+
+        ``ApiModel`` is imported lazily: the load-balancing strategy
+        imports this module, which would create a circular import at
+        module level.
+        """
+        from llm_router_api.core.model_handler import ApiModel
+
+        if not provider.get("api_type"):
+            return None
+        cfg = dict(provider)
+        cfg.setdefault("id", "keep-alive")
+        cfg.setdefault("api_host", "")
+        cfg.setdefault("api_type", "")
+        return ApiModel.from_config(model_name, cfg)
+
+    @staticmethod
+    def _endpoint_for(
+        api_type: str,
+        api_host: str,
+        provider_model: Optional["ApiModel"] = None,
+    ) -> Optional[str]:
         """
         Resolve the full HTTP endpoint for a given ``api_type``.
+
+        Well‑known local backends (vLLM / OpenAI‑compatible, Ollama) keep
+        the historical hardcoded paths; every other registered type is
+        resolved through its request adapter (this is how Vertex AI reaches
+        its resource URL).
 
         Parameters
         ----------
         api_type: str
-            One of ``'vllm'``, ``'openai'``, or ``'ollama'``.
+            Provider type identifier.
         api_host: str
             Base URL of the provider.
+        provider_model: Optional[ApiModel]
+            Provider descriptor; required for types whose path depends on
+            the provider (e.g. Vertex AI).
 
         Returns
         -------
@@ -172,7 +214,18 @@ class KeepAlive:
             return f"{api_host}/v1/chat/completions"
         if api_type == "ollama":
             return f"{api_host}/api/chat"
-        return None
+        if provider_model is None:
+            return None
+        try:
+            ep_path = ApiTypesDispatcher.get_proper_endpoint(
+                api_type,
+                "chat/completions",
+                provider=provider_model,
+                stream=False,
+            )
+        except ValueError:
+            return None
+        return f"{api_host}/{str(ep_path).lstrip('/')}"
 
     def _find_provider(
         self, model_name: str, host: str
