@@ -18,6 +18,11 @@ When ``SERVICE_AS_PROXY`` is ``True`,` the endpoint also contains helper
 methods for performing outbound HTTP requests to an external service.
 """
 
+# This module hosts both endpoint base classes plus the shared request
+# flow (payload preparation, provider routing, streaming, auth), so it is
+# deliberately kept in one place.
+# pylint: disable=too-many-lines
+
 import abc
 import contextvars
 import time
@@ -1427,7 +1432,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 # executor dispatches each of them as its own
                 # ``[system, user]`` call, so the role normalizer (which merges
                 # consecutive same‑role messages) must not run on them.
-                params = self._ensure_alternating_roles(params=params)
+                # Provider types that translate the message list themselves
+                # (e.g. Vertex AI, whose turns must stay ``user``/``model``
+                # alternating while keeping ``tool_call_id``) own the
+                # normalisation as well.
+                if not self._api_type_dispatcher.owns_message_normalization(
+                    api_model_provider.api_type
+                ):
+                    params = self._ensure_alternating_roles(params=params)
 
             self.logger.debug(
                 f"Request model {api_model_provider.name} "
@@ -1450,9 +1462,15 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
                 prompt_str_postfix=prompt_str_postfix,
             )
 
-            # Prepare proper endpoint url
+            # Prepare proper endpoint url – provider‑aware: types whose
+            # backend path depends on the provider (e.g. Vertex AI resource
+            # paths) receive the descriptor; ``stream`` selects the
+            # streaming operation when the type has one.
             ep_url = self._api_type_dispatcher.get_proper_endpoint(
-                api_type=api_model_provider.api_type, endpoint_url=self.name
+                api_type=api_model_provider.api_type,
+                endpoint_url=self.name,
+                provider=api_model_provider,
+                stream=use_streaming,
             )
 
             # 5. Dispatch

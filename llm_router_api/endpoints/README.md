@@ -119,7 +119,7 @@ Everything else below needs a key once auth is on; the permission in brackets co
   The proxy collects the full response from the provider, then returns a single JSON object containing the complete
   text. Use this mode when you need the whole answer before proceeding.
 
-Both modes are supported for every provider that implements the streaming interface (OpenAI, Ollama, vLLM). The `stream`
+Both modes are supported for every provider that implements the streaming interface (OpenAI, Ollama, vLLM, Anthropic, Vertex AI). The `stream`
 flag lives in the request schema (`OpenAIChatModel` and analogous models) and is honoured automatically by the proxy.
 
 ### Payload format
