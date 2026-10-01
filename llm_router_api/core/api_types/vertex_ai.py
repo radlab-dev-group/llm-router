@@ -65,6 +65,21 @@ _SCHEMA_TYPE_MAP = {
 }
 
 
+def _carry_thought_signature(
+    part: Dict[str, Any], tool_call: Dict[str, Any]
+) -> None:
+    """
+    Copy a thinking‑model ``thoughtSignature`` onto an OpenAI tool call.
+
+    The signature is opaque and Gemini requires it to be echoed back on the
+    next request turn, so it rides on the tool call as ``thought_signature``:
+    an additive field, present only for models that actually produce one.
+    """
+    signature = part.get("thoughtSignature")
+    if signature:
+        tool_call["thought_signature"] = str(signature)
+
+
 class VertexAiType(ApiTypesI):
     """
     Concrete descriptor for Google Vertex AI (Gemini) endpoints.
@@ -235,6 +250,26 @@ class VertexAiType(ApiTypesI):
         """
         return self._resource_path(provider)
 
+    def on_response_status(self, provider: Any, status_code: int) -> None:
+        """
+        Evict a Google access token the upstream rejected.
+
+        A ``401``/``403`` on a request authenticated through Application Default
+        Credentials means the cached token went stale (revoked, clock skew,
+        rotated service account); without the eviction every later request keeps
+        replaying the same rejected token until the process restarts.  Tokens the
+        operator manages directly (``api_token``, ``provider_options.api_key``)
+        are left alone — the router's cache holds nothing to drop.
+        """
+        if status_code not in (401, 403):
+            return
+        if self._provider_field(provider, "api_token", ""):
+            return
+        options = self._provider_options(provider)
+        if str(options.get("api_key") or "").strip():
+            return
+        GoogleAccessTokenProvider.invalidate(options)
+
     def _build_embedding_body(
         self, params: Dict[str, Any], provider: Any
     ) -> Dict[str, Any]:
@@ -293,6 +328,24 @@ class VertexAiConverters:
     # ------------------------------------------------------------------
     # Shared helpers
     # ------------------------------------------------------------------
+    @classmethod
+    def map_finish_reason(
+        cls, finish_reason: Any, has_tool_calls: bool = False
+    ) -> str:
+        """
+        Translate a Gemini ``finishReason`` into the OpenAI ``finish_reason``.
+
+        Unknown or unmapped values (``MALFORMED_FUNCTION_CALL``, ``OTHER``,
+        ``UNEXPECTED_TOOL_CALL``) collapse to ``"stop"`` rather than ``None``:
+        a terminal chunk without a finish reason leaves OpenAI clients waiting
+        for an end that never comes.  A turn that ended on a function call
+        reports ``"tool_calls"``, which is what clients key off.
+        """
+        if has_tool_calls:
+            return "tool_calls"
+        mapped = cls.FINISH_REASON_MAP.get(str(finish_reason or ""))
+        return mapped or "stop"
+
     @staticmethod
     def is_gemini_chat_response(payload: Dict[str, Any]) -> bool:
         """
@@ -476,6 +529,12 @@ class VertexAiConverters:
             """
             params = dict(params or {})
             messages = params.get("messages") or []
+            tool_names = cls._tool_call_names(messages)
+            declarations = VertexAiConverters._function_declarations(
+                params.get("tools")
+            )
+            if not declarations:
+                cls._warn_orphan_tool_history(messages)
 
             contents: List[Dict[str, Any]] = []
             system_parts: List[Dict[str, Any]] = []
@@ -486,20 +545,19 @@ class VertexAiConverters:
                 if role == "system":
                     system_parts.extend(cls._parts_for(message.get("content")))
                     continue
+                gemini_role = "user"
                 if role == "tool":
-                    part: Dict[str, Any] = {
-                        "functionResponse": {
-                            "name": message.get("name") or "tool",
-                            "response": {"content": message.get("content", "")},
-                        }
-                    }
-                    parts = [part]
-                    gemini_role = "user"
+                    response_part = cls._tool_response_part(message, tool_names)
+                    if response_part is None:
+                        continue
+                    parts = [response_part]
+                elif role in ("assistant", "model"):
+                    parts = cls._assistant_turn_parts(message)
+                    gemini_role = "model"
                 else:
                     parts = cls._parts_for(message.get("content"))
-                    gemini_role = (
-                        "model" if role in ("assistant", "model") else "user"
-                    )
+                if not parts:
+                    continue
                 if contents and contents[-1]["role"] == gemini_role:
                     contents[-1]["parts"].extend(parts)
                 else:
@@ -522,9 +580,6 @@ class VertexAiConverters:
             if isinstance(safety_settings, list) and safety_settings:
                 body["safetySettings"] = safety_settings
 
-            declarations = VertexAiConverters._function_declarations(
-                params.get("tools")
-            )
             if declarations:
                 body["tools"] = [{"functionDeclarations": declarations}]
             tool_config = VertexAiConverters._tool_config(params.get("tool_choice"))
@@ -535,6 +590,174 @@ class VertexAiConverters:
         @staticmethod
         def _parts_for(content: Any) -> List[Dict[str, Any]]:
             return VertexAiConverters._message_parts(content)
+
+        # ------------------------------------------------------------------
+        # Function‑calling helpers (OpenAI ``tool_calls`` ↔ Gemini parts)
+        # ------------------------------------------------------------------
+        @staticmethod
+        def _tool_call_names(messages: List[Any]) -> Dict[str, str]:
+            """
+            Map ``tool_call.id`` → the function name the model actually called.
+
+            Collected over the **whole** history, so a ``role: tool`` message is
+            resolved no matter how far back its ``assistant`` message sits.
+            """
+            names: Dict[str, str] = {}
+            for message in messages:
+                if not isinstance(message, dict):
+                    continue
+                for tool_call in message.get("tool_calls") or []:
+                    if not isinstance(tool_call, dict):
+                        continue
+                    call_id = str(tool_call.get("id") or "")
+                    function = tool_call.get("function")
+                    name = (
+                        function.get("name") if isinstance(function, dict) else None
+                    )
+                    if call_id and name:
+                        names[call_id] = str(name)
+            return names
+
+        @staticmethod
+        def _parse_function_args(raw: Any, name: str = "") -> Dict[str, Any]:
+            """
+            Translate an OpenAI ``arguments`` value into a Gemini ``args`` mapping.
+
+            Never raises and never invents argument keys: a fabricated key would
+            not match the submitted ``functionDeclarations`` schema, so anything
+            unusable degrades to ``{}`` with a warning.
+            """
+            if isinstance(raw, dict):
+                return dict(raw)
+            if raw is None or raw == "":
+                return {}
+            parsed: Any = None
+            if isinstance(raw, str):
+                try:
+                    parsed = json.loads(raw)
+                except ValueError:
+                    parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+            logger.warning(
+                "Could not parse arguments of function %r as a JSON object; "
+                "sending empty args instead.",
+                name or "unknown",
+            )
+            return {}
+
+        @staticmethod
+        def _thought_signature(tool_call: Dict[str, Any]) -> Optional[str]:
+            """
+            Read the thinking‑model signature carried on an OpenAI tool call.
+
+            Accepts both the ``thought_signature`` spelling used in responses
+            and the wire‑level ``thoughtSignature``.
+            """
+            signature = tool_call.get("thought_signature") or tool_call.get(
+                "thoughtSignature"
+            )
+            return str(signature) if signature else None
+
+        @classmethod
+        def _function_call_parts(cls, tool_calls: Any) -> List[Dict[str, Any]]:
+            """
+            Convert OpenAI ``tool_calls`` into Gemini ``functionCall`` parts.
+
+            ``thoughtSignature`` is attached **as a sibling of ``functionCall``**
+            (where the Gemini ``Part`` carries it) and only when the upstream
+            actually emitted one, so requests to models that never produce
+            signatures stay byte‑identical.
+            """
+            parts: List[Dict[str, Any]] = []
+            for tool_call in tool_calls or []:
+                if not isinstance(tool_call, dict):
+                    continue
+                function = tool_call.get("function")
+                if not isinstance(function, dict) or not function.get("name"):
+                    continue
+                name = str(function["name"])
+                part: Dict[str, Any] = {
+                    "functionCall": {
+                        "name": name,
+                        "args": cls._parse_function_args(
+                            function.get("arguments"), name
+                        ),
+                    }
+                }
+                signature = cls._thought_signature(tool_call)
+                if signature:
+                    part["thoughtSignature"] = signature
+                parts.append(part)
+            return parts
+
+        @classmethod
+        def _assistant_turn_parts(
+            cls, message: Dict[str, Any]
+        ) -> List[Dict[str, Any]]:
+            """
+            Build the parts of one assistant turn: its text, then its calls.
+
+            A pure tool‑call turn yields the ``functionCall`` parts only — an
+            empty ``{"text": ""}`` part next to a call is what Gemini rejects.
+            """
+            content = message.get("content")
+            parts: List[Dict[str, Any]] = []
+            if content not in (None, "", []):
+                parts.extend(cls._parts_for(content))
+            parts.extend(cls._function_call_parts(message.get("tool_calls")))
+            return parts or [{"text": ""}]
+
+        @classmethod
+        def _tool_response_part(
+            cls, message: Dict[str, Any], names: Dict[str, str]
+        ) -> Optional[Dict[str, Any]]:
+            """
+            Convert an OpenAI ``role: tool`` message into a ``functionResponse``.
+
+            Returns ``None`` when the function cannot be identified: Gemini
+            refuses a ``functionResponse`` whose name matches no submitted
+            ``functionCall``, so a placeholder name would turn a salvageable
+            request into a hard ``400`` — dropping the part degrades gracefully.
+            """
+            call_id = str(message.get("tool_call_id") or "")
+            name = names.get(call_id) or str(message.get("name") or "")
+            if not name:
+                logger.warning(
+                    "Dropping tool message with no matching function call "
+                    "(tool_call_id=%r): Gemini requires functionResponse.name "
+                    "to match a previously submitted functionCall.",
+                    call_id or None,
+                )
+                return None
+            return {
+                "functionResponse": {
+                    "name": name,
+                    "response": {"content": message.get("content", "")},
+                }
+            }
+
+        @staticmethod
+        def _warn_orphan_tool_history(messages: List[Any]) -> None:
+            """
+            Warn when a tool history is sent to a provider with no ``tools``.
+
+            ``EndpointWithHttpRequestI._prepare_params_for_provider`` strips
+            ``tools`` from providers not declared as ``tool_calling``, which
+            would otherwise leave ``functionCall`` parts pointing at undeclared
+            functions.
+            """
+            for message in messages:
+                if not isinstance(message, dict):
+                    continue
+                if message.get("tool_calls") or message.get("role") == "tool":
+                    logger.warning(
+                        "Conversation carries function calls but no tools were "
+                        "declared for this Vertex request; Gemini will reject "
+                        "the unmatched functionCall parts. Set "
+                        '"tool_calling": true on the provider.'
+                    )
+                    return
 
         @staticmethod
         def _generation_config(
@@ -623,17 +846,17 @@ class VertexAiConverters:
                 function_call = part.get("functionCall")
                 if not function_call:
                     continue
-                tool_calls.append(
-                    {
-                        "id": f"vertex_fc_{len(tool_calls)}",
-                        "type": "function",
-                        "function": {
-                            "name": function_call.get("name", ""),
-                            "arguments": json.dumps(function_call.get("args") or {}),
-                        },
-                        "_index": index,
-                    }
-                )
+                tool_call: Dict[str, Any] = {
+                    "id": f"vertex_fc_{len(tool_calls)}",
+                    "type": "function",
+                    "function": {
+                        "name": function_call.get("name", ""),
+                        "arguments": json.dumps(function_call.get("args") or {}),
+                    },
+                    "_index": index,
+                }
+                _carry_thought_signature(part, tool_call)
+                tool_calls.append(tool_call)
             return tool_calls
 
         @classmethod
@@ -662,8 +885,8 @@ class VertexAiConverters:
             finish_reason = None
             finish = candidate.get("finishReason")
             if finish:
-                finish_reason = VertexAiConverters.FINISH_REASON_MAP.get(
-                    finish, "stop"
+                finish_reason = VertexAiConverters.map_finish_reason(
+                    finish, bool(tool_calls)
                 )
 
             return {
@@ -710,6 +933,27 @@ class VertexAiConverters:
                 "model": model or "",
                 "started": False,
                 "tool_seq": 0,
+                "tool_call_seen": False,
+            }
+
+        @classmethod
+        def new_final_chunk(
+            cls, ctx: Dict[str, Any], finish_reason: str = "stop"
+        ) -> Dict[str, Any]:
+            """
+            Build the terminal ``chat.completion.chunk`` of a converted stream.
+
+            Used when the upstream Gemini SSE ended without a ``finishReason``
+            so the client still receives a well‑formed end of turn.
+            """
+            return {
+                "id": ctx["id"],
+                "object": "chat.completion.chunk",
+                "created": ctx["created"],
+                "model": ctx["model"],
+                "choices": [
+                    {"index": 0, "delta": {}, "finish_reason": finish_reason}
+                ],
             }
 
         @classmethod
@@ -762,24 +1006,34 @@ class VertexAiConverters:
                 function_call = part.get("functionCall")
                 if not function_call:
                     continue
-                tool_calls.append(
-                    {
-                        "index": len(tool_calls),
-                        "id": f"vertex_fc_{ctx['tool_seq']}",
-                        "type": "function",
-                        "function": {
-                            "name": function_call.get("name", ""),
-                            "arguments": json.dumps(function_call.get("args") or {}),
-                        },
-                    }
-                )
+                # Gemini delivers a complete ``functionCall`` per part (OpenAI
+                # streams ``arguments`` in fragments), so one part is one new
+                # accumulated call — the index has to keep counting across
+                # chunks, otherwise calls arriving in separate chunks collapse
+                # into a single tool call on the client side.
+                tool_call: Dict[str, Any] = {
+                    "index": ctx["tool_seq"],
+                    "id": f"vertex_fc_{ctx['tool_seq']}",
+                    "type": "function",
+                    "function": {
+                        "name": function_call.get("name", ""),
+                        "arguments": json.dumps(function_call.get("args") or {}),
+                    },
+                }
+                _carry_thought_signature(part, tool_call)
+                tool_calls.append(tool_call)
                 ctx["tool_seq"] += 1
+                ctx["tool_call_seen"] = True
             if tool_calls:
                 delta["tool_calls"] = tool_calls
 
             finish = candidate.get("finishReason")
             finish_reason = (
-                VertexAiConverters.FINISH_REASON_MAP.get(finish) if finish else None
+                VertexAiConverters.map_finish_reason(
+                    finish, bool(ctx.get("tool_call_seen"))
+                )
+                if finish
+                else None
             )
 
             out: Dict[str, Any] = {
