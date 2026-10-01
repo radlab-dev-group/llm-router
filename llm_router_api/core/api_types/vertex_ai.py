@@ -31,7 +31,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from llm_router_api.core.api_types.google_auth import GoogleAccessTokenProvider
+from llm_router_api.core.api_types.auth.google import GoogleAccessTokenProvider
 from llm_router_api.core.api_types.types_i import ApiTypesI
 
 logger = logging.getLogger(__name__)
