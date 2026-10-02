@@ -704,6 +704,8 @@ class StreamHandler:
                             else ""
                         )
                     )
+                    finish_sent = False
+                    done_sent = False
                     for line in _guarded_body(response.iter_lines()):
                         if not line:
                             continue
@@ -715,6 +717,7 @@ class StreamHandler:
                         data_str = line_str[5:].strip()
                         if data_str == "[DONE]":
                             yield b"data: [DONE]\n\n"
+                            done_sent = True
                             continue
 
                         try:
@@ -728,9 +731,30 @@ class StreamHandler:
                             )
                         )
                         if converted:
+                            if (converted.get("choices") or [{}])[0].get(
+                                "finish_reason"
+                            ):
+                                finish_sent = True
                             yield f"data: {json.dumps(converted)}\n\n".encode(
                                 "utf-8"
                             )
+
+                    # Gemini's native SSE carries neither the OpenAI ``[DONE]``
+                    # sentinel nor (for unmapped reasons) a terminal finish
+                    # reason, so close the stream the way OpenAI clients expect.
+                    # Reached only on a clean end: a pre‑content failure raised
+                    # above, and a mid‑stream error returned after its error
+                    # chunk — matching the other ``*_to_openai`` helpers.
+                    if not finish_sent:
+                        final = VertexAiConverters.FromGemini.new_final_chunk(
+                            ctx,
+                            VertexAiConverters.map_finish_reason(
+                                None, bool(ctx.get("tool_call_seen"))
+                            ),
+                        )
+                        yield f"data: {json.dumps(final)}\n\n".encode("utf-8")
+                    if not done_sent:
+                        yield b"data: [DONE]\n\n"
 
                 except requests.RequestException as exc:
                     self._log_request_error(endpoint, exc)
