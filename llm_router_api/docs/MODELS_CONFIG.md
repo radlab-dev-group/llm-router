@@ -159,6 +159,40 @@ The provider health check pings the model resource (`GET`), so a misconfigured
 project/region/credentials is reported as `auth_error` / `not_found` instead
 of keeping the provider in the active pool.
 
+#### Function calling round trip
+
+Multi‑turn tool calling needs **both** directions of the OpenAI ↔ Gemini
+translation, which the router performs as follows:
+
+* `assistant.tool_calls` → Gemini `functionCall` parts (the JSON `arguments`
+  string is parsed into `args`; an unparsable value degrades to `{}` with a
+  warning instead of failing the request);
+* `role: "tool"` → `functionResponse`, its `name` resolved from **`tool_call_id`**
+  through the preceding assistant message (a legacy `name` field is still
+  honoured, and the id wins when both are present);
+* a tool message whose `tool_call_id` matches no earlier call is **dropped** with
+  a warning — Gemini rejects a `functionResponse` naming a function that was
+  never called, so keeping it would turn a trimmed history into a hard `400`;
+* parallel calls (several `tool_calls`, several `role: "tool"` answers) are
+  preserved, and results arrive in a single `user` turn;
+* a turn that ended on a function call reports `finish_reason: "tool_calls"`,
+  and `delta.tool_calls[].index` counts across chunks, so parallel calls stay
+  distinct on the client side.
+
+Set **`"tool_calling": true`** on a provider used with tools: without it the
+router strips `tools` from the payload while the conversation history still
+carries the calls, which Gemini rejects (the router logs a warning).
+
+Thinking models attach an opaque `thoughtSignature` to their function calls,
+which must be sent back on the next turn. The router surfaces it as
+`tool_calls[].thought_signature` and re‑attaches it when the client echoes the
+message back; clients that strip unknown fields from tool calls cannot use
+function calling with those models through the router.
+
+Streaming ends the way OpenAI clients expect: the router synthesises the
+terminal chunk (Gemini's native SSE carries no `[DONE]` sentinel and may end
+with an unmapped `finishReason`) and closes with `data: [DONE]`.
+
 ```json
 {
   "google_models": {

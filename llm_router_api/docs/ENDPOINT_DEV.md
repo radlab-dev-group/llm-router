@@ -65,7 +65,13 @@ outbound call for a given provider. The hooks live on
   `batchEmbedContents`);
 * `owns_message_normalization()` — when `True` the router skips its role
   normaliser (Vertex merges turns itself, keeping `tool_call_id`);
-* `ping_path(provider)` — provider‑specific health probe for the monitor.
+* `ping_path(provider)` — provider‑specific health probe for the monitor;
+* `on_response_status(provider, status_code)` — advisory callback invoked for
+  every non‑streaming provider response (success and failure alike), before the
+  dispatch layer decides on a failover. Used by Vertex AI to evict a Google
+  access token the upstream rejected with `401`/`403`. The dispatcher swallows
+  hook errors and unknown api types, so a hook can never change the client's
+  response.
 
 The default hook implementations reproduce the historical OpenAI‑style
 behaviour, so existing backends are unaffected. Adding a new backend is
