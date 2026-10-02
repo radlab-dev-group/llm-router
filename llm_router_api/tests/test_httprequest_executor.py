@@ -26,6 +26,9 @@ os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 import pytest  # noqa: E402
 import requests  # noqa: E402
 
+from llm_router_api.core.api_types.vertex_ai import (  # noqa: E402
+    VertexAiType,
+)
 from llm_router_api.core.stream_handler import (  # noqa: E402
     StreamConversion,
 )
@@ -392,3 +395,105 @@ class TestCallForEachUserMessage:
         ep.prepare_response_function.assert_called_once_with(
             [fake_resp, fake_resp], ["q1", "q2"]
         )
+
+
+class TestResponseStatusHook:
+    """
+    ``on_response_status`` sees every non‑streaming provider response.
+
+    The hook exists so a provider type can react to a status the router itself
+    does not act on (Vertex AI evicting a rejected Google access token).  It is
+    advisory: it must observe both success and failure, and must never change
+    what the caller — and through it the failover logic — receives.
+    """
+
+    def _endpoint(self, method: str = "POST"):
+        ep = _DummyEndpoint(method=method)
+        ep.return_http_response = mock.Mock(return_value={"ok": True})
+        return ep
+
+    def test_post_status_reaches_hook(self):
+        ep = self._endpoint()
+        ex = HttpRequestExecutor(ep)
+        provider = _provider()
+        with (
+            mock.patch("llm_router_api.endpoints.httprequest.requests.post") as post,
+            mock.patch(
+                "llm_router_api.endpoints.httprequest.ApiTypesDispatcher.on_response_status"
+            ) as hook,
+        ):
+            post.return_value = SimpleNamespace(ok=False, status_code=401)
+            ex.call_http_request(ep_url="v1", params={}, api_model_provider=provider)
+        assert hook.call_args.args[0] == "openai"
+        assert hook.call_args.args[1] is provider
+        assert hook.call_args.args[2] == 401
+
+    def test_get_status_reaches_hook(self):
+        ep = self._endpoint(method="GET")
+        ex = HttpRequestExecutor(ep)
+        with (
+            mock.patch("llm_router_api.endpoints.httprequest.requests.get") as get,
+            mock.patch(
+                "llm_router_api.endpoints.httprequest.ApiTypesDispatcher.on_response_status"
+            ) as hook,
+        ):
+            get.return_value = SimpleNamespace(ok=True, status_code=200)
+            ex.call_http_request(
+                ep_url="v1", params={}, api_model_provider=_provider()
+            )
+        assert hook.call_args.args[2] == 200
+
+    def test_success_and_failure_both_reach_the_hook(self):
+        ep = self._endpoint()
+        statuses = []
+        for status in (200, 429):
+            ex = HttpRequestExecutor(ep)
+            with (
+                mock.patch(
+                    "llm_router_api.endpoints.httprequest.requests.post"
+                ) as post,
+                mock.patch(
+                    "llm_router_api.endpoints.httprequest.ApiTypesDispatcher.on_response_status"
+                ) as hook,
+            ):
+                post.return_value = SimpleNamespace(
+                    ok=status < 400, status_code=status
+                )
+                ex.call_http_request(
+                    ep_url="v1", params={}, api_model_provider=_provider()
+                )
+            statuses.append(hook.call_args.args[2])
+        assert statuses == [200, 429]
+
+    def test_non_ok_response_still_reaches_the_dispatch_layer(self):
+        # The hook must not swallow the response: http_dispatch owns the
+        # retry/failover decision and reads status_code off the raw object.
+        ep = self._endpoint()
+        ex = HttpRequestExecutor(ep)
+        fake = SimpleNamespace(ok=False, status_code=429)
+        with mock.patch(
+            "llm_router_api.endpoints.httprequest.requests.post"
+        ) as post:
+            post.return_value = fake
+            ex.call_http_request(
+                ep_url="v1", params={}, api_model_provider=_provider()
+            )
+        assert ep.return_http_response.call_args.kwargs["response"] is fake
+
+    def test_failing_hook_cannot_break_the_response(self):
+        ep = self._endpoint()
+        ex = HttpRequestExecutor(ep)
+        provider = _provider(api_type="vertex_ai", provider_options={})
+        with (
+            mock.patch("llm_router_api.endpoints.httprequest.requests.post") as post,
+            mock.patch.object(
+                VertexAiType,
+                "on_response_status",
+                side_effect=RuntimeError("hook boom"),
+            ),
+        ):
+            post.return_value = SimpleNamespace(ok=False, status_code=401)
+            out = ex.call_http_request(
+                ep_url="v1", params={}, api_model_provider=provider
+            )
+        assert out == {"ok": True}

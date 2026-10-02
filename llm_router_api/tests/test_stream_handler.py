@@ -627,6 +627,105 @@ class TestStreamVertexToOpenAI:
         )
         assert any(b"error" in x for x in out)
 
+    # -- stream termination ------------------------------------------------
+
+    @staticmethod
+    def _data(payload):
+        return b"data: " + json.dumps(payload).encode()
+
+    def _run(self, monkeypatch, lines, endpoint=None):
+        ep = endpoint or _endpoint()
+        _ReqPatch(monkeypatch, response=_FakeResp(lines=lines))
+        out = _consume(
+            StreamHandler().stream_vertex_to_openai(
+                "http://u", {}, "POST", {}, None, ep, _model("mp", "nm")
+            )
+        )
+        chunks = [
+            json.loads(x[5:].decode()) for x in out if x.startswith(b"data: {")
+        ]
+        return out, chunks
+
+    def test_synthetic_done_when_upstream_omits_it(self, monkeypatch):
+        # Gemini's native SSE ends by closing the stream, with no [DONE].
+        out, chunks = self._run(
+            monkeypatch,
+            [
+                self._data(
+                    {
+                        "candidates": [
+                            {
+                                "content": {"parts": [{"text": "hi"}]},
+                                "finishReason": "STOP",
+                            }
+                        ]
+                    }
+                )
+            ],
+        )
+        assert out[-1] == b"data: [DONE]\n\n"
+        assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+
+    def test_terminal_chunk_synthesized_without_finish_reason(self, monkeypatch):
+        out, chunks = self._run(
+            monkeypatch,
+            [self._data({"candidates": [{"content": {"parts": [{"text": "hi"}]}}]})],
+        )
+        assert out[-1] == b"data: [DONE]\n\n"
+        assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+        # The synthesized terminator belongs to the same completion.
+        assert chunks[-1]["id"] == chunks[0]["id"]
+        assert chunks[-1]["created"] == chunks[0]["created"]
+        assert chunks[-1]["model"] == chunks[0]["model"]
+
+    def test_upstream_done_is_not_duplicated(self, monkeypatch):
+        out, _ = self._run(monkeypatch, self._lines())
+        assert out.count(b"data: [DONE]\n\n") == 1
+        assert len([x for x in out if x.startswith(b"data: {")]) == 2
+
+    def test_empty_stream_still_terminates(self, monkeypatch):
+        ep = _endpoint()
+        out, chunks = self._run(monkeypatch, [], endpoint=ep)
+        assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
+        assert out[-1] == b"data: [DONE]\n\n"
+        ep.unset_model.assert_called_once()
+
+    def test_no_terminator_after_a_mid_stream_error(self, monkeypatch):
+        class _BrokenLines:
+            def __init__(self):
+                self._lines = [
+                    b"data: " + json.dumps({"candidates": []}).encode(),
+                    b"__broken__",
+                ]
+                self._i = 0
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                if self._i >= len(self._lines):
+                    raise StopIteration
+                line = self._lines[self._i]
+                self._i += 1
+                if line == b"__broken__":
+                    raise requests.exceptions.ChunkedEncodingError("mid-stream drop")
+                return line
+
+        class _BrokenResp(_FakeResp):
+            def iter_lines(self, decode_unicode=False):
+                return _BrokenLines()
+
+        _ReqPatch(monkeypatch, response=_BrokenResp())
+        out = _consume(
+            StreamHandler().stream_vertex_to_openai(
+                "http://u", {}, "POST", {}, None, _endpoint(), _model()
+            )
+        )
+        # Matches the other *_to_openai helpers: the error chunk ends the
+        # stream; no finish reason and no [DONE] follow a failed generation.
+        assert any(b"error" in x for x in out)
+        assert b"data: [DONE]\n\n" not in out
+
 
 class TestPassthroughGenerator:
     def test_stream_openai_passthrough(self, monkeypatch):

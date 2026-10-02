@@ -219,6 +219,81 @@ class TestVertexChatNonStreaming:
         message = result["choices"][0]["message"]
         assert message["tool_calls"][0]["function"]["name"] == "weather"
         assert '"city": "WAW"' in message["tool_calls"][0]["function"]["arguments"]
+        # A turn that ended on a call reports the OpenAI tool-call reason.
+        assert result["choices"][0]["finish_reason"] == "tool_calls"
+
+    def test_function_call_history_reaches_gemini(self):
+        # The direction that actually broke: an OpenAI client continuing a
+        # tool conversation sends ``assistant.tool_calls`` + ``role: tool`` with
+        # ``tool_call_id``.  Gemini needs the calls back as ``functionCall``
+        # parts and the answer named after the called function, or it rejects
+        # the whole request.
+        ep = _make_ep(OpenAICompletionHandler, _vertex_provider())
+        with mock.patch(
+            "llm_router_api.endpoints.httprequest.requests.post"
+        ) as fake_post:
+            fake_post.return_value = _FakeResponse(
+                {
+                    "candidates": [
+                        {
+                            "content": {
+                                "role": "model",
+                                "parts": [{"text": "21°C in Warsaw."}],
+                            },
+                            "finishReason": "STOP",
+                        }
+                    ],
+                    "usageMetadata": {"totalTokenCount": 12},
+                }
+            )
+            ep.run_ep(
+                {
+                    "model": "google/gemini-2.5-flash",
+                    "stream": False,
+                    "messages": [
+                        {"role": "user", "content": "weather in Warsaw?"},
+                        {
+                            "role": "assistant",
+                            "content": None,
+                            "tool_calls": [
+                                {
+                                    "id": "call_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "weather",
+                                        "arguments": '{"city": "WAW"}',
+                                    },
+                                }
+                            ],
+                        },
+                        {"role": "tool", "tool_call_id": "call_1", "content": "21C"},
+                    ],
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "weather",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {"city": {"type": "string"}},
+                                },
+                            },
+                        }
+                    ],
+                }
+            )
+        sent = fake_post.call_args.kwargs["json"]
+        assert [c["role"] for c in sent["contents"]] == [
+            "user",
+            "model",
+            "user",
+        ]
+        assert sent["contents"][1]["parts"] == [
+            {"functionCall": {"name": "weather", "args": {"city": "WAW"}}}
+        ]
+        response_part = sent["contents"][2]["parts"][0]["functionResponse"]
+        assert response_part["name"] == "weather"
+        assert response_part["response"] == {"content": "21C"}
 
     def test_failover_to_next_provider(self):
         ep = _make_ep(

@@ -117,14 +117,40 @@ class HttpRequestExecutor:
         force_text: Optional[str] = None,
     ) -> Iterator[bytes]:
         """
-        Perform a streaming request and yield byte chunks.
+        Streams a response from an endpoint using the specified parameters and streaming type.
+
+        This function enables the dispatching of streaming requests to the appropriate handler
+        based on the provided `stream_type` and optional `force_text` override. Different
+        streaming conversions are supported, allowing for protocol translation or passthrough
+        streaming between various models and APIs. The function also finalizes the request
+        body, injects required headers, and prepares the full endpoint URL before processing
+        the request.
 
         Parameters
         ----------
-        stream_type : Optional[StreamConversion]
-            Which conversion path to use.  Exactly one of the ten
-            ``StreamConversion`` members must be selected by the caller;
-            ``None`` means passthrough (OpenAI-compatible).
+        ep_url : str
+            The base endpoint URL to be used for the streaming request.
+        params : Dict[str, Any]
+            A dictionary containing the request parameters used to build the request body.
+        api_model_provider : ApiModel
+            Specifies the model provider and its associated api_type, used for generating
+            headers and finalizing request data.
+        options : Optional[Dict[str, Any]], optional
+            Additional options to customize the request, such as timeouts or retry configurations
+            (default is None).
+        stream_type : Optional["StreamConversion"], optional
+            Indicates the type of streaming conversion to apply. Determines whether to perform
+            protocol translations and specifies the appropriate handler method for the task
+            (default is None).
+        force_text : Optional[str], optional
+            When specified, forces the output to be treated as text for the requested streaming
+            conversion types. Primarily used for guardrail blocking scenarios (default is None).
+
+        Returns
+        -------
+        Iterator[bytes]
+            An iterator that streams the response in byte chunks from the designated handler based
+            on the `stream_type` or forced text context.
         """
         self.logger.debug("Stream type: %s", stream_type)
 
@@ -469,6 +495,16 @@ class HttpRequestExecutor:
                 "POST", api_model_provider, exc
             ) from exc
 
+        status_code = getattr(response, "status_code", None)
+        if api_model_provider is not None and status_code is not None:
+            # Let the provider type react to the status (e.g. evicting Google
+            # credentials the upstream rejected) before anyone consumes it.
+            ApiTypesDispatcher.on_response_status(
+                api_model_provider.api_type,
+                api_model_provider,
+                int(status_code),
+            )
+
         if return_raw_response:
             return response
         return self._endpoint.return_http_response(
@@ -498,6 +534,15 @@ class HttpRequestExecutor:
             raise self._provider_request_error(
                 "GET", api_model_provider, exc
             ) from exc
+
+        status_code = getattr(response, "status_code", None)
+        if api_model_provider is not None and status_code is not None:
+            ApiTypesDispatcher.on_response_status(
+                api_model_provider.api_type,
+                api_model_provider,
+                int(status_code),
+            )
+
         return self._endpoint.return_http_response(
             response=response, api_model_provider=api_model_provider
         )

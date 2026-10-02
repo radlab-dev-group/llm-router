@@ -58,7 +58,14 @@ the optional `google` dependency (`pip install "radlab-llm-router[google]"`, see
 | Variable                              | Default                                            | Description                                                                                          |
 |---------------------------------------|----------------------------------------------------|------------------------------------------------------------------------------------------------------|
 | `LLM_ROUTER_GOOGLE_SCOPES`            | `https://www.googleapis.com/auth/cloud-platform`   | Comma‑separated OAuth2 scopes requested when resolving an access token.                              |
-| `LLM_ROUTER_GOOGLE_TOKEN_REFRESH_SKEW`| `120`                                              | Seconds before expiry at which a cached access token is refreshed.                                   |
+| `LLM_ROUTER_GOOGLE_TOKEN_REFRESH_SKEW`| `120`                                              | Seconds before expiry at which a cached access token is refreshed. A malformed value falls back to `120` instead of breaking start‑up. |
+
+Token lifetime handling: `google-auth` reports `credentials.expiry` as a **naive
+UTC** datetime, and the router reads it as UTC — so the cached lifetime no longer
+shifts with the machine's timezone. Refreshes are serialised **per credential**
+(a burst of concurrent requests mints one token, not one per request), and a
+`401`/`403` from Vertex evicts the cached token so the next request mints a
+fresh one rather than replaying a rejected credential until the process restarts.
 
 ---
 
