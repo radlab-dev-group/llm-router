@@ -21,6 +21,7 @@ dispatcher itself.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional, Type
 
 from llm_router_api.core.api_types.types_i import ApiTypesI
@@ -32,6 +33,8 @@ from llm_router_api.core.api_types.llamacpp import LLamaCPPApiType
 from llm_router_api.core.api_types.lmstudio import LMStudioApiType
 from llm_router_api.core.api_types.anthropic import AnthropicType
 from llm_router_api.core.api_types.vertex_ai import VertexAiType
+
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------------------
 # Public constant – the full list of API‑type identifiers recognised by the library.
@@ -274,6 +277,27 @@ class ApiTypesDispatcher:
             return cls._get_impl(api_type).ping_path(provider)
         except ValueError:
             return None
+
+    @classmethod
+    def on_response_status(
+        cls, api_type: str, provider: Any, status_code: int
+    ) -> None:
+        """
+        Notify the provider type of the HTTP status of a completed call.
+
+        Purely advisory bookkeeping (e.g. evicting credentials the upstream
+        rejected), so a failing hook must never change the response the client
+        receives: unknown ``api_type`` values and hook exceptions are swallowed
+        and logged, mirroring :meth:`ping_path`.
+        """
+        try:
+            cls._get_impl(api_type).on_response_status(provider, status_code)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.debug(
+                "on_response_status hook failed for api_type %s",
+                api_type,
+                exc_info=True,
+            )
 
     @classmethod
     def tags(

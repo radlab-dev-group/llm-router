@@ -293,6 +293,26 @@ class ApiTypesI(ABC):
         """
         return None
 
+    def on_response_status(self, provider: Any, status_code: int) -> None:
+        """
+        React to the HTTP status of a completed call to ``provider``.
+
+        Called for **every** outbound non‑streaming response (success and
+        failure alike), right after the transport returned and before the
+        router decides on a failover.  The default does nothing; types with
+        credentials that a upstream can reject use it to drop the rejected
+        material — Vertex AI evicts a cached Google access token on
+        ``401``/``403`` so the next request mints a fresh one.
+
+        Parameters
+        ----------
+        provider : Any
+            The provider descriptor the call was made to.
+        status_code : int
+            HTTP status code returned by the provider.
+        """
+        return None
+
     @abstractmethod
     def chat_ep(self) -> str:
         """
