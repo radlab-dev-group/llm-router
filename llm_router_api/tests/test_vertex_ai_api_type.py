@@ -47,6 +47,52 @@ def _provider(**overrides):
     return SimpleNamespace(**base)
 
 
+#: A minimal OpenAI tool declaration, for tests that exercise function calling.
+_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "weather",
+        "parameters": {
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"],
+        },
+    },
+}
+
+
+def _naive_utc_future(seconds):
+    """
+    A naive UTC datetime ``seconds`` ahead — the shape google-auth exposes.
+    """
+    import datetime as _datetime
+    import time as _time
+
+    return (
+        _datetime.datetime.fromtimestamp(
+            _time.time() + seconds, tz=_datetime.timezone.utc
+        )
+        .replace(tzinfo=None)
+        .replace(microsecond=0)
+    )
+
+
+def _patch_google_auth(monkeypatch, build_credentials):
+    """
+    Make the token provider runnable without ``google-auth`` installed.
+    """
+    import llm_router_api.core.api_types.auth.google as ga
+
+    monkeypatch.setattr(ga, "_GOOGLE_AUTH_AVAILABLE", True)
+    monkeypatch.setattr(ga, "Request", lambda: None)
+    monkeypatch.setattr(
+        ga.GoogleAccessTokenProvider, "_build_credentials", build_credentials
+    )
+    ga.GoogleAccessTokenProvider.clear_cache()
+    return ga
+
+
 # ---------------------------------------------------------------------------
 # Endpoint paths
 # ---------------------------------------------------------------------------
@@ -184,6 +230,34 @@ class TestVertexHeaders:
             with pytest.raises(RuntimeError, match="google-auth"):
                 ApiTypesDispatcher.request_headers("vertex_ai", _provider())
 
+    def test_on_response_status_evicts_adc_token_on_401(self):
+        provider = _provider(provider_options={"project": "p", "region": "r"})
+        with mock.patch.object(
+            GoogleAccessTokenProvider, "invalidate"
+        ) as invalidate:
+            ApiTypesDispatcher.on_response_status("vertex_ai", provider, 401)
+        invalidate.assert_called_once_with({"project": "p", "region": "r"})
+
+    def test_on_response_status_leaves_operator_credentials_alone(self):
+        cases = [
+            # api_token / api_key are operator-managed: nothing to evict.
+            _provider(api_token="ya29.x"),
+            _provider(provider_options={"project": "p", "api_key": "AIzaX"}),
+            # Not an authentication failure.
+            _provider(),
+        ]
+        with mock.patch.object(
+            GoogleAccessTokenProvider, "invalidate"
+        ) as invalidate:
+            ApiTypesDispatcher.on_response_status("vertex_ai", cases[0], 401)
+            ApiTypesDispatcher.on_response_status("vertex_ai", cases[1], 403)
+            ApiTypesDispatcher.on_response_status("vertex_ai", cases[2], 200)
+        invalidate.assert_not_called()
+
+    def test_on_response_status_unknown_api_type_is_tolerated(self):
+        # Advisory bookkeeping must never break the response path.
+        ApiTypesDispatcher.on_response_status("nope", _provider(), 500)
+
 
 # ---------------------------------------------------------------------------
 # Google access token provider (without google-auth installed / mocked)
@@ -206,13 +280,12 @@ class TestGoogleAccessTokenProvider:
 
         def _fake_build(scopes, credentials_file):
             calls["n"] += 1
-            import datetime as _datetime
-            import time as _time
 
             class _Creds:
                 token = "tok-1"
-                # google-auth exposes ``expiry`` as a datetime
-                expiry = _datetime.datetime.fromtimestamp(_time.time() + 3600)
+                # google-auth exposes ``expiry`` as a **naive UTC** datetime —
+                # a naive local one would make this test timezone-dependent.
+                expiry = _naive_utc_future(3600)
 
                 def refresh(self, request):
                     return None
@@ -228,6 +301,149 @@ class TestGoogleAccessTokenProvider:
         assert first == second == "tok-1"
         assert calls["n"] == 1
         GoogleAccessTokenProvider.clear_cache()
+
+    def test_naive_expiry_is_treated_as_utc(self):
+        # ``expiry.timestamp()`` reads a naive datetime as *local* time, which
+        # shifted the cached token lifetime by the machine's UTC offset: tokens
+        # refreshed on every request east of UTC and served expired west of it.
+        import calendar
+        import datetime as _datetime
+
+        expiry = _datetime.datetime(2030, 1, 1, 12, 0, 0)
+        assert GoogleAccessTokenProvider._to_epoch(expiry) == float(
+            calendar.timegm(expiry.timetuple())
+        )
+
+    def test_aware_expiry_keeps_its_own_instant(self):
+        import datetime as _datetime
+
+        expiry = _datetime.datetime(
+            2030, 1, 1, 12, 0, 0, tzinfo=_datetime.timezone.utc
+        )
+        assert GoogleAccessTokenProvider._to_epoch(expiry) == expiry.timestamp()
+
+    def test_numeric_expiry_accepted_and_unparseable_ignored(self):
+        assert GoogleAccessTokenProvider._to_epoch(1234.5) == 1234.5
+        assert GoogleAccessTokenProvider._to_epoch(1234) == 1234.0
+        assert GoogleAccessTokenProvider._to_epoch(None) is None
+        assert GoogleAccessTokenProvider._to_epoch("later") is None
+
+    def test_expiry_inside_skew_forces_refresh(self, monkeypatch):
+        calls = {"n": 0}
+
+        def _build(scopes, credentials_file):
+            calls["n"] += 1
+
+            class _Creds:
+                token = "tok-2"
+                expiry = _naive_utc_future(60)  # inside the 120s skew
+
+                def refresh(self, request):
+                    return None
+
+            return _Creds()
+
+        ga = _patch_google_auth(monkeypatch, _build)
+        monkeypatch.setattr(ga, "TOKEN_REFRESH_SKEW_SECONDS", 120)
+        assert GoogleAccessTokenProvider.get_token({"project": "p"}) == "tok-2"
+        assert GoogleAccessTokenProvider.get_token({"project": "p"}) == "tok-2"
+        assert calls["n"] == 2
+
+    def test_concurrent_refresh_happens_once(self, monkeypatch):
+        # A cold cache must mint one token for a burst of concurrent requests,
+        # not one per request (the refresh used to run outside any lock).
+        import threading
+        import time as _time
+
+        state = {"n": 0}
+        guard = threading.Lock()
+
+        def _build(scopes, credentials_file):
+            with guard:
+                state["n"] += 1
+            _time.sleep(0.05)
+
+            class _Creds:
+                token = "tok-3"
+                expiry = _naive_utc_future(3600)
+
+                def refresh(self, request):
+                    return None
+
+            return _Creds()
+
+        _patch_google_auth(monkeypatch, _build)
+
+        tokens = []
+        errors = []
+
+        def _worker():
+            try:
+                tokens.append(GoogleAccessTokenProvider.get_token({"project": "p"}))
+            except Exception as exc:  # pragma: no cover - guards the assertion
+                errors.append(exc)
+
+        threads = [threading.Thread(target=_worker) for _ in range(8)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+
+        assert not errors
+        assert state["n"] == 1
+        assert tokens == ["tok-3"] * 8
+
+    def test_invalidate_forces_a_new_refresh(self, monkeypatch):
+        state = {"n": 0}
+
+        def _build(scopes, credentials_file):
+            state["n"] += 1
+
+            class _Creds:
+                token = "tok-4"
+                expiry = _naive_utc_future(3600)
+
+                def refresh(self, request):
+                    return None
+
+            return _Creds()
+
+        _patch_google_auth(monkeypatch, _build)
+        options = {"project": "p", "region": "r"}
+
+        GoogleAccessTokenProvider.get_token(options)
+        GoogleAccessTokenProvider.get_token(options)
+        assert state["n"] == 1
+
+        GoogleAccessTokenProvider.invalidate(options)
+        GoogleAccessTokenProvider.get_token(options)
+        assert state["n"] == 2
+
+    def test_invalidate_only_touches_its_own_credential(self, monkeypatch):
+        state = {"n": 0}
+
+        def _build(scopes, credentials_file):
+            state["n"] += 1
+
+            class _Creds:
+                token = f"tok-{state['n']}"
+                expiry = _naive_utc_future(3600)
+
+                def refresh(self, request):
+                    return None
+
+            return _Creds()
+
+        _patch_google_auth(monkeypatch, _build)
+        first_opts = {"credentials_file": "/x/a.json"}
+        second_opts = {"credentials_file": "/x/b.json"}
+
+        assert GoogleAccessTokenProvider.get_token(first_opts) == "tok-1"
+        assert GoogleAccessTokenProvider.get_token(second_opts) == "tok-2"
+
+        GoogleAccessTokenProvider.invalidate(first_opts)
+        assert GoogleAccessTokenProvider.get_token(second_opts) == "tok-2"
+        assert state["n"] == 2
 
 
 # ---------------------------------------------------------------------------
@@ -427,6 +643,205 @@ class TestVertexPayloadConverter:
         )
         assert body["systemInstruction"] == {"parts": [{"text": "SYS"}]}
 
+    # -- function-calling round trip -------------------------------------
+
+    @staticmethod
+    def _tool_round_trip_history():
+        # A verbatim OpenAI function-calling conversation: the assistant asks
+        # for a call, the client answers through ``tool_call_id`` (no ``name``).
+        return [
+            {"role": "user", "content": "weather in Warsaw?"},
+            {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": {
+                            "name": "get_weather",
+                            "arguments": '{"city": "WAW"}',
+                        },
+                    }
+                ],
+            },
+            {"role": "tool", "tool_call_id": "call_1", "content": "21C"},
+        ]
+
+    def test_assistant_tool_calls_become_function_calls(self):
+        body = self._convert(
+            {"messages": self._tool_round_trip_history(), "tools": [_TOOL]}
+        )
+        model_turn = body["contents"][1]
+        assert model_turn["role"] == "model"
+        assert model_turn["parts"] == [
+            {
+                "functionCall": {
+                    "name": "get_weather",
+                    "args": {"city": "WAW"},
+                }
+            }
+        ]
+
+    def test_tool_response_name_resolved_from_tool_call_id(self):
+        body = self._convert(
+            {"messages": self._tool_round_trip_history(), "tools": [_TOOL]}
+        )
+        response = body["contents"][2]["parts"][0]["functionResponse"]
+        assert response["name"] == "get_weather"
+        assert response["response"] == {"content": "21C"}
+
+    def test_parallel_tool_calls_are_named_from_ids(self):
+        body = self._convert(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": "ok",
+                        "tool_calls": [
+                            {
+                                "id": "a",
+                                "function": {
+                                    "name": "f1",
+                                    "arguments": '{"x": 1}',
+                                },
+                            },
+                            {
+                                "id": "b",
+                                "function": {
+                                    "name": "f2",
+                                    "arguments": "",
+                                },
+                            },
+                        ],
+                    },
+                    {"role": "tool", "tool_call_id": "a", "content": "1"},
+                    {"role": "tool", "tool_call_id": "b", "content": "2"},
+                ],
+                "tools": [_TOOL],
+            }
+        )
+        assert body["contents"][0]["parts"][0] == {"text": "ok"}
+        assert [
+            part["functionCall"]["name"] for part in body["contents"][0]["parts"][1:]
+        ] == ["f1", "f2"]
+        # Both results land in one user turn, each named after its call.
+        assert body["contents"][1]["role"] == "user"
+        assert [
+            part["functionResponse"]["name"] for part in body["contents"][1]["parts"]
+        ] == ["f1", "f2"]
+
+    def test_unknown_tool_call_id_is_dropped_not_named_tool(self):
+        # A trimmed history: Gemini rejects a functionResponse whose name matches
+        # no submitted functionCall, so a placeholder would 400 the request.
+        body = self._convert(
+            {"messages": [{"role": "tool", "tool_call_id": "gone", "content": "x"}]}
+        )
+        assert body["contents"] == []
+
+    def test_malformed_arguments_degrade_to_empty_args(self):
+        body = self._convert(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "a",
+                                "function": {"name": "f", "arguments": "{not json"},
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        part = body["contents"][0]["parts"][0]
+        assert part["functionCall"] == {"name": "f", "args": {}}
+
+    def test_only_orphan_tool_messages_yield_empty_contents(self):
+        assert self._convert({"messages": [{"role": "tool", "content": "x"}]}) == {
+            "contents": []
+        }
+
+    def test_text_and_tool_call_in_one_assistant_turn(self):
+        body = self._convert(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": "let me check",
+                        "tool_calls": [
+                            {
+                                "id": "a",
+                                "function": {
+                                    "name": "f",
+                                    "arguments": '{"k": "v"}',
+                                },
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        parts = body["contents"][0]["parts"]
+        assert parts[0] == {"text": "let me check"}
+        assert parts[1]["functionCall"]["name"] == "f"
+
+    def test_non_list_tool_calls_are_ignored(self):
+        # A malformed ``tool_calls`` value must not raise; the turn degrades to
+        # the empty-text fallback an assistant message with no content had.
+        body = self._convert(
+            {
+                "messages": [
+                    {"role": "assistant", "content": None, "tool_calls": "nope"}
+                ]
+            }
+        )
+        assert body["contents"] == [{"role": "model", "parts": [{"text": ""}]}]
+
+    def test_payload_reattaches_thought_signature(self):
+        body = self._convert(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "a",
+                                "function": {"name": "f", "arguments": "{}"},
+                                "thought_signature": "SIG123",
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        part = body["contents"][0]["parts"][0]
+        assert part["functionCall"] == {"name": "f", "args": {}}
+        # Gemini carries the signature on the Part, next to functionCall.
+        assert part["thoughtSignature"] == "SIG123"
+
+    def test_no_signature_key_when_upstream_sent_none(self):
+        body = self._convert(
+            {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "a",
+                                "function": {"name": "f", "arguments": "{}"},
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+        assert "thoughtSignature" not in body["contents"][0]["parts"][0]
+
 
 # ---------------------------------------------------------------------------
 # Embeddings
@@ -561,6 +976,44 @@ class TestVertexResponseConverter:
         assert out["choices"][0]["message"]["content"] == ""
         assert out["choices"][0]["finish_reason"] == "stop"
 
+    def test_finish_reason_is_tool_calls_for_a_function_call(self):
+        out = VertexAiConverters.FromGemini.convert_response(
+            {
+                "candidates": [
+                    _candidate(
+                        [{"functionCall": {"name": "f", "args": {"a": 1}}}], "STOP"
+                    )
+                ]
+            }
+        )
+        assert out["choices"][0]["finish_reason"] == "tool_calls"
+
+    def test_unknown_finish_reason_falls_back_to_stop(self):
+        out = VertexAiConverters.FromGemini.convert_response(
+            {"candidates": [_candidate([{"text": "x"}], "MALFORMED_FUNCTION_CALL")]}
+        )
+        assert out["choices"][0]["finish_reason"] == "stop"
+
+    def test_response_surfaces_thought_signature(self):
+        out = VertexAiConverters.FromGemini.convert_response(
+            {
+                "candidates": [
+                    _candidate(
+                        [
+                            {
+                                "functionCall": {"name": "f", "args": {}},
+                                "thoughtSignature": "SIG-ABC",
+                            }
+                        ],
+                        "STOP",
+                    )
+                ]
+            }
+        )
+        call = out["choices"][0]["message"]["tool_calls"][0]
+        assert call["thought_signature"] == "SIG-ABC"
+        assert "_index" not in call
+
     def test_is_gemini_chat_response_markers(self):
         assert VertexAiConverters.is_gemini_chat_response({"candidates": []})
         assert VertexAiConverters.is_gemini_chat_response({"usageMetadata": {}})
@@ -633,3 +1086,97 @@ class TestVertexStreamChunkConverter:
     def test_empty_chunk_returns_none(self):
         ctx = VertexAiConverters.FromGemini.new_stream_ctx("m-1")
         assert VertexAiConverters.FromGemini.convert_stream_chunk({}, ctx) is None
+
+    # -- tool calls in a stream ------------------------------------------
+
+    @staticmethod
+    def _fc_chunk(name, args=None):
+        return {
+            "candidates": [
+                _candidate([{"functionCall": {"name": name, "args": args or {}}}])
+            ]
+        }
+
+    def test_tool_call_indexes_are_unique_across_chunks(self):
+        # Gemini sends each call in its own chunk; OpenAI clients accumulate
+        # deltas by ``index``, so a per-chunk counter would merge them into one.
+        ctx = VertexAiConverters.FromGemini.new_stream_ctx("m-1")
+        first = VertexAiConverters.FromGemini.convert_stream_chunk(
+            self._fc_chunk("a"), ctx
+        )
+        second = VertexAiConverters.FromGemini.convert_stream_chunk(
+            self._fc_chunk("b"), ctx
+        )
+        first_call = first["choices"][0]["delta"]["tool_calls"][0]
+        second_call = second["choices"][0]["delta"]["tool_calls"][0]
+        assert (first_call["index"], first_call["id"]) == (0, "vertex_fc_0")
+        assert (second_call["index"], second_call["id"]) == (1, "vertex_fc_1")
+
+    def test_parallel_function_calls_in_one_chunk_get_distinct_indexes(self):
+        ctx = VertexAiConverters.FromGemini.new_stream_ctx("m-1")
+        chunk = {
+            "candidates": [
+                _candidate(
+                    [
+                        {"functionCall": {"name": "a", "args": {}}},
+                        {"functionCall": {"name": "b", "args": {}}},
+                    ]
+                )
+            ]
+        }
+        out = VertexAiConverters.FromGemini.convert_stream_chunk(chunk, ctx)
+        tool_calls = out["choices"][0]["delta"]["tool_calls"]
+        assert [call["index"] for call in tool_calls] == [0, 1]
+        assert [call["id"] for call in tool_calls] == ["vertex_fc_0", "vertex_fc_1"]
+        assert ctx["tool_seq"] == 2
+
+    def test_stream_chunk_surfaces_thought_signature(self):
+        ctx = VertexAiConverters.FromGemini.new_stream_ctx("m-1")
+        chunk = {
+            "candidates": [
+                _candidate(
+                    [
+                        {
+                            "functionCall": {"name": "a", "args": {}},
+                            "thoughtSignature": "SIG-XYZ",
+                        }
+                    ]
+                )
+            ]
+        }
+        out = VertexAiConverters.FromGemini.convert_stream_chunk(chunk, ctx)
+        call = out["choices"][0]["delta"]["tool_calls"][0]
+        assert call["thought_signature"] == "SIG-XYZ"
+
+    @pytest.mark.parametrize(
+        "reason",
+        ["MALFORMED_FUNCTION_CALL", "OTHER", "UNEXPECTED_TOOL_CALL"],
+    )
+    def test_stream_unknown_finish_reason_is_not_null(self, reason):
+        # A terminal chunk with a null finish_reason leaves clients waiting for
+        # an end that never arrives.
+        ctx = VertexAiConverters.FromGemini.new_stream_ctx("m-1")
+        ctx["started"] = True
+        out = VertexAiConverters.FromGemini.convert_stream_chunk(
+            {"candidates": [_candidate([], reason)]}, ctx
+        )
+        assert out["choices"][0]["finish_reason"] == "stop"
+
+    def test_stream_finish_reason_is_tool_calls_after_a_function_call(self):
+        ctx = VertexAiConverters.FromGemini.new_stream_ctx("m-1")
+        VertexAiConverters.FromGemini.convert_stream_chunk(self._fc_chunk("a"), ctx)
+        out = VertexAiConverters.FromGemini.convert_stream_chunk(
+            {"candidates": [_candidate([], "STOP")]}, ctx
+        )
+        assert out["choices"][0]["finish_reason"] == "tool_calls"
+
+    def test_new_final_chunk_reuses_the_stream_envelope(self):
+        ctx = VertexAiConverters.FromGemini.new_stream_ctx("gemini-2.5-flash")
+        final = VertexAiConverters.FromGemini.new_final_chunk(ctx, "tool_calls")
+        assert final["id"] == ctx["id"]
+        assert final["created"] == ctx["created"]
+        assert final["model"] == "gemini-2.5-flash"
+        assert final["object"] == "chat.completion.chunk"
+        assert final["choices"] == [
+            {"index": 0, "delta": {}, "finish_reason": "tool_calls"}
+        ]
