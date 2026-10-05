@@ -64,6 +64,44 @@
       ]
     }
   },
+  "aws_models": {
+    "aws/claude-sonnet-4": {
+      "providers": [
+        {
+          "id": "bedrock-claude-sonnet-4",
+          "api_host": "https://bedrock-runtime.eu-central-1.amazonaws.com",
+          "api_token": "",
+          "api_type": "bedrock",
+          "input_size": 200000,
+          "model_path": "anthropic.claude-sonnet-4-20250514-v1:0",
+          "keep_alive": null,
+          "tool_calling": true,
+          "nworkers": 10,
+          "provider_options": {
+            "region": "eu-central-1"
+          }
+        }
+      ]
+    },
+    "aws/titan-embed-text-v2": {
+      "providers": [
+        {
+          "id": "bedrock-titan-embed-v2",
+          "api_host": "https://bedrock-runtime.eu-central-1.amazonaws.com",
+          "api_token": "",
+          "api_type": "bedrock",
+          "input_size": 8192,
+          "is_embedding": true,
+          "model_path": "amazon.titan-embed-text-v2:0",
+          "keep_alive": null,
+          "nworkers": 10,
+          "provider_options": {
+            "region": "eu-central-1"
+          }
+        }
+      ]
+    }
+  },
   "openai_models": {
     "openai/gpt-3.5-turbo-0125": {
       "providers": [
@@ -120,6 +158,10 @@
     "openai_models": [
       "openai/gpt-3.5-turbo-0125",
       "gpt-oss:120b"
+    ],
+    "aws_models": [
+      "aws/claude-sonnet-4",
+      "aws/titan-embed-text-v2"
     ],
     "qwen_models": [
       "nomic-embed-text"

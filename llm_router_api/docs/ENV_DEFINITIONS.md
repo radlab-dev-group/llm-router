@@ -69,6 +69,38 @@ fresh one rather than replaying a rejected credential until the process restarts
 
 ---
 
+## AWS Bedrock variables (optional)
+
+Relevant only for providers with `api_type: "bedrock"` that carry neither an
+`api_token` nor inline `provider_options` credentials — the router then signs
+every request with SigV4 using credentials resolved from the environment or from
+the AWS credential chain (shared config files and named profiles, SSO, assumed
+IAM roles, EKS Web Identity / IRSA, the EC2/ECS metadata service). Signing, the
+Converse translation and the event‑stream decoder need no dependency at all;
+reaching the credential chain needs the optional `aws` dependency
+(`pip install "radlab-llm-router[aws]"`, see
+[`requirements-aws.txt`](../../requirements-aws.txt)) — a missing boto3 is
+reported as a `RuntimeError` carrying the install hint.
+
+Apart from the refresh skew below, these are the standard AWS variables, read as
+they are.
+
+| Variable                                        | Default             | Description                                                                                          |
+|-------------------------------------------------|---------------------|------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_AWS_TOKEN_REFRESH_SKEW`             | `300`               | Seconds before expiry at which cached chain‑resolved credentials (STS, IRSA, metadata service) are refreshed. A malformed value falls back to `300` instead of breaking start‑up. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`   | *(empty)*           | Static credentials used when the provider carries none; a `provider_options` pair wins.              |
+| `AWS_SESSION_TOKEN`                             | *(empty)*           | Session token of temporary static credentials.                                                       |
+| `AWS_REGION` / `AWS_DEFAULT_REGION`             | *(empty)*           | Region used for signing and host derivation when `provider_options.region` is unset; the boto3 session region answers when neither is set. |
+| `AWS_PROFILE`                                   | *(empty)*           | Named profile selected by the boto3 session and part of the credential cache key; `provider_options.profile` wins. |
+
+Credential lifetime handling: expiring credentials are cached **per profile and
+region**, refreshes are serialised **per key** (a burst of concurrent requests
+resolves one credential, not one per request), and a `401`/`403` from Bedrock
+evicts the cached credential so the next request resolves a fresh one rather
+than replaying a rejected credential until the process restarts.
+
+---
+
 ## Redis variables
 
 | Variable                    | Default   | Description                                                    |
