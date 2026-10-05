@@ -17,6 +17,12 @@ from requests import Response
 from typing import Iterator, Dict, Any, Optional
 
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
+from llm_router_api.core.api_types.bedrock import BedrockConverters
+from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
+from llm_router_api.core.api_types.eventstream import (
+    AwsEventStreamError,
+    iter_events,
+)
 from llm_router_api.core.api_types.vertex_ai import VertexAiConverters
 from llm_router_api.core.errors import (
     ProviderStreamError,
@@ -178,6 +184,7 @@ class StreamConversion(Enum):
     OPENAI_TO_ANTHROPIC = auto()
     VERTEX = auto()
     VERTEX_TO_OPENAI = auto()
+    BEDROCK_TO_OPENAI = auto()
 
 
 class StreamHandler:
@@ -755,6 +762,132 @@ class StreamHandler:
                         yield f"data: {json.dumps(final)}\n\n".encode("utf-8")
                     if not done_sent:
                         yield b"data: [DONE]\n\n"
+
+                except requests.RequestException as exc:
+                    self._log_request_error(endpoint, exc)
+                    err = {"error": _request_error_message(exc)}
+                    yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+                    return
+
+        return _iter()
+
+    def stream_bedrock_to_openai(
+        self,
+        url: str,
+        payload: Dict[str, Any],
+        method: str,
+        headers: Dict[str, Any],
+        options: Optional[Dict[str, Any]],
+        endpoint,
+        api_model_provider,
+        force_text: Optional[str] = None,
+    ) -> Iterator[bytes]:
+        """
+        Convert a Bedrock ``converse-stream`` event stream into OpenAI SSE.
+
+        Two things set this apart from the other ``*_to_openai`` helpers:
+
+        * the response is an **Amazon event stream** (binary framing), not SSE,
+          so the bytes go through :func:`iter_events` rather than a ``data:``
+          line scan;
+        * the request is signed with SigV4, which covers the body — so the body
+          is serialised here, once, and sent as ``data`` instead of ``json``.
+          Signing at :func:`ApiTypesDispatcher.request_headers` time (the point
+          the generic streaming path builds its headers) is impossible, because
+          the body is not yet serialised there.
+        """
+        if force_text is not None:
+
+            def _force_iter() -> Iterator[bytes]:
+                with self._model_unsetter(
+                    endpoint, payload, api_model_provider, options
+                ):
+                    yield from self._force_iter_openai(
+                        force_text or "", api_model_provider
+                    )
+
+            return _force_iter()
+
+        api_type = (
+            api_model_provider.api_type
+            if api_model_provider is not None
+            else "bedrock"
+        )
+        body = ApiTypesDispatcher.signed_body(payload)
+        signed_headers = ApiTypesDispatcher.sign_request(
+            api_type,
+            api_model_provider,
+            method,
+            url,
+            dict(headers or {}),
+            body,
+        )
+        signed_headers.setdefault("Content-Type", "application/json")
+        signed_headers["Accept"] = "application/vnd.amazon.eventstream"
+
+        def _iter() -> Iterator[bytes]:
+            with self._model_unsetter(
+                endpoint, payload, api_model_provider, options
+            ):
+                try:
+                    try:
+                        response = requests.request(
+                            method=method,
+                            url=url,
+                            data=body,
+                            headers=signed_headers,
+                            stream=True,
+                            timeout=endpoint.timeout,
+                        )
+                    except requests.RequestException as exc:
+                        raise _pre_content_failure(exc) from exc
+                    _raise_for_status(response)
+
+                    ctx = BedrockConverters.FromBedrock.new_stream_ctx(
+                        model=(
+                            (
+                                api_model_provider.model_path
+                                if api_model_provider.model_path
+                                else api_model_provider.name
+                            )
+                            if api_model_provider is not None
+                            else ""
+                        )
+                    )
+                    finish_sent = False
+                    try:
+                        for event_type, event in iter_events(
+                            _guarded_body(response.iter_content(chunk_size=8192))
+                        ):
+                            converted = BedrockConverters.FromBedrock.convert_event(
+                                event_type, event, ctx
+                            )
+                            if not converted:
+                                continue
+                            if (converted.get("choices") or [{}])[0].get(
+                                "finish_reason"
+                            ):
+                                finish_sent = True
+                            yield f"data: {json.dumps(converted)}\n\n".encode(
+                                "utf-8"
+                            )
+                    except AwsEventStreamError as exc:
+                        # A service error frame, a failed frame CRC or a stream
+                        # cut mid‑frame: the client already received content, so
+                        # report it as a stream error rather than failing over.
+                        self._log_request_error(endpoint, exc)
+                        err = {"error": sanitize_error_message(str(exc))}
+                        yield f"data: {json.dumps(err)}\n\n".encode("utf-8")
+                        return
+
+                    # Bedrock closes with ``messageStop``/``metadata``, which this
+                    # conversion turns into the terminal chunk only here: no
+                    # in‑band event carries an OpenAI ``finish_reason``, and the
+                    # native stream has no ``[DONE]`` sentinel at all.
+                    if not finish_sent:
+                        final = BedrockConverters.FromBedrock.flush(ctx)
+                        yield f"data: {json.dumps(final)}\n\n".encode("utf-8")
+                    yield b"data: [DONE]\n\n"
 
                 except requests.RequestException as exc:
                     self._log_request_error(endpoint, exc)
@@ -1386,6 +1519,7 @@ class StreamHandler:
         provider_is_lmstudio = provider_type == "lmstudio"
         provider_is_anthropic = provider_type == "anthropic"
         provider_is_vertex = provider_type == "vertex_ai"
+        provider_is_bedrock = provider_type == "bedrock"
         provider_is_openai = (
             provider_type in OPENAI_COMPATIBLE_PROVIDERS
             if not provider_is_lmstudio and not provider_is_anthropic
@@ -1408,6 +1542,7 @@ class StreamHandler:
             StreamConversion.ANTHROPIC: False,
             StreamConversion.VERTEX_TO_OPENAI: False,
             StreamConversion.VERTEX: False,
+            StreamConversion.BEDROCK_TO_OPENAI: False,
         }
 
         # ------------------------------------#
@@ -1446,6 +1581,10 @@ class StreamHandler:
             flags[StreamConversion.OPENAI_TO_ANTHROPIC] = True
         elif endpoint_wants_openai and provider_is_vertex:
             flags[StreamConversion.VERTEX_TO_OPENAI] = True
+        elif endpoint_wants_openai and provider_is_bedrock:
+            # Bedrock streams a binary event stream, never SSE: the dedicated
+            # conversion is the only path that can produce OpenAI chunks.
+            flags[StreamConversion.BEDROCK_TO_OPENAI] = True
 
         # ------------------------------------#
         # Native LMStudio conversion checks (must be after passthrough)
