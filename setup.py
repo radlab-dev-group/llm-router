@@ -37,6 +37,9 @@ requirements_api = _read_requirements(BASE_DIR / "requirements.txt")
 # Optional Vertex AI / Google Cloud credentials support
 requirements_google = _read_requirements(BASE_DIR / "requirements-google.txt")
 
+# Optional AWS credential-chain support for Bedrock providers
+requirements_aws = _read_requirements(BASE_DIR / "requirements-aws.txt")
+
 # ----------------------------------------------------------------------
 # Extras handling
 # ----------------------------------------------------------------------
@@ -46,6 +49,9 @@ extras = {
     "vault": ["hvac", "bcrypt"],  # "hvac==2.3.0", "bcrypt==5.0.0"
     # Google ADC token resolution for `vertex_ai` providers
     "google": requirements_google,  # google-auth
+    # AWS credential chain (IAM roles, IRSA, SSO, metadata service) for
+    # `bedrock` providers; signing itself needs no dependency.
+    "aws": requirements_aws,  # boto3
 }
 
 # ----------------------------------------------------------------------
