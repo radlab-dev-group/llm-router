@@ -75,10 +75,10 @@ class TestProviderLists:
         ]
 
     def test_all_providers_composition(self):
-        # ``ALL_PROVIDERS`` extends the OpenAI‑compatible list with Ollama
-        # and Vertex AI (pin the exact composition).
+        # ``ALL_PROVIDERS`` extends the OpenAI‑compatible list with Ollama,
+        # Vertex AI and Bedrock (pin the exact composition).
         assert ALL_PROVIDERS == (
-            OPENAI_COMPATIBLE_PROVIDERS + ["ollama", "vertex_ai"]
+            OPENAI_COMPATIBLE_PROVIDERS + ["ollama", "vertex_ai", "bedrock"]
         )
 
     def test_ollama_is_not_openai_compatible(self):
@@ -94,4 +94,11 @@ class TestProviderLists:
             "anthropic",
             "ollama",
             "vertex_ai",
+            "bedrock",
         }
+
+    def test_bedrock_is_not_openai_compatible(self):
+        # Bedrock speaks Converse and signs with SigV4: treating it as an
+        # OpenAI‑compatible backend would send it an OpenAI body.
+        assert "bedrock" not in OPENAI_COMPATIBLE_PROVIDERS
+        assert "bedrock" in ALL_PROVIDERS
