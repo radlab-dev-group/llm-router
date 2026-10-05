@@ -66,4 +66,13 @@ OPENAI_COMPATIBLE_PROVIDERS = [
 # on the wire, hence kept out of ``OPENAI_COMPATIBLE_PROVIDERS``).
 VERTEX_AI_PROVIDER = "vertex_ai"
 
-ALL_PROVIDERS = OPENAI_COMPATIBLE_PROVIDERS + ["ollama", VERTEX_AI_PROVIDER]
+# Amazon Bedrock - native Converse wire protocol with the model in the URL and
+# SigV4 instead of a bearer token; reached through the OpenAI-shaped public
+# endpoints, and likewise kept out of ``OPENAI_COMPATIBLE_PROVIDERS``.
+BEDROCK_PROVIDER = "bedrock"
+
+ALL_PROVIDERS = OPENAI_COMPATIBLE_PROVIDERS + [
+    "ollama",
+    VERTEX_AI_PROVIDER,
+    BEDROCK_PROVIDER,
+]
