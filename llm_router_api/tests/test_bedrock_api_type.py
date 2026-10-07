@@ -83,7 +83,9 @@ def _frame(event_type, payload, message_type=1, flags=0):
     :func:`_frame_with_crc`, which asserts that parser agrees with every frame
     this builder produces).
     """
-    return _frame_with_crc(event_type, payload, message_type=message_type, flags=flags)
+    return _frame_with_crc(
+        event_type, payload, message_type=message_type, flags=flags
+    )
 
 
 def _frame_with_crc(event_type, payload, message_type=1, flags=0, crc_of=None):
@@ -176,7 +178,9 @@ class TestBedrockEndpoints:
             "arn:aws:bedrock:eu-west-1:123456789012:provisioned-model/abc123",
         ):
             path = ApiTypesDispatcher.get_proper_endpoint(
-                "bedrock", "v1/chat/completions", provider=_provider(model_path=model)
+                "bedrock",
+                "v1/chat/completions",
+                provider=_provider(model_path=model),
             )
             assert path == f"/model/{model}/converse"
 
@@ -296,10 +300,9 @@ class TestBedrockSigning:
             return request.headers["Authorization"]
 
         for token in ("", "IQ.ExampleToken"):
-            assert (
-                self._sign(session_token=token)["Authorization"]
-                == botocore_authorization(token)
-            )
+            assert self._sign(session_token=token)[
+                "Authorization"
+            ] == botocore_authorization(token)
 
     def test_signature_matches_botocore_vector(self):
         """
@@ -314,8 +317,7 @@ class TestBedrockSigning:
         """
         signed = self._sign()
         assert (
-            signed["Authorization"]
-            == "AWS4-HMAC-SHA256 "
+            signed["Authorization"] == "AWS4-HMAC-SHA256 "
             "Credential=AKIAIOSFODNN7EXAMPLE/20260115/eu-central-1/bedrock/aws4_request, "
             "SignedHeaders=content-type;host;x-amz-date, "
             "Signature=31f7bd58c9459a421b99a1d5c8e9da778210b1781121f6c81393331b1748a97b"
@@ -324,8 +326,7 @@ class TestBedrockSigning:
     def test_signature_with_session_token_matches_botocore_vector(self):
         signed = self._sign(session_token="IQ.ExampleToken")
         assert (
-            signed["Authorization"]
-            == "AWS4-HMAC-SHA256 "
+            signed["Authorization"] == "AWS4-HMAC-SHA256 "
             "Credential=AKIAIOSFODNN7EXAMPLE/20260115/eu-central-1/bedrock/aws4_request, "
             "SignedHeaders=content-type;host;x-amz-date;x-amz-security-token, "
             "Signature=becec230100f7f623ab154c1c2f448c6837f705f335470933d9c751dede4660d"
@@ -346,7 +347,9 @@ class TestBedrockSigning:
             timestamp=SIGN_TS,
             include_content_hash=True,
         )
-        assert signed["x-amz-content-sha256"] == AwsSigV4Signer.payload_hash(SIGN_BODY)
+        assert signed["x-amz-content-sha256"] == AwsSigV4Signer.payload_hash(
+            SIGN_BODY
+        )
 
     def test_amz_date_is_utc_compact(self):
         assert self._sign()["x-amz-date"] == "20260115T103000Z"
@@ -364,9 +367,7 @@ class TestBedrockSigning:
         )
 
     def test_canonical_query_string_sorts_without_reencoding(self):
-        assert (
-            AwsSigV4Signer._canonical_query_string("b=2&a=x%2Fy") == "a=x%2Fy&b=2"
-        )
+        assert AwsSigV4Signer._canonical_query_string("b=2&a=x%2Fy") == "a=x%2Fy&b=2"
 
     def test_changing_the_body_changes_the_signature(self):
         first = self._sign()
@@ -413,7 +414,11 @@ class TestAwsCredentialProvider:
                 "session_token": "ST",
             }
         )
-        assert (credentials.access_key, credentials.secret_key, credentials.session_token) == ("AK", "SK", "ST")
+        assert (
+            credentials.access_key,
+            credentials.secret_key,
+            credentials.session_token,
+        ) == ("AK", "SK", "ST")
 
     def test_static_credentials_from_environment(self, monkeypatch):
         monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
@@ -437,7 +442,9 @@ class TestAwsCredentialProvider:
         monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
         monkeypatch.setattr(aws_auth, "_BOTO3_AVAILABLE", False)
         monkeypatch.setattr(aws_auth, "boto3", None)
-        with pytest.raises(RuntimeError, match=r"pip install 'radlab-llm-router\[aws\]'"):
+        with pytest.raises(
+            RuntimeError, match=r"pip install 'radlab-llm-router\[aws\]'"
+        ):
             AwsCredentialProvider.get_credentials({})
 
     def test_chain_credentials_are_cached(self, monkeypatch):
@@ -449,7 +456,9 @@ class TestAwsCredentialProvider:
             calls.append((profile, region))
             return AwsCredentials("AK", "SK", "", expires_at=10**12)
 
-        monkeypatch.setattr(AwsCredentialProvider, "_from_boto3", staticmethod(_fake))
+        monkeypatch.setattr(
+            AwsCredentialProvider, "_from_boto3", staticmethod(_fake)
+        )
         first = AwsCredentialProvider.get_credentials({"region": "eu-central-1"})
         second = AwsCredentialProvider.get_credentials({"region": "eu-central-1"})
         assert first is second
@@ -464,7 +473,9 @@ class TestAwsCredentialProvider:
             state["n"] += 1
             return AwsCredentials("AK", "SK", "", expires_at=1)
 
-        monkeypatch.setattr(AwsCredentialProvider, "_from_boto3", staticmethod(_fake))
+        monkeypatch.setattr(
+            AwsCredentialProvider, "_from_boto3", staticmethod(_fake)
+        )
         AwsCredentialProvider.get_credentials({})
         AwsCredentialProvider.get_credentials({})
         assert state["n"] == 2
@@ -478,7 +489,9 @@ class TestAwsCredentialProvider:
             state["n"] += 1
             return AwsCredentials("AK", "SK", "", expires_at=10**12)
 
-        monkeypatch.setattr(AwsCredentialProvider, "_from_boto3", staticmethod(_fake))
+        monkeypatch.setattr(
+            AwsCredentialProvider, "_from_boto3", staticmethod(_fake)
+        )
         options = {"region": "us-east-1"}
         AwsCredentialProvider.get_credentials(options)
         AwsCredentialProvider.invalidate(options)
@@ -492,7 +505,9 @@ class TestAwsCredentialProvider:
         def _fake(profile="", region=""):
             return AwsCredentials("AK", "SK", "", expires_at=10**12)
 
-        monkeypatch.setattr(AwsCredentialProvider, "_from_boto3", staticmethod(_fake))
+        monkeypatch.setattr(
+            AwsCredentialProvider, "_from_boto3", staticmethod(_fake)
+        )
         AwsCredentialProvider.get_credentials({"region": "us-east-1"})
         AwsCredentialProvider.invalidate({"region": "eu-west-1"})
         assert AwsCredentialProvider._cached_credentials("profile=|region=us-east-1")
@@ -521,7 +536,8 @@ class TestAwsCredentialProvider:
         with mock.patch.object(AwsCredentialProvider, "invalidate") as invalidate:
             BedrockType().on_response_status(_provider(api_token="key"), 401)
             BedrockType().on_response_status(
-                _provider(provider_options={"region": "x", "access_key_id": "AK"}), 401
+                _provider(provider_options={"region": "x", "access_key_id": "AK"}),
+                401,
             )
         invalidate.assert_not_called()
 
@@ -575,7 +591,9 @@ class TestBedrockPayloadConverter:
 
     def test_model_field_never_sent(self):
         # The model is addressed in the URL.
-        body = self._convert({"model": "x", "messages": [{"role": "user", "content": "h"}]})
+        body = self._convert(
+            {"model": "x", "messages": [{"role": "user", "content": "h"}]}
+        )
         assert "model" not in body
 
     def test_assistant_tool_calls_become_tool_use(self):
@@ -689,9 +707,9 @@ class TestBedrockPayloadConverter:
         assert body["inferenceConfig"]["maxTokens"] == 12
 
     def test_zero_and_negative_max_tokens_dropped(self):
-        assert "maxTokens" not in self._convert({"messages": [], "max_tokens": 0}).get(
-            "inferenceConfig", {}
-        )
+        assert "maxTokens" not in self._convert(
+            {"messages": [], "max_tokens": 0}
+        ).get("inferenceConfig", {})
 
     def test_tools_and_tool_choice(self):
         body = self._convert(
@@ -718,7 +736,10 @@ class TestBedrockPayloadConverter:
 
     def test_named_tool_choice(self):
         body = self._convert(
-            {"messages": [], "tool_choice": {"type": "function", "function": {"name": "f"}}}
+            {
+                "messages": [],
+                "tool_choice": {"type": "function", "function": {"name": "f"}},
+            }
         )
         assert body["toolConfig"]["toolChoice"] == {"tool": {"name": "f"}}
 
@@ -751,7 +772,9 @@ class TestBedrockPayloadConverter:
                             {"type": "text", "text": "what is this"},
                             {
                                 "type": "image_url",
-                                "image_url": {"url": "data:image/png;base64,aGVsbG8="},
+                                "image_url": {
+                                    "url": "data:image/png;base64,aGVsbG8="
+                                },
                             },
                         ],
                     }
@@ -759,7 +782,9 @@ class TestBedrockPayloadConverter:
             }
         )
         blocks = body["messages"][0]["content"]
-        assert blocks[1] == {"image": {"format": "png", "source": {"bytes": "aGVsbG8="}}}
+        assert blocks[1] == {
+            "image": {"format": "png", "source": {"bytes": "aGVsbG8="}}
+        }
 
     def test_remote_image_url_skipped(self):
         body = self._convert(
@@ -769,7 +794,10 @@ class TestBedrockPayloadConverter:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": "t"},
-                            {"type": "image_url", "image_url": {"url": "https://x/y.png"}},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": "https://x/y.png"},
+                            },
                         ],
                     }
                 ]
@@ -828,7 +856,9 @@ class TestBedrockResponseConverter:
         )
         message = converted["choices"][0]["message"]
         assert message["tool_calls"][0]["id"] == "tu_1"
-        assert json.loads(message["tool_calls"][0]["function"]["arguments"]) == {"a": 1}
+        assert json.loads(message["tool_calls"][0]["function"]["arguments"]) == {
+            "a": 1
+        }
         assert converted["choices"][0]["finish_reason"] == "tool_calls"
 
     @pytest.mark.parametrize(
@@ -850,7 +880,10 @@ class TestBedrockResponseConverter:
 
     def test_missing_usage_yields_zeros(self):
         converted = BedrockConverters.FromBedrock.convert_response(
-            {"output": {"message": {"content": [{"text": "x"}]}}, "stopReason": "end_turn"}
+            {
+                "output": {"message": {"content": [{"text": "x"}]}},
+                "stopReason": "end_turn",
+            }
         )
         assert converted["usage"]["total_tokens"] == 0
 
@@ -888,12 +921,21 @@ class TestBedrockStreamConverter:
         chunks, final = self._drain(
             [
                 ("messageStart", {"role": "assistant"}),
-                ("contentBlockDelta", {"contentBlockIndex": 0, "delta": {"text": "He"}}),
-                ("contentBlockDelta", {"contentBlockIndex": 0, "delta": {"text": "llo"}}),
+                (
+                    "contentBlockDelta",
+                    {"contentBlockIndex": 0, "delta": {"text": "He"}},
+                ),
+                (
+                    "contentBlockDelta",
+                    {"contentBlockIndex": 0, "delta": {"text": "llo"}},
+                ),
                 ("messageStop", {"stopReason": "end_turn"}),
             ]
         )
-        assert chunks[0]["choices"][0]["delta"] == {"role": "assistant", "content": "He"}
+        assert chunks[0]["choices"][0]["delta"] == {
+            "role": "assistant",
+            "content": "He",
+        }
         assert chunks[1]["choices"][0]["delta"] == {"content": "llo"}
         assert final["choices"][0]["finish_reason"] == "stop"
 
@@ -977,11 +1019,18 @@ class TestBedrockStreamConverter:
     def test_metadata_usage_and_invoked_model(self):
         _, final = self._drain(
             [
-                ("contentBlockDelta", {"contentBlockIndex": 0, "delta": {"text": "x"}}),
+                (
+                    "contentBlockDelta",
+                    {"contentBlockIndex": 0, "delta": {"text": "x"}},
+                ),
                 (
                     "metadata",
                     {
-                        "usage": {"inputTokens": 2, "outputTokens": 3, "totalTokens": 5},
+                        "usage": {
+                            "inputTokens": 2,
+                            "outputTokens": 3,
+                            "totalTokens": 5,
+                        },
                         "trace": {
                             "promptRouter": {"invokedModelId": "claude-invoked"}
                         },
@@ -1054,7 +1103,8 @@ class TestBedrockEmbeddings:
 
     def test_cohere_v3_input_type_override(self):
         body = self._body(
-            "cohere.embed-english-v3", options={"embedding_input_type": "search_query"}
+            "cohere.embed-english-v3",
+            options={"embedding_input_type": "search_query"},
         )
         assert body["input_type"] == "search_query"
 
@@ -1141,9 +1191,7 @@ class TestEventStreamDecoder:
         # (CRC over ``frame[8:]`` with no seed).  botocore rejects it, so this
         # decoder must too: accepting several conventions would let a
         # corrupted frame through.
-        blob = _blob(
-            self.EVENTS, crc_of=lambda frame, end: zlib.crc32(frame[8:end])
-        )
+        blob = _blob(self.EVENTS, crc_of=lambda frame, end: zlib.crc32(frame[8:end]))
         with pytest.raises(AwsEventStreamError, match="CRC mismatch"):
             list(iter_events([blob]))
 
@@ -1171,7 +1219,9 @@ class TestEventStreamDecoder:
         buffer = EventStreamBuffer()
         buffer.add_data(_blob(self.EVENTS))
         # botocore hands the payload over as raw bytes; the router decodes it.
-        parsed = [(m.headers.get(":event-type"), json.loads(m.payload)) for m in buffer]
+        parsed = [
+            (m.headers.get(":event-type"), json.loads(m.payload)) for m in buffer
+        ]
         assert parsed == self.EVENTS
 
         mis_signed = _blob(
@@ -1214,7 +1264,9 @@ class TestEventStreamDecoder:
         blob = _frame(
             "throttlingException", {"message": "slow down"}, message_type=2
         )
-        with pytest.raises(AwsEventStreamError, match=r"throttlingException.*slow down"):
+        with pytest.raises(
+            AwsEventStreamError, match=r"throttlingException.*slow down"
+        ):
             list(iter_events([blob]))
 
     def test_connection_settings_frame_skipped(self):
