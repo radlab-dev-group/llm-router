@@ -75,8 +75,14 @@ Everything else below needs a key once auth is on; the permission in brackets co
 This is the endpoint the **Codex CLI** coding agent talks to (`wire_api = "responses"`) when the
 `agentic_routing_codex` utils plugin is enabled: the request arrives with the trigger model `auto_codex`
 and the plugin rewrites `payload["model"]` to the resolved work-mode model before provider dispatch
-(see [Codex Agentic Routing](../README.md#codex-agentic-routing) and
+(see [Codex Agentic Routing](../../README.md#codex-agentic-routing) and
 [ENV_DEFINITIONS.md](../docs/ENV_DEFINITIONS.md#codex-agentic-routing-variables)).
+
+For routing calibration and offline evaluation, see the guides in the `llm-router-plugins` Codex directory:
+[CODEX_EVAL_HOWTO_PL.md (Polski)](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/CODEX_EVAL_HOWTO_PL.md)
+and [CODEX_EVAL_HOWTO_EN.md (English)](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/CODEX_EVAL_HOWTO_EN.md).
+They cover configuration, scores and thresholds, calibration/holdout replay, evaluation metrics and the
+`scripts/codex-tune-eval.sh` automation; these measurements do not call response-generating models or use production Redis.
 
 - **POST** `/responses` — OpenAI‑like responses endpoint (requires `chat` permission).
 - **POST** `/v1/responses` — OpenAI‑like responses endpoint v1 (requires `chat` permission).

@@ -243,6 +243,14 @@ Full plugin documentation (decision cascade, work modes, tuning, troubleshooting
 [`llm_router_plugins/utils/routing/agentic_routing/codex/README.md`](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/README.md)
  in the `llm-router-plugins` repository.
 
+Calibration and evaluation guides are alongside that README:
+[CODEX_EVAL_HOWTO_PL.md (Polski)](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/CODEX_EVAL_HOWTO_PL.md)
+and [CODEX_EVAL_HOWTO_EN.md (English)](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/CODEX_EVAL_HOWTO_EN.md).
+They explain configuration roles, scores, embedding threshold/margin tuning, calibration/holdout datasets,
+evaluation commands and metrics, and the plugins repository's `scripts/codex-tune-eval.sh` workflow.
+The evaluation CLI reads the file passed via `--config`, **not production ENV overrides**, and uses isolated replay
+memory rather than production Redis; save experimental parameters in that file before evaluating.
+
 ---
 
 ## LangChainRAG variables
