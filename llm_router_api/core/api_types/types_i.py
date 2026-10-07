@@ -313,6 +313,57 @@ class ApiTypesI(ABC):
         """
         return None
 
+    # ------------------------------------------------------------------
+    # Request signing hooks
+    # ------------------------------------------------------------------
+    def signs_payload(self) -> bool:
+        """
+        Whether the type authenticates by signing the request body.
+
+        The default ``False`` keeps every existing provider on the historical
+        path (``requests.post(json=payload)``, headers built before the body is
+        known).  Types whose signature covers the payload — AWS SigV4 for
+        Bedrock — return ``True`` to get the two guarantees signing needs:
+        the transport serialises the body **once** and passes those exact bytes
+        to :meth:`sign_request`, then transmits them verbatim.  Signing over a
+        hash of one serialisation while sending another (what ``requests`` does
+        when it re‑serialises a ``json=`` dict) is rejected by the service as a
+        signature mismatch.
+        """
+        return False
+
+    def sign_request(
+        self,
+        provider: Any,
+        method: str,
+        url: str,
+        headers: Dict[str, str],
+        body: Optional[bytes] = None,
+    ) -> Dict[str, str]:
+        """
+        Return ``headers`` completed with the authentication of a signed body.
+
+        Called by the transport immediately before the request leaves, with the
+        final URL and the exact bytes about to be sent — the only point at
+        which a payload signature can be computed correctly.  The default is a
+        pass‑through, since header‑only authentication (bearer tokens) is fully
+        resolved by :meth:`request_headers`.
+
+        Parameters
+        ----------
+        provider : Any
+            The provider descriptor.
+        method : str
+            HTTP verb, as it will be sent.
+        url : str
+            Absolute request URL.
+        headers : Dict[str, str]
+            Headers produced by :meth:`request_headers`; not mutated.
+        body : Optional[bytes]
+            The transmitted body, or ``None`` for a bodyless request.
+        """
+        return headers
+
     @abstractmethod
     def chat_ep(self) -> str:
         """

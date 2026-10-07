@@ -178,6 +178,7 @@ class HttpRequestExecutor:
                 StreamConversion.ANTHROPIC_TO_OPENAI,
                 StreamConversion.VERTEX,
                 StreamConversion.VERTEX_TO_OPENAI,
+                StreamConversion.BEDROCK_TO_OPENAI,
             ):
                 return self._stream_handler.stream_openai(
                     url="",
@@ -351,6 +352,17 @@ class HttpRequestExecutor:
                     api_model_provider=api_model_provider,
                     force_text=force_text,
                 )
+            case StreamConversion.BEDROCK_TO_OPENAI:
+                return self._stream_handler.stream_bedrock_to_openai(
+                    url=full_url,
+                    payload=params,
+                    method=method,
+                    headers=headers,
+                    options=options,
+                    endpoint=self._endpoint,
+                    api_model_provider=api_model_provider,
+                    force_text=force_text,
+                )
             case StreamConversion.OPENAI | None:
                 return self._stream_handler.stream_openai(
                     url=full_url,
@@ -480,14 +492,41 @@ class HttpRequestExecutor:
     ) -> Optional[Dict[str, Any] | Response]:
         """
         Issue a ``POST`` request with a JSON payload.
+
+        Providers that authenticate by signing the body (AWS Bedrock) get the
+        payload serialised here, once, so the signature and the transmitted
+        bytes agree; everyone else keeps the plain ``json=`` path.
         """
+        api_type = (
+            getattr(api_model_provider, "api_type", None)
+            if api_model_provider is not None
+            else None
+        )
         try:
-            response = requests.post(
-                ep_url,
-                json=params,
-                timeout=self._endpoint.timeout,
-                headers=headers,
-            )
+            if api_type and ApiTypesDispatcher.signs_payload(api_type):
+                body = ApiTypesDispatcher.signed_body(params)
+                signed = ApiTypesDispatcher.sign_request(
+                    api_type,
+                    api_model_provider,
+                    "POST",
+                    ep_url,
+                    dict(headers or {}),
+                    body,
+                )
+                signed.setdefault("Content-Type", "application/json")
+                response = requests.post(
+                    ep_url,
+                    data=body,
+                    timeout=self._endpoint.timeout,
+                    headers=signed,
+                )
+            else:
+                response = requests.post(
+                    ep_url,
+                    json=params,
+                    timeout=self._endpoint.timeout,
+                    headers=headers,
+                )
         except requests.RequestException as exc:
             self._log_provider_error("POST", ep_url, api_model_provider, str(exc))
 

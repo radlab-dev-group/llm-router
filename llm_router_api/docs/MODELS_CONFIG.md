@@ -62,7 +62,7 @@ Having a single source of truth for model definitions makes it easy to:
 | `keep_alive`   | `str`                     | Optional keep‑alive duration (e.g. `"35m"`). Empty or `null` means the provider is not kept alive.                                  | `"35m"`                         |
 | `tool_calling` | `bool`                    | Whether the provider supports tool‑calling (function calling).                                                                      | `true`                          |
 | `is_embedding` | `bool`                    | Whether the model is an embedding model (determines use of embedding endpoints).                                                    | `true`                          |
-| `provider_options` | `object` (optional)    | Provider‑specific options consumed only by the request adapter of the matching `api_type`. For `vertex_ai`: `project`, `region` (or `location`), `api_version` (default `v1`), `publisher` (default `google`), `api_key` (`x-goog-api-key`), `credentials_file` (service‑account JSON for Google ADC), `scopes`, plus `generation_config` / `safety_settings` merged into the Gemini request. Never sent in the downstream payload, hidden from `/models`. | `{"project": "my-proj", "region": "europe-central2"}` |
+| `provider_options` | `object` (optional)    | Provider‑specific options consumed only by the request adapter of the matching `api_type`. For `vertex_ai`: `project`, `region` (or `location`), `api_version` (default `v1`), `publisher` (default `google`), `api_key` (`x-goog-api-key`), `credentials_file` (service‑account JSON for Google ADC), `scopes`, plus `generation_config` / `safety_settings` merged into the Gemini request. For `bedrock`: `region` (or `aws_region`), `profile`, `access_key_id` / `secret_access_key` / `session_token` (static credentials for SigV4), `additional_model_request_fields` (merged in as `additionalModelRequestFields`), `guardrail_config` (passed through as `guardrailConfig`), and the embedding keys `embedding_input_type` (default `search_document` for Cohere v3, `input` for v4), `embedding_truncate` and `embedding_body` (exact request document). Never sent in the downstream payload, hidden from `/models`. | `{"project": "my-proj", "region": "europe-central2"}` |
 
 ### 🛟 `fallback_model` (model level)
 
@@ -215,6 +215,169 @@ with an unmapped `finishReason`) and closes with `data: [DONE]`.
         }
       ]
     }
+  }
+}
+```
+
+### 🪨 AWS Bedrock providers
+
+`api_type: "bedrock"` providers speak the native Bedrock runtime protocol: the
+**Converse API** for chat/completions/responses (`converse` /
+`converse-stream`) and **`InvokeModel`** for embeddings — Converse has no
+embeddings operation. Clients keep using the OpenAI‑shaped endpoints
+(`/v1/chat/completions`, `/v1/embeddings`, …) — the router translates the
+request and the answer, including tool calling and multimodal content parts.
+
+Unlike the other types, the model is addressed **in the URL**, so the request
+body never carries a `model` field:
+
+* `/model/{modelId}/converse` – chat/completions/responses,
+* `/model/{modelId}/converse-stream` – the same, streamed,
+* `/model/{modelId}/invoke` – embeddings.
+
+`api_host` is the region‑specific runtime endpoint
+(`https://bedrock-runtime.eu-central-1.amazonaws.com`) and `model_path` is the
+Bedrock model ID: a base model ID (`anthropic.claude-sonnet-4-20250514-v1:0`), a
+cross‑region inference profile (`eu.anthropic.claude-…`) or a model ARN — all
+accepted verbatim. Authentication resolution order:
+
+1. `api_token` – a Bedrock API key, sent as `Authorization: Bearer <token>`; no
+   dependency needed;
+2. `provider_options.access_key_id` / `secret_access_key` / `session_token` –
+   SigV4 signing; no dependency needed;
+3. the `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`
+   environment variables – SigV4; no dependency needed;
+4. the boto3 credential chain – shared config files and named profiles, SSO,
+   assumed IAM roles, EKS Web Identity (IRSA) and the EC2/ECS metadata service –
+   through the optional `aws` dependency (`pip install "radlab-llm-router[aws]"`,
+   see [ENV_DEFINITIONS](ENV_DEFINITIONS.md#aws-bedrock-variables-optional));
+   when boto3 is missing and the chain is needed, a `RuntimeError` with the
+   install hint is raised.
+
+Signing itself (SigV4), the Converse translation and the event‑stream decoder
+use the Python standard library only — `boto3` is never in the request path, it
+only supplies credentials.
+
+There is no provider‑specific health‑check path: the Bedrock runtime offers no
+cheap `GET`, so the monitor falls back to its generic probe list. A `401`/`403`
+evicts chain‑resolved credentials from the cache, so the next request resolves
+fresh ones instead of replaying a rejected credential until the process
+restarts.
+
+#### Parameters, tools and finish reasons
+
+| OpenAI field                                       | Converse field                                                                                                                                           |
+|----------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `temperature`                                      | `inferenceConfig.temperature`                                                                                                                            |
+| `top_p`                                            | `inferenceConfig.topP`                                                                                                                                   |
+| `max_tokens` / `max_completion_tokens`             | `inferenceConfig.maxTokens`                                                                                                                              |
+| `stop`                                             | `inferenceConfig.stopSequences`                                                                                                                          |
+| `tools[]`                                          | `toolConfig.tools[].toolSpec`, parameters under `inputSchema.json`                                                                                       |
+| `tool_choice`                                      | `toolConfig.toolChoice`: `auto` → `{"auto":{}}`, `required` → `{"any":{}}`, `none` → `{"none":{}}`, a named function → `{"tool":{"name":…}}`              |
+| `response_format` (`json_object` / `json_schema`)  | `outputConfig.textFormat`                                                                                                                                |
+
+The `stopReason` of an answer maps to `finish_reason` as `end_turn` → `stop`,
+`stop_sequence` → `stop`, `max_tokens` → `length`,
+`model_context_window_exceeded` → `length`, `tool_use` → `tool_calls`,
+`content_filtered` → `content_filter` and `guardrail_intervened` →
+`content_filter`.
+
+#### Messages and images
+
+* The router **owns message normalisation** for Bedrock — Converse requires
+  strictly alternating `user` / `assistant` turns, so consecutive same‑role
+  messages are merged and `toolResult` blocks are preserved through the merge.
+* Images must be supplied as base64 `data:` URLs: Bedrock does not fetch remote
+  image URLs, and such parts are skipped with a warning.
+
+#### Embeddings (`InvokeModel`)
+
+The embedding body is model specific; the family is inferred from `model_path`
+after stripping the regional prefixes (`eu.`, `apac.`, `us.`, `global.`):
+
+* `amazon.titan-embed-text-v1` – `inputText`, one input per request;
+* `amazon.titan-embed-text-v2:0` – `inputText` + optional `dimensions`;
+* `amazon.nova-embed-v1:0` – `input.text`;
+* `cohere.embed-*-v3` – `texts` + `input_type`, batch‑capable;
+* `cohere.embed-v4:0` – `texts` + `input_type` + `embedding_types`.
+
+An unrecognised embedding model raises a readable error naming the
+`provider_options.embedding_body` override instead of guessing a body.
+
+#### Streaming (`converse-stream`)
+
+Bedrock answers `converse-stream` with `application/vnd.amazon.eventstream` — a
+**binary** framing, not `text/event-stream` — which the router decodes natively
+into OpenAI chunks. The frame CRC field deserves a caveat: the two AWS reference
+implementations disagree about it (the published AWS encoding and `botocore` use
+different byte ranges and a different seed), so the router accepts either
+interpretation and does **not** validate the prelude CRC32C at all. The frame
+lengths are self‑describing and the message CRC still covers the frame, so a
+truncated or corrupted frame is rejected.
+
+```json
+{
+  "aws_models": {
+    "aws/claude-sonnet-4": {
+      "providers": [
+        {
+          "id": "bedrock-claude-sonnet-4",
+          "api_host": "https://bedrock-runtime.eu-central-1.amazonaws.com",
+          "api_token": "",
+          "api_type": "bedrock",
+          "input_size": 200000,
+          "model_path": "anthropic.claude-sonnet-4-20250514-v1:0",
+          "keep_alive": null,
+          "tool_calling": true,
+          "nworkers": 10,
+          "provider_options": {
+            "region": "eu-central-1"
+          }
+        }
+      ]
+    },
+    "aws/titan-embed-text-v2": {
+      "providers": [
+        {
+          "id": "bedrock-titan-embed-v2",
+          "api_host": "https://bedrock-runtime.eu-central-1.amazonaws.com",
+          "api_token": "",
+          "api_type": "bedrock",
+          "input_size": 8192,
+          "is_embedding": true,
+          "model_path": "amazon.titan-embed-text-v2:0",
+          "keep_alive": null,
+          "nworkers": 10,
+          "provider_options": {
+            "region": "eu-central-1"
+          }
+        }
+      ]
+    }
+  },
+  "active_models": {
+    "aws_models": [
+      "aws/claude-sonnet-4",
+      "aws/titan-embed-text-v2"
+    ]
+  }
+}
+```
+
+With a Bedrock API key the credentials come from the provider itself, so no AWS
+profile, environment variable or dependency is involved:
+
+```json
+{
+  "id": "bedrock-claude-sonnet-4",
+  "api_host": "https://bedrock-runtime.eu-central-1.amazonaws.com",
+  "api_token": "YOUR_BEDROCK_API_KEY",
+  "api_type": "bedrock",
+  "input_size": 200000,
+  "model_path": "anthropic.claude-sonnet-4-20250514-v1:0",
+  "tool_calling": true,
+  "provider_options": {
+    "region": "eu-central-1"
   }
 }
 ```

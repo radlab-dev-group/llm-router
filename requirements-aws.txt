@@ -1,0 +1,11 @@
+## AWS / Amazon Bedrock dependencies (optional — only for providers with
+## `api_type: "bedrock"` that authenticate through the AWS credential chain:
+## shared config files and profiles, SSO, assumed IAM roles, EKS Web Identity
+## (IRSA) or the EC2/ECS metadata service).
+##
+## Providers that carry a Bedrock API key (`api_token`) or inline
+## `access_key_id`/`secret_access_key` in `provider_options` need nothing here:
+## request signing (SigV4), the Converse translation and the event-stream
+## decoder are implemented with the Python standard library only.
+#boto3==1.43.0
+boto3

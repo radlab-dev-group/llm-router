@@ -21,6 +21,7 @@ dispatcher itself.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List, Optional, Type
 
@@ -33,6 +34,7 @@ from llm_router_api.core.api_types.llamacpp import LLamaCPPApiType
 from llm_router_api.core.api_types.lmstudio import LMStudioApiType
 from llm_router_api.core.api_types.anthropic import AnthropicType
 from llm_router_api.core.api_types.vertex_ai import VertexAiType
+from llm_router_api.core.api_types.bedrock import BedrockType
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,7 @@ API_TYPES = [
     "vllm",
     "anthropic",
     "vertex_ai",
+    "bedrock",
 ]
 
 
@@ -84,6 +87,7 @@ class ApiTypesDispatcher:
         "lmstudio": LMStudioApiType,
         "anthropic": AnthropicType,
         "vertex_ai": VertexAiType,
+        "bedrock": BedrockType,
     }
 
     # -----------------------------------------------------------------------
@@ -298,6 +302,67 @@ class ApiTypesDispatcher:
                 api_type,
                 exc_info=True,
             )
+
+    @classmethod
+    def signs_payload(cls, api_type: str) -> bool:
+        """
+        Whether ``api_type`` authenticates by signing the request body.
+
+        When ``True`` the transport must serialise the payload once, hand those
+        exact bytes to :meth:`sign_request` and transmit them as ``data`` —
+        re‑serialising after signing breaks the signature.  Unknown
+        ``api_type`` values are treated as ``False``.
+        """
+        try:
+            return bool(cls._get_impl(api_type).signs_payload())
+        except ValueError:
+            return False
+
+    @classmethod
+    def sign_request(
+        cls,
+        api_type: str,
+        provider: Any,
+        method: str,
+        url: str,
+        headers: Dict[str, str],
+        body: Optional[bytes] = None,
+    ) -> Dict[str, str]:
+        """
+        Let ``api_type`` authenticate the assembled request.
+
+        Called with the final URL and the exact body bytes about to be sent,
+        which is the only moment a payload signature can be correct.  A failing
+        hook must not silently downgrade to an unsigned request — unlike the
+        advisory hooks, an exception propagates so the caller surfaces a real
+        credential error instead of a confusing ``403`` from the service.
+        Unknown ``api_type`` values return ``headers`` unchanged.
+        """
+        try:
+            impl = cls._get_impl(api_type)
+        except ValueError:
+            return headers
+        return impl.sign_request(provider, method, url, headers, body)
+
+    @classmethod
+    def signed_body(cls, payload: Any) -> bytes:
+        """
+        Serialise ``payload`` into the exact bytes a signed request transmits.
+
+        A payload signature is computed over one serialisation, so the same
+        bytes must be signed and sent.  Handing ``requests`` a ``json=`` dict
+        instead hands it the freedom to re-serialise — different separators, a
+        different key order — and the service rejects the request as a signature
+        mismatch.  Callers pair this with :meth:`sign_request` and then pass the
+        result as ``data=``.
+
+        The encoding is fixed (compact separators, sorted keys, UTF-8): it needs
+        only to be *deterministic*, and a stable form also makes the signed body
+        diffable in request logs.
+        """
+        return json.dumps(
+            payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ).encode("utf-8")
 
     @classmethod
     def tags(
