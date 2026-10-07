@@ -176,6 +176,62 @@ export LLM_ROUTER_AUTH_AUDIT=${LLM_ROUTER_AUTH_AUDIT:-""}
 #export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"simple_semantic_routing,langchain_rag"}
 export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-""}
 
+# ------------ Codex Agentic Routing Configuration (optional, requires the llm-router-plugins package)
+# Activated by adding agentic_routing_codex to LLM_ROUTER_UTILS_PLUGINS_PIPELINE.
+# Full variable list and defaults: llm_router_api/docs/ENV_DEFINITIONS.md
+# (section: Codex Agentic Routing variables), detailed docs in the plugins repo
+# (llm_router_plugins/utils/routing/agentic_routing/codex/README.md).
+# Custom config: raw JSON string or path to a file (falls back to the bundled agentic_routing_codex.json)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_CONFIG=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_CONFIG:-""}
+# Trigger model value that activates the plugin (default auto_codex)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TRIGGER=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TRIGGER:-"auto_codex"}
+# Mode used when no other mode matches (default implement)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_FALLBACK_MODE=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_FALLBACK_MODE:-"implement"}
+# Embedding model identifier (HuggingFace / local path) for the semantic layer
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODEL=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODEL:-""}
+# Toggle the embedding layer (1/0, true/false, yes/no, on/off)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SEMANTIC_ENABLED=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SEMANTIC_ENABLED:-""}
+# Minimum cosine similarity for a semantic hit
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SIMILARITY_THRESHOLD=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SIMILARITY_THRESHOLD:-""}
+# Minimum keyword score to accept a heuristic hit
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_MIN_SCORE=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_MIN_SCORE:-""}
+# Directory holding the persisted FAISS index + docstore (index.faiss, docstore.pkl)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_PERSIST_DIR=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_PERSIST_DIR:-""}
+# ------------ Codex Agentic Routing: shared session memory (optional, Redis-backed)
+# Off by default. When enabled with the redis backend (default), REDIS_HOST below must be set;
+# otherwise the plugin validates the connection with PING at startup, logs a warning and
+# routing stays stateless. Connection settings are read ONLY from the plugin prefix and
+# never from the generic LLM_ROUTER_REDIS_* or LLM_ROUTER_AUTH_REDIS_* variables.
+# Turn the shared session memory on (default off)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED:-""}
+# Memory backend: redis (production) or memory (tests/replay only)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_BACKEND=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_BACKEND:-"redis"}
+# Lifetime [s] of one session record (default 900)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_TTL_SECONDS=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_TTL_SECONDS:-900}
+# Sessions kept in this plugin namespace (default 10000)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_MAX_SESSIONS=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_MAX_SESSIONS:-10000}
+# Key namespace owned by the plugin (pruning never touches keys outside it)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_KEY_PREFIX=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_KEY_PREFIX:-"llm-router:codex-routing"}
+# Redis host of the session-memory store; empty = no connection, memory stays off
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_HOST=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_HOST:-""}
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PORT=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PORT:-6379}
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_DB=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_DB:-0}
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PASSWORD=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PASSWORD:-""}
+# Redis protocol version (default: 3, RESP3)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PROTOCOL=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PROTOCOL:-3}
+# Optional ACL username for the session-memory Redis
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_USERNAME=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_USERNAME:-""}
+# TLS: on/off (default off), cert verification: required (default), optional or none
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL:-0}
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CERT_REQS=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CERT_REQS:-"required"}
+# Paths to TLS material (CA bundle, client cert, client key) - used only when TLS is on
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CA_CERTS=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CA_CERTS:-""}
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CERTFILE=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CERTFILE:-""}
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_KEYFILE=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_KEYFILE:-""}
+# Short positive timeouts [s] so a dead Redis cannot stall a routing decision (default 1.0)
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_CONNECT_TIMEOUT=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_CONNECT_TIMEOUT:-1.0}
+export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_TIMEOUT=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_TIMEOUT:-1.0}
+
 # ------------ Semantic BiEncoder Routing Configuration
 # Config source of truth: JSON file (via CONFIG env var).
 # Individual env vars below can override settings from the JSON file.

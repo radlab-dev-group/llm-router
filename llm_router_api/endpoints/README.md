@@ -72,6 +72,12 @@ Everything else below needs a key once auth is on; the permission in brackets co
 
 #### Responses
 
+This is the endpoint the **Codex CLI** coding agent talks to (`wire_api = "responses"`) when the
+`agentic_routing_codex` utils plugin is enabled: the request arrives with the trigger model `auto_codex`
+and the plugin rewrites `payload["model"]` to the resolved work-mode model before provider dispatch
+(see [Codex Agentic Routing](../README.md#codex-agentic-routing) and
+[ENV_DEFINITIONS.md](../docs/ENV_DEFINITIONS.md#codex-agentic-routing-variables)).
+
 - **POST** `/responses` — OpenAI‑like responses endpoint (requires `chat` permission).
 - **POST** `/v1/responses` — OpenAI‑like responses endpoint v1 (requires `chat` permission).
 

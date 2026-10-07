@@ -83,6 +83,8 @@ Request → MaskerPipeline → GuardrailPipeline → UtilsPipeline → Model Pro
 | **`langchain_rag`**              | Local | Retrieves relevant document chunks from a FAISS vector store and injects them into the payload for Retrieval‑Augmented Generation.                                                                                               |
 | **`simple_semantic_routing`**    | Local | Two‑stage heuristic model selection: intent classification + complexity analysis. Activated when `payload["model"] == "auto"`.                                                                                                   |
 | **`semantic_biencoder_routing`** | Local | Embedding‑based semantic routing using FAISS — matches user messages against pre‑configured target embeddings to select the best model. See [Semantic BiEncoder Routing](#semantic-biencoder-routing) for configuration details. |
+| **`agentic_routing_codex`**            | Local | Routing for **Codex CLI** requests: detects the work mode (plan, implement, test, git_review, review, debug, aux_title, compaction) of the `auto_codex` trigger and rewrites `payload["model"]` to the mode's model. Deterministic cascade with an optional embedding layer; optional **Redis‑backed shared session memory** keeps the reliable phase between calls of one action. See [Codex Agentic Routing](#codex-agentic-routing) for details. |
+| **`agentic_routing_claude_code`**        | Local | Model swap for **Claude Code**: maps the versioned model IDs Claude Code sends (resolved from `opus` / `sonnet` / `haiku` / `fable` tiers) onto the models you serve them with. |
 
 Pipelines are configured via environment variables:
 
@@ -152,6 +154,44 @@ https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plug
 | `general-assistant` | `gpt-oss:120b`  | Everyday questions, explanations, research, conversation.                |
 | `data-science`      | `qwen3.6:35b`   | Data analysis, visualization, ML pipelines, reporting.                   |
 | `system-admin`      | `gpt-oss:120b`  | System administration, DevOps, infrastructure, technical ops.            |
+
+
+### Codex Agentic Routing
+
+The `agentic_routing_codex` plugin serves requests emitted by the **Codex CLI** coding agent. The CLI is pointed at a single
+stable model name — the trigger `auto_codex` (declared in the models config as a `builtin` provider alias) — and the plugin rewrites
+`payload["model"]` per request to the model that fits the work the agent is doing *right now*: planning, implementation, test runs,
+git review, code review, debugging, one‑line thread titles (`aux_title`) or context compaction. The decision cascade is deterministic
+first (request class, the `<collaboration_mode>` block the CLI injects, keyword scoring) with an optional embedding‑similarity layer
+over the mode descriptions and examples. The plugin never rejects a request and is fail‑open on bad payloads; an inconsistent config
+fails startup instead.
+
+It is activated like any other utils plugin:
+
+```bash
+export LLM_ROUTER_UTILS_PLUGINS_PIPELINE="agentic_routing_codex"
+```
+
+Every model referenced by a mode (`codex_modes[].model_name`) must exist in `LLM_ROUTER_MODELS_CONFIG` as an active model with a
+reachable provider, and its provider must support tool calling — Codex cannot operate without it.
+
+**Shared session memory (optional, Redis‑backed).** Codex asks for one action per model call; between two calls the user's command
+does not change, but the evidence does. The optional session memory carries the last *reliable* work phase of the current command
+generation between successive requests of the same session (session + thread + agent), so a neutral request in the middle of an
+action does not fall through to the fallback. It is **off by default** (`LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED`),
+shared between Gunicorn workers through a Redis instance of its own (its `…_REDIS_*` variables — the generic `LLM_ROUTER_REDIS_*`
+and `LLM_ROUTER_AUTH_REDIS_*` variables are never used), stores no model names, conversation text, tool output or credentials, and is
+consulted only when the deterministic layers stayed silent. A memory error (Redis outage, expired or damaged record) is a *miss*,
+never a failed request — routing continues stateless; when memory is enabled, the connection is verified with `PING` at startup and
+a failed check logs a warning and keeps routing stateless.
+
+All `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_*` variables (config overrides, heuristic and embedding knobs, the `MEMORY_*` policy
+and the `REDIS_*` connection settings) are documented in
+[**ENV_DEFINITIONS.md → Codex Agentic Routing variables**](llm_router_api/docs/ENV_DEFINITIONS.md#codex-agentic-routing-variables),
+and the plugin's own documentation (decision cascade, work modes, tuning, troubleshooting) lives in the `llm-router-plugins`
+repository: [`llm_router_plugins/utils/routing/agentic_routing/codex/README.md`](
+https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/README.md
+).
 
 ---
 
@@ -377,6 +417,7 @@ All environment variables are documented in **[ENV_DEFINITIONS.md](llm_router_ap
 | [Core, Redis](llm_router_api/README.md#core-variables)                            | Prompts, models config, timeouts, logging, server settings |
 | [Masking & Guardrail](llm_router_api/README.md#masking--guardrail)                | Payload masking and content guardrails                     |
 | [Semantic BiEncoder Routing](llm_router_api/README.md#semantic-biencoder-routing) | Semantic routing configuration                             |
+| [Codex Agentic Routing](llm_router_api/README.md#codex-agentic-routing-variables) | Codex CLI routing plugin and its session-memory Redis configuration |
 | [LangChainRAG](llm_router_api/README.md#langchainrag)                             | RAG plugin settings                                        |
 | [Utils Plugins](llm_router_api/README.md#utils-plugins-variables)                 | Pipeline plugins configuration                             |
 | [Authentication](llm_router_api/README.md#authentication)                         | Auth, key management, rate limiting                        |
