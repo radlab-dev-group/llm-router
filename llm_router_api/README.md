@@ -52,7 +52,7 @@ Configuration is driven primarily by environment variables and a JSON model‑co
 
 All environment variables are documented in **[ENV_DEFINITIONS.md](./docs/ENV_DEFINITIONS.md)**.
 
-Key categories: **Core** · **Redis** · **Masking & Guardrail** · **Semantic BiEncoder Routing** · **LangChainRAG** · *
+Key categories: **Core** · **Redis** · **Masking & Guardrail** · **Semantic BiEncoder Routing** · **Codex Agentic Routing** · **LangChainRAG** · *
 *Utils Plugins** · **Authentication**.
 
 ---

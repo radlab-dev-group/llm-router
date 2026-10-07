@@ -113,6 +113,8 @@ than replaying a rejected credential until the process restarts.
 
 When `LLM_ROUTER_REDIS_HOST` is set, the router uses Redis for load-balancing state and provider availability tracking.
 
+These variables are used **only by the router itself** (load balancing, provider availability, auth). Optional plugin components — e.g. the shared session memory of the `agentic_routing_codex` plugin — never inherit them: each has its own, explicitly prefixed connection variables (see the Codex Agentic Routing section below).
+
 ---
 
 ## Masking & Guardrail variables
@@ -160,6 +162,87 @@ Requires the `llm-router-plugins` package. When `LLM_ROUTER_UTILS_PLUGINS_PIPELI
 | `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_CHUNK_OVERLAP` | *(empty)* | Token overlap between consecutive chunks.                                                                                                                                                 |
 | `LLM_ROUTER_ROUTING_SEMANTIC_BIENCODER_PERSIST_DIR`   | *(empty)* | Directory for FAISS index + docstore persistence (`index.faiss`, `docstore.pkl`).                                                                                                         |
 
+## Codex Agentic Routing variables
+
+Requires the `llm-router-plugins` package. When `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` includes `agentic_routing_codex`,
+these variables configure the plugin. The plugin rewrites `payload["model"]` for requests that arrive with the
+trigger model (`auto_codex` by default), based on a deterministic cascade (request class, collaboration mode, keyword
+scoring) with an optional embedding-similarity layer; it never rejects a request and is fail-open on bad payloads.
+Environment variables override the JSON config (raw JSON string or file path via `…_CONFIG`, otherwise the bundled
+`agentic_routing_codex.json`) and are applied once at plugin construction. Precedence: ENV → JSON → default.
+
+| Variable                                                          | Default            | Description                                                                                                                              |
+|-------------------------------------------------------------------|--------------------|------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_CONFIG`                | *(empty)*          | Config source of truth — raw JSON string or file path. Falls back to the bundled `agentic_routing_codex.json`. No silent fall-through. |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TRIGGER`               | *(empty)*          | Trigger model value that activates the plugin (bundled default `auto_codex`). Must exist in the models config as a `builtin` provider alias. |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODEL_<MODE>`          | *(empty)*          | Model for one mode, e.g. `…_MODEL_TEST`.                                                                                                  |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODELS`                | *(empty)*          | Per-mode models, e.g. `plan=model_a\|test=model_b`.                                                                                       |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODES`                 | *(empty)*          | Pipe-separated whitelist of mode names to keep (if it excludes the fallback mode, set `…_FALLBACK_MODE` too). |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_FALLBACK_MODE`         | *(empty)*          | Mode used when nothing matches (bundled default `implement`).                                                                             |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_ENABLED`     | *(empty)*          | `1/0`, `true/false`, `yes/no`, `on/off` — toggle the keyword layer.                                                                        |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_MIN_SCORE`   | *(empty)*          | Minimum keyword score to accept a heuristic hit.                                                                                           |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_MIN_MARGIN`  | *(empty)*          | Minimum score lead over the runner-up (bundled default `1.0`; ties always continue to semantic/fallback).                                  |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_CLASSIFY_MAX_CHARS`    | *(empty)*          | Character budget of the classified user text (the newest message is always classified whole).                                              |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODEL`                 | *(empty)*          | **Embedding** model identifier (HuggingFace / local path) for the semantic layer.                                                          |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SEMANT_ENABLED`        | *(empty)*          | Toggle the embedding-similarity layer.                                                                                                     |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SIMILARITY_THRESHOLD`  | *(empty)*          | Minimum cosine similarity for a semantic hit.                                                                                              |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TOP_K` / `…_CHUNK_SIZE` / `…_CHUNK_OVERLAP` | *(empty)* | Embedding router knobs (per-target top-k count, token chunk size, token overlap).                     |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_PERSIST_DIR`           | *(empty)*          | Directory holding the persisted FAISS index + docstore (`index.faiss`, `docstore.pkl`).                                                    |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODE_<name>_KEYWORDS`  | *(empty)*          | Pipe-separated keyword override for one mode.                                                                                              |
+
+### Shared session memory (optional, Redis-backed)
+
+Carries the last *reliable* work phase of the current command generation between successive requests of the same
+session (session + thread + agent), so a neutral request in the middle of an action does not fall through to the
+fallback. It is **off by default**, shared between Gunicorn workers through Redis (deliberately no local-process
+cache), and stores no model names, conversation text, tool output or credentials. Memory is consulted only when the
+deterministic layers stayed silent and never overrides a fresh, unambiguous signal. A memory error (Redis outage,
+expired or damaged record) is a *miss*, never a failed request — routing continues stateless.
+
+Policy variables (ENV → explicit JSON `settings.memory` → default):
+
+| Variable                                                   | Default                    | Description                                                                          |
+|------------------------------------------------------------|----------------------------|--------------------------------------------------------------------------------------|
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_ENABLED` | *(empty)* → **off**        | Turn the shared session memory on.                                                   |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_BACKEND` | *(empty)* → `redis`        | `redis` (production) or `memory` (isolated tests/replay only).                       |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_TTL_SECONDS` | *(empty)* → `900`       | Lifetime of one session record (seconds).                                            |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_MAX_SESSIONS` | *(empty)* → `10000`    | Cap on sessions kept in this plugin's namespace, enforced across workers.            |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_MAX_EVENTS` | *(empty)* → `64`       | Cap on remembered event identifiers per session.                                     |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_MAX_CALLS`  | *(empty)* → `32`       | Cap on remembered call identifiers per session.                                      |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_KEY_PREFIX` | *(empty)* → `llm-router:codex-routing` | Key namespace owned by the plugin; pruning never touches keys outside it.    |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MEMORY_MAX_RETRIES` | *(empty)* → `1`        | Attempts after a version conflict before continuing statelessly.                     |
+
+Connection variables — read **only** from the plugin prefix, never from the generic `LLM_ROUTER_REDIS_*` or the
+`LLM_ROUTER_AUTH_REDIS_*` variables, and never from the JSON config (a config file cannot carry a Redis URL or
+password). An empty host means *not configured*; with the `redis` backend and memory enabled, `REDIS_HOST` is
+required — otherwise plugin construction fails with `CodexRouting: memory is enabled with the redis backend but …`. When memory
+is enabled, the connection is checked with `PING` at startup; a failed check logs a warning (`Codex routing memory
+disabled: …`) and routing stays stateless until the plugin is recreated.
+
+| Variable                                                        | Default       | Description                                                                          |
+|-----------------------------------------------------------------|---------------|--------------------------------------------------------------------------------------|
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_HOST`          | *(empty)*     | Session-memory Redis host. Empty = no connection, memory stays off.                  |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PORT`          | `6379`        | Port.                                                                               |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_DB`            | `0`           | Database number (`0`–`15`).                                                         |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PASSWORD`      | *(empty)*     | AUTH password; empty means no password.                                             |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_PROTOCOL`      | `3`           | RESP protocol version (`2` or `3`).                                                 |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_USERNAME`      | *(empty)*     | Optional ACL username.                                                              |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL`           | `0`           | TLS on/off. Enabling TLS never disables certificate verification silently.          |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CERT_REQS` | `required`    | TLS certificate verification: `required`, `optional` or `none`.                     |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CA_CERTS`  | *(empty)*     | Path to the CA bundle (used only when TLS is on).                                   |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_CERTFILE`  | *(empty)*     | Path to the client certificate (used only when TLS is on).                          |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_KEYFILE`   | *(empty)*     | Path to the client key (used only when TLS is on).                                  |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_CONNECT_TIMEOUT` | `1.0` | Short connect timeout (seconds) so a dead Redis cannot stall a routing decision. |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_TIMEOUT`        | `1.0` | Short socket timeout (seconds).                                               |
+
+The `redis` Python package is an optional dependency of the plugin; without it the plugin stays stateless. To reset the
+plugin's memory: `redis-cli --scan --pattern '<MEMORY_KEY_PREFIX>*' | xargs redis-cli del` — that prefix only. The
+decision annotation in `payload["routing"]` reports the memory outcome (`hit`, `miss`, `expired`, `conflict`, `unavailable`, …).
+
+Full plugin documentation (decision cascade, work modes, tuning, troubleshooting):
+[`llm_router_plugins/utils/routing/agentic_routing/codex/README.md`](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/README.md)
+ in the `llm-router-plugins` repository.
+
 ---
 
 ## LangChainRAG variables
@@ -182,9 +265,9 @@ variables configure the RAG plugin:
 
 | Variable                            | Default   | Description                                                                                      |
 |-------------------------------------|-----------|--------------------------------------------------------------------------------------------------|
-| `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` | *(empty)* | Comma-separated list of utility plugins to apply (e.g. `simple_semantic_routing,langchain_rag`). |
+| `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` | *(empty)* | Comma-separated list of utility plugins to apply (e.g. `simple_semantic_routing,langchain_rag,agentic_routing_codex`). |
 
-Available plugins: `simple_semantic_routing`, `semantic_biencoder_routing`, `langchain_rag`. Each plugin has additional
+Available plugins: `simple_semantic_routing`, `semantic_biencoder_routing`, `langchain_rag`, `agentic_routing_codex`, `agentic_routing_claude_code`. Each plugin has additional configuration documented above.
 configuration documented above.
 
 ---
