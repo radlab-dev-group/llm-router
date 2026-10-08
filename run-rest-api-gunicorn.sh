@@ -172,7 +172,12 @@ export LLM_ROUTER_AUTH_ROTATION_GRACE_PERIOD=${LLM_ROUTER_AUTH_ROTATION_GRACE_PE
 export LLM_ROUTER_AUTH_AUDIT=${LLM_ROUTER_AUTH_AUDIT:-""}
 
 # ==================================================================================
-# Utilities/plugins available: [simple_semantic_routing,semantic_biencoder_routing,langchain_rag]
+# Utilities/plugins available:
+#   simple_semantic_routing
+#   semantic_biencoder_routing
+#   langchain_rag
+#   agentic_routing_codex
+#   agentic_routing_claude_code
 #export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"simple_semantic_routing,langchain_rag"}
 export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-""}
 

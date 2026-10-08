@@ -223,3 +223,4 @@ logs/prometheus_multiproc/*.db
 docstore.pkl
 index.faiss
 /logs/auditor/request*.audit
+/run-rest-api-gunicorn-pk.sh
