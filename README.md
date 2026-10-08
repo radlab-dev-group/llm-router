@@ -193,6 +193,16 @@ repository: [`llm_router_plugins/utils/routing/agentic_routing/codex/README.md`]
 https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/README.md
 ).
 
+**Calibration and evaluation guides** are in the same `llm_router_plugins/utils/routing/agentic_routing/codex/`
+directory of `llm-router-plugins`:
+[CODEX_EVAL_HOWTO_PL.md (Polski)](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/CODEX_EVAL_HOWTO_PL.md)
+and [CODEX_EVAL_HOWTO_EN.md (English)](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/CODEX_EVAL_HOWTO_EN.md).
+They explain configuration roles, heuristic scores and embedding similarity, threshold/margin tuning,
+calibration/holdout datasets, evaluation commands and report metrics, and deployment/index rebuilding. They also describe
+[`scripts/codex-tune-eval.sh`](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/scripts/codex-tune-eval.sh):
+run it from the **plugins repository**, not this router checkout. It selects on calibration, compares on holdout and
+does not overwrite production configuration or use production Redis. Evaluation targets work modes, not assigned model names.
+
 ---
 
 ## 📦 Quick Start

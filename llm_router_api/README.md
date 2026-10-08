@@ -55,6 +55,14 @@ All environment variables are documented in **[ENV_DEFINITIONS.md](./docs/ENV_DE
 Key categories: **Core** · **Redis** · **Masking & Guardrail** · **Semantic BiEncoder Routing** · **Codex Agentic Routing** · **LangChainRAG** · *
 *Utils Plugins** · **Authentication**.
 
+For Codex setup, see [Codex Agentic Routing](../README.md#codex-agentic-routing).
+The `llm-router-plugins` repository stores calibration and evaluation guides in
+`llm_router_plugins/utils/routing/agentic_routing/codex/`:
+[CODEX_EVAL_HOWTO_PL.md (Polski)](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/CODEX_EVAL_HOWTO_PL.md)
+and [CODEX_EVAL_HOWTO_EN.md (English)](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/routing/agentic_routing/codex/CODEX_EVAL_HOWTO_EN.md).
+They explain configuration, heuristic scores and embedding thresholds, calibration/holdout datasets, evaluation commands
+and metrics, and the automated `scripts/codex-tune-eval.sh` workflow run from the plugins repository.
+
 ---
 
 ### Authentication variables
