@@ -52,6 +52,16 @@ POSSIBLE_BALANCE_STRATEGIES = [
 # DEFAULT_ANONYMIZE_STRATEGY = "fast_masker"
 # POSSIBLE_ANONYMIZE_STRATEGIES = ["fast_masker", "genai"]
 
+#: Azure OpenAI: an OpenAI‑compatible backend whose model is addressed by a
+#: *deployment* name in the URL, whose calls carry the mandatory
+#: ``api-version`` query parameter, and which authenticates with the
+#: Azure‑specific ``api-key`` header or a Microsoft Entra ID bearer token.
+#: Those differences live in
+#: :class:`~llm_router_api.core.api_types.azure_openai.AzureOpenAiType`; the
+#: wire format itself is the OpenAI one, so the type belongs to
+#: ``OPENAI_COMPATIBLE_PROVIDERS`` below.
+AZURE_OPENAI_PROVIDER = "azure_openai"
+
 # List of the OpenAI compatible providers
 OPENAI_COMPATIBLE_PROVIDERS = [
     "openai",
@@ -59,6 +69,7 @@ OPENAI_COMPATIBLE_PROVIDERS = [
     "vllm",
     "llama.cpp",
     "anthropic",
+    AZURE_OPENAI_PROVIDER,
 ]
 
 # Google Vertex AI (Gemini) – native ``generateContent`` wire protocol,
