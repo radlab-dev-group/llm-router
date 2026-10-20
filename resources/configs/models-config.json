@@ -102,6 +102,26 @@
       ]
     }
   },
+  "azure_models": {
+    "azure/gpt-4o-azure": {
+      "providers": [
+        {
+          "id": "azure-gpt4o-1",
+          "api_host": "https://YOUR-RESOURCE.openai.azure.com",
+          "api_token": "YOUR_AZURE_API_KEY",
+          "api_type": "azure_openai",
+          "input_size": 128000,
+          "model_path": "gpt-4o",
+          "keep_alive": null,
+          "tool_calling": true,
+          "nworkers": 10,
+          "provider_options": {
+            "api_version": "2024-10-21"
+          }
+        }
+      ]
+    }
+  },
   "openai_models": {
     "openai/gpt-3.5-turbo-0125": {
       "providers": [
@@ -162,6 +182,9 @@
     "aws_models": [
       "aws/claude-sonnet-4",
       "aws/titan-embed-text-v2"
+    ],
+    "azure_models": [
+      "azure/gpt-4o-azure"
     ],
     "qwen_models": [
       "nomic-embed-text"

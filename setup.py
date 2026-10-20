@@ -91,6 +91,7 @@ setup(
     },
     python_requires=">=3.10",
     install_requires=[
+        "pydantic>=2",
         "radlab-ml-utils>=1.0.0",
         "radlab-llm-router-plugins>=0.1.0",
     ],

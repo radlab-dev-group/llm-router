@@ -99,6 +99,40 @@ resolves one credential, not one per request), and a `401`/`403` from Bedrock
 evicts the cached credential so the next request resolves a fresh one rather
 than replaying a rejected credential until the process restarts.
 
+## Azure OpenAI variables (optional)
+
+Relevant only for providers with `api_type: "azure_openai"` that carry neither
+an `api_token` (Azure API key) nor an explicit
+`provider_options.access_token`: the router then resolves a Microsoft Entra ID
+bearer token itself.  No extra dependency is needed — the flows below use
+`requests`, which the router already requires.
+
+Resolution order: `provider_options` client credentials
+(`tenant_id` / `client_id` / `client_secret`) → a workload identity federation
+file → the App Service / Functions identity endpoint → the IMDS managed
+identity of the Azure compute the router runs on.
+
+| Variable                                        | Default                                              | Description                                                                                          |
+|-------------------------------------------------|------------------------------------------------------|------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_AZURE_TOKEN_REFRESH_SKEW`           | `120`                                                | Seconds before expiry at which a cached Entra ID token is refreshed. A malformed value falls back to `120` instead of breaking start‑up. |
+| `LLM_ROUTER_AZURE_REQUEST_TIMEOUT`              | `10`                                                 | HTTP timeout (seconds) of the Entra ID token endpoint call.                                          |
+| `LLM_ROUTER_AZURE_IDENTITY_TIMEOUT`             | `3`                                                  | HTTP timeout (seconds) of the link‑local identity calls (IMDS / App Service). Kept short: off Azure those endpoints are unreachable, and a long timeout would stall every request of a misconfigured provider. |
+| `AZURE_TENANT_ID`                               | *(empty)*                                            | Tenant of the app registration / identity; `provider_options.tenant_id` wins.                        |
+| `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET`       | *(empty)*                                            | Service‑principal credentials of the client‑credentials flow; `provider_options` wins.               |
+| `AZURE_FEDERATED_TOKEN_FILE`                    | *(empty)*                                            | Workload identity federation assertion, as projected by AKS Workload Identity; `provider_options.federated_token_file` wins. |
+| `AZURE_AUTHORITY_HOST`                          | `https://login.microsoftonline.com`                  | Entra authority host; set it for sovereign clouds (`provider_options.authority_host` wins).          |
+| `AZURE_OPENAI_AD_SCOPE` / `AZURE_AD_SCOPE`      | `https://cognitiveservices.azure.com/.default`       | Audience requested for the token; `provider_options.scope` wins.                                     |
+| `IDENTITY_ENDPOINT` + `IDENTITY_HEADER`         | *(empty)*                                            | App Service / Functions / Container Apps identity endpoint (legacy `MSI_ENDPOINT` + `MSI_SECRET` are read too). |
+
+Credential lifetime handling: tokens are cached **per credential source**
+(client id, tenant, scope, identity endpoint), refreshes are serialised
+**per credential** (a burst of concurrent requests mints one token, not one
+per request), and a `401`/`403` from Azure OpenAI evicts the cached token so
+the next request mints a fresh one rather than replaying a rejected credential
+until the process restarts.  When no source can mint a token the request fails
+with a `RuntimeError` listing the sources it tried and, when one answered,
+what it said (e.g. an `AADSTS…` diagnostic).
+
 ---
 
 ## Redis variables

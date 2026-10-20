@@ -96,6 +96,27 @@ class TestEndpointFor:
             "models/gemini-2.5-flash:generateContent"
         )
 
+    def test_azure_openai_endpoint_from_provider_model(self):
+        # The Azure URL is provider dependent (deployment in the path plus
+        # the api-version query), so keep-alive resolves it through the
+        # request adapter too.
+        provider = {
+            "id": "aoai-1",
+            "api_host": "http://aoai.test",
+            "api_type": "azure_openai",
+            "api_token": "k",
+            "model_path": "gpt-4o",
+            "provider_options": {"api_version": "2024-10-21"},
+        }
+        model = KeepAlive._provider_model("m", provider)
+        assert model is not None
+        assert KeepAlive._endpoint_for(
+            "azure_openai", "http://aoai.test", model
+        ) == (
+            "http://aoai.test/openai/deployments/gpt-4o/chat/completions"
+            "?api-version=2024-10-21"
+        )
+
 
 class TestFindProvider:
     def test_model_and_host_match(self):

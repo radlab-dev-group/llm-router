@@ -42,7 +42,7 @@ SecureEndpointI                 – security scaffolding (masking, guardrails, a
     * `return_response_ok(body)` / `return_response_not_ok(body)` – standardized JSON response envelopes.
 * The constructor validates the endpoint definition at startup:
     * `api_types` must be non‑empty and intersect the global `API_TYPES` list (`"builtin"`, `"openai"`, `"ollama"`,
-      `"lmstudio"`, `"vllm"`, `"anthropic"`, `"vertex_ai"` — defined in
+      `"lmstudio"`, `"vllm"`, `"anthropic"`, `"vertex_ai"`, `"bedrock"`, `"azure_openai"` — defined in
       `llm_router_api/core/api_types/dispatcher.py`), otherwise `RuntimeError`.
     * `method` must be one of `METHODS`, otherwise `ValueError`.
 

@@ -62,7 +62,7 @@ Having a single source of truth for model definitions makes it easy to:
 | `keep_alive`   | `str`                     | Optional keep‑alive duration (e.g. `"35m"`). Empty or `null` means the provider is not kept alive.                                  | `"35m"`                         |
 | `tool_calling` | `bool`                    | Whether the provider supports tool‑calling (function calling).                                                                      | `true`                          |
 | `is_embedding` | `bool`                    | Whether the model is an embedding model (determines use of embedding endpoints).                                                    | `true`                          |
-| `provider_options` | `object` (optional)    | Provider‑specific options consumed only by the request adapter of the matching `api_type`. For `vertex_ai`: `project`, `region` (or `location`), `api_version` (default `v1`), `publisher` (default `google`), `api_key` (`x-goog-api-key`), `credentials_file` (service‑account JSON for Google ADC), `scopes`, plus `generation_config` / `safety_settings` merged into the Gemini request. For `bedrock`: `region` (or `aws_region`), `profile`, `access_key_id` / `secret_access_key` / `session_token` (static credentials for SigV4), `additional_model_request_fields` (merged in as `additionalModelRequestFields`), `guardrail_config` (passed through as `guardrailConfig`), and the embedding keys `embedding_input_type` (default `search_document` for Cohere v3, `input` for v4), `embedding_truncate` and `embedding_body` (exact request document). Never sent in the downstream payload, hidden from `/models`. | `{"project": "my-proj", "region": "europe-central2"}` |
+| `provider_options` | `object` (optional)    | Provider‑specific options consumed only by the request adapter of the matching `api_type`. For `vertex_ai`: `project`, `region` (or `location`), `api_version` (default `v1`), `publisher` (default `google`), `api_key` (`x-goog-api-key`), `credentials_file` (service‑account JSON for Google ADC), `scopes`, plus `generation_config` / `safety_settings` merged into the Gemini request. For `bedrock`: `region` (or `aws_region`), `profile`, `access_key_id` / `secret_access_key` / `session_token` (static credentials for SigV4), `additional_model_request_fields` (merged in as `additionalModelRequestFields`), `guardrail_config` (passed through as `guardrailConfig`), and the embedding keys `embedding_input_type` (default `search_document` for Cohere v3, `input` for v4), `embedding_truncate` and `embedding_body` (exact request document). For `azure_openai`: `api_version` (the `api-version` query parameter), `api_style` (`deployments` / `v1`), `deployment`, `api_key`, `access_token`, the Microsoft Entra ID credentials (`tenant_id` / `client_id` / `client_secret` / `federated_token_file`) and the Entra ID overrides `scope` / `authority_host` / `token_url`. Never sent in the downstream payload, hidden from `/models`. | `{"project": "my-proj", "region": "europe-central2"}` |
 
 ### 🛟 `fallback_model` (model level)
 
@@ -378,6 +378,117 @@ profile, environment variable or dependency is involved:
   "tool_calling": true,
   "provider_options": {
     "region": "eu-central-1"
+  }
+}
+```
+
+### ☁️ Azure OpenAI providers
+
+`api_type: "azure_openai"` providers speak the **OpenAI‑compatible** wire
+protocol — request and response bodies, `tool_calls` and the SSE stream are
+the OpenAI ones, so clients keep using the OpenAI‑shaped endpoints
+(`/v1/chat/completions`, `/v1/embeddings`, `/v1/responses`, …) and the router
+forwards the answer unconverted.  What is Azure‑specific is how the model is
+addressed and how the call authenticates:
+
+* the model lives in the URL as a **deployment name**
+  (`/openai/deployments/{deployment}/chat/completions`,
+  `/openai/deployments/{deployment}/embeddings`), while the Responses API
+  keeps the model in the body (`/openai/v1/responses`);
+* every data‑plane call carries the mandatory **`api-version`** query
+  parameter (the service is versioned per call);
+* authentication is the Azure‑specific **`api-key` header** (API keys) or a
+  **`Bearer` Microsoft Entra ID token**.
+
+`api_host` is the resource endpoint
+(`https://YOUR-RESOURCE.openai.azure.com`) and `model_path` is the
+deployment name (an explicit `provider_options.deployment` wins over
+`model_path` / `name`). Authentication resolution order:
+
+1. `api_token` — the Azure OpenAI API key, sent as `api-key: <key>` (the
+   alternative `provider_options.api_key` is accepted too);
+2. `provider_options.access_token` — an explicit Microsoft Entra ID bearer
+   token (e.g. minted out of band);
+3. Microsoft Entra ID credentials — client credentials
+   (`provider_options.client_id` / `client_secret` / `tenant_id`, or the
+   `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_TENANT_ID`
+   environment), a workload identity federation file
+   (`AZURE_FEDERATED_TOKEN_FILE`), the App Service identity endpoint
+   (`IDENTITY_ENDPOINT` / `IDENTITY_HEADER`) or the IMDS managed identity of
+   Azure compute — see [ENV_DEFINITIONS](ENV_DEFINITIONS.md#azure-openai-variables-optional).
+   Tokens are cached per credential and evicted on a `401`/`403`, so a
+   rotated secret does not poison the cache.
+
+The health probe is `GET /openai/models?api-version=…`: it authenticates,
+proves the resource is reachable and costs no tokens, which matters because an
+Azure resource answers `404` to the generic probes (`/v1/models`,
+`/api/version`, `/`) and would otherwise be reported as broken.
+
+| `provider_options` key   | Meaning                                                                                             |
+|--------------------------|-----------------------------------------------------------------------------------------------------|
+| `api_version`            | `api-version` query value; default `2024-10-21` (latest GA). Pin a preview version for preview operations. |
+| `api_style`              | `deployments` (default, deployment in the path) or `v1` (the `/openai/v1/...` paths with the model in the body). |
+| `deployment`             | Deployment name override (useful when several logical models share one deployment).                |
+| `api_key`                | Alias of `api_token` (Azure OpenAI API key → `api-key` header).                                    |
+| `access_token`           | Explicit Microsoft Entra ID bearer token.                                                           |
+| `tenant_id` / `client_id` / `client_secret` | Entra ID client‑credentials flow.                                              |
+| `federated_token_file`   | Workload identity federation assertion file (default: `AZURE_FEDERATED_TOKEN_FILE`).               |
+| `scope` / `authority_host` / `token_url` | Entra ID overrides (sovereign clouds, custom audiences).                   |
+
+Streaming needs no conversion: Azure streams the same `chat/completions`
+operation as `text/event-stream` (the body `stream` flag selects it) with the
+OpenAI chunk shape and the `data: [DONE]` sentinel, which the router forwards
+as is.
+
+```json
+{
+  "azure_models": {
+    "azure/gpt-4o-azure": {
+      "providers": [
+        {
+          "id": "azure-gpt4o-1",
+          "api_host": "https://YOUR-RESOURCE.openai.azure.com",
+          "api_token": "YOUR_AZURE_API_KEY",
+          "api_type": "azure_openai",
+          "input_size": 128000,
+          "model_path": "gpt-4o",
+          "keep_alive": null,
+          "tool_calling": true,
+          "nworkers": 10,
+          "provider_options": {
+            "api_version": "2024-10-21"
+          }
+        }
+      ]
+    }
+  },
+  "active_models": {
+    "azure_models": [
+      "azure/gpt-4o-azure"
+    ]
+  }
+}
+```
+
+With a Microsoft Entra ID token the API key is omitted and the identity is
+resolved from the runtime (the example uses client credentials; the same
+`provider_options` work on AKS with workload identity, where
+`AZURE_FEDERATED_TOKEN_FILE` is projected and no secret is stored):
+
+```json
+{
+  "id": "azure-gpt4o-entra",
+  "api_host": "https://YOUR-RESOURCE.openai.azure.com",
+  "api_token": "",
+  "api_type": "azure_openai",
+  "input_size": 128000,
+  "model_path": "gpt-4o",
+  "tool_calling": true,
+  "provider_options": {
+    "api_version": "2024-10-21",
+    "tenant_id": "YOUR_TENANT_ID",
+    "client_id": "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_CLIENT_SECRET"
   }
 }
 ```

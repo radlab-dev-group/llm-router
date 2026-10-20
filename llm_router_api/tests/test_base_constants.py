@@ -19,6 +19,7 @@ from llm_router_api.base.constants_base import (  # noqa: E402
     ALL_PROVIDERS,
     BalanceStrategies,
     OPENAI_COMPATIBLE_PROVIDERS,
+    AZURE_OPENAI_PROVIDER,
     POSSIBLE_BALANCE_STRATEGIES,
     _DontChangeMe,
 )
@@ -72,6 +73,7 @@ class TestProviderLists:
             "vllm",
             "llama.cpp",
             "anthropic",
+            AZURE_OPENAI_PROVIDER,
         ]
 
     def test_all_providers_composition(self):
@@ -95,7 +97,16 @@ class TestProviderLists:
             "ollama",
             "vertex_ai",
             "bedrock",
+            "azure_openai",
         }
+
+    def test_azure_openai_is_openai_compatible_on_the_wire(self):
+        # Azure OpenAI speaks the OpenAI bodies, responses and SSE stream;
+        # only the addressing (deployment + api-version) and the auth
+        # (api-key / Entra ID) differ, which the request adapter of the type
+        # handles.
+        assert "azure_openai" in OPENAI_COMPATIBLE_PROVIDERS
+        assert "azure_openai" in ALL_PROVIDERS
 
     def test_bedrock_is_not_openai_compatible(self):
         # Bedrock speaks Converse and signs with SigV4: treating it as an

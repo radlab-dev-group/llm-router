@@ -35,6 +35,7 @@ from llm_router_api.core.api_types.lmstudio import LMStudioApiType
 from llm_router_api.core.api_types.anthropic import AnthropicType
 from llm_router_api.core.api_types.vertex_ai import VertexAiType
 from llm_router_api.core.api_types.bedrock import BedrockType
+from llm_router_api.core.api_types.azure_openai import AzureOpenAiType
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ API_TYPES = [
     "anthropic",
     "vertex_ai",
     "bedrock",
+    "azure_openai",
 ]
 
 
@@ -88,6 +90,7 @@ class ApiTypesDispatcher:
         "anthropic": AnthropicType,
         "vertex_ai": VertexAiType,
         "bedrock": BedrockType,
+        "azure_openai": AzureOpenAiType,
     }
 
     # -----------------------------------------------------------------------
