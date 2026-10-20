@@ -315,7 +315,9 @@ export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PORT=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RE
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_DB=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_DB:-0}
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PASSWORD=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PASSWORD:-""}
 # Redis protocol version (default: 3, RESP3)
-export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL:-3}
+# Redis protocol. RESP3 needs Redis >= 6: against Redis 5 every command fails with
+# "unknown command `HELLO`" and the layer fails open into silence. 2 everywhere else in this file.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL:-2}
 # Optional ACL username
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_USERNAME=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_USERNAME:-""}
 # TLS: on/off (default off), cert verification: required (default), optional or none
