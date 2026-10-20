@@ -355,9 +355,13 @@ export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_EMBEDDER=${LLM_ROUTER_KNOWLEDGE_AGENTIC_
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_RERANKER=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_RERANKER:-""}
 # Vector index type of a new collection: HNSW or IVF_FLAT (never empty)
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_INDEX_TYPE=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_INDEX_TYPE:-"HNSW"}
-# Chunk size/overlap declared for a new collection; 0 leaves the engine default
-export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_TOKENS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_TOKENS:-0}
-export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_OVERLAP=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_OVERLAP:-0}
+# Chunk size/overlap [tokens] declared for a NEW collection. Applied at creation
+# only: changing it does not re-split collections that already exist, so a new
+# size means dropping <prefix>_<scope>[..._sessions] and re-indexing. 0 leaves
+# the engine default (500 tokens, embedded text cut at 508); overlap must be
+# smaller than the chunk size.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_TOKENS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_TOKENS:-400}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_OVERLAP=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_OVERLAP:-60}
 # Seconds between retention passes; 0 disables them
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_RETENTION_INTERVAL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RETENTION_INTERVAL_SECONDS:-21600}
 
