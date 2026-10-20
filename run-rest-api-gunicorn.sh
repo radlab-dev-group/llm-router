@@ -283,6 +283,12 @@ export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_VERIFY=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SS
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_TIMEOUT_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_TIMEOUT_SECONDS:-1.5}
 # Minimum similarity of a hit worth injecting
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_MIN_SIMILARITY=${LLM_ROUTER_KNOWLEDGE_AGENTIC_MIN_SIMILARITY:-0.35}
+# Fuse the engine's vector leg with its full-text leg (Reciprocal Rank Fusion)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_HYBRID_SEARCH=${LLM_ROUTER_KNOWLEDGE_AGENTIC_HYBRID_SEARCH:-true}
+# Re-score the retrieved chunks with the collection's cross-encoder. Off by
+# default: a model call per search, and the score scale is the reranker logit
+# under true, a plain RRF rank under false.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_RESULTS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_RESULTS:-false}
 # Lifetime [s] of one generation's assembled context
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_CACHE_TTL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_CACHE_TTL_SECONDS:-3600}
 # Knowledge lookups per generation; per worker process when Redis is not configured
