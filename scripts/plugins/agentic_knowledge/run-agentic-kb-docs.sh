@@ -37,7 +37,7 @@ if [ -n "${1:-}" ] && [ -f "${1:-}" ]; then
     ROUTER_SCRIPT="$1"
     shift
 else
-    ROUTER_SCRIPT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/run-rest-api-gunicorn.sh"
+    ROUTER_SCRIPT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)/run-rest-api-gunicorn.sh"
 fi
 [ -f "$ROUTER_SCRIPT" ] || { echo "router script not found: $ROUTER_SCRIPT" >&2; exit 1; }
 

@@ -17,7 +17,7 @@ set -euo pipefail
 #
 #   bash run-agentic-kb-worker.sh [ROUTER_SCRIPT] [worker options...]
 #
-# With no ROUTER_SCRIPT the run-rest-api-gunicorn.sh next to this script is used.  The worker options (--config, --once,
+# With no ROUTER_SCRIPT the checkout's run-rest-api-gunicorn.sh (the repository root) is used.  The worker options (--config, --once,
 # --no-retain, --log-level) are passed through; the knowledge policy itself is
 # read the way the router reads it, from LLM_ROUTER_KNOWLEDGE_AGENTIC_CONFIG or
 # the bundled policy.
@@ -26,7 +26,7 @@ if [ -n "${1:-}" ] && [ -f "${1:-}" ]; then
     ROUTER_SCRIPT="$1"
     shift
 else
-    ROUTER_SCRIPT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/run-rest-api-gunicorn.sh"
+    ROUTER_SCRIPT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)/run-rest-api-gunicorn.sh"
 fi
 [ -f "$ROUTER_SCRIPT" ] || { echo "router script not found: $ROUTER_SCRIPT" >&2; exit 1; }
 

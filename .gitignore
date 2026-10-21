@@ -224,3 +224,6 @@ docstore.pkl
 index.faiss
 /logs/auditor/request*.audit
 /run-rest-api-gunicorn-pk.sh
+# personal variants of the operator scripts (never committed)
+/run-*-pk.sh
+/scripts/plugins/agentic_knowledge/run-*-pk.sh
