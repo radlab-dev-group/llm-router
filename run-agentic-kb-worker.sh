@@ -41,12 +41,18 @@ CONFIG=$(awk '
 # shellcheck disable=SC2086
 set -a; eval "$CONFIG"; set +a
 
-# sse_lib is an optional dependency of the package but not of the worker: the
-# worker cannot index without it.  It comes from the ``knowledge`` extra
-# (``pip install -e ".[knowledge]"``), so nothing is added to PYTHONPATH here.
+# The worker is this package's console command, installed with the
+# ``agentic-knowledge`` extra (which is what brings in sse_lib):
+#   pip install "radlab-llm-router-plugins[agentic-knowledge]"
+# Point KB_WORKER at a virtual environment's command when the one on PATH is
+# not the installation this deployment runs, e.g.
+#   KB_WORKER=.venv/bin/llm-router-agentic-kb-worker bash run-agentic-kb-worker.sh
+KB_WORKER=${KB_WORKER:-llm-router-agentic-kb-worker}
 
-# The interpreter must have this package installed; point PYTHON at a virtual
-# environment's python when the system one does not, e.g.
-#   PYTHON=.venv/bin/python bash run-agentic-kb-worker.sh
-PYTHON=${PYTHON:-python3}
-exec "$PYTHON" -m llm_router_plugins.cli.plugins.utils.knowledge.worker "$@"
+if ! command -v "$KB_WORKER" >/dev/null 2>&1; then
+    echo "knowledge worker command not found: $KB_WORKER" >&2
+    echo "install it with: pip install \"radlab-llm-router-plugins[agentic-knowledge]\"" >&2
+    exit 1
+fi
+
+exec "$KB_WORKER" "$@"

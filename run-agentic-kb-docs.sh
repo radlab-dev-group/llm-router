@@ -30,8 +30,8 @@ set -euo pipefail
 #   bash run-agentic-kb-docs.sh --dry-run ~/dev/webapp ~/dev/api
 #   bash run-agentic-kb-docs.sh ~/dev/webapp ~/dev/api
 #
-# ROUTER_SCRIPT picks the script to read the environment from; PYTHON the interpreter that has
-# this package installed.
+# ROUTER_SCRIPT picks the script to read the environment from; KB_DOCS the ``llm-router-agentic-kb-docs``
+# command to run, when the one on PATH is not the installation this deployment uses.
 
 if [ -n "${1:-}" ] && [ -f "${1:-}" ]; then
     ROUTER_SCRIPT="$1"
@@ -51,8 +51,8 @@ CONFIG=$(awk '
 # shellcheck disable=SC2086
 set -a; eval "$CONFIG"; set +a
 
-# sse_lib comes from the ``knowledge`` extra (``pip install -e ".[knowledge]"``); publishing needs
-# Redis only, so an absent sse_lib is not a failure of this command.
+# Publishing needs Redis only — the engine is reached later, by the worker — so this command
+# neither logs in there nor imports sse_lib.
 
 OPTIONS=()
 SCOPE=""
@@ -79,7 +79,14 @@ if [ -n "$SCOPE" ] && [ "${#DIRECTORIES[@]}" -gt 1 ]; then
     exit 2
 fi
 
-PYTHON=${PYTHON:-python3}
+KB_DOCS=${KB_DOCS:-llm-router-agentic-kb-docs}
+
+if ! command -v "$KB_DOCS" >/dev/null 2>&1; then
+    echo "docs command not found: $KB_DOCS" >&2
+    echo "install it with: pip install \"radlab-llm-router-plugins[agentic-knowledge]\"" >&2
+    exit 1
+fi
+
 status=0
 for directory in "${DIRECTORIES[@]}"; do
     ARGS=(--path "$directory")
@@ -89,6 +96,6 @@ for directory in "${DIRECTORIES[@]}"; do
     if [ "${#OPTIONS[@]}" -gt 0 ]; then
         ARGS+=("${OPTIONS[@]}")
     fi
-    "$PYTHON" -m llm_router_plugins.cli.plugins.utils.knowledge.docs "${ARGS[@]}" || status=1
+    "$KB_DOCS" "${ARGS[@]}" || status=1
 done
 exit $status
