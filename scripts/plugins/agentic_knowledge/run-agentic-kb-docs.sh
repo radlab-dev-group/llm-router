@@ -5,7 +5,7 @@ set -euo pipefail
 #
 # The proxy indexes a repository's markdown on the first request made in it, which is the right
 # default and the wrong tool for a cold start: this command scans the same directories, under the
-# same policy, and publishes the same `doc` events — it only reads files and appends to the stream,
+# same policy, and publishes the same `doc` events — it reads files and publishes to the stream,
 # so it never talks to the search engine and needs no agent to be involved.
 #
 # The worker has to be running: this command publishes, that one masks and indexes. A directory
@@ -19,7 +19,10 @@ set -euo pipefail
 #   bash run-agentic-kb-docs.sh [options] DIRECTORY [DIRECTORY...]
 #
 # Options: --dry-run (list what would be published, publish nothing), --no-prune (keep superseded
-# documents), --config FILE, --log-level LEVEL, --scope NAME (one directory only).
+# documents), --force (replace queued docs and republish all files), --config FILE, --log-level LEVEL,
+# --scope NAME (one directory only).
+# Pause workers and other publishers for the selected scopes before --force; restart them afterwards.
+# This replaces documentation events in Redis, not the SSE collections. --force --dry-run only previews.
 #
 # Every directory is indexed into the scope a request made in it would derive — the repository's
 # basename unless the policy overrides it — so pass the directory the agent opens as its working
@@ -29,6 +32,7 @@ set -euo pipefail
 #
 #   bash run-agentic-kb-docs.sh --dry-run ~/dev/webapp ~/dev/api
 #   bash run-agentic-kb-docs.sh ~/dev/webapp ~/dev/api
+#   bash run-agentic-kb-docs.sh --force ~/dev/webapp ~/dev/api
 #
 # ROUTER_SCRIPT picks the script to read the environment from; KB_DOCS the ``llm-router-agentic-kb-docs``
 # command to run, when the one on PATH is not the installation this deployment uses.
@@ -60,6 +64,7 @@ DIRECTORIES=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run)   OPTIONS+=(--dry-run); shift ;;
+        --force)     OPTIONS+=(--force); shift ;;
         --no-prune)  OPTIONS+=(--no-prune); shift ;;
         --config)    OPTIONS+=(--config "${2:?--config needs a path}"); shift 2 ;;
         --log-level) OPTIONS+=(--log-level "${2:?--log-level needs a level}"); shift 2 ;;
