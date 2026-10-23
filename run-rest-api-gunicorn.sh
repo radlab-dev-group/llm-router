@@ -178,6 +178,7 @@ export LLM_ROUTER_AUTH_AUDIT=${LLM_ROUTER_AUTH_AUDIT:-""}
 #   langchain_rag
 #   agentic_routing_codex
 #   agentic_routing_claude_code
+#   agentic_knowledge
 #export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-"simple_semantic_routing,langchain_rag"}
 export LLM_ROUTER_UTILS_PLUGINS_PIPELINE=${LLM_ROUTER_UTILS_PLUGINS_PIPELINE:-""}
 
@@ -236,6 +237,138 @@ export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SSL_KEYFILE=${LLM_ROUTER_
 # Short positive timeouts [s] so a dead Redis cannot stall a routing decision (default 1.0)
 export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_CONNECT_TIMEOUT=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_CONNECT_TIMEOUT:-1.0}
 export LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_TIMEOUT=${LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_REDIS_SOCKET_TIMEOUT:-1.0}
+
+# ------------ Agentic Knowledge Layer (optional, requires the llm-router-plugins package)
+# Activated by adding agentic_knowledge to LLM_ROUTER_UTILS_PLUGINS_PIPELINE.
+# Injects verified fixes, dead ends and pre-compaction archives into coding-agent requests
+# (Codex, Claude Code) and mines new knowledge out of the traffic.
+# Precedence: ENV -> policy JSON (…_CONFIG or the bundled agentic_knowledge.json) -> defaults below.
+# Full list of variables and their meaning: llm_router_plugins/utils/knowledge/agentic_knowledge/README.md
+# Booleans accept 1/0, true/false, yes/no, on/off.
+# Policy variables are validated even when they are empty, so never blank one of them to disable
+# a feature - use the *_ENABLED switches instead (or leave the connection hosts empty).
+# Custom policy: raw JSON string or path to a file (default: the bundled agentic_knowledge.json)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_CONFIG=${LLM_ROUTER_KNOWLEDGE_AGENTIC_CONFIG:-""}
+# Master switch of the whole plugin
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED:-"true"}
+# Knowledge injection on/off (mining may stay on)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED:-"true"}
+# Knowledge publishing on/off (injection may stay on)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_WRITE_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_WRITE_ENABLED:-"true"}
+# Archiving of the pre-compaction windows on/off
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED:-"true"}
+# Model escalation on/off - a loop of one signature switches to a stronger model (default off)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED:-"false"}
+# Prefix of every Semantic Search Engine collection owned by the plugin (must not be empty)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX=${LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX:-"agentic-kb"}
+# Redis key namespace owned by the plugin (must not be empty)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_KEY_PREFIX=${LLM_ROUTER_KNOWLEDGE_AGENTIC_KEY_PREFIX:-"agentic-kb"}
+
+# ------------ Agentic Knowledge: Semantic Search Engine (read side)
+# No host = the layer is idle: requests pass through with no knowledge, which is a valid setup.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_HOST=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_HOST:-""}
+# Engine API prefix; empty = the client library default (sse_lib DEFAULT_API_PREFIX)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PREFIX=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PREFIX:-""}
+# Engine token (never logged)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_TOKEN=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_TOKEN:-""}
+# Engine login, for an engine that authenticates by login rather than by a token; the client
+# logs in on its first call. A token, when set, wins. Never logged.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_USERNAME=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_USERNAME:-""}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD:-""}
+# Transport ceiling [s] of one engine call, clamped to 0.1..10; defaults to …_READ_TIMEOUT_SECONDS
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_TIMEOUT=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_TIMEOUT:-1.5}
+# TLS certificate verification of the engine connection
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_VERIFY=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_VERIFY:-"true"}
+# Read budget [s] of the knowledge layer for one request, clamped to 0.1..10
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_TIMEOUT_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_TIMEOUT_SECONDS:-1.5}
+# Minimum similarity of a hit worth injecting
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_MIN_SIMILARITY=${LLM_ROUTER_KNOWLEDGE_AGENTIC_MIN_SIMILARITY:-0.35}
+# Fuse the engine's vector leg with its full-text leg (Reciprocal Rank Fusion)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_HYBRID_SEARCH=${LLM_ROUTER_KNOWLEDGE_AGENTIC_HYBRID_SEARCH:-true}
+# Re-score the retrieved chunks with the collection's cross-encoder. Off by
+# default: a model call per search, and the score scale is the reranker logit
+# under true, a plain RRF rank under false.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_RESULTS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_RESULTS:-false}
+# Lifetime [s] of one generation's assembled context
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_CACHE_TTL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_CACHE_TTL_SECONDS:-3600}
+# Knowledge lookups per generation; per worker process when Redis is not configured
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_LOOKUPS_PER_GENERATION=${LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_LOOKUPS_PER_GENERATION:-20}
+
+# ------------ Agentic Knowledge: event publishing (write side)
+# Length cap of the Redis event stream (XADD MAXLEN ~)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_STREAM_LEN=${LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_STREAM_LEN:-100000}
+# Episode dedup window [s] (default 7 days)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DEDUP_TTL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DEDUP_TTL_SECONDS:-604800}
+# Longest patch text admitted into one event
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_PATCH_CHARS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_PATCH_CHARS:-4000}
+# Size [chars] of one archived window chunk
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_MAX_CHUNK_CHARS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_MAX_CHUNK_CHARS:-2000}
+# Archive retention [s] (default 14 days)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_TTL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_TTL_SECONDS:-1209600}
+
+# ------------ Agentic Knowledge: escalation
+# Repetitions of one signature that make a loop
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD=${LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD:-3}
+# A recipe scoring at least this keeps the routed model instead of escalating
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORE=${LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORE:-0.75}
+
+# ------------ Agentic Knowledge: Redis (event stream, cache, dedup)
+# No host = stateless mode: the plugin still reads, but with no cache and no writes.
+# Connection settings are read ONLY from this prefix, never from
+# LLM_ROUTER_REDIS_* or LLM_ROUTER_AUTH_REDIS_*.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_HOST=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_HOST:-""}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PORT=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PORT:-6379}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_DB=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_DB:-0}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PASSWORD=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PASSWORD:-""}
+# Redis protocol version (default: 3, RESP3)
+# Redis protocol. RESP3 needs Redis >= 6: against Redis 5 every command fails with
+# "unknown command `HELLO`" and the layer fails open into silence. 2 everywhere else in this file.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL:-2}
+# Optional ACL username
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_USERNAME=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_USERNAME:-""}
+# TLS: on/off (default off), cert verification: required (default), optional or none
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL:-0}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CERT_REQS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CERT_REQS:-"required"}
+# Paths to TLS material (CA bundle, client cert, client key) - used only when TLS is on
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CA_CERTS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CA_CERTS:-""}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CERTFILE=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CERTFILE:-""}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_KEYFILE=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_KEYFILE:-""}
+# Short positive timeouts [s] so a dead Redis cannot stall a request (default 1.0)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SOCKET_CONNECT_TIMEOUT=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SOCKET_CONNECT_TIMEOUT:-1.0}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SOCKET_TIMEOUT=${LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SOCKET_TIMEOUT:-1.0}
+
+# ------------ Agentic Knowledge: indexing worker (llm-router-agentic-kb-worker)
+# Consumed by the indexing worker rather than by the server; exported here so that both
+# halves of the layer are configured in one place.
+# Consumer group the worker reads under
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_GROUP=${LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_GROUP:-"agentic-kb"}
+# This consumer's name in the group; empty = worker-<timestamp>-<pid>
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_CONSUMER=${LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_CONSUMER:-""}
+# Events claimed per read
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_BATCH=${LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_BATCH:-32}
+# How long [ms] a read waits for work before returning empty
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_BLOCK_MS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_BLOCK_MS:-5000}
+# Pending-entry length above which the worker warns
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_PENDING=${LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_PENDING:-1000}
+# Embedder and reranker served by the engine - both are required to create a collection
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_EMBEDDER=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_EMBEDDER:-""}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_RERANKER=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_RERANKER:-""}
+# Vector index type of a new collection: HNSW or IVF_FLAT (never empty)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_INDEX_TYPE=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_INDEX_TYPE:-"HNSW"}
+# Chunk size/overlap [tokens] declared for a NEW collection. Applied at creation
+# only: changing it does not re-split collections that already exist, so a new
+# size means dropping <prefix>_<scope>[..._sessions] and re-indexing. 0 leaves
+# the engine default (500 tokens, embedded text cut at 508); overlap must be
+# smaller than the chunk size.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_TOKENS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_TOKENS:-400}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_OVERLAP=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_OVERLAP:-60}
+# Seconds between retention passes; 0 disables them
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_RETENTION_INTERVAL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RETENTION_INTERVAL_SECONDS:-21600}
+
+# ------------ Agentic Knowledge: Codex adapter
+# Routing configuration the episode phase rules come from;
+# empty = the bundled routing/agentic_routing_codex.json
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_CODEX_PHASE_CONFIG=${LLM_ROUTER_KNOWLEDGE_AGENTIC_CODEX_PHASE_CONFIG:-""}
 
 # ------------ Semantic BiEncoder Routing Configuration
 # Config source of truth: JSON file (via CONFIG env var).
