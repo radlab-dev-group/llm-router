@@ -49,29 +49,23 @@ VERBOSE_STARTUP_DELAY_SECONDS = 3
 
 
 def _warn_verbose_mode():
-    """Warn loudly when verbose mode is on, then pause the startup briefly.
+    """Log a loud WARNING when verbose mode is on, then pause the startup.
 
     ``LLM_ROUTER_VERBOSE`` makes endpoints log **raw, unmasked** request
-    parameters, so the application log may contain PII. The delay gives
-    someone a chance to kill the process before it serves real traffic.
+    parameters, so the application log may contain PII.  The warning goes
+    through the logger (not ``print``) so it is visible in every launch mode:
+    on the console in the foreground, and in the server/daemon log of a
+    background instance.  The delay gives someone a chance to kill the process
+    before it serves real traffic.
     """
     if not VERBOSE_MODE:
         return
 
-    print("\033[32m")
-    print("=" * 80)
-    print(
-        "\033[31m"
-        "VERBOSE MODE IS ON: "
-        "\033[33m"
-        "raw, UNMASKED request parameters are written to the log.\n"
-        "This exposes PII and must never be used in production.\n"
-        "Unset LLM_ROUTER_VERBOSE (or drop the --verbose flag) to disable it.",
-        end="",
+    logger.warning(
+        "VERBOSE MODE IS ON: raw, UNMASKED request parameters are written to "
+        "the log. This exposes PII and must never be used in production. "
+        "Unset LLM_ROUTER_VERBOSE (or drop the --verbose flag) to disable it."
     )
-    print("\033[32m")
-    print("=" * 80)
-    print("\033[0m")
 
     time.sleep(VERBOSE_STARTUP_DELAY_SECONDS)
 
