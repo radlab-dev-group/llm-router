@@ -896,6 +896,7 @@ class ServerCommand(BaseCommand):
         ("models_config", "LLM_ROUTER_MODELS_CONFIG", None),
         ("debug", "LLM_ROUTER_IN_DEBUG", "str"),
         ("verbose", "LLM_ROUTER_VERBOSE", "str"),
+        ("no_warn_probe_retries", "LLM_ROUTER_NO_WARN_PROBE_RETRIES", "bool"),
         ("lb_strategy", "LLM_ROUTER_BALANCE_STRATEGY", None),
         ("default_lang", "LLM_ROUTER_DEFAULT_EP_LANGUAGE", None),
         ("auth", "LLM_ROUTER_AUTH_ENABLED", "bool"),
@@ -936,6 +937,12 @@ class ServerCommand(BaseCommand):
             "auth_redis_port",
             "auth_redis_db",
         }
+    )
+
+    #: ``start`` flags that are a bare switch: recorded in the environment but
+    #: replayed on the command line without a value.
+    _VALUELESS_FLAGS: ClassVar[FrozenSet[str]] = frozenset(
+        {"verbose", "no_warn_probe_retries"}
     )
 
     #: ``start`` flags that argparse restricts to ``0``/``1``.
@@ -1312,6 +1319,18 @@ class ServerCommand(BaseCommand):
             "--no-config-check",
             action="store_true",
             help="Skip the models-config file check before spawning.",
+        )
+        start.add_argument(
+            "--no-warn-probe-retries",
+            action="store_true",
+            default=None,
+            help=(
+                "Probe health-check and keep-alive targets with a single "
+                "connection attempt, so unreachable providers no longer "
+                "produce repeated urllib3 'Retrying ... after connection "
+                "broken' warnings (LLM_ROUTER_NO_WARN_PROBE_RETRIES). Real "
+                "request traffic keeps its connection retry."
+            ),
         )
         start.add_argument(
             "--save-config",
@@ -2009,7 +2028,7 @@ class ServerCommand(BaseCommand):
         """
         text = str(value).strip()
         lowered = text.lower()
-        if attr == "verbose":
+        if attr in cls._VALUELESS_FLAGS:
             return "" if lowered in _TRUE_TOKENS else None
         if attr == "server":
             return text if text in cls._SERVER_TYPES else None

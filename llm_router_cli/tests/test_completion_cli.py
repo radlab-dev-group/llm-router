@@ -160,6 +160,7 @@ def test_completion_bash_lists_commands_subcommands_options(capsys):
     assert "'--instance'" in out  # every server sub-command
     assert "'--no-port-check'" in out  # server start
     assert "'--no-config-check'" in out  # server start
+    assert "'--no-warn-probe-retries'" in out  # server start
     assert "'-i'" in out  # short form of --instance
     assert "'-o'" in out  # short form of --output / --output-config-file
 
@@ -176,6 +177,7 @@ def test_completion_zsh_lists_commands_subcommands_options(capsys):
     assert "'--auth-redis-host'" in out
     assert "'--preset'" in out
     assert "'--algorithm'" in out
+    assert "'--no-warn-probe-retries'" in out  # server start
     assert "compdef _llm-router llm-router" in out
     assert "'-i'" in out  # short form of --instance
     assert "'-o'" in out  # short form of --output / --output-config-file
@@ -622,9 +624,11 @@ def test_no_option_declares_conflicting_kinds():
 
 
 def test_store_const_options_are_flags():
-    """``server start --verbose`` is a ``store_const`` — it takes no value."""
+    """Switch-style ``server start`` options take no value to complete."""
     tree = _command_tree(CompletionCommand._top_parser())
-    assert _collect_by_path(tree)["server start"]["kinds"]["--verbose"] == "flag"
+    kinds = _collect_by_path(tree)["server start"]["kinds"]
+    assert kinds["--verbose"] == "flag"
+    assert kinds["--no-warn-probe-retries"] == "flag"
 
 
 def test_bash_keeps_offering_options_after_a_flag(capsys, tmp_path):
