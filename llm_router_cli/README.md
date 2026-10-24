@@ -433,8 +433,10 @@ variable in effect at launch — defaults + shell env + CLI overrides — is sna
 
 `--verbose` sets `LLM_ROUTER_VERBOSE=1` and makes the endpoints log the **raw, unmasked** request parameters, so the
 log contains the PII that masking would normally strip. It is a troubleshooting switch only: when verbose mode is on,
-the server prints a `WARNING` and waits 3 seconds before it starts serving, and it must never be enabled in
-production. Leaving the flag out keeps the shipped default (`LLM_ROUTER_VERBOSE=0`).
+the server logs a `WARNING` and waits 3 seconds before it starts serving, and it must never be enabled in
+production. The warning goes through the logger, so it is visible in both launch modes: on the console of a
+`--foreground` start and in the log of a daemonized one (which also gets a short `Warning: verbose mode is ON …` line
+from `server start` itself, because a daemon never writes to the terminal).
 
 ### Reloading: `server reload`
 

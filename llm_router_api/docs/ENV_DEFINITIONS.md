@@ -48,8 +48,9 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 
 > **`LLM_ROUTER_VERBOSE` is a debugging aid, not a logging level.** With this variable on, `SecureEndpointI` stores it
 > as `self._verbose_mode` and `run_ep` writes the **raw, unmasked** request payload (JSON) to the log *before* masking,
-> so the log contains exactly the PII that masking would otherwise strip. On top of that, `rest_api.main()` emits a
-> `WARNING` and sleeps 3 s (`VERBOSE_STARTUP_DELAY_SECONDS`) before the server binds its port, so an accidental
+> so the log contains exactly the PII that masking would otherwise strip. On top of that, `rest_api.main()` logs a
+> `WARNING` (console in the foreground, server/daemon log in the background) and sleeps 3 s
+> (`VERBOSE_STARTUP_DELAY_SECONDS`) before the server binds its port, so an accidental
 > production start can still be aborted. Enable it only for local troubleshooting (`LLM_ROUTER_VERBOSE=1`,
 > `llm-router server start --verbose`) and never in production or on shared log storage.
 
