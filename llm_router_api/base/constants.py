@@ -60,6 +60,17 @@ HTTP_CONNECT_RETRIES = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}HTTP_CONNECT_RETRIES", 1)
 )
 
+# When true, health-check and keep-alive probes make a single connection
+# attempt instead of retrying.  A refused probe is exactly the condition that
+# produces the repeated urllib3 ``Retrying ... after connection broken``
+# warning lines, so this is the operator's switch to silence them: a probe is
+# a measurement of one attempt, the monitor's own
+# ``max_consecutive_failures`` hysteresis already handles flapping hosts, and
+# the request path (real user traffic) keeps its retry policy untouched.
+NO_WARN_PROBE_RETRIES = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}NO_WARN_PROBE_RETRIES"
+)
+
 # Timeout to llm-router api
 LLM_ROUTER_API_TIMEOUT = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}TIMEOUT", 0)
