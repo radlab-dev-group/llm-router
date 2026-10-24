@@ -9,12 +9,12 @@ application code from the concrete Redis implementation.
 
 import json
 import logging
-import requests
 import threading
 
 from typing import Dict, List, Optional
 
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
+from llm_router_api.core.http_session import get_http_session
 
 try:
     import redis
@@ -396,7 +396,7 @@ class RedisProviderMonitor:
             url = base_url + path
             last_url = url
             try:
-                resp = requests.get(
+                resp = get_http_session().get(
                     url, timeout=self._check_timeout, headers=headers
                 )
             except Exception as exc:  # pylint: disable=broad-exception-caught

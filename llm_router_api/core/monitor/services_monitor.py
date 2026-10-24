@@ -7,13 +7,13 @@ docstrings and comments have been translated to English.
 """
 
 import time
-import requests
 import threading
 
 from typing import Dict, Optional
 
 from rdl_ml_utils.utils.logger import prepare_logger
 
+from llm_router_api.core.http_session import get_http_session
 from llm_router_api.base.constants import (
     GUARDRAIL_STRATEGY_PIPELINE_REQUEST,
     GUARDRAIL_WITH_AUDIT_RESPONSE,
@@ -146,7 +146,7 @@ class LLMRouterServicesMonitor:
         """
         url = f"{host.rstrip('/')}/api/ping"
         try:
-            response = requests.get(url, timeout=self.request_timeout)
+            response = get_http_session().get(url, timeout=self.request_timeout)
             if response.status_code != 200:
                 return False
             json_body = response.json()

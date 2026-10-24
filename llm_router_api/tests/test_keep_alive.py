@@ -150,9 +150,7 @@ class TestFindProvider:
 class TestSend:
     def test_post_called_with_endpoint_payload_and_auth(self):
         keep_alive = _make_keep_alive()
-        with mock.patch(
-            "llm_router_api.core.monitor.keep_alive.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = mock.Mock()
             keep_alive.send("foo", "http://h1:8000")
             fake_post.assert_called_once()
@@ -172,18 +170,14 @@ class TestSend:
             "m": {"providers": [{"api_host": "http://h/", "api_type": "vllm"}]}
         }
         keep_alive = _make_keep_alive(configs)
-        with mock.patch(
-            "llm_router_api.core.monitor.keep_alive.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = mock.Mock()
             keep_alive.send("m", "http://h/")
             assert fake_post.call_args.args[0] == "http://h/v1/chat/completions"
 
     def test_custom_prompt_overrides_default(self):
         keep_alive = _make_keep_alive()
-        with mock.patch(
-            "llm_router_api.core.monitor.keep_alive.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = mock.Mock()
             keep_alive.send("foo", "http://h1:8000", prompt="custom")
             payload = fake_post.call_args.kwargs["json"]
@@ -191,9 +185,7 @@ class TestSend:
 
     def test_no_provider_no_http_call(self):
         keep_alive = _make_keep_alive()
-        with mock.patch(
-            "llm_router_api.core.monitor.keep_alive.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             keep_alive.send("foo", "http://unknown")  # must not raise
             fake_post.assert_not_called()
 
@@ -202,16 +194,14 @@ class TestSend:
             "m": {"providers": [{"api_host": "http://h", "api_type": "llama"}]}
         }
         keep_alive = _make_keep_alive(configs)
-        with mock.patch(
-            "llm_router_api.core.monitor.keep_alive.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             keep_alive.send("m", "http://h")  # must not raise
             fake_post.assert_not_called()
 
     def test_http_error_is_swallowed(self):
         keep_alive = _make_keep_alive()
         with mock.patch(
-            "llm_router_api.core.monitor.keep_alive.requests.post",
+            "requests.Session.post",
             side_effect=RuntimeError("boom"),
         ):
             keep_alive.send("foo", "http://h1:8000")  # must not raise
@@ -239,9 +229,7 @@ class TestVertexSend:
 
     def test_post_uses_vertex_resource_url_and_gemini_body(self):
         keep_alive = _make_keep_alive(self._configs())
-        with mock.patch(
-            "llm_router_api.core.monitor.keep_alive.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = mock.Mock()
             keep_alive.send("model:vertex", "http://vertex.test")
             fake_post.assert_called_once()

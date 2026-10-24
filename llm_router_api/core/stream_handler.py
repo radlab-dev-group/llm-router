@@ -18,6 +18,7 @@ from typing import Iterator, Dict, Any, Optional
 
 from llm_router_api.base.constants_base import OPENAI_COMPATIBLE_PROVIDERS
 from llm_router_api.core.api_types.bedrock import BedrockConverters
+from llm_router_api.core.http_session import get_http_session, http_timeout
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
 from llm_router_api.core.api_types.eventstream import (
     AwsEventStreamError,
@@ -121,19 +122,20 @@ def _open_stream(
     so it becomes a failover signal (see :func:`_pre_content_failure`) instead
     of a stream error.
     """
+    timeout = http_timeout(endpoint.timeout)
     try:
         if method == "POST":
-            return requests.post(
+            return get_http_session().post(
                 url,
                 json=payload,
-                timeout=endpoint.timeout,
+                timeout=timeout,
                 stream=True,
                 headers=headers,
             )
-        return requests.get(
+        return get_http_session().get(
             url,
             params=payload,
-            timeout=endpoint.timeout,
+            timeout=timeout,
             stream=True,
             headers=headers,
         )
@@ -536,13 +538,13 @@ class StreamHandler:
             ):
                 try:
                     try:
-                        response = requests.request(
+                        response = get_http_session().request(
                             method=method,
                             url=url,
                             json=payload,
                             headers=headers,
                             stream=True,
-                            timeout=endpoint.timeout,
+                            timeout=http_timeout(endpoint.timeout),
                         )
                     except requests.RequestException as exc:
                         raise _pre_content_failure(exc) from exc
@@ -688,13 +690,13 @@ class StreamHandler:
             ):
                 try:
                     try:
-                        response = requests.request(
+                        response = get_http_session().request(
                             method=method,
                             url=url,
                             json=payload,
                             headers=headers,
                             stream=True,
-                            timeout=endpoint.timeout,
+                            timeout=http_timeout(endpoint.timeout),
                         )
                     except requests.RequestException as exc:
                         raise _pre_content_failure(exc) from exc
@@ -831,13 +833,13 @@ class StreamHandler:
             ):
                 try:
                     try:
-                        response = requests.request(
+                        response = get_http_session().request(
                             method=method,
                             url=url,
                             data=body,
                             headers=signed_headers,
                             stream=True,
-                            timeout=endpoint.timeout,
+                            timeout=http_timeout(endpoint.timeout),
                         )
                     except requests.RequestException as exc:
                         raise _pre_content_failure(exc) from exc

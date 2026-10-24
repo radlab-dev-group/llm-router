@@ -102,9 +102,7 @@ def _make_ep(cls, provider):
 class TestVertexChatNonStreaming:
     def test_end_to_end(self):
         ep = _make_ep(OpenAICompletionHandler, _vertex_provider())
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = _FakeResponse(_gemini_response())
             result = ep.run_ep(
                 {
@@ -147,9 +145,7 @@ class TestVertexChatNonStreaming:
 
     def test_system_prompt_injected_as_system_instruction(self):
         ep = _make_ep(OpenAICompletionHandler, _vertex_provider())
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = _FakeResponse(_gemini_response())
             ep.run_ep(
                 {
@@ -187,9 +183,7 @@ class TestVertexChatNonStreaming:
             "usageMetadata": {"totalTokenCount": 9},
             "modelVersion": "gemini-2.5-flash-001",
         }
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = _FakeResponse(gemini_body)
             result = ep.run_ep(
                 {
@@ -229,9 +223,7 @@ class TestVertexChatNonStreaming:
         # parts and the answer named after the called function, or it rejects
         # the whole request.
         ep = _make_ep(OpenAICompletionHandler, _vertex_provider())
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = _FakeResponse(
                 {
                     "candidates": [
@@ -306,9 +298,7 @@ class TestVertexChatNonStreaming:
                 _vertex_provider("vertex-2"),
             ]
         )
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.side_effect = [
                 _FakeResponse({"error": "boom"}, status_code=500),
                 _FakeResponse(_gemini_response()),
@@ -383,9 +373,7 @@ class TestVertexChatStreaming:
 
     def test_stream_end_to_end(self):
         ep = _make_ep(OpenAICompletionHandler, _vertex_provider())
-        with mock.patch(
-            "llm_router_api.core.stream_handler.requests.request"
-        ) as fake_request:
+        with mock.patch("requests.Session.request") as fake_request:
             fake_request.return_value = self._fake_stream_response()
             stream = ep.run_ep(
                 {
@@ -434,9 +422,7 @@ class TestVertexEmbeddings:
                 is_embedding=True,
             ),
         )
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = _FakeResponse(
                 {
                     "embeddings": [{"values": [0.1, 0.2, 0.3]}],

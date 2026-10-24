@@ -37,7 +37,7 @@ class TestProbeHost:
     def test_ping_success(self):
         monitor = LLMRouterServicesMonitor()
         with mock.patch(
-            "llm_router_api.core.monitor.services_monitor.requests.get",
+            "requests.Session.get",
             return_value=_fake_response(200, {"response": "pong"}),
         ) as fake_get:
             assert monitor._probe_host("http://h") is True
@@ -46,7 +46,7 @@ class TestProbeHost:
     def test_ping_success_strips_trailing_slash(self):
         monitor = LLMRouterServicesMonitor()
         with mock.patch(
-            "llm_router_api.core.monitor.services_monitor.requests.get",
+            "requests.Session.get",
             return_value=_fake_response(200, {"response": "pong"}),
         ) as fake_get:
             assert monitor._probe_host("http://h/") is True
@@ -55,7 +55,7 @@ class TestProbeHost:
     def test_wrong_body_is_unavailable(self):
         monitor = LLMRouterServicesMonitor()
         with mock.patch(
-            "llm_router_api.core.monitor.services_monitor.requests.get",
+            "requests.Session.get",
             return_value=_fake_response(200, {"response": "nope"}),
         ):
             assert monitor._probe_host("http://h") is False
@@ -63,7 +63,7 @@ class TestProbeHost:
     def test_non_200_is_unavailable(self):
         monitor = LLMRouterServicesMonitor()
         with mock.patch(
-            "llm_router_api.core.monitor.services_monitor.requests.get",
+            "requests.Session.get",
             return_value=_fake_response(404, {"response": "pong"}),
         ):
             assert monitor._probe_host("http://h") is False
@@ -71,7 +71,7 @@ class TestProbeHost:
     def test_exception_is_unavailable(self):
         monitor = LLMRouterServicesMonitor()
         with mock.patch(
-            "llm_router_api.core.monitor.services_monitor.requests.get",
+            "requests.Session.get",
             side_effect=ConnectionRefusedError("boom"),
         ):
             assert monitor._probe_host("http://h") is False

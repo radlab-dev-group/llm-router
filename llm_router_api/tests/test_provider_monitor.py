@@ -68,7 +68,7 @@ class TestAvailabilityContract:
     def test_200_is_available(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(200),
         ) as fake_get:
             monitor._check_and_update_status(_provider(), "availability:m1")
@@ -80,7 +80,7 @@ class TestAvailabilityContract:
     def test_401_is_unavailable_auth_error(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(401),
         ):
             monitor._check_and_update_status(_provider(), "availability:m1")
@@ -90,7 +90,7 @@ class TestAvailabilityContract:
     def test_403_is_unavailable_auth_error(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(403),
         ):
             monitor._check_and_update_status(_provider(), "availability:m1")
@@ -100,7 +100,7 @@ class TestAvailabilityContract:
     def test_404_is_unavailable_not_found(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(404),
         ):
             monitor._check_and_update_status(_provider(), "availability:m1")
@@ -110,7 +110,7 @@ class TestAvailabilityContract:
     def test_500_is_unavailable_server_error(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(500),
         ):
             monitor._check_and_update_status(_provider(), "availability:m1")
@@ -122,7 +122,7 @@ class TestAvailabilityContract:
     def test_connection_error_is_unreachable(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             side_effect=ConnectionRefusedError("boom"),
         ):
             monitor._check_and_update_status(_provider(), "availability:m1")
@@ -135,12 +135,12 @@ class TestActivePool:
     def test_401_provider_excluded_from_active_pool(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(401),
         ):
             monitor.add_providers("m1", [_provider(id="bad"), _provider(id="good")])
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(200),
         ):
             monitor._check_and_update_status(_provider(id="good"), "availability:m1")
@@ -150,7 +150,7 @@ class TestActivePool:
     def test_200_provider_in_active_pool(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(200),
         ):
             # add_providers registers the provider AND runs the immediate
@@ -176,7 +176,7 @@ class TestPingPaths:
     def test_ping_path_per_api_type(self, api_type, expected_path):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(200),
         ) as fake_get:
             monitor._check_and_update_status(
@@ -188,7 +188,7 @@ class TestPingPaths:
     def test_missing_api_type_does_not_crash(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(200),
         ):
             # no "api_type" key at all — must not raise KeyError
@@ -200,7 +200,7 @@ class TestPingPaths:
     def test_auth_token_sent_with_ping(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(200),
         ) as fake_get:
             monitor._check_and_update_status(
@@ -227,7 +227,7 @@ class TestVertexPing:
     def test_ping_uses_model_resource_path(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(200),
         ) as fake_get:
             monitor._check_and_update_status(self._provider(), "availability:m1")
@@ -242,7 +242,7 @@ class TestVertexPing:
     def test_ping_sends_bearer_token_header(self):
         monitor, _ = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(200),
         ) as fake_get:
             monitor._check_and_update_status(self._provider(), "availability:m1")
@@ -253,7 +253,7 @@ class TestVertexPing:
     def test_ping_403_marks_auth_error(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(403),
         ):
             monitor._check_and_update_status(self._provider(), "availability:m1")
@@ -275,7 +275,7 @@ class TestVertexPing:
                 _boom,
             ),
             mock.patch(
-                "llm_router_api.core.monitor.provider_monitor.requests.get",
+                "requests.Session.get",
                 return_value=_FakeResp(401),
             ) as fake_get,
         ):
@@ -301,7 +301,7 @@ class TestFallbackProbePaths:
             return _FakeResp(404)
 
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             side_effect=_fake_get,
         ):
             monitor._check_and_update_status(
@@ -313,7 +313,7 @@ class TestFallbackProbePaths:
     def test_all_paths_404_stays_not_found(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(404),
         ) as fake_get:
             monitor._check_and_update_status(
@@ -327,7 +327,7 @@ class TestFallbackProbePaths:
     def test_auth_error_does_not_fallback(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=_FakeResp(401),
         ) as fake_get:
             monitor._check_and_update_status(
@@ -341,7 +341,7 @@ class TestFallbackProbePaths:
     def test_connection_error_does_not_fallback(self):
         monitor, redis_client = _make_monitor()
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             side_effect=ConnectionRefusedError("boom"),
         ) as fake_get:
             monitor._check_and_update_status(
@@ -363,7 +363,7 @@ class TestFallbackProbePaths:
             return _FakeResp(404)
 
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             side_effect=_fake_get,
         ):
             monitor._check_and_update_status(
@@ -380,7 +380,7 @@ class TestHysteresis:
 
     def _check(self, monitor, redis_client, resp_or_exc):
         with mock.patch(
-            "llm_router_api.core.monitor.provider_monitor.requests.get",
+            "requests.Session.get",
             return_value=resp_or_exc,
             side_effect=resp_or_exc if isinstance(resp_or_exc, Exception) else None,
         ):

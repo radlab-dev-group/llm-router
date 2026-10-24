@@ -15,12 +15,12 @@ translated to English.
 """
 
 import logging
-import requests
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
+from llm_router_api.core.http_session import get_http_session
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only
     from llm_router_api.core.model_handler import ApiModel
@@ -132,7 +132,7 @@ class KeepAlive:
                 api_type, payload, provider_model, None
             )
             headers = ApiTypesDispatcher.request_headers(api_type, provider_model)
-            response = requests.post(
+            response = get_http_session().post(
                 endpoint, json=payload, headers=headers, timeout=timeout
             )
             response.raise_for_status()

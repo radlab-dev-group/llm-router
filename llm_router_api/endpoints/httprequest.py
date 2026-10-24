@@ -11,6 +11,7 @@ import requests
 from requests import Response
 from typing import Any, Dict, Iterator, Optional
 
+from llm_router_api.core.http_session import get_http_session, http_timeout
 from llm_router_api.core.model_handler import ApiModel
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
 from llm_router_api.core.stream_handler import StreamHandler, StreamConversion
@@ -514,17 +515,17 @@ class HttpRequestExecutor:
                     body,
                 )
                 signed.setdefault("Content-Type", "application/json")
-                response = requests.post(
+                response = get_http_session().post(
                     ep_url,
                     data=body,
-                    timeout=self._endpoint.timeout,
+                    timeout=http_timeout(self._endpoint.timeout),
                     headers=signed,
                 )
             else:
-                response = requests.post(
+                response = get_http_session().post(
                     ep_url,
                     json=params,
-                    timeout=self._endpoint.timeout,
+                    timeout=http_timeout(self._endpoint.timeout),
                     headers=headers,
                 )
         except requests.RequestException as exc:
@@ -561,10 +562,10 @@ class HttpRequestExecutor:
         Issue a ``GET`` request with query parameters.
         """
         try:
-            response = requests.get(
+            response = get_http_session().get(
                 ep_url,
                 params=params,
-                timeout=self._endpoint.timeout,
+                timeout=http_timeout(self._endpoint.timeout),
                 headers=headers,
             )
         except requests.RequestException as exc:
