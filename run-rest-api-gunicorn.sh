@@ -58,6 +58,15 @@ export LLM_ROUTER_SERVER_WORKER_CLASS=${LLM_ROUTER_SERVER_WORKER_CLASS:-""}
 export LLM_ROUTER_TIMEOUT=${LLM_ROUTER_TIMEOUT:-0}
 export LLM_ROUTER_EXTERNAL_TIMEOUT=${LLM_ROUTER_EXTERNAL_TIMEOUT:-300}
 
+# Outbound HTTP transport: connect-phase timeout [s], connection-pool size per
+# provider host, connection-only retries, and the switch that probes providers
+# with a single attempt (silences the urllib3 "Retrying ... after connection
+# broken" warnings a down provider produces on every monitor cycle).
+export LLM_ROUTER_HTTP_CONNECT_TIMEOUT=${LLM_ROUTER_HTTP_CONNECT_TIMEOUT:-5}
+export LLM_ROUTER_HTTP_POOL_MAXSIZE=${LLM_ROUTER_HTTP_POOL_MAXSIZE:-32}
+export LLM_ROUTER_HTTP_CONNECT_RETRIES=${LLM_ROUTER_HTTP_CONNECT_RETRIES:-1}
+export LLM_ROUTER_NO_WARN_PROBE_RETRIES=${LLM_ROUTER_NO_WARN_PROBE_RETRIES:-0}
+
 # ==================================================================================
 # Redis configuration (used f.e. in fa_* strategies)
 export LLM_ROUTER_REDIS_HOST=${LLM_ROUTER_REDIS_HOST:-""}

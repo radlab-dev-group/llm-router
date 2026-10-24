@@ -420,8 +420,10 @@ Every sub-command takes `-i/--instance NAME`, so a host can run several routers 
 `--log-file`, `--pid-file`, `--auth`, `--redis-host`, `--redis-port`, `--redis-db`, `--redis-password`,
 `--auth-redis-host`, `--auth-redis-port`, `--auth-redis-db`, `--auth-redis-password`), plus `--instance NAME` (which
 instance to start), `--no-port-check` (skip the port pre-flight check), `--no-config-check` (skip the models-config
-pre-flight check) and `--save-config` (remember the flags in the instance `config.env` — see [Saving a command
-line](#saving-a-command-line---save-config)). The daemon log (`--log-file`)
+pre-flight check), `--no-warn-probe-retries` (probe providers with a single connection attempt, so unreachable ones no
+longer spam the log with urllib3 `Retrying ... after connection broken` warnings — see
+[Quiet probe retries](#quiet-probe-retries---no-warn-probe-retries)) and `--save-config` (remember the flags in the
+instance `config.env` — see [Saving a command line](#saving-a-command-line---save-config)). The daemon log (`--log-file`)
 follows `LLM_ROUTER_LOG_FILENAME` when the shell sets it — a bare file name resolves against the launch CWD — and falls
 back to `~/.llm-router/server.log` only when the variable is unset. A **named** instance keeps its logs to itself: its
 application log always lives in `~/.llm-router/instances/NAME/`, and the daemon console log sits next to it unless
@@ -617,6 +619,44 @@ log path plus the last 15 lines of that log — the traceback, in practice.
 > `~/.llm-router/instances/NAME/` (`.`/`..` components are dropped so it cannot escape the instance tree); an absolute or
 > `~`-relative path is honored as given. `start` additionally warns on stderr when a *running* instance already logs to
 > the same file. The `default` instance keeps the historical launch-CWD behavior.
+
+#### Quiet probe retries: `--no-warn-probe-retries`
+
+The provider monitor pings every configured provider every
+`LLM_ROUTER_PROVIDER_MONITOR_INTERVAL_SECONDS` (5 s by default), and the keep-alive
+monitor wakes the models it is keeping warm. A provider that is simply **down** answers
+those probes with `Connection refused`, and the outbound transport retries the connection
+once (`LLM_ROUTER_HTTP_CONNECT_RETRIES`) — so every cycle logs a warning per dead provider:
+
+```text
+WARNING urllib3.connectionpool: Retrying (Retry(total=0, connect=0, read=0, redirect=0, status=0))
+  after connection broken by 'NewConnectionError(...): Failed to establish a new connection:
+  [Errno 111] Connection refused': /v1/models
+```
+
+The health check itself reports this correctly (`status=false reason=unreachable
+(ConnectionError)`); it is only the log that fills up — twice the connections and one
+warning per probe, on every cycle.
+
+`--no-warn-probe-retries` stops the noise at its source: health-check and keep-alive
+probes then make a **single** connection attempt, so there is no retry to warn about.
+
+```bash
+llm-router server start --no-warn-probe-retries
+llm-router server start -i prod --no-warn-probe-retries --save-config   # remembered
+```
+
+What it does **not** touch is the request path: an actual user request still retries a
+failed connection, because that is a different event worth both the retry and the log line.
+A probe, on the other hand, is a measurement of one attempt — the monitor's own
+`LLM_ROUTER_PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES` hysteresis already decides when a
+flapping host leaves the pool, so retrying inside a single probe only blurs that decision.
+
+The same switch is available without the CLI, as the environment variable
+`LLM_ROUTER_NO_WARN_PROBE_RETRIES=1` (see the API
+[environment reference](../llm_router_api/docs/ENV_DEFINITIONS.md)). Precedence is the
+usual one: `--no-warn-probe-retries` > `config.env` > shell environment > default (`0`,
+warnings kept).
 
 ### `list` — every instance at a glance
 
