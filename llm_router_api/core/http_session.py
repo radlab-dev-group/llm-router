@@ -48,6 +48,7 @@ from llm_router_api.base.constants import (
     EXTERNAL_API_TIMEOUT,
     HTTP_CONNECT_RETRIES,
     HTTP_CONNECT_TIMEOUT_SECONDS,
+    NO_WARN_PROBE_RETRIES,
     HTTP_POOL_MAXSIZE,
 )
 
@@ -98,6 +99,55 @@ def _build_session() -> requests.Session:
     return session
 
 
+def _build_probe_session() -> requests.Session:
+    """
+    Create a :class:`requests.Session` for health checks and keep-alive
+    probes.
+
+    Probes are measurements of a single attempt, so no retry is configured
+    at all: a connection that is refused is exactly the "down" answer the
+    monitor wants, and retrying it only doubles the connections and the
+    urllib3 warning noise per cycle.  The request path keeps the
+    connection-only retry policy of :func:`get_http_session`.
+    """
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=HTTP_POOL_MAXSIZE,
+        pool_maxsize=HTTP_POOL_MAXSIZE,
+        max_retries=Retry(
+            total=0,
+            connect=0,
+            read=0,
+            redirect=0,
+            status=0,
+            status_forcelist=(),
+            backoff_factor=0,
+            raise_on_status=False,
+        ),
+    )
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+
+def get_probe_session() -> requests.Session:
+    """
+    Return the session used for health checks and keep-alive probes.
+
+    With :data:`~llm_router_api.base.constants.NO_WARN_PROBE_RETRIES` set the
+    probe uses a dedicated, retry-free session (per thread, like the request
+    session); otherwise it falls back to :func:`get_http_session` so existing
+    behaviour is unchanged.
+    """
+    if not NO_WARN_PROBE_RETRIES:
+        return get_http_session()
+    session = getattr(_local, "probe_session", None)
+    if session is None:
+        session = _build_probe_session()
+        _local.probe_session = session
+    return session
+
+
 def get_http_session() -> requests.Session:
     """
     Return the pooled :class:`requests.Session` of the current thread.
@@ -122,6 +172,15 @@ def recreate_http_session() -> None:
     """
     session = getattr(_local, "session", None)
     _local.session = None
+    probe = getattr(_local, "probe_session", None)
+    _local.probe_session = None
+    if probe is not None:
+        try:
+            probe.close()
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.debug(
+                "HTTP probe session close during reset failed", exc_info=True
+            )
     if session is not None:
         try:
             session.close()

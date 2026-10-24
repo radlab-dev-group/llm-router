@@ -141,6 +141,62 @@ class TestRetryPolicy:
         assert not retries.status_forcelist
 
 
+class TestProbeSession:
+    """
+    ``get_probe_session`` is the monitors' session.
+
+    A probe measures one attempt, so with the switch on it must not retry;
+    the request path keeps its connection retry either way.
+    """
+
+    def test_off_by_default_reuses_the_pooled_session(self):
+        assert http_session.get_probe_session() is http_session.get_http_session()
+
+    def test_switch_on_gives_a_retry_free_session(self, monkeypatch):
+        monkeypatch.setattr(http_session, "NO_WARN_PROBE_RETRIES", True)
+        probe = http_session.get_probe_session()
+        retries = probe.get_adapter("https://h").max_retries
+        assert retries.total == 0
+        assert retries.connect == 0
+        assert retries.read == 0
+        assert retries.status == 0
+        assert not retries.status_forcelist
+
+    def test_switch_on_leaves_the_request_session_retrying(self, monkeypatch):
+        # Silencing the probe noise must not weaken the real request path.
+        monkeypatch.setattr(http_session, "NO_WARN_PROBE_RETRIES", True)
+        probe = http_session.get_probe_session()
+        pooled = http_session.get_http_session()
+        assert probe is not pooled
+        assert pooled.get_adapter("https://h").max_retries.connect == (
+            HTTP_CONNECT_RETRIES
+        )
+
+    def test_probe_session_is_reused_within_a_thread(self, monkeypatch):
+        monkeypatch.setattr(http_session, "NO_WARN_PROBE_RETRIES", True)
+        assert http_session.get_probe_session() is http_session.get_probe_session()
+
+    def test_probe_session_is_per_thread(self, monkeypatch):
+        monkeypatch.setattr(http_session, "NO_WARN_PROBE_RETRIES", True)
+        main = http_session.get_probe_session()
+        other: list = []
+
+        def _worker() -> None:
+            other.append(http_session.get_probe_session())
+
+        thread = threading.Thread(target=_worker)
+        thread.start()
+        thread.join(timeout=10)
+        assert len(other) == 1
+        assert other[0] is not main
+
+    def test_recreate_drops_the_probe_session_too(self, monkeypatch):
+        monkeypatch.setattr(http_session, "NO_WARN_PROBE_RETRIES", True)
+        probe = http_session.get_probe_session()
+        http_session.recreate_http_session()
+        assert http_session.get_probe_session() is not probe
+
+
 class TestForkHook:
     """A forked worker must not inherit the parent's sockets."""
 
