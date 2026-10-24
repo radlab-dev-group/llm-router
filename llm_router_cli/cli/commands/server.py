@@ -1041,6 +1041,25 @@ class ServerCommand(BaseCommand):
         return user_log
 
     @staticmethod
+    def _warn_verbose_requested(args: argparse.Namespace) -> None:
+        """Warn (stderr, non-fatal) that a start turns verbose mode on.
+
+        ``--verbose`` makes the endpoints log **raw, unmasked** request
+        parameters, so the log gets PII. A daemon's own startup warning is
+        written by the server into the daemon log and never reaches the
+        terminal, so the operator is told here as well. Foreground starts need
+        no extra line: the server's WARNING is logged to the same console.
+        """
+        if not getattr(args, "verbose", None):
+            return
+        print(
+            "Warning: verbose mode is ON - endpoints log raw, UNMASKED "
+            "request parameters (PII); never use it in production. The same "
+            "warning is in the server log.",
+            file=sys.stderr,
+        )
+
+    @staticmethod
     def _warn_shared_app_log(instance: InstancePaths, log_path: str) -> None:
         """Warn (stderr, non-fatal) when another instance shares *log_path*.
 
@@ -1634,6 +1653,8 @@ class ServerCommand(BaseCommand):
             cls._warn_shared_app_log(
                 instance, os.environ.get("LLM_ROUTER_LOG_FILENAME", "")
             )
+            if not args.foreground:
+                cls._warn_verbose_requested(args)
 
             if not args.no_config_check:
                 config_error = cls._check_models_config(
