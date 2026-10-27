@@ -9,6 +9,7 @@ strategy identifiers and the provider name lists.
 
 from __future__ import annotations
 
+import importlib
 import os
 
 os.environ.setdefault("LLM_ROUTER_MINIMUM", "1")
@@ -28,8 +29,17 @@ from llm_router_api.base.constants_base import (  # noqa: E402
 class TestConstGlobal:
     def test_is_cli_command_defaults_to_false(self):
         # The REST API process runs with CLI mode disabled; the CLI entry
-        # point flips this flag before importing the router modules.
-        assert const_global.IS_CLI_COMMAND is False
+        # point flips this flag before importing the router modules.  The flag
+        # lives in a shared module, and collecting ``llm_router_cli`` in the
+        # same pytest session (as a combined api+lib+cli run does) imports
+        # ``llm_router_cli.cli`` and flips it at import time — so reload the
+        # module to assert its own default, then restore the session value.
+        original = const_global.IS_CLI_COMMAND
+        try:
+            importlib.reload(const_global)
+            assert const_global.IS_CLI_COMMAND is False
+        finally:
+            const_global.IS_CLI_COMMAND = original
 
 
 class TestEnvPrefix:

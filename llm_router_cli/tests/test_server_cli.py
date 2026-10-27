@@ -498,6 +498,7 @@ def test_start_applies_overrides_beating_shell_env(monkeypatch, tmp_path, capsys
         return FakeProc()
 
     monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(server_module, "check_port_free", lambda host, port: None)
     # Shell env value that the CLI flag must beat.
     monkeypatch.setenv("LLM_ROUTER_DEFAULT_EP_LANGUAGE", "pl")
     monkeypatch.setenv("LLM_ROUTER_BALANCE_STRATEGY", "balanced")
@@ -559,6 +560,7 @@ def test_start_foreground_writes_and_cleans_pid_file(monkeypatch, tmp_path, caps
         return FakeProc()
 
     monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(server_module, "check_port_free", lambda host, port: None)
     monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "tutaj-llm-router.log")
     rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
     assert rc == 0
@@ -591,6 +593,7 @@ def test_start_log_file_defaults_to_home_when_env_unset(
         return FakeProc()
 
     monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(server_module, "check_port_free", lambda host, port: None)
     monkeypatch.delenv("LLM_ROUTER_LOG_FILENAME", raising=False)
     rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
     assert rc == 0
@@ -614,6 +617,7 @@ def test_start_explicit_log_file_beats_env(monkeypatch, tmp_path, capsys):
         return FakeProc()
 
     monkeypatch.setattr(server_module.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(server_module, "check_port_free", lambda host, port: None)
     monkeypatch.setenv("LLM_ROUTER_LOG_FILENAME", "tutaj-llm-router.log")
     rc = ServerCommand.run(
         [
@@ -644,6 +648,7 @@ def test_start_foreground_propagates_exit_code_and_cleans_up(
         "Popen",
         lambda cmd, **kwargs: FakeProc(),
     )
+    monkeypatch.setattr(server_module, "check_port_free", lambda host, port: None)
     rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
     assert rc == 3
     assert not pid_file.exists()
@@ -1224,6 +1229,7 @@ def test_foreground_run_leaves_a_successor_pid_file_alone(
     monkeypatch.setattr(
         server_module.subprocess, "Popen", lambda cmd, **kwargs: FakeProc()
     )
+    monkeypatch.setattr(server_module, "check_port_free", lambda host, port: None)
     rc = ServerCommand.run(["start", "--foreground", "--pid-file", str(pid_file)])
 
     assert rc == 0

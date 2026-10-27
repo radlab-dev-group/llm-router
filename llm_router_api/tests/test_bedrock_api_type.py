@@ -21,6 +21,7 @@ absent (``pip install boto3`` in a scratch venv to run them):
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import json
 import os
@@ -74,9 +75,20 @@ def _provider(**overrides):
 # ----------------------------------------------------------------------
 # Event-stream frame builder (mirrors the AWS wire framing)
 # ----------------------------------------------------------------------
-def _frame(event_type, payload, message_type=1, flags=0):
+def _frame(event_type, payload, message_type="event", flags=0):
     """
     Encode one ``application/vnd.amazon.eventstream`` frame.
+
+    The wire layout is ``prelude(12) + headers + payload + crc(4)``: the two
+    length fields and the prelude CRC, then the headers, the payload and the
+    trailing CRC.  There is **no** message-type/flags section on the wire —
+    ``botocore.eventstream.EventStreamBuffer`` and the aws-c-event-stream
+    reference decoder both read the headers straight after the prelude — so
+    ``message_type`` is written as the ``:message-type`` header
+    (``event``/``exception``/``error``).  ``flags`` is kept for the
+    connection-settings case: the wire format has no flags field either, and a
+    frame with no ``:event-type`` header is what the router treats as
+    carrying no modelled event.
 
     The trailing CRC is ``crc32(frame[0:payload_end])`` — the one range
     ``botocore.eventstream.EventStreamBuffer`` accepts (see
@@ -88,7 +100,7 @@ def _frame(event_type, payload, message_type=1, flags=0):
     )
 
 
-def _frame_with_crc(event_type, payload, message_type=1, flags=0, crc_of=None):
+def _frame_with_crc(event_type, payload, message_type="event", flags=0, crc_of=None):
     """
     Encode one frame whose trailing CRC is computed by ``crc_of``.
 
@@ -97,11 +109,10 @@ def _frame_with_crc(event_type, payload, message_type=1, flags=0, crc_of=None):
     for the negative tests.
     """
     headers = b""
-    for name, value in (
-        (":event-type", event_type),
-        (":content-type", "application/json"),
-        (":message-type", "event"),
-    ):
+    entries = [(":content-type", "application/json"), (":message-type", message_type)]
+    if event_type:
+        entries.insert(0, (":event-type", event_type))
+    for name, value in entries:
         name_bytes, value_bytes = name.encode(), value.encode()
         headers += (
             bytes([len(name_bytes)])
@@ -111,11 +122,11 @@ def _frame_with_crc(event_type, payload, message_type=1, flags=0, crc_of=None):
             + value_bytes
         )
     body = json.dumps(payload).encode("utf-8")
-    total = 12 + 1 + 4 + len(headers) + len(body) + 4
+    total = 12 + len(headers) + len(body) + 4
     lengths = struct.pack("!II", total, len(headers))
     prelude_crc = zlib.crc32(lengths) & 0xFFFFFFFF
     rest = lengths + struct.pack("!I", prelude_crc)
-    rest += struct.pack("!BI", message_type, flags) + headers + body
+    rest += headers + body
     end = total - 4
     if crc_of is None:
         crc = zlib.crc32(rest[:end]) & 0xFFFFFFFF
@@ -278,9 +289,43 @@ class TestBedrockSigning:
         pytest.importorskip("botocore")
         from unittest import mock  # noqa: PLC0415
 
+        import botocore.auth as _botocore_auth  # noqa: PLC0415
         from botocore.auth import SigV4Auth  # noqa: PLC0415
         from botocore.awsrequest import AWSRequest  # noqa: PLC0415
         from botocore.credentials import Credentials  # noqa: PLC0415
+
+        def _pin_signing_time():
+            # Newer botocore reads the signing time via
+            # ``get_current_datetime``; older releases call
+            # ``datetime.datetime.utcnow()`` inline.  Pin whichever entry point
+            # the installed botocore uses (both must yield the same naive UTC
+            # datetime for the signatures to line up).
+            patches = []
+            if hasattr(_botocore_auth, "get_current_datetime"):
+                patches.append(
+                    mock.patch.object(
+                        _botocore_auth,
+                        "get_current_datetime",
+                        return_value=SIGN_TS.replace(tzinfo=None),
+                    )
+                )
+            else:
+                class _FixedDatetime(_botocore_auth.datetime.datetime):
+                    @classmethod
+                    def utcnow(cls):
+                        return SIGN_TS.replace(tzinfo=None)
+
+                patches.append(
+                    mock.patch.object(
+                        _botocore_auth,
+                        "datetime",
+                        mock.Mock(
+                            wraps=_botocore_auth.datetime,
+                            datetime=_FixedDatetime,
+                        ),
+                    )
+                )
+            return patches
 
         def botocore_authorization(token: str) -> str:
             request = AWSRequest(
@@ -290,12 +335,9 @@ class TestBedrockSigning:
                 headers={"Content-Type": "application/json"},
             )
             credentials = Credentials(ACCESS_KEY, SECRET_KEY, token or None)
-            # botocore reads the signing time from this helper and expects a
-            # naive UTC datetime.
-            with mock.patch(
-                "botocore.auth.get_current_datetime",
-                return_value=SIGN_TS.replace(tzinfo=None),
-            ):
+            with contextlib.ExitStack() as stack:
+                for patch in _pin_signing_time():
+                    stack.enter_context(patch)
                 SigV4Auth(credentials, "bedrock", "eu-central-1").add_auth(request)
             return request.headers["Authorization"]
 
@@ -1262,7 +1304,9 @@ class TestEventStreamDecoder:
 
     def test_service_error_frame_raises_with_message(self):
         blob = _frame(
-            "throttlingException", {"message": "slow down"}, message_type=2
+            "throttlingException",
+            {"message": "slow down"},
+            message_type="exception",
         )
         with pytest.raises(
             AwsEventStreamError, match=r"throttlingException.*slow down"
@@ -1272,13 +1316,13 @@ class TestEventStreamDecoder:
     def test_connection_settings_frame_skipped(self):
         # A transaction frame with flag bit 0x01 set is the handshake
         # (initial-request / initial-response); it carries no modelled event.
-        blob = _frame("", {}, message_type=0, flags=0x01)
+        blob = _frame("", {})
         assert list(iter_events([blob])) == []
 
     def test_non_json_payload_rejected(self):
         frame = bytearray(_frame("messageStart", {"role": "assistant"}))
         total, headers_len = struct.unpack_from("!II", frame, 0)
-        payload_start = 17 + headers_len
+        payload_start = 12 + headers_len
         payload_end = total - 4
         # Splice an equal-length run of bytes that is neither UTF-8 nor JSON
         # over the payload — every declared length stays valid — and re-sign the

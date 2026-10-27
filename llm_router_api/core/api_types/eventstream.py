@@ -15,12 +15,17 @@ field                    bytes  note
 total byte length          4   whole frame, trailing CRC included
 headers byte length        4   headers section only
 prelude CRC32C             4   CRC-32C over the preceding 8 bytes
-message type               1   0 transaction, 1 event, 2 exception, 3 error
-message flags              4
 headers                    n   ``name``/``value`` pairs, see the ``_TYPE_*`` tags
-payload                    m   ``total - 17 - headers - 4`` (JSON here)
+payload                    m   ``total - 12 - headers - 4`` (JSON here)
 message CRC32              4   CRC-32 over ``frame[0 : total - 4]``, see below
 ======================  =====  ==========================================
+
+The wire format carries **no** separate message-type/flags fields —
+``botocore.eventstream.EventStreamBuffer`` (the parser boto3 runs for every
+Bedrock stream) and the aws-c-event-stream reference decoder both read the
+headers directly after the 12-byte prelude.  The message kind is conveyed by
+the ``:message-type`` header (``event``/``exception``/``error``); a frame
+without an ``:event-type`` header carries no modelled event and is skipped.
 
 The trailing message CRC is verified.  Its exact range was settled against
 ``botocore.eventstream.EventStreamBuffer`` — the parser boto3 uses for every
@@ -47,24 +52,15 @@ logger = logging.getLogger(__name__)
 #: Content type of a Bedrock streaming response.
 EVENTSTREAM_CONTENT_TYPE = "application/vnd.amazon.eventstream"
 
-#: Size of the fixed prelude (total length + headers length + prelude CRC).
+#: Size of the fixed prelude (total length + headers length + prelude CRC);
+#: the headers section starts immediately after it.
 _PRELUDE_LENGTH = 12
-#: Bytes before the headers section (prelude + message type + flags).
-_HEADER_OFFSET = 17
-#: Smallest possible frame: prelude + type + flags + trailing CRC.
-_MINIMUM_FRAME = _HEADER_OFFSET + 4
+#: Smallest possible frame: prelude + trailing CRC.
+_MINIMUM_FRAME = _PRELUDE_LENGTH + 4
 
-_MESSAGE_TRANSACTION = 0
-_MESSAGE_EVENT = 1
-_MESSAGE_EXCEPTION = 2
-_MESSAGE_ERROR = 3
-
-_MESSAGE_TYPE_NAMES = {
-    _MESSAGE_TRANSACTION: "transaction",
-    _MESSAGE_EVENT: "event",
-    _MESSAGE_EXCEPTION: "exception",
-    _MESSAGE_ERROR: "error",
-}
+#: ``:message-type`` header values that carry a service-signalled error
+#: instead of a modelled event.
+_ERROR_MESSAGE_TYPES = ("exception", "error")
 
 #: Header value type tag → byte width (``None`` = variable, see decoder).
 _TYPE_BOOL_TRUE = 0
@@ -181,18 +177,12 @@ class AwsEventStreamDecoder:
         expected_crc = struct.unpack_from("!I", frame, total_length - 4)[0]
         _verify_message_crc(frame, total_length, expected_crc)
 
-        message_type = frame[12]
-        flags = struct.unpack_from("!I", frame, 13)[0]
-        if message_type == _MESSAGE_TRANSACTION and flags & 0x01:
-            # Connection settings update: no modelled payload.
-            return None
-
-        headers_start = _HEADER_OFFSET
+        headers_start = _PRELUDE_LENGTH
         headers_end = headers_start + headers_length
         headers = _decode_headers(frame, headers_start, headers_end)
 
         payload_bytes = frame[headers_end : total_length - 4]
-        type_name = _MESSAGE_TYPE_NAMES.get(message_type, f"type-{message_type}")
+        kind = str(headers.get(":message-type") or "event").lower()
 
         payload: Dict[str, Any] = {}
         if payload_bytes.strip():
@@ -201,15 +191,16 @@ class AwsEventStreamDecoder:
                 payload = parsed if isinstance(parsed, dict) else {"value": parsed}
             except (ValueError, UnicodeDecodeError) as exc:
                 raise AwsEventStreamError(
-                    f"Event-stream {type_name} payload is not JSON: {exc}"
+                    f"Event-stream {kind} payload is not JSON: {exc}"
                 ) from exc
 
         event_type = str(headers.get(":event-type") or "")
 
-        if message_type in (_MESSAGE_EXCEPTION, _MESSAGE_ERROR):
+        if kind in _ERROR_MESSAGE_TYPES:
             raise AwsEventStreamError(_describe_error(event_type, headers, payload))
 
         if not event_type:
+            # Connection settings and other frames without a modelled event.
             return None
         return event_type, payload
 
