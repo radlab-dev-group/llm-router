@@ -36,6 +36,41 @@ EXTERNAL_API_TIMEOUT = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}EXTERNAL_TIMEOUT", 300)
 )
 
+# Connect-phase timeout (seconds) for outbound provider calls.  The read
+# budget stays ``EXTERNAL_API_TIMEOUT``; the connect budget is short so a
+# host that never accepts a connection fails fast and triggers failover.
+HTTP_CONNECT_TIMEOUT_SECONDS = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}HTTP_CONNECT_TIMEOUT", 5)
+)
+
+# Maximum number of connections kept open to a single provider host by the
+# shared outbound ``requests.Session`` (see ``core/http_session.py``).  Sized
+# to comfortably cover the default thread count of a Gunicorn worker.
+HTTP_POOL_MAXSIZE = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}HTTP_POOL_MAXSIZE", 32)
+)
+
+# Number of extra attempts for **connection-establishment** failures of an
+# outbound call.  Only a socket that was never established is retried, so a
+# retried call can never have been executed (and billed) by the provider.
+# Response-status and read retries are deliberately not configured:
+# re-deciding where a failed request should go is the job of the provider
+# failover in ``core/model_handler.py``, which picks a *different* provider.
+HTTP_CONNECT_RETRIES = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}HTTP_CONNECT_RETRIES", 1)
+)
+
+# When true, health-check and keep-alive probes make a single connection
+# attempt instead of retrying.  A refused probe is exactly the condition that
+# produces the repeated urllib3 ``Retrying ... after connection broken``
+# warning lines, so this is the operator's switch to silence them: a probe is
+# a measurement of one attempt, the monitor's own
+# ``max_consecutive_failures`` hysteresis already handles flapping hosts, and
+# the request path (real user traffic) keeps its retry policy untouched.
+NO_WARN_PROBE_RETRIES = bool_env_value(
+    f"{_DontChangeMe.MAIN_ENV_PREFIX}NO_WARN_PROBE_RETRIES"
+)
+
 # Timeout to llm-router api
 LLM_ROUTER_API_TIMEOUT = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}TIMEOUT", 0)
@@ -120,6 +155,39 @@ SERVER_WORKERS_CLASS = os.environ.get(
 
 if not SERVER_WORKERS_CLASS:
     SERVER_WORKERS_CLASS = None
+
+# Worker class used when the operator has not chosen one.  ``gthread`` is the
+# right default for this service: it serves streaming responses and, unlike
+# the default ``sync`` class, it actually honours
+# ``LLM_ROUTER_SERVER_THREADS_COUNT``.  With ``sync`` a worker handles one
+# request at a time, so a single long generation occupies a whole worker and
+# the configured thread count is silently ignored.
+SERVER_WORKER_CLASS_DEFAULT = "gthread"
+
+# Recycle a Gunicorn worker after this many requests, to bound the memory
+# growth and connection-pool accumulation of a very long-lived worker.
+# ``0`` disables recycling.
+SERVER_MAX_REQUESTS = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_MAX_REQUESTS", 1000)
+)
+
+# Random offset added to ``SERVER_MAX_REQUESTS`` per worker so a fleet does
+# not recycle every worker at the same moment.
+SERVER_MAX_REQUESTS_JITTER = int(
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_MAX_REQUESTS_JITTER", 100)
+)
+
+# Seconds a recycled worker may spend finishing the requests it is already
+# serving.  A worker is only killed once this elapses, so it has to cover a
+# full generation: it defaults to the outbound provider timeout, which is the
+# longest a correctly-behaving request can take, and a long stream is
+# therefore never truncated by recycling.
+SERVER_GRACEFUL_TIMEOUT = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_GRACEFUL_TIMEOUT",
+        EXTERNAL_API_TIMEOUT if EXTERNAL_API_TIMEOUT > 0 else 300,
+    )
+)
 
 # Server host, default is localhost
 SERVER_HOST = os.environ.get(

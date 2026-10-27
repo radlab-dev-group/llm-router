@@ -13,6 +13,7 @@ import os
 os.environ.setdefault("LLM_ROUTER_MINIMUM", "1")
 os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 
+import logging  # noqa: E402
 import sys  # noqa: E402
 from unittest import mock  # noqa: E402
 from types import SimpleNamespace  # noqa: E402
@@ -146,29 +147,48 @@ class TestVerboseModeStartup:
         assert slept == []
         gunicorn.assert_called_once()
 
-    def test_warn_verbose_mode_off_is_silent(self, monkeypatch, capsys):
+    def test_warn_verbose_mode_off_is_silent(self, monkeypatch, caplog):
         monkeypatch.setattr(rest_api_module, "VERBOSE_MODE", False)
         slept = []
         monkeypatch.setattr(
             rest_api_module, "time", SimpleNamespace(sleep=slept.append)
         )
-        rest_api_module._warn_verbose_mode()
+        with caplog.at_level(logging.WARNING):
+            rest_api_module._warn_verbose_mode()
         assert slept == []
-        assert "UNMASKED" not in capsys.readouterr().out
+        assert "UNMASKED" not in caplog.text
 
     def test_warn_verbose_mode_warns_about_unmasked_params(
-        self, monkeypatch, capsys
+        self, monkeypatch, caplog
     ):
         monkeypatch.setattr(rest_api_module, "VERBOSE_MODE", True)
         slept = []
         monkeypatch.setattr(
             rest_api_module, "time", SimpleNamespace(sleep=slept.append)
         )
-        rest_api_module._warn_verbose_mode()
+        with caplog.at_level(logging.WARNING):
+            rest_api_module._warn_verbose_mode()
         assert slept == [rest_api_module.VERBOSE_STARTUP_DELAY_SECONDS]
-        captured = capsys.readouterr().out
-        assert "UNMASKED" in captured
-        assert "LLM_ROUTER_VERBOSE" in captured
+        assert "UNMASKED" in caplog.text
+        assert "LLM_ROUTER_VERBOSE" in caplog.text
+
+    def test_warn_verbose_mode_logs_a_warning_not_a_print(
+        self, monkeypatch, caplog, capsys
+    ):
+        """The warning must reach the logger, so daemons keep it in the log."""
+        monkeypatch.setattr(rest_api_module, "VERBOSE_MODE", True)
+        monkeypatch.setattr(
+            rest_api_module, "time", SimpleNamespace(sleep=lambda _s: None)
+        )
+        with caplog.at_level(logging.WARNING):
+            rest_api_module._warn_verbose_mode()
+        records = [
+            record
+            for record in caplog.records
+            if "VERBOSE MODE IS ON" in record.getMessage()
+        ]
+        assert [record.levelname for record in records] == ["WARNING"]
+        assert capsys.readouterr().out == ""
 
     def test_verbose_on_delays_the_server_startup(self, monkeypatch):
         monkeypatch.setattr(sys, "argv", ["rest_api", "--gunicorn"])

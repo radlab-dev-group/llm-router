@@ -111,9 +111,7 @@ class TestCallHttpRequestPost:
         ep = self._endpoint()
         ex = HttpRequestExecutor(ep)
         params = {"messages": [{"role": "user", "content": "x"}]}
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as post:
+        with mock.patch("requests.Session.post") as post:
             post.return_value = SimpleNamespace(ok=True)
             out = ex.call_http_request(
                 ep_url="/v1/chat",
@@ -129,7 +127,11 @@ class TestCallHttpRequestPost:
         # url, timeout, auth header
         call = post.call_args
         assert call.args[0] == "http://host:7000/v1/chat"
-        assert call.kwargs["timeout"] == ep.timeout
+        # the timeout is split: the read budget is the endpoint's, while an
+        # unreachable host is dropped after the shorter connect budget
+        connect, read = call.kwargs["timeout"]
+        assert read == ep.timeout
+        assert connect <= read
         assert call.kwargs["headers"]["Authorization"] == "Bearer sekret"
         ep.return_http_response.assert_called_once()
 
@@ -137,9 +139,7 @@ class TestCallHttpRequestPost:
         ep = self._endpoint()
         ex = HttpRequestExecutor(ep)
         params = {}
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as post:
+        with mock.patch("requests.Session.post") as post:
             post.return_value = SimpleNamespace(ok=True)
             ex.call_http_request(
                 ep_url="v1",
@@ -151,9 +151,7 @@ class TestCallHttpRequestPost:
     def test_no_token_no_auth_header(self):
         ep = self._endpoint()
         ex = HttpRequestExecutor(ep)
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as post:
+        with mock.patch("requests.Session.post") as post:
             post.return_value = SimpleNamespace(ok=True)
             ex.call_http_request(
                 ep_url="v1",
@@ -171,7 +169,7 @@ class TestCallHttpRequestGet:
         ep.return_http_response = mock.Mock(return_value={"ok": 2})
         ex = HttpRequestExecutor(ep)
         params = {"a": 1}
-        with mock.patch("llm_router_api.endpoints.httprequest.requests.get") as get:
+        with mock.patch("requests.Session.get") as get:
             get.return_value = SimpleNamespace(ok=True)
             out = ex.call_http_request(
                 ep_url="v1/x", params=params, api_model_provider=_provider()
@@ -187,9 +185,7 @@ class TestTransportErrors:
     def test_post_failure_raises_sanitized_runtime_error(self):
         ep = _DummyEndpoint(method="POST")
         ex = HttpRequestExecutor(ep)
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as post:
+        with mock.patch("requests.Session.post") as post:
             post.side_effect = requests.RequestException(
                 "500 Server Error for url: http://10.9.8.7:8000/v1"
             )
@@ -207,7 +203,7 @@ class TestTransportErrors:
     def test_get_failure_raises_sanitized_runtime_error(self):
         ep = _DummyEndpoint(method="GET")
         ex = HttpRequestExecutor(ep)
-        with mock.patch("llm_router_api.endpoints.httprequest.requests.get") as get:
+        with mock.patch("requests.Session.get") as get:
             get.side_effect = requests.RequestException("boom http://1.2.3.4")
             with pytest.raises(RuntimeError, match="prov-1"):
                 ex.call_http_request(
@@ -218,9 +214,7 @@ class TestTransportErrors:
         ep = _DummyEndpoint(method="POST")
         ex = HttpRequestExecutor(ep)
         fake = SimpleNamespace(ok=True)
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as post:
+        with mock.patch("requests.Session.post") as post:
             post.return_value = fake
             out = ex._call_post_with_payload(
                 ep_url="u",
@@ -417,7 +411,7 @@ class TestResponseStatusHook:
         ex = HttpRequestExecutor(ep)
         provider = _provider()
         with (
-            mock.patch("llm_router_api.endpoints.httprequest.requests.post") as post,
+            mock.patch("requests.Session.post") as post,
             mock.patch(
                 "llm_router_api.endpoints.httprequest.ApiTypesDispatcher.on_response_status"
             ) as hook,
@@ -432,7 +426,7 @@ class TestResponseStatusHook:
         ep = self._endpoint(method="GET")
         ex = HttpRequestExecutor(ep)
         with (
-            mock.patch("llm_router_api.endpoints.httprequest.requests.get") as get,
+            mock.patch("requests.Session.get") as get,
             mock.patch(
                 "llm_router_api.endpoints.httprequest.ApiTypesDispatcher.on_response_status"
             ) as hook,
@@ -449,9 +443,7 @@ class TestResponseStatusHook:
         for status in (200, 429):
             ex = HttpRequestExecutor(ep)
             with (
-                mock.patch(
-                    "llm_router_api.endpoints.httprequest.requests.post"
-                ) as post,
+                mock.patch("requests.Session.post") as post,
                 mock.patch(
                     "llm_router_api.endpoints.httprequest.ApiTypesDispatcher.on_response_status"
                 ) as hook,
@@ -471,9 +463,7 @@ class TestResponseStatusHook:
         ep = self._endpoint()
         ex = HttpRequestExecutor(ep)
         fake = SimpleNamespace(ok=False, status_code=429)
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as post:
+        with mock.patch("requests.Session.post") as post:
             post.return_value = fake
             ex.call_http_request(
                 ep_url="v1", params={}, api_model_provider=_provider()
@@ -485,7 +475,7 @@ class TestResponseStatusHook:
         ex = HttpRequestExecutor(ep)
         provider = _provider(api_type="vertex_ai", provider_options={})
         with (
-            mock.patch("llm_router_api.endpoints.httprequest.requests.post") as post,
+            mock.patch("requests.Session.post") as post,
             mock.patch.object(
                 VertexAiType,
                 "on_response_status",

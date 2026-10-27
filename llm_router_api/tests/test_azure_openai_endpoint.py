@@ -107,9 +107,7 @@ def _make_ep(cls, provider):
 class TestAzureChatNonStreaming:
     def test_end_to_end(self):
         ep = _make_ep(OpenAICompletionHandler, _azure_provider())
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = _FakeResponse(_openai_chat_response())
             result = ep.run_ep(
                 {
@@ -165,19 +163,21 @@ class TestAzureChatNonStreaming:
             def json(self):
                 return token_resp
 
-        # The token endpoint and the data plane both POST: the side effect
-        # answers whichever URL it is (token endpoint first, then the
-        # deployment call).
-        def _fake_post(url, *args, **kwargs):
-            if "oauth2/v2.0/token" in url:
-                return _TokenResp()
-            return _FakeResponse(_openai_chat_response())
-
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post",
-            side_effect=_fake_post,
-        ) as fake_post:
-            fake_post.return_value = _FakeResponse(_openai_chat_response())
+        # Two distinct transports are involved and each is stubbed on its own
+        # seam: the credential chain posts to the Entra token endpoint with
+        # the module-level ``requests.post`` (deliberately not pooled, so the
+        # identity probe keeps its fail-fast semantics), while the data plane
+        # goes through the pooled ``requests.Session``.
+        with (
+            mock.patch(
+                "llm_router_api.core.api_types.auth.azure.requests.post",
+                return_value=_TokenResp(),
+            ),
+            mock.patch(
+                "requests.Session.post",
+                return_value=_FakeResponse(_openai_chat_response()),
+            ) as fake_post,
+        ):
             ep.run_ep(
                 {
                     "model": "azure/gpt-4o",
@@ -199,9 +199,7 @@ class TestAzureChatNonStreaming:
                 ),
             ]
         )
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.side_effect = [
                 _FakeResponse({"error": {"message": "boom"}}, status_code=500),
                 _FakeResponse(_openai_chat_response()),
@@ -262,9 +260,7 @@ class TestAzureChatStreaming:
 
     def test_stream_end_to_end(self):
         ep = _make_ep(OpenAICompletionHandler, _azure_provider())
-        with mock.patch(
-            "llm_router_api.core.stream_handler.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = self._fake_stream_response()
             stream = ep.run_ep(
                 {
@@ -299,9 +295,7 @@ class TestAzureEmbeddings:
                 is_embedding=True,
             ),
         )
-        with mock.patch(
-            "llm_router_api.endpoints.httprequest.requests.post"
-        ) as fake_post:
+        with mock.patch("requests.Session.post") as fake_post:
             fake_post.return_value = _FakeResponse(
                 {
                     "object": "list",

@@ -34,15 +34,23 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_SERVER_HOST`           | `localhost`                            | Host address for the server.                                                                                     |
 | `LLM_ROUTER_SERVER_WORKERS_COUNT`  | `2`                                    | Number of workers (for servers that support them).                                                               |
 | `LLM_ROUTER_SERVER_THREADS_COUNT`  | `8`                                    | Number of worker threads (for servers that support them).                                                        |
-| `LLM_ROUTER_SERVER_WORKER_CLASS`   | `None`                                 | Worker class for servers that support it (e.g. gevent).                                                          |
+| `LLM_ROUTER_SERVER_WORKER_CLASS`   | `gthread` (for Gunicorn)               | Worker class for servers that support it (e.g. gevent). Defaults to `gthread` for Gunicorn: it honours `LLM_ROUTER_SERVER_THREADS_COUNT` and serves streaming responses, while the `sync` class Gunicorn would otherwise pick serves one request per worker at a time. |
+| `LLM_ROUTER_HTTP_CONNECT_TIMEOUT`  | `5`                                    | Connect-phase timeout (seconds) for outbound provider calls. The read budget stays `LLM_ROUTER_EXTERNAL_TIMEOUT`, so a host that accepts the TCP connection and then stalls is still given the full read budget, while a host that never accepts a connection is dropped after this many seconds and failover can start. `0` disables the connect budget. |
+| `LLM_ROUTER_HTTP_POOL_MAXSIZE`     | `32`                                   | Connections kept open per provider host by the shared outbound `requests.Session` (`llm_router_api/core/http_session.py`). Sized to cover the default worker thread count. |
+| `LLM_ROUTER_HTTP_CONNECT_RETRIES`  | `1`                                    | Extra attempts for a provider call whose TCP connection was never established. Only a connection that was not established is retried, so a retried call can never have been executed by the provider; status and read retries are deliberately left to the provider failover, which re-dispatches to a different provider. |
+| `LLM_ROUTER_NO_WARN_PROBE_RETRIES` | `False`                                | Probe health-check and keep-alive targets with a **single** connection attempt. A provider that is down answers every probe with `Connection refused`, and the connection retry above logs a urllib3 `Retrying ... after connection broken` warning per probe and per cycle. Setting this makes probes single-attempt, so the warning disappears: a probe measures one attempt, and `LLM_ROUTER_PROVIDER_MONITOR_MAX_CONSECUTIVE_FAILURES` already decides when a flapping host leaves the pool. The request path keeps its retry policy unchanged. CLI equivalent: `llm-router server start --no-warn-probe-retries`. |
+| `LLM_ROUTER_SERVER_MAX_REQUESTS`   | `1000`                                 | Recycle a Gunicorn worker after this many requests to bound long-run memory growth. `0` disables recycling. |
+| `LLM_ROUTER_SERVER_MAX_REQUESTS_JITTER` | `100`                                | Random offset (requests) added to `LLM_ROUTER_SERVER_MAX_REQUESTS` per worker, so a fleet does not recycle every worker at once. |
+| `LLM_ROUTER_SERVER_GRACEFUL_TIMEOUT` | `LLM_ROUTER_EXTERNAL_TIMEOUT` (or `300`) | Seconds a recycled Gunicorn worker may spend finishing the requests it is already serving. Defaults to the outbound provider timeout, the longest a correctly-behaving request can take, so an in-flight generation — including a long stream — is never truncated by worker recycling. |
 | `LLM_ROUTER_USE_PROMETHEUS`        | `False`                                | Enable Prometheus metrics collection (`/metrics` endpoint).                                                      |
 
 > See also `PROMETHEUS_MULTIPROC_DIR` for the directory where Prometheus multiprocess worker data files are stored.
 
 > **`LLM_ROUTER_VERBOSE` is a debugging aid, not a logging level.** With this variable on, `SecureEndpointI` stores it
 > as `self._verbose_mode` and `run_ep` writes the **raw, unmasked** request payload (JSON) to the log *before* masking,
-> so the log contains exactly the PII that masking would otherwise strip. On top of that, `rest_api.main()` emits a
-> `WARNING` and sleeps 3 s (`VERBOSE_STARTUP_DELAY_SECONDS`) before the server binds its port, so an accidental
+> so the log contains exactly the PII that masking would otherwise strip. On top of that, `rest_api.main()` logs a
+> `WARNING` (console in the foreground, server/daemon log in the background) and sleeps 3 s
+> (`VERBOSE_STARTUP_DELAY_SECONDS`) before the server binds its port, so an accidental
 > production start can still be aborted. Enable it only for local troubleshooting (`LLM_ROUTER_VERBOSE=1`,
 > `llm-router server start --verbose`) and never in production or on shared log storage.
 

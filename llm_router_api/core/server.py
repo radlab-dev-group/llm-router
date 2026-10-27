@@ -29,6 +29,10 @@ from llm_router_api.base.constants import (
     REST_API_LOG_LEVEL,
     REST_API_LOG_MAX_BYTES,
     REST_API_LOG_BACKUP_COUNT,
+    SERVER_GRACEFUL_TIMEOUT,
+    SERVER_MAX_REQUESTS,
+    SERVER_MAX_REQUESTS_JITTER,
+    SERVER_WORKER_CLASS_DEFAULT,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,6 +175,13 @@ def run_gunicorn_server(
     ).prepare_flask_app()
     _ensure_flask_logger_handlers(app)
 
+    # ``sync`` is Gunicorn's own default, and it ignores ``threads``: one
+    # worker serves a single request at a time, so a long generation blocks a
+    # whole worker and the configured thread count is silently wasted.  A
+    # threaded worker is what this service needs, so it is also the fallback.
+    configured_worker_class = (worker_class or "").strip()
+    resolved_worker_class = configured_worker_class or SERVER_WORKER_CLASS_DEFAULT
+
     options = {
         "bind": f"{host}:{port}",
         "workers": workers,
@@ -180,10 +191,26 @@ def run_gunicorn_server(
         "accesslog": "-",
         "errorlog": "-",
         "keepalive": 75,
+        "worker_class": resolved_worker_class,
+        # Recycle workers to bound long-run memory growth; the jitter keeps a
+        # fleet from recycling in lockstep, and ``graceful_timeout`` gives an
+        # in-flight generation room to finish (see constants.py).
+        "max_requests": SERVER_MAX_REQUESTS,
+        "max_requests_jitter": SERVER_MAX_REQUESTS_JITTER,
+        "graceful_timeout": SERVER_GRACEFUL_TIMEOUT,
     }
 
-    if worker_class and len(worker_class.strip()):
-        options["worker_class"] = worker_class
+    logger.info(
+        "Gunicorn configuration: workers=%s threads=%s worker_class=%s "
+        "timeout=%s max_requests=%s(+%s) graceful_timeout=%s",
+        workers,
+        threads,
+        resolved_worker_class,
+        timeout,
+        SERVER_MAX_REQUESTS,
+        SERVER_MAX_REQUESTS_JITTER,
+        SERVER_GRACEFUL_TIMEOUT,
+    )
 
     StandaloneApplication(app, options).run()
 

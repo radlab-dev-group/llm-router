@@ -9,12 +9,12 @@ application code from the concrete Redis implementation.
 
 import json
 import logging
-import requests
 import threading
 
 from typing import Dict, List, Optional
 
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
+from llm_router_api.core.http_session import get_probe_session
 
 try:
     import redis
@@ -127,7 +127,7 @@ class RedisProviderMonitor:
         for provider in providers:
             provider_json = json.dumps(provider)
             self._redis_client.sadd(providers_key, provider_json)
-            self._check_and_update_status(provider, avail_key)
+            self._check_and_update_status(provider, avail_key, model_name)
 
     def get_providers(
         self, model_name: str, only_active: bool = False
@@ -232,7 +232,7 @@ class RedisProviderMonitor:
 
                 for provider in providers:
                     # Use the shared helper to perform the health‑check
-                    self._check_and_update_status(provider, avail_key)
+                    self._check_and_update_status(provider, avail_key, model_name)
 
             self._stop_event.wait(self._check_interval)
 
@@ -327,7 +327,9 @@ class RedisProviderMonitor:
             return f"client_error_{status_code}"
         return f"server_error_{status_code}"
 
-    def _check_and_update_status(self, provider: Dict, avail_key: str) -> None:
+    def _check_and_update_status(
+        self, provider: Dict, avail_key: str, model_name: str = ""
+    ) -> None:
         """
         Perform a health‑check for a single provider and store the result
         in the ``availability`` hash.
@@ -396,7 +398,7 @@ class RedisProviderMonitor:
             url = base_url + path
             last_url = url
             try:
-                resp = requests.get(
+                resp = get_probe_session().get(
                     url, timeout=self._check_timeout, headers=headers
                 )
             except Exception as exc:  # pylint: disable=broad-exception-caught
@@ -445,10 +447,24 @@ class RedisProviderMonitor:
                     f"{self._max_consecutive_failures})"
                 )
 
+        # A refused/unreachable probe is the condition behind the urllib3
+        # "Retrying ..." warnings, so log it at WARNING with the model name
+        # and provider id: the operator wants to see *which* provider of
+        # *which* model is being probed, not just a bare connection error.
+        if not ok and status == "false":
+            self.logger.warning(
+                "[provider-monitor] provider unavailable model=%s id=%s "
+                "probe_url=%s reason=%s",
+                model_name,
+                provider_id,
+                last_url,
+                reason,
+            )
         self.logger.debug(
-            "[provider-monitor.status] %s [%s] status=%s reason=%s",
+            "[provider-monitor.status] %s [%s] model=%s status=%s reason=%s",
             provider_id,
             last_url,
+            model_name,
             status if status is not None else "unchanged",
             reason,
         )

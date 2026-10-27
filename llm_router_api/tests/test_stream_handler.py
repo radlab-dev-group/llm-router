@@ -329,7 +329,13 @@ class TestResolveStreamType:
 
 
 class _ReqPatch:
-    """Helper to patch requests.post/get/request inside the handler module."""
+    """Helper to patch the pooled session used by the handler module.
+
+    Outbound streaming goes through
+    :func:`llm_router_api.core.http_session.get_http_session`, so the helper
+    installs a stand-in session whose ``post``/``get``/``request`` are mocks
+    rather than patching the ``requests`` module functions.
+    """
 
     def __init__(self, monkeypatch, response=None, side_effect=None):
         self.response = response
@@ -342,8 +348,11 @@ class _ReqPatch:
                 fn.side_effect = side_effect
             else:
                 fn.return_value = response
-        for name in ("post", "get", "request"):
-            monkeypatch.setattr(sh.requests, name, getattr(self, name))
+        session = mock.Mock()
+        session.post = self.post
+        session.get = self.get
+        session.request = self.request
+        monkeypatch.setattr(sh, "get_http_session", mock.Mock(return_value=session))
 
 
 class TestStreamOpenAItoOllama:

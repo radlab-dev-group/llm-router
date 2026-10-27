@@ -15,12 +15,12 @@ translated to English.
 """
 
 import logging
-import requests
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 from llm_router_api.core.api_types.dispatcher import ApiTypesDispatcher
+from llm_router_api.core.http_session import get_probe_session
 
 if TYPE_CHECKING:  # pragma: no cover - annotation only
     from llm_router_api.core.model_handler import ApiModel
@@ -104,6 +104,7 @@ class KeepAlive:
 
         api_type = (provider.get("api_type") or "").lower()
         api_host = (provider.get("api_host") or "").rstrip("/")
+        provider_id = provider.get("id") or "unknown"
 
         provider_model = self._provider_model(req.model_name, provider)
         endpoint = self._endpoint_for(api_type, api_host, provider_model)
@@ -132,20 +133,28 @@ class KeepAlive:
                 api_type, payload, provider_model, None
             )
             headers = ApiTypesDispatcher.request_headers(api_type, provider_model)
-            response = requests.post(
+            response = get_probe_session().post(
                 endpoint, json=payload, headers=headers, timeout=timeout
             )
             response.raise_for_status()
             self._logger.debug(
-                "[keep-alive] response model=%s api_type=%s status=%s",
+                "[keep-alive] response model=%s id=%s api_type=%s status=%s",
                 req.model_name,
-                req.model_name,
+                provider_id,
+                api_type,
                 response.status_code,
             )
         except Exception as exc:
+            # The probe target is named in full (model + provider id + host):
+            # a failed keep-alive surfaces as a bare connection error deep in
+            # urllib3, which on its own says nothing about which provider of
+            # which model could not be reached.
             self._logger.error(
-                "[keep-alive] request failed model=%s api_type=%s err=%s",
+                "[keep-alive] request failed model=%s id=%s host=%s "
+                "api_type=%s err=%s",
                 req.model_name,
+                provider_id,
+                api_host,
                 api_type,
                 exc,
             )

@@ -452,6 +452,37 @@ def test_start_verbose_flag_maps_to_env_override():
     assert ServerCommand.build_env_overrides(args) == {"LLM_ROUTER_VERBOSE": "1"}
 
 
+def test_no_warn_probe_retries_maps_to_env_override():
+    parser = ServerCommand.build_parser()
+    # Not given: the shell env / defaults decide, so nothing is overridden.
+    assert (
+        "LLM_ROUTER_NO_WARN_PROBE_RETRIES"
+        not in ServerCommand.build_env_overrides(parser.parse_args(["start"]))
+    )
+    args = parser.parse_args(["start", "--no-warn-probe-retries"])
+    assert ServerCommand.build_env_overrides(args) == {
+        "LLM_ROUTER_NO_WARN_PROBE_RETRIES": "true"
+    }
+
+
+def test_restart_tokens_replay_no_warn_probe_retries_valueless():
+    # The switch is recorded in the environment but replayed without a value.
+    assert ServerCommand._restart_tokens(
+        {"env_overrides": {"LLM_ROUTER_NO_WARN_PROBE_RETRIES": "true"}}
+    ) == ["--no-warn-probe-retries"]
+    # A falsy recording degrades to "flag omitted", never a bogus value.
+    assert (
+        ServerCommand._restart_tokens(
+            {"env_overrides": {"LLM_ROUTER_NO_WARN_PROBE_RETRIES": "false"}}
+        )
+        == []
+    )
+
+
+def test_no_warn_probe_retries_has_a_default_env():
+    assert DEFAULT_ENV.get("LLM_ROUTER_NO_WARN_PROBE_RETRIES") == "0"
+
+
 def test_start_applies_overrides_beating_shell_env(monkeypatch, tmp_path, capsys):
     captured = {}
 
