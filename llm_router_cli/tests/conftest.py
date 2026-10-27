@@ -33,7 +33,8 @@ def auth_home(tmp_path, monkeypatch):
     import llm_router_api.base.const_global as cg
 
     # CLI import path — set before any llm_router_api config validation.
-    cg.IS_CLI_COMMAND = True
+    # monkeypatch restores the flag after the test (it is shared module state).
+    monkeypatch.setattr(cg, "IS_CLI_COMMAND", True)
 
     seed_file = str(tmp_path / "configs" / "auth" / "memory-keys.json")
 

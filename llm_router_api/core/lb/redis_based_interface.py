@@ -40,6 +40,33 @@ from llm_router_api.core.lb.strategy_interface import ChooseProviderStrategyI
 
 logger = logging.getLogger(__name__)
 
+#: Atomic acquire – a missing field, or one explicitly marked ``'false'``,
+#: means “available”; the field is then claimed.  Kept as a module constant
+#: (rather than inline in :meth:`RedisBasedStrategy.__init__`) so the call
+#: site stays a plain one-liner: black wraps a call whose *only* argument is
+#: a multiline string differently across versions.
+_ACQUIRE_SCRIPT = """
+local redis_key = KEYS[1]
+local field = ARGV[1]
+local v = redis.call('HGET', redis_key, field)
+-- v == false  -> field does not exist (nil)
+-- v == 'false' -> explicitly marked as free
+if v == false or v == 'false' then
+    redis.call('HSET', redis_key, field, 'true')
+    return 1
+end
+return 0
+"""
+
+#: Atomic release – delete the field (no race condition).
+_RELEASE_SCRIPT = """
+local redis_key = KEYS[1]
+local field = ARGV[1]
+-- Delete the field; returns 1 if field existed, 0 otherwise
+redis.call('HDEL', redis_key, field)
+return 1
+"""
+
 
 class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
     """
@@ -125,28 +152,9 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
 
         self.strategy_prefix = strategy_prefix
 
-        # Atomic acquire script – treat missing field as “available”
-        self._acquire_script = self.redis_client.register_script("""
-                local redis_key = KEYS[1]
-                local field = ARGV[1]
-                local v = redis.call('HGET', redis_key, field)
-                -- v == false  -> field does not exist (nil)
-                -- v == 'false' -> explicitly marked as free
-                if v == false or v == 'false' then
-                    redis.call('HSET', redis_key, field, 'true')
-                    return 1
-                end
-                return 0
-            """)
-
-        # Atomic release script – simply delete the field (no race condition)
-        self._release_script = self.redis_client.register_script("""
-                local redis_key = KEYS[1]
-                local field = ARGV[1]
-                -- Delete the field; returns 1 if field existed, 0 otherwise
-                redis.call('HDEL', redis_key, field)
-                return 1
-            """)
+        # Atomic acquire / release scripts (see the module constants).
+        self._acquire_script = self.redis_client.register_script(_ACQUIRE_SCRIPT)
+        self._release_script = self.redis_client.register_script(_RELEASE_SCRIPT)
 
         if clear_buffers:
             self._clear_buffers()
