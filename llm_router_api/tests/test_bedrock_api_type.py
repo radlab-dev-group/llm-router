@@ -109,7 +109,10 @@ def _frame_with_crc(event_type, payload, message_type="event", flags=0, crc_of=N
     for the negative tests.
     """
     headers = b""
-    entries = [(":content-type", "application/json"), (":message-type", message_type)]
+    entries = [
+        (":content-type", "application/json"),
+        (":message-type", message_type),
+    ]
     if event_type:
         entries.insert(0, (":event-type", event_type))
     for name, value in entries:
@@ -310,6 +313,7 @@ class TestBedrockSigning:
                     )
                 )
             else:
+
                 class _FixedDatetime(_botocore_auth.datetime.datetime):
                     @classmethod
                     def utcnow(cls):
