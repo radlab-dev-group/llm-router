@@ -126,8 +126,7 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
         self.strategy_prefix = strategy_prefix
 
         # Atomic acquire script – treat missing field as “available”
-        self._acquire_script = self.redis_client.register_script(
-            """
+        self._acquire_script = self.redis_client.register_script("""
                 local redis_key = KEYS[1]
                 local field = ARGV[1]
                 local v = redis.call('HGET', redis_key, field)
@@ -138,19 +137,16 @@ class RedisBasedStrategy(ChooseProviderStrategyI, ABC):
                     return 1
                 end
                 return 0
-            """
-        )
+            """)
 
         # Atomic release script – simply delete the field (no race condition)
-        self._release_script = self.redis_client.register_script(
-            """
+        self._release_script = self.redis_client.register_script("""
                 local redis_key = KEYS[1]
                 local field = ARGV[1]
                 -- Delete the field; returns 1 if field existed, 0 otherwise
                 redis.call('HDEL', redis_key, field)
                 return 1
-            """
-        )
+            """)
 
         if clear_buffers:
             self._clear_buffers()
