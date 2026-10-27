@@ -273,8 +273,9 @@ def _helper_lines(tree: Dict[str, Dict[str, Any]], instances: Path) -> List[str]
         f'    local dir="{_shell_path(instances)}" entry',
         "    printf 'default\\n'",
         '    if [[ -d "${dir}" ]]; then',
+        # ``find`` order is filesystem-dependent; sort for a stable menu.
         '        find "${dir}" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null |'
-        " while IFS= read -r entry; do",
+        " sort | while IFS= read -r entry; do",
         "            printf '%s\\n' \"${entry##*/}\"",
         "        done",
         "    fi",
