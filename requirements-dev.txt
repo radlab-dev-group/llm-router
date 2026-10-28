@@ -14,7 +14,7 @@
 
 
 ## Lint / type-check tools (pinned for reproducible CI)
-black==24.4.2
+black>=26.10.1
 flake8
 pylint
 mypy
