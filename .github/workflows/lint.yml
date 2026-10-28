@@ -33,7 +33,7 @@ jobs:
             requirements-dev.txt
 
       - name: Install formatter
-        run: pip install --upgrade "black==24.4.2"
+        run: pip install --upgrade "black>=26.10.1"
 
       - name: Check formatting
         if: inputs.run-formatter
