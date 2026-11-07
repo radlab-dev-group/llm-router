@@ -11,7 +11,9 @@ environment-defaults helper are tested directly.
 from __future__ import annotations
 
 import argparse
+import logging
 import os
+import uuid
 import signal
 import subprocess
 import sys
@@ -25,6 +27,7 @@ import pytest
 from llm_router_cli.cli import main
 from llm_router_cli.cli.commands import server as server_module
 from llm_router_cli.cli.commands.server import (
+    RotatingLogFollower,
     ServerCommand,
     _is_sensitive,
     _paint,
@@ -1789,6 +1792,147 @@ def test_log_explicit_log_file_overrides_record(pid_file, tmp_path, capsys):
     )
     assert rc == 0
     assert "hello" in capsys.readouterr().out
+
+
+# ---- log: surviving rotation ----------------------------------------------
+
+
+def _follow(log_file: Path) -> RotatingLogFollower:
+    """Open *log_file* the way ``server log`` does and start following it.
+
+    The command prints the initial tail first, which consumes the handle to
+    EOF; following only starts from there.
+    """
+    fh = open(log_file, "r", encoding="utf-8")
+    tail_lines(fh, 0)
+    return RotatingLogFollower(log_file, fh)
+
+
+def _append(log_file: Path, text: str) -> None:
+    with open(log_file, "a", encoding="utf-8") as fh:
+        fh.write(text)
+        fh.flush()
+
+
+def test_follower_reads_lines_appended_after_open(tmp_path):
+    log_file = tmp_path / "llm-router.log"
+    log_file.write_text("2026-01-01 INFO app: first\n", encoding="utf-8")
+    follower = _follow(log_file)
+    assert follower.read_lines() == []
+
+    _append(log_file, "2026-01-01 INFO app: second\n")
+    assert follower.read_lines() == ["2026-01-01 INFO app: second\n"]
+
+
+def test_follower_follows_across_rename_rotation(tmp_path):
+    """A renamed log (what ``RotatingFileHandler`` does) must not freeze the follow."""
+    log_file = tmp_path / "llm-router.log"
+    log_file.write_text("2026-01-01 INFO app: before\n", encoding="utf-8")
+    follower = _follow(log_file)
+    assert follower.read_lines() == []
+
+    os.rename(log_file, tmp_path / "llm-router.log.1")
+    log_file.write_text("2026-01-01 INFO app: after\n", encoding="utf-8")
+
+    assert follower.read_lines() == ["2026-01-01 INFO app: after\n"]
+
+
+def test_follower_keeps_rolling_after_several_rotations(tmp_path):
+    log_file = tmp_path / "llm-router.log"
+    log_file.write_text("", encoding="utf-8")
+    follower = _follow(log_file)
+
+    seen = []
+    for index in range(3):
+        _append(log_file, f"2026-01-01 INFO app: batch-{index}-a\n")
+        seen.extend(follower.read_lines())
+        os.rename(log_file, tmp_path / f"llm-router.log.{index + 1}.moved")
+        log_file.touch()
+
+    assert seen == [
+        "2026-01-01 INFO app: batch-0-a\n",
+        "2026-01-01 INFO app: batch-1-a\n",
+        "2026-01-01 INFO app: batch-2-a\n",
+    ]
+
+
+def test_follower_survives_real_rotating_file_handler(tmp_path):
+    """End-to-end against stdlib ``RotatingFileHandler`` rollover semantics."""
+    from logging.handlers import RotatingFileHandler
+
+    log_file = tmp_path / "llm-router.log"
+    handler = RotatingFileHandler(str(log_file), maxBytes=1, backupCount=3)
+    logger = logging.getLogger(f"llm_router_cli.tests.rotate_{uuid.uuid4().hex}")
+    logger.addHandler(handler)
+    try:
+        follower = _follow(log_file)
+        logger.warning("2026-01-01 WARNING app: one")
+        first = follower.read_lines()
+        logger.warning("2026-01-01 WARNING app: two")
+        second = follower.read_lines()
+        assert first and second
+        assert any("one" in line for line in first)
+        assert any("two" in line for line in second)
+        # A real rollover really did happen (the follower must cope with it).
+        assert (tmp_path / "llm-router.log.1").exists()
+    finally:
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def test_follower_recovers_from_in_place_truncation(tmp_path):
+    log_file = tmp_path / "llm-router.log"
+    log_file.write_text("x" * 5000 + "\n", encoding="utf-8")
+    follower = _follow(log_file)
+    assert follower.read_lines() == []
+
+    log_file.write_text("2026-01-01 INFO app: after truncate\n", encoding="utf-8")
+    assert follower.read_lines() == ["2026-01-01 INFO app: after truncate\n"]
+
+
+def test_follower_waits_for_a_complete_line(tmp_path):
+    """A half-written record is held back, never printed as two lines."""
+    log_file = tmp_path / "llm-router.log"
+    log_file.write_text("", encoding="utf-8")
+    follower = _follow(log_file)
+
+    _append(log_file, "2026-01-01 INFO app: half")
+    assert follower.read_lines() == []
+
+    _append(log_file, " written\n")
+    assert follower.read_lines() == ["2026-01-01 INFO app: half written\n"]
+
+
+def test_follower_emits_unfinished_tail_before_rotation(tmp_path):
+    """A partial last line of the rotated file is not silently dropped."""
+    log_file = tmp_path / "llm-router.log"
+    log_file.write_text("", encoding="utf-8")
+    follower = _follow(log_file)
+
+    _append(log_file, "2026-01-01 INFO app: cut off")
+    assert follower.read_lines() == []
+
+    os.rename(log_file, tmp_path / "llm-router.log.1")
+    log_file.write_text("2026-01-01 INFO app: new file\n", encoding="utf-8")
+
+    assert follower.read_lines() == [
+        "2026-01-01 INFO app: cut off",
+        "2026-01-01 INFO app: new file\n",
+    ]
+
+
+def test_follower_waits_for_the_replacement_file(tmp_path):
+    """Between the rename and the recreate there is simply nothing to read."""
+    log_file = tmp_path / "llm-router.log"
+    log_file.write_text("2026-01-01 INFO app: before\n", encoding="utf-8")
+    follower = _follow(log_file)
+    assert follower.read_lines() == []
+
+    os.rename(log_file, tmp_path / "llm-router.log.1")
+    assert follower.read_lines() == []
+
+    _append(log_file, "2026-01-01 INFO app: arrived\n")
+    assert follower.read_lines() == ["2026-01-01 INFO app: arrived\n"]
 
 
 # ---- start: "already running" guard ----------------------------------------
