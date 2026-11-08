@@ -39,6 +39,8 @@ from llm_router_lib.services.utils import (
     TranslateService,
     SimplifyTextService,
     GenerativeAnswerService,
+    GenerativeAnswerWithCitationsService,
+    RewriteQueryService,
     GenerateArticleFromTextService,
     CreateFullArticleFromTextsService,
     GenerateArticleFromTextsService,
@@ -58,6 +60,7 @@ from llm_router_lib.data_models.builtin_utils import (
     TranslateModel,
     SimplifyTextModel,
     GenerativeAnswerModel,
+    RewriteQueryModel,
     GenerateArticleFromTextModel,
     CreateFullArticleFromTextsModel,
     GenerateArticleFromTextsModel,
@@ -74,6 +77,7 @@ from llm_router_lib.data_models.response import (
     TranslateResponse,
     SimplifyTextResponse,
     GenerativeAnswerResponse,
+    RewriteQueryResponse,
     GenerateArticleFromTextResponse,
     GenerateArticleFromTextsResponse,
     CreateFullArticleFromTextsResponse,
@@ -625,11 +629,45 @@ class LLMRouterClient:
             SimplifyTextService(self.http, self.logger).call_post(request)
         )
 
+    def rewrite_query(
+        self,
+        *,
+        payload: Optional[RewriteQueryModel] = None,
+        user_last_statement: Optional[str] = None,
+        historical_messages: Optional[List[Dict[str, str]]] = None,
+        model: Optional[str] = None,
+        lang: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
+    ) -> RewriteQueryResponse:
+        """Rewrite a statement using complete ``{user, assistant}`` history turns.
+
+        ``lang`` maps to the wire field ``language``. A prebuilt payload takes
+        precedence over named arguments, as for the other utility methods.
+        """
+        request = self._build_payload(
+            model_cls=RewriteQueryService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            user_last_statement=user_last_statement,
+            historical_messages=historical_messages,
+            language=lang,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        return RewriteQueryResponse.model_validate(
+            RewriteQueryService(self.http, self.logger).call_post(request)
+        )
+
     def generative_answer(
         self,
         *,
         payload: Optional[GenerativeAnswerModel] = None,
+        historical_messages: Optional[List[Dict[str, str]]] = None,
         texts: Optional[Union[Dict[str, List[str]], List[str]]] = None,
+        enumerated_documents: Optional[List[Dict]] = None,
+        system_prompt_with_enumerated_documents: bool = False,
+        system_prompt: Optional[str] = None,
         question_str: Optional[str] = None,
         model: Optional[str] = None,
         temperature: Optional[float] = None,
@@ -644,8 +682,7 @@ class LLMRouterClient:
         1. **Prebuilt payload** – pass ``payload`` as a
            :class:`GenerativeAnswerModel` instance; it is serialised with
            ``model_dump()`` and sent as‑is.  This is the only way to set the
-           advanced options (``doc_name_in_answer``, ``question_prompt``,
-           ``system_prompt``).
+           advanced options (``doc_name_in_answer``, ``question_prompt``).
         2. **Named arguments** – pass ``texts`` and ``question_str`` (plus
            optional ``model``, ``temperature`` and ``max_new_tokens``); the
            client builds a :class:`GenerativeAnswerModel` from them, using the
@@ -653,6 +690,13 @@ class LLMRouterClient:
 
         ``texts`` is either a mapping of document name → list of passages or a
         flat list of passages.
+
+        For explicit citations, supply ``enumerated_documents`` instead of
+        ``texts`` and enable ``system_prompt_with_enumerated_documents``.
+        Supplied fragment numbers and metadata are preserved in ``citations``;
+        ``system_prompt`` is preserved alongside the citation instructions.
+        ``historical_messages`` supplies chronological ``{user, assistant}``
+        turns as conversation context, not instructions or factual evidence.
 
         Passing a raw ``dict`` as ``payload`` raises :class:`TypeError`.
         If neither a payload nor enough named arguments are provided, a
@@ -697,13 +741,61 @@ class LLMRouterClient:
             model_cls=GenerativeAnswerService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
+            historical_messages=historical_messages,
             texts=texts,
+            enumerated_documents=enumerated_documents,
+            system_prompt_with_enumerated_documents=system_prompt_with_enumerated_documents,
+            system_prompt=system_prompt,
             question_str=question_str,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
         )
         return GenerativeAnswerResponse.model_validate(
             GenerativeAnswerService(self.http, self.logger).call_post(request)
+        )
+
+    def generative_answer_with_citations(
+        self,
+        *,
+        payload: Optional[GenerativeAnswerModel] = None,
+        historical_messages: Optional[List[Dict[str, str]]] = None,
+        texts: Optional[Union[Dict[str, List[str]], List[str]]] = None,
+        enumerated_documents: Optional[List[Dict]] = None,
+        system_prompt_with_enumerated_documents: bool = True,
+        system_prompt: Optional[str] = None,
+        question_str: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
+    ) -> GenerativeAnswerResponse:
+        """Generate a RAG answer at ``/api/generative_answer_with_citations``.
+
+        Accepts the same payload/named arguments as ``generative_answer`` but
+        always enables numbered context, even if the flag is explicitly false.
+        Requires nonempty ``enumerated_documents``; legacy ``texts`` alone are
+        not supported. Custom prompts and document metadata are preserved.
+        """
+        request = self._build_payload(
+            model_cls=GenerativeAnswerWithCitationsService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            historical_messages=historical_messages,
+            texts=texts,
+            enumerated_documents=enumerated_documents,
+            system_prompt_with_enumerated_documents=True,
+            system_prompt=system_prompt,
+            question_str=question_str,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        # ``build_payload`` applies the flag only when it builds the request
+        # from named arguments, so a prebuilt payload is forced to numbered
+        # mode here instead of validating the whole request a second time.
+        request["system_prompt_with_enumerated_documents"] = True
+        return GenerativeAnswerResponse.model_validate(
+            GenerativeAnswerWithCitationsService(self.http, self.logger).call_post(
+                request
+            )
         )
 
     def generate_article_from_text(

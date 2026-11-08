@@ -48,6 +48,8 @@ from llm_router_lib.services.utils import (
     TranslateService,
     SimplifyTextService,
     GenerativeAnswerService,
+    GenerativeAnswerWithCitationsService,
+    RewriteQueryService,
     GenerateArticleFromTextService,
     CreateFullArticleFromTextsService,
     GenerateArticleFromTextsService,
@@ -63,6 +65,7 @@ from llm_router_lib.data_models.builtin_utils import (
     TranslateModel,
     SimplifyTextModel,
     GenerativeAnswerModel,
+    RewriteQueryModel,
     GenerateArticleFromTextModel,
     CreateFullArticleFromTextsModel,
     GenerateArticleFromTextsModel,
@@ -79,6 +82,7 @@ from llm_router_lib.data_models.response import (
     TranslateResponse,
     SimplifyTextResponse,
     GenerativeAnswerResponse,
+    RewriteQueryResponse,
     GenerateArticleFromTextResponse,
     GenerateArticleFromTextsResponse,
     CreateFullArticleFromTextsResponse,
@@ -562,11 +566,44 @@ class AsyncLLMRouterClient:
             await self._post_json(SimplifyTextService, request)
         )
 
+    async def rewrite_query(
+        self,
+        *,
+        payload: Optional[RewriteQueryModel] = None,
+        user_last_statement: Optional[str] = None,
+        historical_messages: Optional[List[Dict[str, str]]] = None,
+        model: Optional[str] = None,
+        lang: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
+    ) -> RewriteQueryResponse:
+        """Rewrite a statement using ``{user, assistant}`` history turns.
+
+        ``lang`` maps to the existing wire field ``language``.
+        """
+        request = build_payload(
+            model_cls=RewriteQueryService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            user_last_statement=user_last_statement,
+            historical_messages=historical_messages,
+            language=lang,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        return RewriteQueryResponse.model_validate(
+            await self._post_json(RewriteQueryService, request)
+        )
+
     async def generative_answer(
         self,
         *,
         payload: Optional[GenerativeAnswerModel] = None,
+        historical_messages: Optional[List[Dict[str, str]]] = None,
         texts: Optional[Union[Dict[str, List[str]], List[str]]] = None,
+        enumerated_documents: Optional[List[Dict]] = None,
+        system_prompt_with_enumerated_documents: bool = False,
+        system_prompt: Optional[str] = None,
         question_str: Optional[str] = None,
         model: Optional[str] = None,
         temperature: Optional[float] = None,
@@ -575,6 +612,12 @@ class AsyncLLMRouterClient:
         """
         Generate an answer to a question based on a list of texts
         (``POST /api/generative_answer``).
+
+        Alternatively, enable ``system_prompt_with_enumerated_documents`` and
+        supply ``enumerated_documents`` instead of ``texts``. Explicit numbers
+        and metadata are returned in ``citations`` without reordering.
+        ``historical_messages`` supplies chronological ``{user, assistant}``
+        turns as conversation context, not instructions or factual evidence.
 
         Returns
         -------
@@ -586,13 +629,58 @@ class AsyncLLMRouterClient:
             model_cls=GenerativeAnswerService.model_cls,
             payload_arg=payload,
             model_name=model or self.default_model,
+            historical_messages=historical_messages,
             texts=texts,
+            enumerated_documents=enumerated_documents,
+            system_prompt_with_enumerated_documents=system_prompt_with_enumerated_documents,
+            system_prompt=system_prompt,
             question_str=question_str,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
         )
         return GenerativeAnswerResponse.model_validate(
             await self._post_json(GenerativeAnswerService, request)
+        )
+
+    async def generative_answer_with_citations(
+        self,
+        *,
+        payload: Optional[GenerativeAnswerModel] = None,
+        historical_messages: Optional[List[Dict[str, str]]] = None,
+        texts: Optional[Union[Dict[str, List[str]], List[str]]] = None,
+        enumerated_documents: Optional[List[Dict]] = None,
+        system_prompt_with_enumerated_documents: bool = True,
+        system_prompt: Optional[str] = None,
+        question_str: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_new_tokens: Optional[int] = None,
+    ) -> GenerativeAnswerResponse:
+        """Generate a RAG answer at ``/api/generative_answer_with_citations``.
+
+        Same payload/named contract as ``generative_answer``; numbered context
+        is always enabled and nonempty ``enumerated_documents`` are required.
+        Returns the generated ``response`` and typed ``citations`` metadata.
+        """
+        request = build_payload(
+            model_cls=GenerativeAnswerWithCitationsService.model_cls,
+            payload_arg=payload,
+            model_name=model or self.default_model,
+            historical_messages=historical_messages,
+            texts=texts,
+            enumerated_documents=enumerated_documents,
+            system_prompt_with_enumerated_documents=True,
+            system_prompt=system_prompt,
+            question_str=question_str,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+        )
+        # ``build_payload`` applies the flag only when it builds the request
+        # from named arguments, so a prebuilt payload is forced to numbered
+        # mode here instead of validating the whole request a second time.
+        request["system_prompt_with_enumerated_documents"] = True
+        return GenerativeAnswerResponse.model_validate(
+            await self._post_json(GenerativeAnswerWithCitationsService, request)
         )
 
     async def generate_article_from_text(

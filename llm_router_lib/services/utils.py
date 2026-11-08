@@ -13,6 +13,7 @@ from llm_router_lib.data_models.builtin_utils import (
     Polarity3cModel,
     TranslateModel,
     GenerativeAnswerModel,
+    RewriteQueryModel,
     GenerateArticleFromTextModel,
     CreateFullArticleFromTextsModel,
     GenerateArticleFromTextsModel,
@@ -94,6 +95,16 @@ class SimplifyTextService(BaseConversationServiceInterface):
 class GenerativeAnswerService(BaseConversationServiceInterface):
     endpoint = "/api/generative_answer"
     model_cls = GenerativeAnswerModel
+
+
+class GenerativeAnswerWithCitationsService(BaseConversationServiceInterface):
+    endpoint = "/api/generative_answer_with_citations"
+    model_cls = GenerativeAnswerModel
+
+
+class RewriteQueryService(BaseConversationServiceInterface):
+    endpoint = "/api/rewrite_query"
+    model_cls = RewriteQueryModel
 
 
 class GenerateArticleFromTextService(BaseConversationServiceInterface):
