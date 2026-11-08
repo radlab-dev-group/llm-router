@@ -181,7 +181,7 @@ def test_generative_answer_requires_question_and_texts() -> None:
     assert req.doc_name_in_answer is False
     assert req.question_prompt is None
     assert "question_str" in GENERATIVE_ANSWER_REQ
-    assert "texts" in GENERATIVE_ANSWER_REQ
+    assert "texts" in GENERATIVE_ANSWER_OPT
 
 
 def test_generate_label_requires_texts() -> None:
