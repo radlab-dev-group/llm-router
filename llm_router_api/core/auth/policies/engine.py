@@ -69,6 +69,8 @@ _ENDPOINT_PERMISSION_MAP: Dict[str, str] = {
     "post:/api/generate_article_from_texts": "builtin",
     "post:/api/create_full_article_from_texts": "builtin",
     "post:/api/generative_answer": "builtin",
+    "post:/api/generative_answer_with_citations": "builtin",
+    "post:/api/rewrite_query": "builtin",
     "post:/api/fast_text_mask": "builtin",
 }
 

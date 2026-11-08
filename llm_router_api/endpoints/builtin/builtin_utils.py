@@ -8,6 +8,7 @@ response into a clean JSON payload.
 
 import os
 import re
+from contextvars import ContextVar
 
 from typing import Any, Dict, List, Optional
 
@@ -35,6 +36,9 @@ from llm_router_lib.data_models.builtin_utils import (
     GENERATIVE_ANSWER_REQ,
     GENERATIVE_ANSWER_OPT,
     GenerativeAnswerModel,
+    RewriteQueryModel,
+    REWRITE_QUERY_REQ,
+    REWRITE_QUERY_OPT,
     GenerateArticleFromTextsModel,
     GENERATE_ARTICLE_FROM_TEXTS_REQ,
     GENERATE_ARTICLE_FROM_TEXTS_OPT,
@@ -782,6 +786,54 @@ class GenerateArticleFromTexts(CreateFullArticleFromTexts):
         return _payload
 
 
+# ----------------------------------------------------------------------
+# Per-request numbered context (RAG citations) for ``GenerativeAnswer``.
+#
+# ``prepare_payload`` knows the supplied fragments, but the response
+# function is called by the shared HTTP layer with only the model's
+# response (see ``EndpointWithHttpRequestI.return_http_response``), so the
+# fragments cannot be handed over through its signature.  The endpoint
+# object is a singleton shared by every concurrent request, so keeping the
+# fragments on ``self`` would let one request answer with another's
+# citations; a ContextVar scopes the value per request, exactly like
+# ``_request_start_time`` in ``llm_router_api.endpoints.endpoint_i``.
+# ``None`` means "this request is not in numbered-citation mode".
+# ----------------------------------------------------------------------
+_numbered_citation_context: "ContextVar[Optional[List[Dict[str, Any]]]]" = (
+    ContextVar("llm_router_numbered_citation_context", default=None)
+)
+
+
+def _conversation_messages(
+    history: List[Dict[str, str]],
+) -> List[Dict[str, str]]:
+    """Flatten chronological ``{user, assistant}`` turns into chat messages.
+
+    Both the answer endpoint and the query rewriter take history as complete
+    turns, so that a partial exchange can never slip in and a ``system`` role
+    cannot be smuggled through the history (the model rejects those shapes).
+    """
+    return [
+        {"role": role, "content": turn[role]}
+        for turn in history
+        for role in ("user", "assistant")
+    ]
+
+
+def _require_known_citations(
+    answer: Optional[str], documents: List[Dict[str, Any]]
+) -> None:
+    """Reject an answer citing fragment numbers that were never supplied.
+
+    A model inventing ``[99]`` would otherwise hand back a citation the caller
+    cannot resolve, which looks like a grounded answer but is not one.
+    """
+    referenced = {int(n) for n in re.findall(r"\[(\d+)\]", answer or "")}
+    unknown = referenced - {document["n"] for document in documents}
+    if unknown:
+        raise ValueError(f"Unknown numeric citation references: {sorted(unknown)}")
+
+
 class GenerativeAnswer(GenerateArticleFromText):
     """
     Built‑in utility: answer a question using provided context.
@@ -797,6 +849,10 @@ class GenerativeAnswer(GenerateArticleFromText):
     SYSTEM_PROMPT_NAME = {
         "pl": "builtin/system/pl/answer-from-context-simple",
         "en": "builtin/system/en/answer-from-context-simple",
+    }
+    SYSTEM_PROMPT_WITH_ENUMERATED_DOCUMENTS_NAME = {
+        "pl": "builtin/system/pl/answer-from-context-with-citations",
+        "en": "builtin/system/en/answer-from-context-with-citations",
     }
 
     def __init__(
@@ -847,25 +903,35 @@ class GenerativeAnswer(GenerateArticleFromText):
         prompt_str_postfix = _payload.get("question_prompt")
         prompt_str_force = _payload.get("system_prompt")
 
-        context = ""
-        if isinstance(_payload["texts"], dict):
-            doc_name_in_answer = _payload.get("doc_name_in_answer", False)
-            for doc_name, tests in _payload["texts"].items():
-                for t in tests:
-                    if doc_name_in_answer:
-                        t = f"Document name: {doc_name}\nDocument context: {t}"
+        documents = _payload.pop("enumerated_documents")
+        numbered = _payload.pop("system_prompt_with_enumerated_documents")
+        # Read back by ``__prepare_response_function`` through the per-request
+        # ContextVar: the response function is called with the model response
+        # only, so the fragments cannot travel through its signature.
+        _numbered_citation_context.set(documents if numbered else None)
 
-                    context += t + "\n\n"
-        elif isinstance(_payload["texts"], list):
-            for t in _payload["texts"]:
-                context += t + "\n\n"
+        if numbered:
+            context = self._numbered_context_text(documents)
+            # The citation instructions become the forced system prompt, so the
+            # caller's own prompt has to move to the postfix instead.
+            prompt_str_postfix = (
+                "\n\n".join(
+                    part for part in (prompt_str_force, prompt_str_postfix) if part
+                )
+                or None
+            )
+            prompt_str_force = self._citation_system_prompt(options.language)
+        else:
+            context = self._plain_context_text(
+                _payload["texts"], _payload.get("doc_name_in_answer", False)
+            )
 
-        _payload["messages"] = [
-            {
-                "role": "user",
-                "content": context.strip(),
-            }
-        ]
+        history = _payload.pop("historical_messages")
+        _payload["messages"] = _conversation_messages(history)
+        context = context.strip()
+        if history:
+            context += f"\n\nQuestion: {_payload['question_str']}"
+        _payload["messages"].append({"role": "user", "content": context})
         _payload.pop("texts")
         _payload.pop("question_str")
         _payload.pop("system_prompt")
@@ -895,8 +961,152 @@ class GenerativeAnswer(GenerateArticleFromText):
             response=response
         )
 
+        answer = choices[0].get("message", {}).get("content")
+        result = {"response": answer, "generation_time": self._generation_time()}
+        documents = _numbered_citation_context.get()
+        if documents is not None:
+            _require_known_citations(answer, documents)
+            result["citations"] = documents
+        return result
+
+    # ---- context / prompt builders ---------------------------------------- #
+    @staticmethod
+    def _numbered_context_text(documents: List[Dict[str, Any]]) -> str:
+        """Render the numbered fragments as ``[n]`` blocks, in supplied order."""
+        return "\n\n".join(
+            f"[{document['n']}] Document name: {document['document_name']}"
+            + (
+                f"; Page number: {document['page_number']}"
+                if document.get("page_number") is not None
+                else ""
+            )
+            + "\n"
+            f"Document context: {document['text_str']}"
+            for document in documents
+        )
+
+    @staticmethod
+    def _plain_context_text(texts: Any, doc_name_in_answer: bool) -> str:
+        """Concatenate the legacy ``texts`` passages (optionally named)."""
+        if isinstance(texts, dict):
+            passages = [
+                (
+                    f"Document name: {doc_name}\nDocument context: {text}"
+                    if doc_name_in_answer
+                    else text
+                )
+                for doc_name, group in texts.items()
+                for text in group
+            ]
+        else:
+            passages = list(texts or [])
+        return "".join(f"{text}\n\n" for text in passages)
+
+    def _citation_system_prompt(self, language: str) -> Optional[str]:
+        """Citation instructions, or ``None`` when this endpoint prompts them.
+
+        ``GenerativeAnswerWithCitations`` already resolves the citation prompt
+        through :attr:`SYSTEM_PROMPT_NAME`, so forcing it again would load and
+        discard the very same text.
+        """
+        if (
+            self.SYSTEM_PROMPT_NAME
+            == self.SYSTEM_PROMPT_WITH_ENUMERATED_DOCUMENTS_NAME
+        ):
+            return None
+        if not self._prompt_handler:
+            return None
+        return self._prompt_handler.get_prompt(
+            self.SYSTEM_PROMPT_WITH_ENUMERATED_DOCUMENTS_NAME[language]
+        )
+
+
+class GenerativeAnswerWithCitations(GenerativeAnswer):
+    """Generate a grounded answer at ``/api/generative_answer_with_citations``.
+
+    Uses the shared context builder and response validator, always requiring
+    explicit document numbers. Auth follows the ``builtin`` permission policy.
+    """
+
+    REQUIRED_ARGS = GENERATIVE_ANSWER_REQ + ["enumerated_documents"]
+    SYSTEM_PROMPT_NAME = (
+        GenerativeAnswer.SYSTEM_PROMPT_WITH_ENUMERATED_DOCUMENTS_NAME
+    )
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "generative_answer_with_citations",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+        )
+
+    @EP.require_params
+    def prepare_payload(self, params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        return super().prepare_payload(
+            dict(params, system_prompt_with_enumerated_documents=True)
+        )
+
+
+class RewriteQuery(GenerateArticleFromText):
+    """Rewrite the last statement into a standalone retrieval query.
+
+    Registered at ``/api/rewrite_query`` with the ``builtin`` auth permission.
+    History contains complete ``{user, assistant}`` turns in chronological order.
+    """
+
+    REQUIRED_ARGS = REWRITE_QUERY_REQ
+    OPTIONAL_ARGS = REWRITE_QUERY_OPT
+    SYSTEM_PROMPT_NAME = {
+        "pl": "builtin/system/pl/rewrite-query",
+        "en": "builtin/system/en/rewrite-query",
+    }
+
+    def __init__(
+        self,
+        logger_file_name: Optional[str] = None,
+        logger_level: Optional[str] = REST_API_LOG_LEVEL,
+        prompt_handler: Optional[PromptHandler] = None,
+        model_handler: Optional[ModelHandler] = None,
+        ep_name: str = "rewrite_query",
+    ):
+        super().__init__(
+            ep_name=ep_name,
+            logger_level=logger_level,
+            logger_file_name=logger_file_name,
+            prompt_handler=prompt_handler,
+            model_handler=model_handler,
+        )
+        self._prepare_response_function = self.__prepare_response_function
+
+    @EP.require_params
+    def prepare_payload(self, params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        options = RewriteQueryModel(**params)
+        payload = options.model_dump()
+        payload["model"] = payload["model_name"]
+        payload["stream"] = False
+        payload["messages"] = _conversation_messages(
+            payload.pop("historical_messages")
+        )
+        payload["messages"].append(
+            {"role": "user", "content": payload.pop("user_last_statement")}
+        )
+        return payload
+
+    def __prepare_response_function(self, response):
+        _, _, answer = self._get_choices_from_response(response=response)
+        if not isinstance(answer, str) or not answer.strip():
+            raise ValueError("The model returned an empty rewritten query")
         return {
-            "response": choices[0].get("message", {}).get("content"),
+            "rewritten_query": answer.strip(),
             "generation_time": self._generation_time(),
         }
 
