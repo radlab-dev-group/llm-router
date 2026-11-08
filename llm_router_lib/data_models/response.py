@@ -20,6 +20,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from llm_router_lib.data_models.builtin_utils import EnumeratedDocument
+
 
 # ----------------------------------------------------------------------
 # Base classes
@@ -215,12 +217,20 @@ class GenerateQuestionsResponse(GenerationResponse):
 # ----------------------------------------------------------------------
 class GenerativeAnswerResponse(GenerationResponse):
     """
-    Response for ``/api/generative_answer``.
+    Response for ``/api/generative_answer`` and its dedicated citation route.
 
-    ``response`` is the generated answer text.
+    ``response`` is the generated answer text. ``citations`` holds every
+    numbered context fragment, in supplied order, with its source metadata.
     """
 
     response: Optional[str] = None
+    citations: List[EnumeratedDocument] = Field(default_factory=list)
+
+
+class RewriteQueryResponse(GenerationResponse):
+    """Standalone query returned by ``/api/rewrite_query``."""
+
+    rewritten_query: str
 
 
 class GenerateLabelResponse(GenerationResponse):
