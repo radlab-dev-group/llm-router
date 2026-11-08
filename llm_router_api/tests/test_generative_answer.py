@@ -69,7 +69,7 @@ class TestGenerativeAnswerDataModel:
 
     def test_constants(self):
         assert "question_str" in GENERATIVE_ANSWER_REQ
-        assert "texts" in GENERATIVE_ANSWER_REQ
+        assert "texts" in GENERATIVE_ANSWER_OPT
         assert "model_name" in GENERATIVE_ANSWER_REQ
         assert "question_prompt" in GENERATIVE_ANSWER_OPT
         assert "system_prompt" in GENERATIVE_ANSWER_OPT

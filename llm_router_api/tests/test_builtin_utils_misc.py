@@ -12,6 +12,7 @@ Unit tests for the "misc" built‑in utility endpoints in
 
 from __future__ import annotations
 
+import contextvars
 import os
 import time
 from typing import Any, Dict, List
@@ -172,8 +173,10 @@ class TestTextListUtilityEndpointContract:
     def test_prepare_response_collates_and_times(self):
         ep = _MyTextsEP()
         ep._start_time = time.time() - 0.2
-        out = ep._prepare_response(
-            [_FakeResponse("r1"), _FakeResponse("r2")], ["a", "b"]
+        out = contextvars.Context().run(
+            ep._prepare_response,
+            [_FakeResponse("r1"), _FakeResponse("r2")],
+            ["a", "b"],
         )
         assert out["response"] == ["Q(r1)", "Q(r2)"]
         assert out["generation_time"] >= 0.1
