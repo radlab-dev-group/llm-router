@@ -782,6 +782,18 @@ llm-router server log --log-file ~/.llm-router/server.log   # daemon's console l
 | `--color`     | `auto`                     | Colorize output — `auto` (TTY only) / `always` / `never`    |
 | `--pid-file`  | `~/.llm-router/server.pid` | PID file (run record) location for the app-log lookup       |
 
+**Following survives rotation.** The server rotates its own log by *renaming* it once it reaches
+`LLM_ROUTER_LOG_MAX_BYTES` (`llm-router.log` → `llm-router.log.1`, … — see
+[`ENV_DEFINITIONS.md`](../llm_router_api/docs/ENV_DEFINITIONS.md)), so a handle opened before the rollover keeps
+reading the renamed file, which never grows again. `log` therefore watches the **name**, not the descriptor: when the
+path points at a new inode, or the file shrinks (an in-place truncate), it drains what is left of the old file, prints
+a one-line notice on stderr, and continues on the new one — like `tail -F`. A record only half written when the
+rollover hit is completed, not split into two lines.
+
+Because rotation is size-based and every gunicorn worker holds its own handler, workers forked from the master can each
+roll the file over; lines are then spread over `<name>` and `<name>.1` until the writers notice. Follow the *name*
+(as `log` does) and keep `LLM_ROUTER_LOG_BACKUP_COUNT` high enough to cover the spread.
+
 `stop`, `reload` and `status` additionally accept `--pid-file` (default
 `~/.llm-router/server.pid`), and `stop`/`reload` accept `--force` to skip the SIGTERM grace period and send SIGKILL
 (for `reload`, the server is still started again afterwards). Both wait for the master's worker forks as well as the

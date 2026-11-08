@@ -776,6 +776,10 @@ def _redirect_stdio(log_file: Path) -> None:
 # -------------------------------------------------------------------------- #
 # Log tailing / colorization
 # -------------------------------------------------------------------------- #
+#: How often an idle follow loop re-checks the log file (seconds).
+_LOG_FOLLOW_POLL_SECONDS = 0.5
+
+
 _LOG_LEVEL_RE = re.compile(
     r"\b(TRACE|DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL|FATAL)\b"
 )
@@ -812,11 +816,100 @@ def colorize_line(line: str, color: str) -> str:
 
 
 def tail_lines(fh: IO[str], n: int) -> List[str]:
-    """Return the last *n* lines of *fh* (rewinds *fh* to the start)."""
+    """Return the last *n* lines of *fh*, leaving *fh* at the end.
+
+    The handle is consumed to EOF (nothing is rewound), which is exactly
+    the position the follow loop needs to start from.
+    """
     if n <= 0:
-        fh.seek(0)
+        for _ in fh:
+            pass
         return []
     return list(deque(fh, maxlen=n))
+
+
+class RotatingLogFollower:
+    """Follow a log file that may be rotated or truncated (like ``tail -F``).
+
+    ``RotatingFileHandler`` rolls the file over by *renaming* it
+    (``llm-router.log`` -> ``llm-router.log.1``) and then creating a fresh
+    file at the same name. A handle opened before the rollover keeps reading
+    the renamed inode, which never grows again, so a plain ``open()`` +
+    ``readline()`` loop freezes the moment the server rotates. This watcher
+    compares the open descriptor with the path on disk: when the name points
+    at a different inode (rotation) or the file shrank below what we already
+    read (in-place truncate) it drains the stale descriptor and reopens by
+    name, so the follow never stalls.
+    """
+
+    def __init__(self, path: Path, fh: IO[str]) -> None:
+        self._path = path
+        self._fh = fh
+        self._pending = ""
+        try:
+            self._size_seen = os.fstat(fh.fileno()).st_size
+        except (OSError, ValueError):
+            self._size_seen = 0
+
+    def read_lines(self) -> List[str]:
+        """Return every complete line that became available since the last call."""
+        lines: List[str] = []
+        while True:
+            chunk = self._fh.readline()
+            if chunk:
+                self._pending += chunk
+                if not self._pending.endswith("\n"):
+                    break  # writer mid-record; wait for the rest
+                lines.append(self._pending)
+                self._pending = ""
+                continue
+            if not self._reopen_if_replaced():
+                break
+            if self._pending:
+                # The file we drained ends mid-line and will never grow
+                # again; emit what we have rather than dropping it.
+                lines.append(self._pending)
+                self._pending = ""
+        return lines
+
+    def _reopen_if_replaced(self) -> bool:
+        """Reopen the file by name if it was rotated or truncated.
+
+        Returns True when the handle changed, so the caller can keep reading
+        immediately; False when there is genuinely nothing new to do.
+        """
+        try:
+            on_disk = os.stat(self._path)
+        except OSError:
+            # Rotated away and the replacement not created yet: keep the
+            # stale handle open and retry on the next poll.
+            return False
+        try:
+            current = os.fstat(self._fh.fileno())
+        except (OSError, ValueError):
+            current = None
+        if current is not None and (current.st_dev, current.st_ino) == (
+            on_disk.st_dev,
+            on_disk.st_ino,
+        ):
+            if on_disk.st_size >= self._size_seen:
+                self._size_seen = on_disk.st_size
+                return False
+            # Same inode but smaller than where we stood: truncated in place.
+        try:
+            replacement = open(self._path, "r", encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        self._fh.close()
+        self._fh = replacement
+        # We are at the end of the file we now hold, so this is the size a
+        # future shrink is measured against.
+        self._size_seen = on_disk.st_size
+        print(
+            f"[llm-router] log file was rotated or truncated; following {self._path}",
+            file=sys.stderr,
+        )
+        return True
 
 
 # -------------------------------------------------------------------------- #
@@ -2569,12 +2662,16 @@ class ServerCommand(BaseCommand):
             if args.no_follow:
                 return 0
 
+            follower = RotatingLogFollower(log_file, fh)
             try:
                 while True:
-                    chunk = fh.readline()
-                    if chunk:
-                        print(colorize_line(chunk.rstrip("\n"), color), flush=True)
+                    lines = follower.read_lines()
+                    if lines:
+                        for line in lines:
+                            print(
+                                colorize_line(line.rstrip("\n"), color), flush=True
+                            )
                     else:
-                        time.sleep(0.5)
+                        time.sleep(_LOG_FOLLOW_POLL_SECONDS)
             except KeyboardInterrupt:
                 return 0

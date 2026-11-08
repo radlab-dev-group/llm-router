@@ -14,6 +14,7 @@ These helpers are used by ``rest_api.py`` to select the appropriate server
 based on command‑line flags or the ``SERVER_TYPE`` configuration constant.
 """
 
+import os
 import signal
 import logging
 
@@ -71,19 +72,43 @@ def install_shutdown_hooks(engine: FlaskEngine) -> None:
 # ------------------------------------------------------------------ #
 
 
+def _writes_to(handler: logging.Handler, path: str) -> bool:
+    """True if *handler* is a file handler already writing to *path*."""
+    base = getattr(handler, "baseFilename", None)
+    if base is None:
+        return False
+    try:
+        return os.path.realpath(base) == os.path.realpath(path)
+    except OSError:
+        return False
+
+
 def _ensure_flask_logger_handlers(app) -> None:
-    """Add a FileHandler to *app*'s logger if one is missing."""
+    """Make sure *app*'s log lines reach the application log file.
+
+    ``rest_api._setup_dual_logging()`` puts a ``RotatingFileHandler`` on the
+    root logger when ``LLM_ROUTER_LOG_TO_FILE`` is set, and ``app.logger``
+    propagates to root. Attaching a second handler for the *same* file would
+    duplicate every line and, worse, let two handlers race through
+    ``doRollover()``: each rotation renames the file down and deletes the
+    newest backup, so a handler unaware of the other's rollover silently
+    discards log data. Only add a dedicated handler when nothing else already
+    writes to that path.
+    """
     flask_logger = app.logger
-    has_file = any(isinstance(h, logging.FileHandler) for h in flask_logger.handlers)
-    if not has_file:
-        fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-        fh = RotatingFileHandler(
-            REST_API_LOG_FILE_NAME,
-            maxBytes=REST_API_LOG_MAX_BYTES,
-            backupCount=REST_API_LOG_BACKUP_COUNT,
-        )
-        fh.setFormatter(fmt)
-        flask_logger.addHandler(fh)
+    if any(isinstance(h, logging.FileHandler) for h in flask_logger.handlers):
+        return
+    for handler in logging.getLogger().handlers:
+        if _writes_to(handler, REST_API_LOG_FILE_NAME):
+            return
+    fmt = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    fh = RotatingFileHandler(
+        REST_API_LOG_FILE_NAME,
+        maxBytes=REST_API_LOG_MAX_BYTES,
+        backupCount=REST_API_LOG_BACKUP_COUNT,
+    )
+    fh.setFormatter(fmt)
+    flask_logger.addHandler(fh)
 
 
 def run_flask_server(host: str, port: int, debug: bool = False):

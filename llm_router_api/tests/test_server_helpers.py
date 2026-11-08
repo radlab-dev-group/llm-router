@@ -16,6 +16,7 @@ os.environ.setdefault("LLM_ROUTER_MINIMUM", "1")
 os.environ.setdefault("LLM_ROUTER_AUTH_ENABLED", "0")
 
 import logging  # noqa: E402
+from logging.handlers import RotatingFileHandler  # noqa: E402
 import signal  # noqa: E402
 import uuid  # noqa: E402
 from unittest import mock  # noqa: E402
@@ -77,6 +78,60 @@ class TestEnsureFlaskLoggerHandlers:
         ]
         assert len(file_handlers) == 1
         assert existing in file_handlers
+
+    def test_no_second_handler_when_root_writes_same_file(
+        self, tmp_path, monkeypatch
+    ):
+        """A root RotatingFileHandler for the same path must not be duplicated.
+
+        Two handlers on one file duplicate every line and race through
+        ``doRollover()``, which silently deletes log data.
+        """
+        log_file = tmp_path / "test-app.log"
+        monkeypatch.setattr(server_module, "REST_API_LOG_FILE_NAME", str(log_file))
+
+        root = logging.getLogger()
+        root_handler = RotatingFileHandler(str(log_file))
+        root.addHandler(root_handler)
+        app = _fresh_app()
+        try:
+            _ensure_flask_logger_handlers(app)
+            assert app.logger.handlers == []
+            assert app.logger.propagate is True
+
+            app.logger.warning("2026-01-01 WARNING app: single copy")
+        finally:
+            root.removeHandler(root_handler)
+            root_handler.close()
+
+        content = log_file.read_text(encoding="utf-8")
+        assert content.count("single copy") == 1
+
+    def test_deduplication_compares_realpaths(self, tmp_path, monkeypatch):
+        """A root handler for a *different* file still gets a dedicated handler."""
+        log_file = tmp_path / "test-app.log"
+        other = tmp_path / "other.log"
+        monkeypatch.setattr(server_module, "REST_API_LOG_FILE_NAME", str(log_file))
+
+        root = logging.getLogger()
+        root_handler = logging.FileHandler(str(other))
+        root.addHandler(root_handler)
+        app = _fresh_app()
+        try:
+            _ensure_flask_logger_handlers(app)
+            assert (
+                len(
+                    [
+                        h
+                        for h in app.logger.handlers
+                        if isinstance(h, logging.FileHandler)
+                    ]
+                )
+                == 1
+            )
+        finally:
+            root.removeHandler(root_handler)
+            root_handler.close()
 
 
 class TestInstallShutdownHooks:
