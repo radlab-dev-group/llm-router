@@ -103,9 +103,18 @@ They cover configuration, scores and thresholds, calibration/holdout replay, eva
 - **POST** `/api/conversation_with_model` — Standard chat endpoint (OpenAI‑compatible payload).
 - **POST** `/api/extended_conversation_with_model` — Chat with extended fields support.
 - **POST** `/api/generative_answer` — Answer a question using provided context.
+- **POST** `/api/generative_answer_with_citations` — Generate a RAG answer with citations. Requires
+  `model_name`, `question_str`, and nonempty `enumerated_documents`; always enables
+  `system_prompt_with_enumerated_documents`, even when omitted or false. Preserves custom `system_prompt`,
+  document order and supplied `n` values. Returns `response`, `citations` (all context fragments with metadata),
+  and `generation_time`. Unknown numeric `[n]` references fail response validation instead of returning an
+  unsupported citation. See [request and client examples](../../llm_router_lib/README.md#query-rewriting-and-cited-rag-answers).
 
 #### Utility Endpoints (Built‑in, requires `builtin` permission)
 
+- **POST** `/api/rewrite_query` — Rewrite `user_last_statement` using optional `historical_messages`
+  (chronological `{user, assistant}` turns). Requires `model_name`; accepts `language` and generation
+  options. Returns `rewritten_query` and `generation_time`, without answering the question.
 - **POST** `/api/generate_questions` — Generate questions from input texts.
 - **POST** `/api/polarity_3c` — Detect 3-class polarity (`ambivalent`, `positive`, `negative`) for input texts.
 - **POST** `/api/translate` — Translate a list of texts.
