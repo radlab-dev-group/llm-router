@@ -20,7 +20,6 @@ from llm_router_lib.data_models.builtin_utils import (
     GenerativeAnswerModel,
 )
 
-
 HISTORY = [
     {"user": "Who founded Acme?", "assistant": "Ada [99]."},
     {"user": "When?", "assistant": "In 2000 [8]."},

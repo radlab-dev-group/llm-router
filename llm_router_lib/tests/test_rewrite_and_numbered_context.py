@@ -21,7 +21,6 @@ from llm_router_lib.services.utils import (
     GenerativeAnswerWithCitationsService,
 )
 
-
 TURNS = [{"user": "Who founded Acme?", "assistant": "Ada."}]
 DOCS = [
     {
