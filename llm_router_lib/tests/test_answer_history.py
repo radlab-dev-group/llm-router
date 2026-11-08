@@ -12,7 +12,6 @@ from llm_router_lib.services.utils import (
     GenerativeAnswerWithCitationsService,
 )
 
-
 HISTORY = [{"user": "When?", "assistant": "In 2000 [7]."}]
 DOCUMENTS = [
     {
