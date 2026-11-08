@@ -480,6 +480,8 @@ class hierarchy, `run_ep` lifecycle, payload hooks, guardrail/masking controls, 
 | `/api/conversation_with_model`          | POST   | ❌ Requires `builtin` permission           | Built‑in standard chat                                            |
 | `/api/extended_conversation_with_model` | POST   | ❌ Requires `builtin` permission           | Built‑in chat with extended fields                                |
 | `/api/generative_answer`                | POST   | ❌ Requires `builtin` permission           | Answer a question using provided context                          |
+| `/api/rewrite_query`                    | POST   | ❌ Requires `builtin` permission           | Rewrite a follow-up as a standalone retrieval query               |
+| `/api/generative_answer_with_citations` | POST   | ❌ Requires `builtin` permission           | Generate a RAG answer with explicitly numbered citations           |
 | `/api/polarity_3c`                      | POST   | ❌ Requires `builtin` permission           | Detect 3-class polarity for input texts                           |
 | `/api/translate`                        | POST   | ❌ Requires `builtin` permission           | Translate texts                                                   |
 | `/api/generate_questions`               | POST   | ❌ Requires `builtin` permission           | Generate questions from texts                                     |
@@ -498,6 +500,14 @@ class hierarchy, `run_ep` lifecycle, payload hooks, guardrail/masking controls, 
 > (see the table above). Matching is done on the raw request path, so a bare entry never matches a prefixed route: to use
 > `/api/ping` as a key-free probe, add that exact path, e.g.
 > `LLM_ROUTER_AUTH_PUBLIC_ENDPOINTS="/metrics,/health,/api/ping"`. For each entry `/v1<entry>` is matched too.
+
+### Query rewriting and cited RAG answers
+
+Use the dedicated `POST /api/rewrite_query` and `POST /api/generative_answer_with_citations`
+routes for retrieval query preparation and answer generation, respectively. Both have typed sync/async
+`llm_router_lib` methods; see [contracts and examples](llm_router_lib/README.md#query-rewriting-and-cited-rag-answers).
+The cited-answer route generates the answer, not just a prompt, and always requires explicitly numbered
+`enumerated_documents`. The existing `/api/generative_answer` route remains compatible with legacy `texts`.
 
 ## 🌐 Web Applications
 

@@ -142,6 +142,8 @@ If you need direct access to the HTTP layer, the library exposes a set of servic
 | `TranslateService`                     | `/api/translate`                        | `TranslateModel`                       |
 | `SimplifyTextService`                  | `/api/simplify_text`                    | `SimplifyTextModel`                    |
 | `GenerativeAnswerService`              | `/api/generative_answer`                | `GenerativeAnswerModel`                |
+| `GenerativeAnswerWithCitationsService` | `/api/generative_answer_with_citations` | `GenerativeAnswerModel`                |
+| `RewriteQueryService`                  | `/api/rewrite_query`                    | `RewriteQueryModel`                    |
 | `GenerateQuestionsService`             | `/api/generate_questions`               | `GenerateQuestionsModel`               |
 | `GenerateLabelService`                 | `/api/generate_label`                   | `GenerateLabelModel`                   |
 | `PingService`                          | `/api/ping`                             | *none*                                 |
@@ -187,6 +189,8 @@ the Pydantic models. Calling a generation method with neither `payload` nor enou
 | `translate(...)`                        | `POST /api/translate`                        | `texts`, `model`, `temperature`, `max_new_tokens`                                                       |
 | `simplify_text(...)`                    | `POST /api/simplify_text`                    | `texts`, `model`, `temperature`, `max_new_tokens`                                                       |
 | `generative_answer(...)`                | `POST /api/generative_answer`                | `texts`, `question_str`, `model`, `temperature`, `max_new_tokens`                                       |
+| `generative_answer_with_citations(...)` | `POST /api/generative_answer_with_citations` | `enumerated_documents`, `question_str`, `system_prompt`, `model`, `temperature`, `max_new_tokens`       |
+| `rewrite_query(...)`                    | `POST /api/rewrite_query`                    | `user_last_statement`, `historical_messages`, `model`, `lang`, `temperature`, `max_new_tokens`          |
 | `generate_article_from_text(...)`       | `POST /api/generate_article_from_text`       | `text`, `model`, `temperature`, `max_new_tokens`                                                        |
 | `generate_article_from_texts(...)`      | `POST /api/generate_article_from_texts`      | `texts`, `model`, `temperature`, `max_new_tokens`                                                       |
 | `create_full_article_from_texts(...)`   | `POST /api/create_full_article_from_texts`   | `user_query`, `texts`, `article_type`, `model`, `temperature`, `max_new_tokens`                         |
@@ -210,6 +214,74 @@ the following exceptions (defined in `exceptions.py`):
 - `ValidationError` – HTTP 400 (malformed payload).
 - `NoArgsAndNoPayloadError` – client‑side validation: raised when a generation method is called without `payload` and
   without enough named arguments.
+
+### Query rewriting and cited RAG answers
+
+Both `LLMRouterClient` and `AsyncLLMRouterClient` expose these dedicated methods. They use the normal
+keyword-only `payload=...` or named-argument contract, default model selection, authentication, and error
+handling. The asynchronous methods have the same arguments and are awaited.
+
+```python
+from llm_router_lib import LLMRouterClient
+from llm_router_lib.data_models import GenerativeAnswerModel
+
+with LLMRouterClient(api="http://localhost:8080", default_model="my-model") as client:
+    query = client.rewrite_query(
+        user_last_statement="When was it founded?",
+        historical_messages=[{"user": "Who founded Acme?", "assistant": "Ada."}],
+        lang="en",
+    )
+    print(query.rewritten_query)  # Standalone search query, not an answer
+
+    documents = [
+        {"n": 8, "text_str": "Acme was founded in 2000.", "document_name": "acme.pdf",
+         "document_id": "doc-1", "text_id": "fragment-a", "page_number": 4},
+        {"n": 3, "text_str": "Ada founded Acme.", "document_name": "acme.pdf",
+         "document_id": "doc-1", "text_id": "fragment-b", "page_number": 7},
+    ]
+    answer = client.generative_answer_with_citations(
+        question_str=query.rewritten_query,
+        enumerated_documents=documents,
+        system_prompt="Answer briefly in English.",
+    )
+    print(answer.response)  # Generated answer with references such as [8]
+    print([(citation.n, citation.text_id) for citation in answer.citations])
+
+    # A prebuilt model also supports advanced options such as question_prompt.
+    payload = GenerativeAnswerModel(
+        model_name="my-model",
+        question_str=query.rewritten_query,
+        enumerated_documents=documents,
+        system_prompt_with_enumerated_documents=True,
+        system_prompt="Answer briefly in English.",
+        question_prompt="Be precise.",
+    )
+    answer = client.generative_answer_with_citations(payload=payload)
+```
+
+- `POST /api/rewrite_query` accepts `RewriteQueryModel`: required `model_name` and
+  `user_last_statement`, optional `historical_messages` (chronological complete `{user, assistant}`
+  turns, default `[]`), `language` and generation options. The client argument `lang` maps to the wire
+  field `language`. It returns `RewriteQueryResponse` with `.rewritten_query` and `.generation_time`.
+- `POST /api/generative_answer_with_citations` accepts `model_name`, `question_str`, nonempty
+  `enumerated_documents`, optional `system_prompt`, `question_prompt`, `language` and generation
+  options. It generates an answer and returns `GenerativeAnswerResponse` with `.response`,
+  `.citations` and `.generation_time`. Numbered context is forced on even when
+  `system_prompt_with_enumerated_documents` is omitted or false in the HTTP request or named client
+  arguments. Prebuilt `GenerativeAnswerModel` instances need the flag set to `True` to validate
+  numbered context at construction time. `texts` cannot supply or replace this numbered context.
+- Each fragment requires a unique positive integer `n`, nonblank `text_str`, and `document_name`.
+  Optional metadata includes `text_id`, `document_id`, `page_number`, `char_start`, `char_end`;
+  extra metadata is preserved. The router preserves supplied order and numbers (including gaps),
+  does not shuffle, merge, or drop fragments, and appends citation instructions to custom system
+  prompts. `.citations` contains **all fragments actually supplied as context**, not just the cited
+  subset, allowing unambiguous mapping even when fragments share a document name.
+- Unknown numeric `[n]` references fail response validation instead of being returned as valid
+  citations. The router does not claim to verify the factual accuracy of a model's citations.
+- Existing `generative_answer(texts=..., question_str=...)` remains compatible. Its optional
+  `system_prompt_with_enumerated_documents=True` and `enumerated_documents` also use the shared
+  numbered-context implementation. There is no separate prompt-only endpoint.
+- Both dedicated routes require the `builtin` permission when authentication is enabled.
 
 :::tip **Field naming across models**
 

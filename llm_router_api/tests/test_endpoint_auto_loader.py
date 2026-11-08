@@ -29,6 +29,8 @@ from rdl_ml_utils.handlers.prompt_handler import PromptHandler  # noqa: E402
 
 from llm_router_api.core.model_handler import ModelHandler  # noqa: E402
 from llm_router_api.endpoints.builtin.builtin_utils import (  # noqa: E402
+    GenerativeAnswerWithCitations,
+    RewriteQuery,
     TextListUtilityEndpoint,
 )
 from llm_router_api.endpoints.builtin.openai import (  # noqa: E402
@@ -142,6 +144,8 @@ class TestDiscoverClassesInPackage:
             EndpointWithHttpRequestI,
             OpenAIResponseHandler,
             TextListUtilityEndpoint,
+            RewriteQuery,
+            GenerativeAnswerWithCitations,
         ):
             assert expected in discovered
 
@@ -168,6 +172,15 @@ class TestDiscoverClassesInPackage:
 
 
 class TestInstantiateWithDefaults:
+    def test_dedicated_rag_endpoints_are_instantiated(self, loader):
+        instances = loader.instantiate_with_defaults(
+            [RewriteQuery, GenerativeAnswerWithCitations]
+        )
+        assert {ep.name for ep in instances} == {
+            "rewrite_query",
+            "generative_answer_with_citations",
+        }
+
     def test_forwards_standard_kwargs(self, loader):
         instances = loader.instantiate_with_defaults([_CapturingEndpoint])
         assert len(instances) == 1
