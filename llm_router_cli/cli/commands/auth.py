@@ -593,6 +593,7 @@ class AuthCommand(BaseCommand):
             gen_default_key_id,
         )
         from llm_router_api.core.auth.policies.builtin import get_builtin_policy
+        from llm_router_api.base.constants import LLM_ROUTER_AUTH_KEY_LENGTH
 
         policy = args.policy
         if get_builtin_policy(policy) is None:
@@ -611,7 +612,12 @@ class AuthCommand(BaseCommand):
         key_id = gen_default_key_id()
         record = {
             "key_id": key_id,
-            "key_plain": KeyGenerator().generate(),
+            # generate() is a classmethod — calling it through an instance
+            # worked, but implied instance state that does not exist.
+            # The entropy comes from the advertised configuration knob rather
+            # than the hard-coded default, so LLM_ROUTER_AUTH_KEY_LENGTH does
+            # what the docs say it does.
+            "key_plain": KeyGenerator.generate(LLM_ROUTER_AUTH_KEY_LENGTH),
             "policy_name": policy,
             "expires_at": expires,
             "metadata": {},

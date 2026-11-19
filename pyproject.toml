@@ -26,7 +26,9 @@ exclude = '''
 skips = ["B101", "B110", "B112"]
 
 [tool.coverage.run]
-source = ["llm_router_api"]
+# All three shipped packages: each carries its own test suite, and measuring
+# only the API left the SDK and the CLI unmeasured.
+source = ["llm_router_api", "llm_router_lib", "llm_router_cli"]
 omit = ["*/tests/*"]
 
 [tool.coverage.report]

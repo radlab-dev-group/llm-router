@@ -893,12 +893,12 @@ All generated keys follow the `sk-llmr-live-<base62>` format:
 sk-llmr-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
 ```
 
-| Property     | Value                                                           |
-|--------------|-----------------------------------------------------------------|
-| Prefix       | `sk-llmr-live-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`) |
-| Entropy      | 48 bytes cryptographically random (`secrets.token_bytes`)       |
-| Charset      | base62 (`a-zA-Z0-9`)                                            |
-| Total length | ≥55 chars (prefix + min 48 base62 characters)                   |
+| Property     | Value                                                                                  |
+|--------------|----------------------------------------------------------------------------------------|
+| Prefix       | `sk-llmr-live-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`)                        |
+| Entropy      | 48 bytes (384 bits) of CSPRNG entropy, configurable via `LLM_ROUTER_AUTH_KEY_LENGTH`   |
+| Charset      | base62 (`a-zA-Z0-9`)                                                                   |
+| Total length | 77 chars by default (13-char prefix + 64 base62 chars; never fewer than 48 base62)     |
 
 ---
 
