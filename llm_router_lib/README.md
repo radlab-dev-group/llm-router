@@ -14,8 +14,8 @@ LLM‑Router service.
   `TranslateService`,
   `GenerativeAnswerService`, health services) perform the actual HTTP calls and can be used directly when finer‑grained
   control is required.
-- `HttpRequester` (in `utils/http.py`) is a small wrapper around `requests` that adds logging, configurable retries, and
-  unified error translation.
+- `HttpRequester` (in `utils/http.py`) is a small wrapper around `requests` that adds logging, configurable retries
+  (connection errors on any method, error-status retries on idempotent methods only), and unified error translation.
 - `AsyncHttpRequester` (in `utils/http_async.py`) is its `httpx`‑based asynchronous counterpart with the same retry
   and error‑translation contract (plus a `stream()` helper for SSE responses).
 - A dedicated **exception hierarchy** (`exceptions.py`) maps HTTP errors to meaningful Python exceptions.
@@ -318,9 +318,10 @@ with LLMRouterClient(api="http://localhost:8080", token="...") as client:
 
 `AsyncLLMRouterClient` (in `async_client.py`, backed by `httpx`) is a drop‑in `async` alternative to
 `LLMRouterClient` for `asyncio` applications (e.g. FastAPI): **the same 14 methods, the same keyword‑only calling
-contract and the same typed response models**, plus streaming support. It shares the retry policy (status codes and
-exponential back‑off), the bearer‑token handling and the error translation of the synchronous client, and the
-payload‑building contract (`utils/payload.py`) is the single source of truth for both clients.
+contract and the same typed response models**, plus streaming support. It shares the retry policy (connection errors
+on any method, error-status retries on idempotent methods only, exponential back‑off), the bearer‑token handling and
+the error translation of the synchronous client, and the payload‑building contract (`utils/payload.py`) is the single
+source of truth for both clients.
 
 ```python
 import asyncio
@@ -377,7 +378,8 @@ Notes:
 - `stream_timeout` (constructor argument, default `None`) is the read timeout for streamed bodies; `None` disables
   it so long generations are not cut off by the short default request timeout.
 - Streaming requests are **never retried** (a partial body would make a blind retry unsafe); unary requests follow
-  the same retry policy as the synchronous client.
+  the same retry policy as the synchronous client, including the rule that a `POST` answered with an error status is
+  not re‑sent (see [Retry policy](#retry-policy)).
 - A streamed `{"error": ...}` chunk raises `LLMRouterError`.
 - `httpx` is a runtime dependency of the async client (installed with the API requirements – see `requirements.txt`).
 
@@ -389,6 +391,21 @@ Notes:
 All 14 unary methods of the async client are async equivalents of the sync ones listed above
 (`conversation_with_model`, `extended_conversation_with_model`, the nine utility methods and `ping` / `version` /
 `models`).
+
+## Retry policy
+
+The transport retries in two clearly separated ways, and both clients share the policy:
+
+- **Connection errors** (the request never reached the router) are retried for **every** method, `POST` included —
+  nothing was sent, so re-sending is safe.
+- **Error statuses** (`429`, `500`, `502`, `503`, `504` — `RETRY_STATUS_CODELIST`) are retried for the **idempotent
+  methods only** (`GET` / `PUT` / `DELETE`). A `POST` that the router answered with an error may already have been
+  executed and billed by a provider, and picking a different provider for the next attempt is the router's own
+  failover job — retrying it in the SDK would multiply that work on the provider that just failed. Such a response
+  is translated to the matching exception (`RateLimitError` / `LLMRouterError`) and raised immediately.
+
+Back‑off is exponential with `RETRY_BACKOFF_FACTOR`; the attempt budget is `retries` (default
+`DEFAULT_RETRIES` from `core/constants.py`), and `stream`ed requests are never retried.
 
 ## Utilities
 

@@ -22,6 +22,9 @@ bandit[toml]
 ## type stubs (type-checking only, not a runtime dep)
 types-setuptools
 types-tqdm
+# `requests` ships no py.typed marker; without stubs mypy reports every import
+# of it (llm_router_lib/utils/http.py) as an untyped import.
+types-requests
 ## Test runner + test-only runtime deps
 pytest
 pytest-cov

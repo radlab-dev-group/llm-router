@@ -25,7 +25,7 @@ that typed model rather than a free‑form ``dict``.
 import logging
 
 from pydantic import BaseModel
-from typing import Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
 from llm_router_lib.core.constants import (
     DEFAULT_TIMEOUT_SECONDS,
@@ -665,7 +665,7 @@ class LLMRouterClient:
         payload: Optional[GenerativeAnswerModel] = None,
         historical_messages: Optional[List[Dict[str, str]]] = None,
         texts: Optional[Union[Dict[str, List[str]], List[str]]] = None,
-        enumerated_documents: Optional[List[Dict]] = None,
+        enumerated_documents: Optional[List[Dict[str, Any]]] = None,
         system_prompt_with_enumerated_documents: bool = False,
         system_prompt: Optional[str] = None,
         question_str: Optional[str] = None,
@@ -760,7 +760,7 @@ class LLMRouterClient:
         payload: Optional[GenerativeAnswerModel] = None,
         historical_messages: Optional[List[Dict[str, str]]] = None,
         texts: Optional[Union[Dict[str, List[str]], List[str]]] = None,
-        enumerated_documents: Optional[List[Dict]] = None,
+        enumerated_documents: Optional[List[Dict[str, Any]]] = None,
         system_prompt_with_enumerated_documents: bool = True,
         system_prompt: Optional[str] = None,
         question_str: Optional[str] = None,

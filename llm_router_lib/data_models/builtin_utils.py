@@ -9,7 +9,7 @@ constants that follow enumerate the required and optional argument names
 used by the corresponding endpoint classes.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import (
     BaseModel,
@@ -218,13 +218,13 @@ class EnumeratedDocument(BaseModel):
 
     @field_validator("text_str")
     @classmethod
-    def nonempty_text(cls, value):
+    def nonempty_text(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("Numbered fragments must contain text")
         return value
 
     @model_validator(mode="after")
-    def valid_offsets(self):
+    def valid_offsets(self) -> "EnumeratedDocument":
         if self.char_start is not None and self.char_end is not None:
             if self.char_end < self.char_start:
                 raise ValueError("char_end must not precede char_start")
@@ -281,7 +281,9 @@ class GenerativeAnswerModel(GenerativeOptionsModel):
     system_prompt: Optional[str] = None
 
     @field_serializer("enumerated_documents")
-    def serialize_documents(self, documents):
+    def serialize_documents(
+        self, documents: Optional[List[EnumeratedDocument]]
+    ) -> Optional[List[Dict[str, Any]]]:
         """Emit only the fields the caller supplied.
 
         A numbered fragment is echoed back in ``citations`` exactly as it was
@@ -294,7 +296,7 @@ class GenerativeAnswerModel(GenerativeOptionsModel):
         return [document.model_dump(exclude_unset=True) for document in documents]
 
     @model_validator(mode="after")
-    def validate_documents(self):
+    def validate_documents(self) -> "GenerativeAnswerModel":
         if self.enumerated_documents is not None:
             numbers = [document.n for document in self.enumerated_documents]
             if len(numbers) != len(set(numbers)):
@@ -302,7 +304,7 @@ class GenerativeAnswerModel(GenerativeOptionsModel):
         return self
 
     @model_validator(mode="after")
-    def validate_context(self):
+    def validate_context(self) -> "GenerativeAnswerModel":
         if self.system_prompt_with_enumerated_documents:
             if not self.enumerated_documents:
                 raise ValueError("Numbered context requires enumerated_documents")
@@ -343,7 +345,7 @@ class RewriteQueryModel(GenerativeOptionsModel):
 
     @field_validator("user_last_statement")
     @classmethod
-    def nonempty_statement(cls, value):
+    def nonempty_statement(cls, value: str) -> str:
         if not value.strip():
             raise ValueError("user_last_statement must not be blank")
         return value

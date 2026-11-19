@@ -16,7 +16,9 @@ payload validation).
 import abc
 import logging
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
+
+from requests import Response
 
 from llm_router_lib.exceptions import LLMRouterError
 from llm_router_lib.utils.http import HttpRequester
@@ -59,10 +61,13 @@ class BaseConversationServiceInterface(abc.ABC):
     # JSON parsing helper (DRY: shared by call_post / call_get)
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _parse_json_response(resp) -> Dict[str, Any]:
+    def _parse_json_response(resp: Response) -> Dict[str, Any]:
         """Parse a requests.Response as JSON, raising LLMRouterError on failure."""
         try:
-            return resp.json()
+            # ``Response.json()`` is typed ``Any``; the cast records the
+            # documented contract (JSON object) without adding a new runtime
+            # failure mode for services that legitimately forward other bodies.
+            return cast(Dict[str, Any], resp.json())
         except ValueError as inner_exc:
             raise LLMRouterError(
                 f"Invalid JSON response from {resp.url}: {inner_exc}"

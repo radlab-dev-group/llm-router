@@ -84,7 +84,24 @@ def test_retry_policy_matches_central_constants() -> None:
     assert retry.backoff_factor == RETRY_BACKOFF_FACTOR
     assert set(RETRY_STATUS_CODELIST).issubset(set(retry.status_forcelist))
     allowed = {str(m).upper() for m in retry.allowed_methods}
-    assert {"GET", "POST", "PUT", "DELETE"}.issubset(allowed)
+    assert {"GET", "PUT", "DELETE"}.issubset(allowed)
+
+
+def test_post_is_never_status_retried() -> None:
+    """A POST the provider may already have executed and billed is not re-sent.
+
+    ``urllib3`` applies ``status_forcelist`` only to ``allowed_methods``; a
+    non-idempotent method must stay out of that set so an error status is
+    raised to the caller (which lets the router's own failover pick another
+    provider) instead of hammering the one that just answered.
+    """
+    req = HttpRequester(base_url="http://r.test", token="", retries=3)
+    retry: Retry = req.session.get_adapter("https://r.test/x").max_retries
+    allowed = {str(m).upper() for m in retry.allowed_methods}
+    assert "POST" not in allowed
+    # Connection-establishment retries are method-agnostic and stay in place,
+    # so a POST that never reached the router is still retried.
+    assert retry.total == 3
 
 
 # ---------------------------------------------------------------------- #

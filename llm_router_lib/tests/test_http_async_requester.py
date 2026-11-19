@@ -262,6 +262,31 @@ def test_transport_errors_are_retried_then_succeed() -> None:
     assert calls["n"] == 2
 
 
+@pytest.mark.parametrize("status", RETRY_STATUS_CODELIST)
+def test_post_error_status_is_not_retried(status: int) -> None:
+    """A POST answered with an error status is raised, never re-sent.
+
+    The provider may already have executed and billed the completion, and
+    choosing another provider is the router's failover job — so only
+    connection errors (where nothing was sent) are retried for POST.
+    """
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        return httpx.Response(status, text="down")
+
+    req = _requester(handler, retries=3)
+    with mock.patch.object(
+        AsyncHttpRequester, "_sleep", new_callable=mock.AsyncMock
+    ) as sleep_mock:
+        with pytest.raises((RateLimitError, LLMRouterError)):
+            _async_run(req.post("/api/x", json={}))
+
+    assert calls["n"] == 1
+    sleep_mock.assert_not_awaited()
+
+
 def test_transport_errors_exhaust_retries_and_raise() -> None:
     calls = {"n": 0}
 

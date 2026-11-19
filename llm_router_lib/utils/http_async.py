@@ -9,7 +9,10 @@ behaviour contract so that the sync and async clients never drift:
 * automatic inclusion of a bearer token,
 * the same retry policy (status codes from ``RETRY_STATUS_CODELIST``,
   exponential back‑off with ``RETRY_BACKOFF_FACTOR``; connection‑level
-  transport failures are retried as well),
+  transport failures are retried as well).  Status retries are limited to
+  the idempotent methods (``GET``/``PUT``/``DELETE``): a ``POST`` that a
+  provider may already have executed and billed is never re‑sent here, the
+  same way the router API layer refuses to do it),
 * conversion of HTTP error codes into the library‑specific exception
   hierarchy via :func:`llm_router_lib.utils.http.raise_for_status`,
 * an additional :meth:`AsyncHttpRequester.stream` context manager for
@@ -24,11 +27,19 @@ from typing import Any, AsyncIterator, Dict, Optional
 import httpx
 
 from llm_router_lib.core.constants import (
+    DEFAULT_RETRIES,
+    DEFAULT_TIMEOUT_SECONDS,
     RETRY_BACKOFF_FACTOR,
     RETRY_STATUS_CODELIST,
 )
 from llm_router_lib.exceptions import LLMRouterError
 from llm_router_lib.utils.http import raise_for_status
+
+
+#: Methods whose *status* retries are safe (idempotent: re-sending cannot
+#: bill a second completion).  ``POST`` is intentionally absent — connection
+#: errors are still retried for it, because nothing was sent then.
+STATUS_RETRY_METHODS = frozenset({"GET", "PUT", "DELETE"})
 
 
 class AsyncHttpRequester:
@@ -65,8 +76,8 @@ class AsyncHttpRequester:
         self,
         base_url: str,
         token: str,
-        timeout: int = 10,
-        retries: int = 2,
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
+        retries: int = DEFAULT_RETRIES,
         logger: Optional[logging.Logger] = None,
         transport: Optional[httpx.AsyncBaseTransport] = None,
         client: Optional[httpx.AsyncClient] = None,
@@ -124,10 +135,14 @@ class AsyncHttpRequester:
         """
         Perform an HTTP request with the configured retry policy.
 
-        Retries are applied for status codes in ``RETRY_STATUS_CODELIST`` and
-        for transport‑level failures (``httpx.TransportError``).  The final
-        response is validated with :func:`raise_for_status` before being
-        returned.
+        Retries are applied for transport‑level failures
+        (``httpx.TransportError``) on every method, and for status codes in
+        ``RETRY_STATUS_CODELIST`` on the idempotent methods only
+        (:data:`STATUS_RETRY_METHODS`).  A non‑idempotent ``POST`` answered
+        with an error status is returned as‑is: re‑sending it could bill a
+        second completion, and choosing another provider is the router's own
+        failover job.  The final response is validated with
+        :func:`raise_for_status` before being returned.
 
         Parameters
         ----------
@@ -174,7 +189,11 @@ class AsyncHttpRequester:
                 last_transport_exc = exc
                 continue
 
-            if resp.status_code in RETRY_STATUS_CODELIST and attempt < attempts - 1:
+            if (
+                method.upper() in STATUS_RETRY_METHODS
+                and resp.status_code in RETRY_STATUS_CODELIST
+                and attempt < attempts - 1
+            ):
                 await resp.aclose()
                 continue
 

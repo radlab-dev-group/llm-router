@@ -23,6 +23,8 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from llm_router_lib.core.constants import (
+    DEFAULT_RETRIES,
+    DEFAULT_TIMEOUT_SECONDS,
     RETRY_BACKOFF_FACTOR,
     RETRY_STATUS_CODELIST,
 )
@@ -97,8 +99,8 @@ class HttpRequester:
         self,
         base_url: str,
         token: str,
-        timeout: int = 10,
-        retries: int = 2,
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
+        retries: int = DEFAULT_RETRIES,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -110,12 +112,19 @@ class HttpRequester:
 
         self.logger = logger or logging.getLogger(__name__)
 
-        # retry‑policy
+        # Retry policy.  POST is deliberately excluded from status retries:
+        # a status- or read-level retry would re-send a chat completion that
+        # the provider may already have executed and billed.  The router API
+        # layer applies the same policy (see
+        # llm_router_api/core/http_session.py) and owns provider failover,
+        # so the transport must not multiply those attempts on the same
+        # provider.  Connection-establishment failures are still retried for
+        # every method, which is safe because no request was sent then.
         retry_strategy = Retry(
             total=retries,
             backoff_factor=RETRY_BACKOFF_FACTOR,
             status_forcelist=RETRY_STATUS_CODELIST,
-            allowed_methods=["GET", "POST", "PUT", "DELETE"],
+            allowed_methods=["GET", "PUT", "DELETE"],
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("https://", adapter)
@@ -173,7 +182,7 @@ class HttpRequester:
         raise_for_status(resp.status_code, resp.text)
         return resp
 
-    def get(self, path: str, **kwargs) -> requests.Response:
+    def get(self, path: str, **kwargs: Any) -> requests.Response:
         """
         Perform a ``GET`` request.
 
@@ -197,7 +206,7 @@ class HttpRequester:
         return self._handle_response(resp)
 
     def post(
-        self, path: str, json: Optional[Dict[str, Any]] = None, **kwargs
+        self, path: str, json: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> requests.Response:
         """
         Perform a ``POST`` request with a JSON body.
