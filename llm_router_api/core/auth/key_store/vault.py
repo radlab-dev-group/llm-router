@@ -281,6 +281,13 @@ class VaultKeyStore(KeyStoreInterface):
                         "expires_at": record.get("expires_at"),
                     }
             except Exception:
+                # Fail-closed: an unreadable record is not a match.  Logged so a
+                # Vault outage can be told apart from "this key does not exist".
+                _logger.debug(
+                    "Skipping Vault record %s during key scan",
+                    key_name,
+                    exc_info=True,
+                )
                 continue
         return None
 
@@ -300,6 +307,11 @@ class VaultKeyStore(KeyStoreInterface):
         try:
             keys = self._list_key_names()
         except Exception:
+            # Fail-closed: no listing means no match.  Without this trace a
+            # Vault outage is indistinguishable from "key not found".
+            _logger.debug(
+                "Vault key listing failed during hash lookup", exc_info=True
+            )
             return None
 
         for key_name in keys:
@@ -318,6 +330,13 @@ class VaultKeyStore(KeyStoreInterface):
                         "expires_at": record.get("expires_at"),
                     }
             except Exception:
+                # Fail-closed: an unreadable record is not a match.  Logged so a
+                # Vault outage can be told apart from "this key does not exist".
+                _logger.debug(
+                    "Skipping Vault record %s during key scan",
+                    key_name,
+                    exc_info=True,
+                )
                 continue
         return None
 
@@ -488,6 +507,13 @@ class VaultKeyStore(KeyStoreInterface):
                 try:
                     record = self._read_record(kid)
                 except Exception:
+                    # Unreadable records are skipped (fail-closed) but must
+                    # leave a trace, or a partial listing looks like the truth.
+                    _logger.debug(
+                        "Skipping Vault record %s while listing keys",
+                        kid,
+                        exc_info=True,
+                    )
                     continue
                 result.append(
                     {

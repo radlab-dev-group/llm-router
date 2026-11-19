@@ -60,7 +60,7 @@ class OllamaEmbeddingsHandler(PassthroughI):
         )
 
     @staticmethod
-    def prepare_response_function(response):
+    def _convert_response(response):
         """
         Convert a raw ``requests.Response`` into the OpenAI‑compatible JSON format.
 

@@ -33,7 +33,7 @@ import json
 import logging
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from llm_router_api.core.api_types.auth.aws import (
     AwsCredentialProvider,
@@ -194,7 +194,7 @@ class BedrockType(ApiTypesI):
         method: str,
         url: str,
         headers: Dict[str, str],
-        body: Optional[bytes],
+        body: Optional[bytes] = None,
     ) -> Dict[str, str]:
         """
         Sign the assembled request with SigV4.

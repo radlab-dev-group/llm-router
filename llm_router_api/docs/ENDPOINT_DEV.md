@@ -101,7 +101,7 @@ Extends `EndpointI` with the full outbound‑HTTP implementation:
 OpenAI‑compatible endpoints need minimal logic – just forward the incoming request.
 `PassthroughI` removes the boilerplate (no required arguments, no system prompt, ready‑made proxy `run_ep`). The
 concrete classes (`OpenAICompletionHandler`, `OpenAIResponsesHandler`,
-`OpenAIModelsHandler`, …) only add a `prepare_response_function`
+`OpenAIModelsHandler`, …) only add a `_convert_response`
 that normalizes non‑OpenAI responses (Ollama / Anthropic) into the OpenAI shape.
 
 ---
@@ -262,8 +262,10 @@ as the first message – `{"role": "system", "content": <prompt_str>}`. For
 post‑processing the HTTP response:
 
 * **Single‑request mode** – if set, it is called with the raw `requests.Response` and its return value replaces
-  `response.json()` (see `OpenAIResponseHandler.prepare_response_function`, which converts Ollama/Anthropic responses
-  into the OpenAI shape).
+  `response.json()` (see `OpenAIResponseHandler._convert_response`, which converts Ollama/Anthropic responses
+  into the OpenAI shape; provider mixins implement the converter under that name and bind it in `__init__`,
+  because `prepare_response_function` is the read‑only *property* of the base class and must not be shadowed
+  by a method of the same name).
 * **`call_for_each_user_msg=True` mode – MANDATORY** – the executor raises
   `RuntimeError("_prepare_response_function must be implemented when calling api for each user
   message")` when it is missing. The function receives the **list** of responses and the **list**

@@ -10,7 +10,7 @@ import os
 import re
 from contextvars import ContextVar
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type
 
 from rdl_ml_utils.handlers.prompt_handler import PromptHandler
 
@@ -175,7 +175,9 @@ class TextListUtilityEndpoint(EndpointWithHttpRequestI):
     """
 
     #: Subclasses must point this at their pydantic request model.
-    MODEL_CLS = None
+    #: Annotated so a type checker (and pylint's ``not-callable`` rule) knows a
+    #: subclass may replace it with a callable class rather than ``None``.
+    MODEL_CLS: Optional[Type[Any]] = None
 
     def __init__(
         self,

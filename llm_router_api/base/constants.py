@@ -10,6 +10,7 @@ class.
 
 import os
 from pathlib import Path
+from typing import List, Optional
 
 from rdl_ml_utils.utils.env import bool_env_value
 
@@ -41,6 +42,23 @@ EXTERNAL_API_TIMEOUT = int(
 # host that never accepts a connection fails fast and triggers failover.
 HTTP_CONNECT_TIMEOUT_SECONDS = int(
     os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}HTTP_CONNECT_TIMEOUT", 5)
+)
+
+# Wall-clock budget for a *whole* incoming request, including every provider
+# failover.  Failover is bounded by an attempt count (``MAX_RECONNECTIONS``)
+# but every attempt carries its own ``EXTERNAL_API_TIMEOUT``, so with a few
+# hanging providers a single request can occupy its server thread for tens of
+# minutes.  Once this deadline passes the dispatcher stops failing over and
+# reports the last provider error instead.  The check happens *between*
+# attempts, so the hard ceiling is this value plus one provider timeout.
+# Defaults to two provider timeouts: enough for a normal failover chain of
+# fast-failing providers, low enough to kill the multi-minute tail.
+# ``0`` or a negative value disables the deadline.
+REQUEST_DEADLINE_SECONDS = int(
+    os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}REQUEST_DEADLINE",
+        2 * EXTERNAL_API_TIMEOUT if EXTERNAL_API_TIMEOUT > 0 else 600,
+    )
 )
 
 # Maximum number of connections kept open to a single provider host by the
@@ -149,12 +167,13 @@ SERVER_THREADS_COUNT = int(
 )
 
 # In some servers like gunicorn is able to set worker class (f.e. gevent)
-SERVER_WORKERS_CLASS = os.environ.get(
-    f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKER_CLASS", ""
-).strip()
-
-if not SERVER_WORKERS_CLASS:
-    SERVER_WORKERS_CLASS = None
+# ``None`` means "not chosen by the operator" (see SERVER_WORKER_CLASS_DEFAULT).
+# Annotated once instead of re-assigning an empty string to ``None``, so the
+# name keeps a single type for a type checker.
+SERVER_WORKERS_CLASS: Optional[str] = (
+    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}SERVER_WORKER_CLASS", "").strip()
+    or None
+)
 
 # Worker class used when the operator has not chosen one.  ``gthread`` is the
 # right default for this service: it serves streaming responses and, unlike
@@ -246,15 +265,17 @@ MASKING_WITH_AUDIT = bool_env_value(
 )
 
 # Masking strategy pipeline in case when FORCE_MASKING
-MASKING_STRATEGY_PIPELINE = str(
-    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_STRATEGY_PIPELINE", "")
-)
-if MASKING_STRATEGY_PIPELINE:
-    MASKING_STRATEGY_PIPELINE = [
-        _s.strip()
-        for _s in MASKING_STRATEGY_PIPELINE.strip().split(",")
-        if len(_s.strip())
-    ]
+# Always a list, empty when the variable is unset.  The previous shape kept a
+# plain ``str`` until the first truthy check rewrote it into a list, which made
+# ``name in PIPELINE`` mean "substring of" on the string branch — a silent
+# mis-hit for any short plugin name.  A list keeps ``in`` a membership test.
+MASKING_STRATEGY_PIPELINE: List[str] = [
+    _s.strip()
+    for _s in os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}MASKING_STRATEGY_PIPELINE", ""
+    ).split(",")
+    if _s.strip()
+]
 
 # =============================================================================
 # GUARDRAILS
@@ -271,17 +292,13 @@ GUARDRAIL_WITH_AUDIT_REQUEST = bool_env_value(
 )
 
 # Guardrail strategy pipeline for request in case when FORCE_GUARDRAIL_REQUEST
-GUARDRAIL_STRATEGY_PIPELINE_REQUEST = str(
-    os.environ.get(
+GUARDRAIL_STRATEGY_PIPELINE_REQUEST: List[str] = [
+    _s.strip()
+    for _s in os.environ.get(
         f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_STRATEGY_PIPELINE_REQUEST", ""
-    )
-)
-if GUARDRAIL_STRATEGY_PIPELINE_REQUEST:
-    GUARDRAIL_STRATEGY_PIPELINE_REQUEST = [
-        _s.strip()
-        for _s in GUARDRAIL_STRATEGY_PIPELINE_REQUEST.strip().split(",")
-        if len(_s.strip())
-    ]
+    ).split(",")
+    if _s.strip()
+]
 # -----------------------------------------------------------------------------
 # ----------- RESPONSE GUARDRAIL
 # If set to True, then each response will be checked before receive response
@@ -295,31 +312,25 @@ GUARDRAIL_WITH_AUDIT_RESPONSE = bool_env_value(
 )
 
 # Guardrail strategy pipeline for response in case when FORCE_GUARDRAIL_RESPONSE
-GUARDRAIL_STRATEGY_PIPELINE_RESPONSE = str(
-    os.environ.get(
+GUARDRAIL_STRATEGY_PIPELINE_RESPONSE: List[str] = [
+    _s.strip()
+    for _s in os.environ.get(
         f"{_DontChangeMe.MAIN_ENV_PREFIX}GUARDRAIL_STRATEGY_PIPELINE_RESPONSE", ""
-    )
-)
-if GUARDRAIL_STRATEGY_PIPELINE_RESPONSE:
-    GUARDRAIL_STRATEGY_PIPELINE_RESPONSE = [
-        _s.strip()
-        for _s in GUARDRAIL_STRATEGY_PIPELINE_RESPONSE.strip().split(",")
-        if len(_s.strip())
-    ]
+    ).split(",")
+    if _s.strip()
+]
 
 # =============================================================================
 # PLUGINS
 # =============================================================================
 # ----------- Utils plugins
-UTILS_PLUGINS_PIPELINE = str(
-    os.environ.get(f"{_DontChangeMe.MAIN_ENV_PREFIX}UTILS_PLUGINS_PIPELINE", "")
-)
-if UTILS_PLUGINS_PIPELINE:
-    UTILS_PLUGINS_PIPELINE = [
-        _s.strip()
-        for _s in UTILS_PLUGINS_PIPELINE.strip().split(",")
-        if len(_s.strip())
-    ]
+UTILS_PLUGINS_PIPELINE: List[str] = [
+    _s.strip()
+    for _s in os.environ.get(
+        f"{_DontChangeMe.MAIN_ENV_PREFIX}UTILS_PLUGINS_PIPELINE", ""
+    ).split(",")
+    if _s.strip()
+]
 
 # =============================================================================
 # AUTHENTICATION

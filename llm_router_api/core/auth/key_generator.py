@@ -25,9 +25,13 @@ class KeyGenerator:
     PREFIX = "sk-llmr-live-"
     CHARSET = string.ascii_letters + string.digits  # base62
     MIN_LENGTH = 48  # minimum length of the base62 portion
+    #: Default entropy asked for, in bytes (48 bytes = 384 bits).
+    DEFAULT_ENTROPY_BYTES = 48
+    #: Bits needed to encode one base62 character (ceil(log2(62))).
+    BITS_PER_CHAR = 6
 
     @classmethod
-    def generate(cls, entropy_bytes: int = 48) -> str:
+    def generate(cls, entropy_bytes: int = DEFAULT_ENTROPY_BYTES) -> str:
         """
         Generate a new API key.
 
@@ -39,18 +43,30 @@ class KeyGenerator:
         Parameters
         ----------
         entropy_bytes : int
-            Number of cryptographically random bytes to use as base entropy.
-            Passed to :func:`secrets.token_bytes` which seeds the CSPRNG state
-            that underlies :func:`secrets.choice`.  Defaults to 48 (384 bits).
+            How much cryptographic entropy the key should carry, in bytes.  It
+            sets the length of the base62 portion: one base62 character holds
+            ``ceil(log2(62)) == 6`` bits, so *entropy_bytes* bytes need
+            ``ceil(entropy_bytes * 8 / 6)`` characters.  The length never drops
+            below :attr:`MIN_LENGTH`, so a smaller request cannot produce a
+            weaker-than-minimum key.  Must be positive.
 
         Returns
         -------
         str
             A key like ``sk-llmr-live-abc123XYZ...``
-            (48+ base62 chars after the prefix).
+            (at least :attr:`MIN_LENGTH` base62 chars after the prefix).
+
+        Raises
+        ------
+        ValueError
+            When *entropy_bytes* is not a positive number of bytes.
         """
-        # token_bytes advances the system PRNG state used by secrets.choice.
-        characters = [secrets.choice(cls.CHARSET) for _ in range(cls.MIN_LENGTH)]
+        if entropy_bytes <= 0:
+            raise ValueError("entropy_bytes must be a positive number of bytes")
+        # ceil(entropy_bytes * 8 / BITS_PER_CHAR), without float arithmetic.
+        needed = -(-(entropy_bytes * 8) // cls.BITS_PER_CHAR)
+        length = max(cls.MIN_LENGTH, needed)
+        characters = [secrets.choice(cls.CHARSET) for _ in range(length)]
         return f"{cls.PREFIX}{''.join(characters)}"
 
     @classmethod
@@ -68,11 +84,16 @@ class KeyGenerator:
         Tuple[bool, str]
             ``(True, "")`` if valid, ``(False, "error message"`` if invalid.
         """
-        pattern = rf"^{re.escape(cls.PREFIX)}[a-zA-Z0-9]{{{cls.MIN_LENGTH},}}$"
-        if not re.match(pattern, key):
+        # ``re.fullmatch``, not ``re.match`` with ``$``: ``$`` also matches just
+        # before a trailing newline, so ``"sk-llmr-live-aaa…\n"`` — a key with
+        # whitespace smuggled in by a copy/paste or a header split — validated
+        # as correct while never matching a stored hash.  fullmatch anchors at
+        # the true end of the string.
+        pattern = rf"{re.escape(cls.PREFIX)}[a-zA-Z0-9]{{{cls.MIN_LENGTH},}}"
+        if not isinstance(key, str) or not re.fullmatch(pattern, key):
             return False, (
                 f"Invalid key format: expected "
-                f"{cls.PREFIX}<48+ alphanumeric characters>"
+                f"{cls.PREFIX}<{cls.MIN_LENGTH}+ alphanumeric characters>"
             )
         return True, ""
 

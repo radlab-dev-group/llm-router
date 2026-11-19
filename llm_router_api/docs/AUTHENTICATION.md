@@ -225,8 +225,12 @@ sk-llmr-live-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789abcdefABCDEF123456789
 ```
 
 - **Prefix**: `sk-llmr-live-` (configurable via `LLM_ROUTER_AUTH_KEY_PREFIX`)
-- **Entropy**: 48 bytes cryptographically random (configurable via `LLM_ROUTER_AUTH_KEY_LENGTH`)
+- **Entropy**: 48 bytes (384 bits) from the system CSPRNG (configurable via `LLM_ROUTER_AUTH_KEY_LENGTH`)
 - **Charset**: base62 (a-zA-Z0-9)
+- **Length**: one base62 character carries 6 bits, so 48 bytes produce a 64-character
+  secret; the base62 part is never shorter than 48 characters
+- **Validation**: exact match on prefix + base62 length; trailing whitespace such as a
+  final newline is rejected
 
 ---
 

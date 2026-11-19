@@ -145,4 +145,4 @@ class LLMStudioChatV0Handler(OpenAIResponseHandler):
             method="POST",
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response

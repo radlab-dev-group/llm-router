@@ -29,6 +29,8 @@ from llm_router_api.core.errors import (
     sanitize_error_message,
 )
 from llm_router_api.core.provider_attempts import with_attempted_provider
+from llm_router_api.core import request_context
+from llm_router_api.base.constants import REQUEST_DEADLINE_SECONDS
 
 # ---------------------------------------------------------------------------
 # Retry policy (moved verbatim from ``EndpointWithHttpRequestI.RetryResponse``)
@@ -628,8 +630,25 @@ class HttpDispatch:
         provider of the model - including the whole ``fallback_model`` chain -
         was already used by this request; the caller then reports the last
         provider error instead of repeating a known failure.
+
+        The attempt budget alone is not a time bound: every attempt carries its
+        own ``EXTERNAL_API_TIMEOUT``, so a chain of hanging providers would
+        hold this request's thread for a multiple of it.  The whole-request
+        deadline (``REQUEST_DEADLINE_SECONDS``) is checked here as well, which
+        turns the worst case into "deadline + one provider timeout".
         """
         if not self._can_retry(reconnect_number):
+            return False
+
+        if request_context.request_deadline_exceeded(REQUEST_DEADLINE_SECONDS):
+            self._logger().warning(
+                "Request budget of %ss exhausted after %s attempt(s) "
+                "(provider %s); reporting the last provider error instead of "
+                "failing over again.",
+                REQUEST_DEADLINE_SECONDS,
+                reconnect_number + 1,
+                getattr(api_model_provider, "id", "unknown"),
+            )
             return False
 
         handler = getattr(self._endpoint, "_model_handler", None)

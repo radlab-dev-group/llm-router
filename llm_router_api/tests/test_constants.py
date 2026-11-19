@@ -100,9 +100,10 @@ class TestImportedInvariants:
             "UTILS_PLUGINS_PIPELINE",
         ):
             value = getattr(constants, name)
-            if value:
-                assert isinstance(value, list)
-                assert all(isinstance(item, str) and item for item in value)
+            # Unconditional now: these constants are *always* a list of clean
+            # strings (empty when unset), never a raw comma-separated string.
+            assert isinstance(value, list)
+            assert all(isinstance(item, str) and item for item in value)
 
     def test_memory_seed_file_points_inside_llm_router_dir(self):
         seed = constants.LLM_ROUTER_AUTH_MEMORY_SEED_FILE
@@ -367,14 +368,14 @@ EXPECTED_DEFAULTS = {
     "REDIS_PROTOCOL": 3,
     "FORCE_MASKING": False,
     "MASKING_WITH_AUDIT": False,
-    "MASKING_STRATEGY_PIPELINE": "",
+    "MASKING_STRATEGY_PIPELINE": [],
     "FORCE_GUARDRAIL_REQUEST": False,
     "GUARDRAIL_WITH_AUDIT_REQUEST": False,
-    "GUARDRAIL_STRATEGY_PIPELINE_REQUEST": "",
+    "GUARDRAIL_STRATEGY_PIPELINE_REQUEST": [],
     "FORCE_GUARDRAIL_RESPONSE": False,
     "GUARDRAIL_WITH_AUDIT_RESPONSE": False,
-    "GUARDRAIL_STRATEGY_PIPELINE_RESPONSE": "",
-    "UTILS_PLUGINS_PIPELINE": "",
+    "GUARDRAIL_STRATEGY_PIPELINE_RESPONSE": [],
+    "UTILS_PLUGINS_PIPELINE": [],
     "LLM_ROUTER_AUTH_ENABLED": False,
     "LLM_ROUTER_AUTH_KEY_STORE": "memory",
     "LLM_ROUTER_AUTH_VAULT_ADDR": "",

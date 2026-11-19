@@ -138,7 +138,7 @@ class TestLLMStudioChatV0Handler:
     def test_prepare_response_function_bound(self):
         ep = lmstudio_ep.LLMStudioChatV0Handler()
         assert ep.prepare_response_function is (
-            lmstudio_ep.LLMStudioChatV0Handler.prepare_response_function
+            lmstudio_ep.LLMStudioChatV0Handler._convert_response
         )
 
     def test_ollama_response_converted(self):
@@ -150,7 +150,7 @@ class TestLLMStudioChatV0Handler:
                     "done": True,
                 }
 
-        out = lmstudio_ep.LLMStudioChatV0Handler.prepare_response_function(_Resp())
+        out = lmstudio_ep.LLMStudioChatV0Handler._convert_response(_Resp())
         assert out["object"] == "chat.completion"
         assert out["choices"][0]["message"]["content"] == "ok"
 

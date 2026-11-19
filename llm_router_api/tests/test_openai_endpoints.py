@@ -4,10 +4,10 @@ Unit tests for the OpenAI‑compatible endpoints in
 
 Covered without network/Flask:
 
-* ``OpenAIResponseHandler.prepare_response_function`` – Ollama, Anthropic
+* ``OpenAIResponseHandler._convert_response`` – Ollama, Anthropic
   and passthrough branches (the converters themselves are covered by the
   core api_types tests);
-* ``OpenAIEmbeddingsHandler.prepare_response_function`` – embedding
+* ``OpenAIEmbeddingsHandler._convert_response`` – embedding
   conversion vs. passthrough;
 * ``OpenAIModelsHandler`` / ``OpenAIModelsV1Handler`` – payload shape and
   the ``timestamp_as_int`` difference;
@@ -71,13 +71,13 @@ _OLLAMA_EMBEDDINGS = {
 
 
 # --------------------------------------------------------------------------- #
-# OpenAIResponseHandler.prepare_response_function
+# OpenAIResponseHandler._convert_response
 # --------------------------------------------------------------------------- #
 
 
 class TestOpenAIResponseHandlerConverters:
     def test_ollama_response_converted_to_openai(self):
-        out = openai_ep.OpenAIResponseHandler.prepare_response_function(
+        out = openai_ep.OpenAIResponseHandler._convert_response(
             _FakeResponse(_OLLAMA_CHAT)
         )
         assert out["object"] == "chat.completion"
@@ -88,7 +88,7 @@ class TestOpenAIResponseHandlerConverters:
         assert out["usage"]["completion_tokens"] == 4
 
     def test_anthropic_response_converted_to_openai(self):
-        out = openai_ep.OpenAIResponseHandler.prepare_response_function(
+        out = openai_ep.OpenAIResponseHandler._convert_response(
             _FakeResponse(_ANTHROPIC_CHAT)
         )
         assert out["object"] == "chat.completion"
@@ -108,7 +108,7 @@ class TestOpenAIResponseHandlerConverters:
             prompt_eval_count=3,
             eval_count=4,
         )
-        out = openai_ep.OpenAIResponseHandler.prepare_response_function(
+        out = openai_ep.OpenAIResponseHandler._convert_response(
             _FakeResponse(body)
         )
         # the "message" branch (Ollama converter) is taken, not Anthropic
@@ -119,20 +119,20 @@ class TestOpenAIResponseHandlerConverters:
 
     def test_unknown_shape_passes_through(self):
         body = {"foo": "bar"}
-        out = openai_ep.OpenAIResponseHandler.prepare_response_function(
+        out = openai_ep.OpenAIResponseHandler._convert_response(
             _FakeResponse(body)
         )
         assert out is body
 
 
 # --------------------------------------------------------------------------- #
-# OpenAIEmbeddingsHandler.prepare_response_function
+# OpenAIEmbeddingsHandler._convert_response
 # --------------------------------------------------------------------------- #
 
 
 class TestOpenAIEmbeddingsHandler:
     def test_ollama_embeddings_converted_to_openai(self):
-        out = openai_ep.OpenAIEmbeddingsHandler.prepare_response_function(
+        out = openai_ep.OpenAIEmbeddingsHandler._convert_response(
             _FakeResponse(_OLLAMA_EMBEDDINGS)
         )
         assert out["object"] == "list"
@@ -140,7 +140,7 @@ class TestOpenAIEmbeddingsHandler:
         assert out["usage"] == {"prompt_tokens": 7, "total_tokens": 7}
 
     def test_openai_shape_passes_through(self):
-        out = openai_ep.OpenAIEmbeddingsHandler.prepare_response_function(
+        out = openai_ep.OpenAIEmbeddingsHandler._convert_response(
             _FakeResponse(_OPENAI_EMBEDDINGS)
         )
         assert out is _OPENAI_EMBEDDINGS
@@ -299,7 +299,7 @@ class TestRegistrationWiring:
     def test_chat_handlers_bind_prepare_response_function(self):
         ep = openai_ep.OpenAiV1ChatCompletion()
         assert ep.prepare_response_function is (
-            openai_ep.OpenAIResponseHandler.prepare_response_function
+            openai_ep.OpenAIResponseHandler._convert_response
         )
 
     def test_chat_handler_prepare_payload_passthrough(self):

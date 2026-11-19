@@ -24,7 +24,6 @@ methods for performing outbound HTTP requests to an external service.
 # pylint: disable=too-many-lines
 
 import abc
-import contextvars
 import time
 import json
 import logging
@@ -51,6 +50,7 @@ from llm_router_lib.data_models.constants import (
 from llm_router_api.base.constants_base import ALL_PROVIDERS
 
 from llm_router_api.core.errors import NoProviderAvailable, sanitize_error_message
+from llm_router_api.core import request_context
 
 from llm_router_api.base.constants import (
     USE_PROMETHEUS,
@@ -645,8 +645,10 @@ class EndpointI(SecureEndpointI, abc.ABC):
         # Hook function to prepare response
         self._prepare_response_function: Optional[Callable] = None
 
-        # marker when ep stared
-        self._start_time = None
+        # NOTE: no request start timestamp is kept on ``self`` — this object is
+        # a singleton shared by every concurrent request, so such an attribute
+        # would be read as whichever request wrote it last.  The per-request
+        # clock lives in :mod:`llm_router_api.core.request_context`.
 
     # ------------------------------------------------------------------
     # Public read‑only properties
@@ -1149,14 +1151,13 @@ class EndpointI(SecureEndpointI, abc.ABC):
 # Proxy‑enabled endpoint – performs outbound HTTP calls.
 # ----------------------------------------------------------------------
 
-# Per‑request wall‑clock start.  The endpoint object is instantiated once at
-# startup and shared by every concurrent request, so a start timestamp kept on
-# ``self`` belongs to whichever request wrote it last: ``generation_time`` was
-# then measured against another request's start.  A ContextVar gives each
-# request (thread / greenlet) its own value, which is what the readers want.
-_request_start_time: "contextvars.ContextVar[Optional[float]]" = (
-    contextvars.ContextVar("llm_router_request_start_time", default=None)
-)
+# Per‑request wall‑clock start lives in a shared, dependency‑free module so the
+# HTTP dispatcher can read the same clock to bound failover (see
+# :mod:`llm_router_api.core.request_context`).  The endpoint object is
+# instantiated once at startup and shared by every concurrent request, so a
+# start timestamp kept on ``self`` belongs to whichever request wrote it last —
+# which is exactly why it is a ContextVar and not an attribute.
+_request_start_time = request_context.request_start_time
 
 
 class EndpointWithHttpRequestI(EndpointI, abc.ABC):
@@ -1281,10 +1282,13 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
         """
         Seconds since this request started.
 
-        Reads the per‑request ContextVar first and falls back to the legacy
-        ``self._start_time`` so callers that set the attribute directly (tests,
-        programmatic use) keep working.  Returns ``0.0`` when neither is known,
-        instead of raising ``TypeError`` on ``time.time() - None``.
+        Reads the per‑request ContextVar and falls back to an explicit
+        ``self._start_time`` override, so callers that set the attribute
+        directly (tests, programmatic use) keep working.  The request path
+        itself never writes that attribute: this object is shared by every
+        concurrent request, so the value would be whichever request wrote it
+        last.  Returns ``0.0`` when neither is known, instead of raising
+        ``TypeError`` on ``time.time() - None``.
         """
         start = _request_start_time.get()
         if start is None:
@@ -1396,8 +1400,14 @@ class EndpointWithHttpRequestI(EndpointI, abc.ABC):
             )
 
         # Per request, not per (shared) instance — see ``_request_start_time``.
-        _request_start_time.set(time.time())
-        self._start_time = time.time()
+        # Only the first attempt starts the clock: a provider failover re-enters
+        # this method, and both ``generation_time`` and the whole-request
+        # deadline (``REQUEST_DEADLINE_SECONDS``) must span the full chain of
+        # attempts, not just the last one.  The timestamp is never written to
+        # ``self`` — this object is shared by every concurrent request, so such
+        # an attribute would be read as another request's start time.
+        if not reconnect_number:
+            request_context.start_request()
         try:
             # 1. Prepare the payload (endpoint logic, then utils plugins)
             params = self._prepare_incoming_payload(params)

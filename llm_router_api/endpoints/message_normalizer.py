@@ -153,7 +153,9 @@ def build_alternating_messages(messages: List[Any]) -> List[Dict]:
     """
     new_messages: List[Dict[str, Any]] = []
     system_msg: Optional[Dict[str, Any]] = None
-    last: Any = None  # last appended dialogue entry (always a fresh copy)
+    last: Optional[Dict[str, Any]] = (
+        None  # last appended dialogue entry (always a fresh copy)
+    )
 
     for msg in messages:
         role = msg.get("role") if isinstance(msg, dict) else None

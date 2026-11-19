@@ -298,8 +298,9 @@ class KeepAliveMonitor:
                         continue
 
                     self.logger.debug(
-                        f"[keep-alive-monitor.sending_prompt] model={model_name} "
-                        f"host={host}"
+                        "[keep-alive-monitor.sending_prompt] model=%s host=%s",
+                        model_name,
+                        host,
                     )
                     self._keep_alive.send(model_name=model_name, host=host)
 

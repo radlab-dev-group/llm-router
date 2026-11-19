@@ -25,7 +25,7 @@ from llm_router_api.endpoints.passthrough import PassthroughI
 
 class OpenAIResponseHandler(PassthroughI, abc.ABC):
     @staticmethod
-    def prepare_response_function(response):
+    def _convert_response(response):
         """
         Convert a raw ``requests.Response`` into the OpenAI‑compatible JSON format.
 
@@ -88,7 +88,7 @@ class OpenAIResponsesHandler(OpenAIResponseHandler):
             method="POST",
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response
 
 
 class OpenAIResponsesV1Handler(OpenAIResponseHandler):
@@ -121,7 +121,7 @@ class OpenAIResponsesV1Handler(OpenAIResponseHandler):
             method="POST",
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response
 
 
 class OpenAICompletionHandler(OpenAIResponseHandler):
@@ -161,7 +161,7 @@ class OpenAICompletionHandler(OpenAIResponseHandler):
             method="POST",
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response
 
 
 class OpenAIEmbeddingsHandler(PassthroughI):
@@ -201,10 +201,10 @@ class OpenAIEmbeddingsHandler(PassthroughI):
             method="POST",
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response
 
     @staticmethod
-    def prepare_response_function(response):
+    def _convert_response(response):
         """
         Convert a raw ``requests.Response`` into the OpenAI‑compatible JSON format.
 
@@ -270,10 +270,10 @@ class OpenAIEmbeddingsV1Handler(PassthroughI):
             method="POST",
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response
 
     @staticmethod
-    def prepare_response_function(response):
+    def _convert_response(response):
         """
         Normalise the downstream embeddings response (Ollama or Vertex AI)
         into the OpenAI embeddings list format.
@@ -325,7 +325,7 @@ class OpenAICompletionHandlerWOApi(OpenAIResponseHandler):
             method="POST",
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response
 
 
 class OpenAiV1ChatCompletion(OpenAIResponseHandler):
@@ -395,7 +395,7 @@ class OpenAiV1ChatCompletion(OpenAIResponseHandler):
             direct_return=False,
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response
 
 
 class OpenAIModelsHandler(PassthroughI):

@@ -4,7 +4,7 @@ Unit tests for the Ollama endpoints in
 
 Covered without network/Flask:
 
-* ``OllamaEmbeddingsHandler.prepare_response_function`` – OpenAI→Ollama
+* ``OllamaEmbeddingsHandler._convert_response`` – OpenAI→Ollama
   embedding conversion vs. passthrough;
 * ``OllamaHomeHandler.prepare_payload`` – the plain-text health response and
   the ``direct_return`` side effect;
@@ -56,7 +56,7 @@ _OLLAMA_EMBEDDINGS = {
 
 class TestOllamaEmbeddingsHandler:
     def test_openai_embeddings_converted_to_ollama(self):
-        out = ollama_ep.OllamaEmbeddingsHandler.prepare_response_function(
+        out = ollama_ep.OllamaEmbeddingsHandler._convert_response(
             _FakeResponse(_OPENAI_EMBEDDINGS)
         )
         assert out["model"] == "m1"
@@ -65,7 +65,7 @@ class TestOllamaEmbeddingsHandler:
         assert out["total_tokens"] == 9
 
     def test_ollama_shape_passes_through(self):
-        out = ollama_ep.OllamaEmbeddingsHandler.prepare_response_function(
+        out = ollama_ep.OllamaEmbeddingsHandler._convert_response(
             _FakeResponse(_OLLAMA_EMBEDDINGS)
         )
         assert out is _OLLAMA_EMBEDDINGS

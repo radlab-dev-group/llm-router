@@ -55,7 +55,7 @@ _OPENAI_CHAT = {
 
 class TestAnthropicChatHandlerConverters:
     def test_ollama_response_converted_to_anthropic(self):
-        out = anthropic_ep.AnthropicChatHandler.prepare_response_function(
+        out = anthropic_ep.AnthropicChatHandler._convert_response(
             _FakeResponse(_OLLAMA_CHAT)
         )
         assert out["type"] == "message"
@@ -67,7 +67,7 @@ class TestAnthropicChatHandlerConverters:
         assert out["id"].startswith("ollama-")
 
     def test_openai_response_converted_to_anthropic(self):
-        out = anthropic_ep.AnthropicChatHandler.prepare_response_function(
+        out = anthropic_ep.AnthropicChatHandler._convert_response(
             _FakeResponse(_OPENAI_CHAT)
         )
         assert out["type"] == "message"
@@ -78,7 +78,7 @@ class TestAnthropicChatHandlerConverters:
 
     def test_ollama_marker_wins_over_openai(self):
         body = dict(_OPENAI_CHAT, message=_OLLAMA_CHAT["message"], done=True)
-        out = anthropic_ep.AnthropicChatHandler.prepare_response_function(
+        out = anthropic_ep.AnthropicChatHandler._convert_response(
             _FakeResponse(body)
         )
         # the "message" branch (Ollama converter) is taken, not OpenAI
@@ -88,14 +88,14 @@ class TestAnthropicChatHandlerConverters:
 
     def test_unknown_shape_passes_through(self):
         body = {"foo": "bar"}
-        out = anthropic_ep.AnthropicChatHandler.prepare_response_function(
+        out = anthropic_ep.AnthropicChatHandler._convert_response(
             _FakeResponse(body)
         )
         assert out is body
 
     def test_empty_ollama_content_stays_empty(self):
         body = {"model": "m", "message": {"role": "assistant", "content": ""}}
-        out = anthropic_ep.AnthropicChatHandler.prepare_response_function(
+        out = anthropic_ep.AnthropicChatHandler._convert_response(
             _FakeResponse(body)
         )
         assert out["content"] == []
@@ -124,7 +124,7 @@ class TestAnthropicChatHandlerPayload:
     def test_prepare_response_function_bound_on_instance(self):
         ep = anthropic_ep.AnthropicChatHandler()
         assert ep.prepare_response_function is (
-            anthropic_ep.AnthropicChatHandler.prepare_response_function
+            anthropic_ep.AnthropicChatHandler._convert_response
         )
 
 

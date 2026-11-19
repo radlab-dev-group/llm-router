@@ -45,10 +45,10 @@ class AnthropicChatHandler(PassthroughI):
             method=method,
         )
 
-        self._prepare_response_function = self.prepare_response_function
+        self._prepare_response_function = self._convert_response
 
     @staticmethod
-    def prepare_response_function(response):
+    def _convert_response(response):
         """
         Convert response to OpenAI-compatible format if it's already Anthropic,
         OR convert to Anthropic format if it's OpenAI/Ollama (reverse proxy case).
