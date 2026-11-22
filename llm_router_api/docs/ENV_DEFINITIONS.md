@@ -43,8 +43,10 @@ All environment variables share the `LLM_ROUTER_` prefix. They are loaded from `
 | `LLM_ROUTER_SERVER_MAX_REQUESTS_JITTER` | `100`                                | Random offset (requests) added to `LLM_ROUTER_SERVER_MAX_REQUESTS` per worker, so a fleet does not recycle every worker at once. |
 | `LLM_ROUTER_SERVER_GRACEFUL_TIMEOUT` | `LLM_ROUTER_EXTERNAL_TIMEOUT` (or `300`) | Seconds a recycled Gunicorn worker may spend finishing the requests it is already serving. Defaults to the outbound provider timeout, the longest a correctly-behaving request can take, so an in-flight generation — including a long stream — is never truncated by worker recycling. |
 | `LLM_ROUTER_USE_PROMETHEUS`        | `False`                                | Enable Prometheus metrics collection (`/metrics` endpoint).                                                      |
+| `LLM_ROUTER_INSTANCE`              | `default`                            | Name of the server instance the `llm-router server` subcommands manage (equivalent of `-i/--instance`); each named instance keeps its own state tree under `~/.llm-router/instances/<name>` (pid, run files, captured log). |
 
 > See also `PROMETHEUS_MULTIPROC_DIR` for the directory where Prometheus multiprocess worker data files are stored.
+> See also `TOKENIZERS_PARALLELISM` (Hugging Face `tokenizers`), set to `true` by the run scripts to silence the fork-safety warning when several gunicorn workers encode at once.
 
 > **`LLM_ROUTER_VERBOSE` is a debugging aid, not a logging level.** With this variable on, `SecureEndpointI` stores it
 > as `self._verbose_mode` and `run_ep` writes the **raw, unmasked** request payload (JSON) to the log *before* masking,
@@ -226,7 +228,7 @@ Environment variables override the JSON config (raw JSON string or file path via
 | `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_HEURISTIC_MIN_MARGIN`  | *(empty)*          | Minimum score lead over the runner-up (bundled default `1.0`; ties always continue to semantic/fallback).                                  |
 | `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_CLASSIFY_MAX_CHARS`    | *(empty)*          | Character budget of the classified user text (the newest message is always classified whole).                                              |
 | `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_MODEL`                 | *(empty)*          | **Embedding** model identifier (HuggingFace / local path) for the semantic layer.                                                          |
-| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SEMANT_ENABLED`        | *(empty)*          | Toggle the embedding-similarity layer.                                                                                                     |
+| `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SEMANTIC_ENABLED`        | *(empty)*          | Toggle the embedding-similarity layer.                                                                                                     |
 | `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_SIMILARITY_THRESHOLD`  | *(empty)*          | Minimum cosine similarity for a semantic hit.                                                                                              |
 | `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_TOP_K` / `…_CHUNK_SIZE` / `…_CHUNK_OVERLAP` | *(empty)* | Embedding router knobs (per-target top-k count, token chunk size, token overlap).                     |
 | `LLM_ROUTER_ROUTING_SEMANTIC_AGENTIC_CODEX_PERSIST_DIR`           | *(empty)*          | Directory holding the persisted FAISS index + docstore (`index.faiss`, `docstore.pkl`).                                                    |
@@ -295,6 +297,148 @@ memory rather than production Redis; save experimental parameters in that file b
 
 ---
 
+## Agentic Knowledge variables
+
+Requires the `llm-router-plugins` package. When `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` includes `agentic_knowledge`,
+this knowledge layer runs behind the routing plugins: it retrieves verified fixes, dead ends, procedures and the
+repository's own documentation from the Semantic Search Engine (SSE), injects a bounded block into coding-agent
+requests, mines new knowledge out of the traffic, and can escalate a request stuck in a loop to a stronger model.
+It is fail-open everywhere except the policy file, and idle with no engine host configured.
+
+Precedence: ENV → policy JSON (`…_CONFIG`, raw JSON or a path; otherwise the bundled `agentic_knowledge.json`)
+→ defaults below. Booleans accept `1/0`, `true/false`, `yes/no`, `on/off`. The full documentation (retrieval
+behaviour, mining kinds, learning loop, CLI commands, troubleshooting) lives in
+[`llm_router_plugins/utils/knowledge/agentic_knowledge/README.md`](https://github.com/radlab-dev-group/llm-router-plugins/blob/main/llm_router_plugins/utils/knowledge/agentic_knowledge/README.md)
+in the `llm-router-plugins` repository.
+
+### Switches and layout
+
+| Variable                                                       | Default      | Description                                                                                                             |
+|----------------------------------------------------------------|--------------|--------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_CONFIG`                          | *(empty)*    | Policy: raw JSON string or path to a policy file. Falls back to the bundled `agentic_knowledge.json`.                     |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_ENABLED`                         | `true`       | Master switch of the whole plugin.                                                                                        |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_ENABLED`                    | `true`       | Knowledge injection on/off (mining may stay on).                                                                          |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_WRITE_ENABLED`                   | `true`       | Knowledge publishing on/off (injection may stay on).                                                                      |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED`                 | `true`       | Archiving of the pre-compaction windows on/off.                                                                           |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED`              | `false`      | Model escalation on/off — a loop with no known-good recipe switches to a stronger model.                                  |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_LEARNING_ENABLED`                | `false`      | Learned path on/off: document reputation, the fitted ranking model, the source bandit. The training log is written either way; a model only reorders within a clamp and never overwrites the policy. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_TASK_SOLUTIONS_ENABLED`          | `false`      | Mine a completed multi-file task that ran with no failure in between as a `task_solution` document.                       |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_TOOL_RECIPES_ENABLED`            | `false`      | Mine a verified single shell command as a `tool_recipe` document.                                                         |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX`               | `agentic_kb` | Prefix of every SSE collection owned by the plugin (letters/digits/`_`/`.`; reduced to an engine-safe fragment).          |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_LAYOUT`               | `single`     | `single`: one collection per repository (`<prefix>_<scope>`), kinds told apart by engine category. `split`: the older three-collections spelling, for legacy indexes. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_KEY_PREFIX`                      | `agentic-kb` | Redis key namespace owned by the plugin.                                                                                  |
+
+### Semantic Search Engine (read side)
+
+| Variable                                                       | Default  | Description                                                                                                              |
+|----------------------------------------------------------------|----------|---------------------------------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_HOST`                    | *(empty)*| SSE host. **Empty ⇒ the layer is idle**: requests pass through with no knowledge.                                          |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PREFIX`                  | *(empty)*| Engine API prefix; empty = the `sse_lib` client default.                                                                   |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_TOKEN`                   | *(empty)*| Engine token (never logged).                                                                                               |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_USERNAME`                | *(empty)*| Engine login for an engine that authenticates by user/password; a token, when set, wins. Never logged.                     |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_PASSWORD`                | *(empty)*| Engine login password.                                                                                                     |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_VERIFY`                      | `true`   | TLS certificate verification of the engine connection.                                                                     |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_API_TIMEOUT`                 | `2.0`    | Transport ceiling of one engine call in seconds, clamped to `0.1…60` (a clamp that bites logs a warning).                  |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_READ_TIMEOUT_SECONDS`            | `4.0`    | Read budget of the layer for one request in seconds, clamped to `0.1…60`; never smaller than the engine-call timeout.       |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_IGNORE_LANGUAGE_DETECT`      | `true`   | Ask the engine not to guess the query language (a guess filters the vector leg to it).                                     |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_MIN_SIMILARITY`                  | `0.35`   | Minimum similarity of a hit worth injecting.                                                                               |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_HYBRID_SEARCH`                   | `true`   | Fuse the vector leg with the full-text leg (Reciprocal Rank Fusion).                                                        |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_RESULTS`                  | `true`   | Re-score retrieved chunks with the collection's cross-encoder; the score scale follows the reranker logit.                  |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_WHEN_CONTESTED`           | `false`  | Re-ask a debug result whose top hits sit within `…_RERANK_CONTESTED_GAP` of each other through the cross-encoder before building the block; paid only when the fused ranks were not confident. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_CONTESTED_GAP`            | `0.05`   | Score spread of the top hits below which a search counts as contested.                                                      |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_TOP_K`                    | `5`      | How many top hits the contested re-ask re-scores.                                                                           |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_FTS_ONLY_MIN_IDENTIFIER_SHARE`   | `0.5`    | A query whose tokens are mostly identifiers (exception class, dotted path, `::`-qualified name) is asked of the text index alone: no query embedding, no vector leg. `0` keeps every search on both legs. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_CACHE_TTL_SECONDS`               | `3600`   | Lifetime in seconds of one generation's assembled context.                                                                  |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_LOOKUPS_PER_GENERATION`      | `20`     | Knowledge lookups per generation; per worker process when Redis is not configured.                                          |
+
+### Escalation and feedback
+
+| Variable                                                       | Default              | Description                                                                                       |
+|----------------------------------------------------------------|----------------------|-----------------------------------------------------------------------------------------------------|
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD`                  | `3`                  | Repetitions of one failure signature that make a loop.                                                 |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORE`             | `0.6`                | A recipe scoring at least this keeps the routed model instead of escalating (fallback for a scale unnamed in the table below). |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORES`            | `{"reranker": null}` | JSON map of the bound per retrieval scale (`cosine`, `rrf`, `reranker`, `""` for an unnamed one); `null` decides by identity — a signature match with a verification command counts without a score. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_FEEDBACK_PUSH_INTERVAL_SECONDS`  | `60`                 | Minimum seconds between pushes of the settled verdicts to the engine feedback counters.                  |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SUPERSEDE_AFTER_DAYS`            | `1`                  | A newer recipe retires the older one for the same file after this many days; `0` disables supersession.  |
+
+### Event publishing (write side)
+
+| Variable                                                  | Default  | Description                                                            |
+|-----------------------------------------------------------|----------|---------------------------------------------------------------------------|
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_STREAM_LEN`             | `100000` | Length cap of the Redis event stream (`XADD MAXLEN ~`).                   |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DEDUP_TTL_SECONDS`          | `604800` | Episode dedup window in seconds (7 days).                                 |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_PATCH_CHARS`            | `4000`   | Longest patch text admitted into one event.                               |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_MAX_CHUNK_CHARS`    | `2000`   | Size in characters of one archived window chunk.                          |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_TTL_SECONDS`        | `1209600`| Archive retention in seconds (14 days).                                   |
+
+### Repository documentation
+
+The repository's own `*.md` files are indexed as knowledge, and a standing map of them rides along
+every session of the repository. The scan reads `repo_root` from the host the router runs on.
+
+| Variable                                                  | Default   | Description                                                              |
+|-----------------------------------------------------------|-----------|-----------------------------------------------------------------------------|
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_ENABLED`               | `true`    | Documentation indexing on/off.                                             |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_AUTO_INDEX`            | `true`    | A request may trigger a scan; `false` = only `llm-router-agentic-kb-docs` publishes. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILES`             | `200`     | Files read per scan; a scan that hits the ceiling prunes nothing.          |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILE_BYTES`        | `200000`  | Largest documentation file read.                                           |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_TOTAL_BYTES`       | `2000000` | Total bytes read per scan.                                                 |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_RESCAN_INTERVAL_SECONDS` | `21600` | Seconds between scans of one repository.                                   |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_STATE_TTL_SECONDS`     | `7776000` | Lifetime of a scope's scan state (90 days).                                |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_ENABLED`       | `true`    | The standing documentation map is injected with every session of a scope.  |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_MAX_CHARS`     | `700`     | Ceiling in characters of the map injected into a request.                  |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_TTL_SECONDS`   | `86400`   | How long a scope's map survives without a refresh.                         |
+
+### Redis (event stream, cache, dedup)
+
+Connection settings are read **only** from this prefix — never from `LLM_ROUTER_REDIS_*` or
+`LLM_ROUTER_AUTH_REDIS_*`. No host = stateless mode: the plugin still reads, but with no cache and no writes.
+
+| Variable                                                              | Default    | Description                                            |
+|------------------------------------------------------------------------|------------|-----------------------------------------------------------|
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_HOST`                              | *(empty)*  | **Empty ⇒ no writes, no cache** (stateless read-only mode). |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PORT`                              | `6379`     | Redis port.                                                |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_DB`                                | `0`        | Redis database.                                            |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PASSWORD`                          | *(empty)*  | Redis password (never logged).                             |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_PROTOCOL`                          | `3`        | RESP protocol; `3` needs Redis ≥ 6, use `2` against older. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_USERNAME`                          | *(empty)*  | Optional ACL username.                                     |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL`                               | `false`    | TLS on/off.                                                |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CERT_REQS`                     | `required` | Certificate verification: `required`, `optional`, `none`.  |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CA_CERTS`                      | *(empty)*  | CA bundle path (TLS only).                                 |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_CERTFILE`                      | *(empty)*  | Client certificate path (TLS only).                        |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SSL_KEYFILE`                       | *(empty)*  | Client key path (TLS only).                                |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SOCKET_CONNECT_TIMEOUT`            | `1.0`      | Short connect timeout (s) so a dead Redis cannot stall a request. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_REDIS_SOCKET_TIMEOUT`                    | `1.0`      | Short socket timeout (s).                                  |
+
+### Indexing worker and CLIs (`llm-router-agentic-kb-*`)
+
+Read by the indexing worker, the learner, the stats scoreboard and the docs publisher rather than by the server;
+exported in the run scripts so both halves of the layer are configured in one place.
+
+| Variable                                                  | Default             | Description                                       |
+|-----------------------------------------------------------|---------------------|-------------------------------------------------------|
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_GROUP`               | `agentic-kb`        | Consumer group the worker reads under.                 |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_CONSUMER`            | *(empty)*           | Consumer name; empty = `worker-<timestamp>-<pid>`.     |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_BATCH`               | `32`                | Events claimed per read.                               |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_WORKER_BLOCK_MS`            | `5000`              | How long a read waits for work.                        |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_MAX_PENDING`                | `1000`              | Pending length above which the worker warns.           |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_EMBEDDER`               | *(empty)*           | Embedder served by the engine; required to create a collection. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_RERANKER`               | *(empty)*           | Reranker served by the engine; required to create a collection. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_INDEX_TYPE`             | `HNSW`              | Vector index type of a new collection: `HNSW` or `IVF_FLAT`. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_TOKENS`          | `400`               | Chunk size declared for a new collection; `0` = engine default (500). Applied at creation only. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_CHUNK_OVERLAP`         | `60`                | Chunk overlap in tokens; must be smaller than the chunk size. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_RETENTION_INTERVAL_SECONDS` | `21600`             | Seconds between retention passes; `0` disables them.   |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_CODEX_PHASE_CONFIG`         | *(empty)*           | Codex routing configuration the episode phase rules come from; empty = the bundled `agentic_routing_codex.json`. |
+
+### Debug capture (dev only)
+
+| Variable                                            | Default   | Description                                     |
+|-----------------------------------------------------|-----------|----------------------------------------------------|
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DEBUG_DUMP_DIR`       | *(empty)* | Directory receiving full request/tool-output dumps; empty = off. The dumps are **raw (unmasked)** — never point this at production storage. |
+| `LLM_ROUTER_KNOWLEDGE_AGENTIC_DEBUG_DUMP_MAX`       | `50`      | How many capture files a directory keeps before the oldest is recycled. |
+
+---
+
 ## LangChainRAG variables
 
 Requires the `llm-router-plugins` package. When `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` includes `langchain_rag`, these
@@ -317,7 +461,7 @@ variables configure the RAG plugin:
 |-------------------------------------|-----------|--------------------------------------------------------------------------------------------------|
 | `LLM_ROUTER_UTILS_PLUGINS_PIPELINE` | *(empty)* | Comma-separated list of utility plugins to apply (e.g. `simple_semantic_routing,langchain_rag,agentic_routing_codex`). |
 
-Available plugins: `simple_semantic_routing`, `semantic_biencoder_routing`, `langchain_rag`, `agentic_routing_codex`, `agentic_routing_claude_code`. Each plugin has additional configuration documented above.
+Available plugins: `simple_semantic_routing`, `semantic_biencoder_routing`, `langchain_rag`, `agentic_routing_codex`, `agentic_routing_claude_code`, `agentic_knowledge`. Each plugin has additional configuration documented above.
 configuration documented above.
 
 ---
@@ -333,7 +477,10 @@ configuration documented above.
 
 ### Memory store
 
-Seed file path (hardcoded): `${HOME}/.llm-router/configs/auth/memory-keys.json`
+Seed file for the in-memory key store: `LLM_ROUTER_AUTH_MEMORY_SEED_FILE`, default
+`${HOME}/.llm-router/configs/auth/memory-keys.json` (a JSON array of key records, for dev/test).
+`constants.py` derives the path from `$HOME` and the CLI keeps this default in its managed env
+file; renaming the file means moving it, not exporting a different path.
 
 ### Custom policies
 

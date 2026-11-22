@@ -272,9 +272,23 @@ export LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENT
 # Model escalation on/off - a loop of one signature switches to a stronger model (default off)
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_ESCALATION_ENABLED:-"false"}
 # Prefix of every Semantic Search Engine collection owned by the plugin (must not be empty)
-export LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX=${LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX:-"agentic-kb"}
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX=${LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_PREFIX:-"agentic_kb"}
+# Collection layout: single = every kind of document in <prefix>_<scope> told apart
+# by engine category (the shipped default); split = the older three-collections
+# spelling, for a deployment indexed before the single layout existed
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_LAYOUT=${LLM_ROUTER_KNOWLEDGE_AGENTIC_COLLECTION_LAYOUT:-"single"}
 # Redis key namespace owned by the plugin (must not be empty)
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_KEY_PREFIX=${LLM_ROUTER_KNOWLEDGE_AGENTIC_KEY_PREFIX:-"agentic-kb"}
+# Learned path on/off: document reputation, the fitted ranking model and the source
+# bandit. The training log is written either way; the model only reorders within a
+# clamp and publishes nothing until its gates are full (default off)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_LEARNING_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_LEARNING_ENABLED:-"false"}
+# Mine a completed multi-file task that ran with no failure in between as a
+# task_solution document (the steps that worked, not only the ones that went wrong)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_TASK_SOLUTIONS_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_TASK_SOLUTIONS_ENABLED:-"false"}
+# Mine a verified single shell command as a tool_recipe document
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_TOOL_RECIPES_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_TOOL_RECIPES_ENABLED:-"false"}
+
 
 # ------------ Agentic Knowledge: Semantic Search Engine (read side)
 # No host = the layer is idle: requests pass through with no knowledge, which is a valid setup.
@@ -301,6 +315,21 @@ export LLM_ROUTER_KNOWLEDGE_AGENTIC_HYBRID_SEARCH=${LLM_ROUTER_KNOWLEDGE_AGENTIC
 # default: a model call per search, and the score scale is the reranker logit
 # under true, a plain RRF rank under false.
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_RESULTS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_RESULTS:-false}
+# Ask the engine not to guess the language of the query (it would filter the vector
+# leg to the guess and name the full-text configuration after it)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_IGNORE_LANGUAGE_DETECT=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SSE_IGNORE_LANGUAGE_DETECT:-true}
+# A debug result whose top hits sit within …_RERANK_CONTESTED_GAP of each other is
+# re-asked through the cross-encoder before the block is built: the cost is paid only
+# when the fused ranks were not confident (off by default)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_WHEN_CONTESTED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_WHEN_CONTESTED:-false}
+# Score spread of the top hits below which a search counts as contested
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_CONTESTED_GAP=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_CONTESTED_GAP:-0.05}
+# How many top hits the contested re-ask re-scores
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_TOP_K=${LLM_ROUTER_KNOWLEDGE_AGENTIC_RERANK_TOP_K:-5}
+# A query whose tokens are mostly identifiers (exception class, dotted path, ::-qualified
+# name) is asked of the text index alone: no query embedding, no vector leg. 0 keeps
+# every search on both legs
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_FTS_ONLY_MIN_IDENTIFIER_SHARE=${LLM_ROUTER_KNOWLEDGE_AGENTIC_FTS_ONLY_MIN_IDENTIFIER_SHARE:-0.5}
 # Lifetime [s] of one generation's assembled context
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_CACHE_TTL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_CACHE_TTL_SECONDS:-3600}
 # Knowledge lookups per generation; per worker process when Redis is not configured
@@ -323,6 +352,40 @@ export LLM_ROUTER_KNOWLEDGE_AGENTIC_ARCHIVE_TTL_SECONDS=${LLM_ROUTER_KNOWLEDGE_A
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD=${LLM_ROUTER_KNOWLEDGE_AGENTIC_LOOP_THRESHOLD:-3}
 # A recipe scoring at least this keeps the routed model instead of escalating
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORE=${LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORE:-0.75}
+# Per-scale bound of "a recipe this good keeps the routed model", a JSON object keyed
+# by retrieval scale (cosine, rrf, reranker, "" for an unnamed one); null decides by
+# identity. The float above stays the fallback for a scale this table leaves unnamed
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORES=${LLM_ROUTER_KNOWLEDGE_AGENTIC_STRONG_RECIPE_SCORES:-'{"reranker": null}'}
+# Minimum seconds between pushes of the settled verdicts to the engine feedback counters
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_FEEDBACK_PUSH_INTERVAL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_FEEDBACK_PUSH_INTERVAL_SECONDS:-60}
+# A newer recipe retires the older one for the same file after this many days; 0 = off
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_SUPERSEDE_AFTER_DAYS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_SUPERSEDE_AFTER_DAYS:-1}
+
+
+# ------------ Agentic Knowledge: repository documentation
+# The repository's own *.md files are indexed as knowledge, and a standing map of them
+# rides along every session of the repository.
+# Documentation indexing on/off (the scan reads repo_root from this host; a router that
+# cannot see the repositories publishes with llm-router-agentic-kb-docs instead)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_ENABLED:-"true"}
+# A request may trigger a scan; false = only the CLI publishes
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_AUTO_INDEX=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_AUTO_INDEX:-"true"}
+# Files read per scan; a scan that hits the ceiling prunes nothing
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILES=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILES:-200}
+# Largest documentation file read [bytes]
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILE_BYTES=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_FILE_BYTES:-200000}
+# Total bytes read per scan
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_TOTAL_BYTES=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_MAX_TOTAL_BYTES:-2000000}
+# Seconds between scans of one repository
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_RESCAN_INTERVAL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_RESCAN_INTERVAL_SECONDS:-21600}
+# Lifetime [s] of a scope's scan state (default 90 days)
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_STATE_TTL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_STATE_TTL_SECONDS:-7776000}
+# The standing documentation map is injected with every session of a scope
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_ENABLED=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_ENABLED:-"true"}
+# Ceiling [chars] of the map injected into a request
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_MAX_CHARS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_MAX_CHARS:-700}
+# How long [s] a scope's map survives without a refresh
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_TTL_SECONDS=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DOCS_CONTEXT_TTL_SECONDS:-86400}
 
 # ------------ Agentic Knowledge: Redis (event stream, cache, dedup)
 # No host = stateless mode: the plugin still reads, but with no cache and no writes.
@@ -381,6 +444,14 @@ export LLM_ROUTER_KNOWLEDGE_AGENTIC_RETENTION_INTERVAL_SECONDS=${LLM_ROUTER_KNOW
 # Routing configuration the episode phase rules come from;
 # empty = the bundled routing/agentic_routing_codex.json
 export LLM_ROUTER_KNOWLEDGE_AGENTIC_CODEX_PHASE_CONFIG=${LLM_ROUTER_KNOWLEDGE_AGENTIC_CODEX_PHASE_CONFIG:-""}
+
+# ------------ Agentic Knowledge: debug capture (dev only)
+# Directory receiving full request/tool-output dumps; empty = off. The dumps are RAW
+# (unmasked): never point this at production storage.
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DEBUG_DUMP_DIR=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DEBUG_DUMP_DIR:-""}
+# How many capture files a directory keeps before the oldest is recycled
+export LLM_ROUTER_KNOWLEDGE_AGENTIC_DEBUG_DUMP_MAX=${LLM_ROUTER_KNOWLEDGE_AGENTIC_DEBUG_DUMP_MAX:-50}
+
 
 # ------------ Semantic BiEncoder Routing Configuration
 # Config source of truth: JSON file (via CONFIG env var).
